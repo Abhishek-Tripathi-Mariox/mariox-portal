@@ -2,6 +2,12 @@
 // enterprise2.js  – Documents, Timesheets, Reports, Alerts, Settings
 // ═══════════════════════════════════════════════════════════
 
+let _documentsCenterPage = 1
+let _timesheetsViewPage = 1
+let _alertsViewPage = 1
+let _holidaysPage = 1
+let _alertsSeverityFilter = ''
+
 /* ── DOCUMENTS CENTER ──────────────────────────────────── */
 async function renderDocumentsCenter(el) {
   el.innerHTML = `<div style="padding:40px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
@@ -13,6 +19,7 @@ async function renderDocumentsCenter(el) {
     const docs = docsData.documents || []
     const projects = projectsData.projects || projectsData || []
     const categories = docsData.categories || ['sow','brd','frd','uiux','wireframes','meeting_notes','technical','test_report','release','billing','contract','other']
+    _documentsCenterPage = 1
 
     const categoryLabels = {
       sow:'Statement of Work', brd:'Business Requirements', frd:'Functional Requirements',
@@ -66,13 +73,21 @@ async function renderDocumentsCenter(el) {
         </div>`).join('')
     }
 
+    function renderFilteredDocs(filteredDocs) {
+      const pagination = paginateClient(filteredDocs, _documentsCenterPage, 8)
+      _documentsCenterPage = pagination.page
+      const grid = document.getElementById('doc-grid')
+      const pager = document.getElementById('doc-pager')
+      if (grid) grid.innerHTML = buildDocGrid(pagination.items)
+      if (pager) pager.innerHTML = renderPager(pagination, 'goDocumentsCenterPage', 'goDocumentsCenterPage', 'documents')
+    }
+
     function applyFilter() {
       let filtered = docs
       if (filterProject) filtered = filtered.filter(d => d.project_id === filterProject)
       if (filterCategory) filtered = filtered.filter(d => d.category === filterCategory)
       if (filterSearch) filtered = filtered.filter(d => d.title.toLowerCase().includes(filterSearch) || (d.description||'').toLowerCase().includes(filterSearch))
-      const grid = document.getElementById('doc-grid')
-      if (grid) grid.innerHTML = buildDocGrid(filtered)
+      renderFilteredDocs(filtered)
     }
 
     el.innerHTML = `
@@ -100,21 +115,28 @@ async function renderDocumentsCenter(el) {
       </div>
     </div>
 
-    <div id="doc-grid">${buildDocGrid(docs)}</div>`
+    <div id="doc-grid"></div>
+    <div id="doc-pager"></div>`
 
     // Store filter state globally
     window._allDocs = docs
     window._docFilter = ''
     window._docProject = ''
     window._docCategory = ''
+    window._docPage = 1
     window.applyDocFilter = function() {
+      _documentsCenterPage = 1
       let filtered = window._allDocs
       if (window._docProject) filtered = filtered.filter(d => d.project_id === window._docProject)
       if (window._docCategory) filtered = filtered.filter(d => d.category === window._docCategory)
       if (window._docFilter) filtered = filtered.filter(d => d.title.toLowerCase().includes(window._docFilter) || (d.description||'').toLowerCase().includes(window._docFilter))
-      const grid = document.getElementById('doc-grid')
-      if (grid) grid.innerHTML = buildDocGrid(filtered)
+      renderFilteredDocs(filtered)
     }
+    window.goDocumentsCenterPage = function(page) {
+      _documentsCenterPage = Math.max(1, Number(page) || 1)
+      window.applyDocFilter()
+    }
+    window.applyDocFilter()
 
   } catch(e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Failed: ${e.message}</p></div>`
@@ -345,6 +367,8 @@ async function loadTimesheetData() {
   try {
     const data = await API.get(url.replace(/&$/, ''))
     const logs = data.timesheets || data.logs || data || []
+    const pagination = paginateClient(logs, _timesheetsViewPage, 10)
+    _timesheetsViewPage = pagination.page
     const total = logs.reduce((s, l) => s + (parseFloat(l.hours_consumed) || 0), 0)
     const billable = logs.filter(l => l.is_billable).reduce((s, l) => s + (parseFloat(l.hours_consumed) || 0), 0)
     const pending = logs.filter(l => l.approval_status === 'pending').length
@@ -359,7 +383,7 @@ async function loadTimesheetData() {
     }
 
     if (!wrap) return
-    if (logs.length === 0) {
+    if (pagination.total === 0) {
       wrap.innerHTML = '<div class="empty-state"><i class="fas fa-clock"></i><p>No timesheet entries found for the selected filters.</p></div>'
       return
     }
@@ -371,7 +395,7 @@ async function loadTimesheetData() {
           <th>Date</th><th>Developer</th><th>Project</th><th>Module</th><th>Task</th><th>Hours</th><th>Status</th><th>Approval</th>
           ${isManager ? '<th>Actions</th>' : ''}
         </tr></thead>
-        <tbody>${logs.map(l => {
+        <tbody>${pagination.items.map(l => {
           const statusColors = { in_progress:'badge-inprogress', completed:'badge-done', blocked:'badge-blocked' }
           const approvalColors = { pending:'badge-todo', approved:'badge-done', rejected:'badge-blocked' }
           return `<tr>
@@ -391,10 +415,17 @@ async function loadTimesheetData() {
           </tr>`}).join('')}
         </tbody>
       </table>
-    </div>`
+    </div>
+    ${renderPager(pagination, 'goTimesheetPage', 'goTimesheetPage', 'entries')}
+    `
   } catch(e) {
     if (wrap) wrap.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
   }
+}
+
+function goTimesheetPage(page) {
+  _timesheetsViewPage = Math.max(1, Number(page) || 1)
+  loadTimesheetData()
 }
 
 function miniStatCard(label, value, color, icon) {
@@ -704,6 +735,9 @@ async function renderAlertsView(el) {
     const unread = alerts.filter(a => !a.is_read)
     const dismissed = alerts.filter(a => a.is_dismissed)
     const active = alerts.filter(a => !a.is_dismissed)
+    const filtered = _alertsSeverityFilter ? active.filter(a => a.severity === _alertsSeverityFilter) : active
+    const pagination = paginateClient(filtered, _alertsViewPage, 10)
+    _alertsViewPage = pagination.page
 
     const sevColor = { critical:'#f43f5e', high:'#f97316', warning:'#f59e0b', info:'#06b6d4', low:'#64748b' }
     const sevIcon = { critical:'fa-circle-exclamation', high:'fa-exclamation-triangle', warning:'fa-triangle-exclamation', info:'fa-info-circle', low:'fa-circle-info' }
@@ -733,8 +767,8 @@ async function renderAlertsView(el) {
     </div>
 
     <div id="alerts-list">
-      ${active.length === 0 ? '<div class="empty-state"><i class="fas fa-bell-slash"></i><p>No active alerts. System is healthy!</p></div>' :
-      active.map(alert => `
+      ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-bell-slash"></i><p>No active alerts. System is healthy!</p></div>' :
+      pagination.items.map(alert => `
         <div class="card" id="alert-${alert.id}" style="padding:16px;margin-bottom:10px;border-left:3px solid ${sevColor[alert.severity]||'#64748b'};${!alert.is_read?'background:rgba(99,102,241,.04)':''}">
           <div style="display:flex;align-items:flex-start;gap:12px">
             <div style="width:36px;height:36px;border-radius:8px;background:${sevColor[alert.severity]||'#64748b'}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -755,7 +789,9 @@ async function renderAlertsView(el) {
             </div>
           </div>
         </div>`).join('')}
-    </div>`
+    </div>
+    <div style="margin-top:12px">${renderPager(pagination, 'goAlertsPage', 'goAlertsPage', 'alerts')}</div>
+    `
 
     window._allAlerts = active
   } catch(e) {
@@ -764,17 +800,22 @@ async function renderAlertsView(el) {
 }
 
 function filterAlerts(severity) {
-  document.querySelectorAll('[id^="af-"]').forEach(b => { b.style.background='transparent'; b.style.color='#94a3b8' })
-  const activeBtn = document.getElementById('af-' + (severity || 'all'))
-  if (activeBtn) { activeBtn.style.background='rgba(99,102,241,.15)'; activeBtn.style.color='#818cf8' }
-  const list = document.getElementById('alerts-list')
-  if (!list || !window._allAlerts) return
-  const filtered = severity ? window._allAlerts.filter(a => a.severity === severity) : window._allAlerts
-  if (filtered.length === 0) { list.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle" style="color:#10b981"></i><p>No alerts for this filter!</p></div>'; return }
-  document.querySelectorAll('[id^="alert-"]').forEach(el => {
-    const id = el.id.replace('alert-', '')
-    el.style.display = !severity || window._allAlerts.find(a => a.id.toString() === id && a.severity === severity) ? '' : 'none'
-  })
+  _alertsSeverityFilter = severity || ''
+  _alertsViewPage = 1
+  const el = document.getElementById('page-alerts-view')
+  if (el) {
+    el.dataset.loaded = ''
+    renderAlertsView(el)
+  }
+}
+
+function goAlertsPage(page) {
+  _alertsViewPage = Math.max(1, Number(page) || 1)
+  const el = document.getElementById('page-alerts-view')
+  if (el) {
+    el.dataset.loaded = ''
+    renderAlertsView(el)
+  }
 }
 
 async function markAlertRead2(id) {
@@ -893,23 +934,26 @@ function switchSettingsTab2(tab) {
     </div>`
   } else if (tab === 'holidays') {
     const holidays = window._settingsHolidays || []
+    const pagination = paginateClient(holidays, _holidaysPage, 8)
+    _holidaysPage = pagination.page
     panel.innerHTML = `
     <div class="card">
       <div class="card-header">
-        <span style="font-weight:600">Holidays (${holidays.length})</span>
+        <span style="font-weight:600">Holidays (${pagination.total})</span>
         <button class="btn btn-sm btn-primary" onclick="showAddHolidayModal2()"><i class="fas fa-plus"></i>Add Holiday</button>
       </div>
       <div class="card-body" style="padding:0">
-        ${holidays.length === 0 ? '<div class="empty-state"><i class="fas fa-calendar"></i><p>No holidays configured</p></div>' :
+        ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-calendar"></i><p>No holidays configured</p></div>' :
         `<table class="data-table">
           <thead><tr><th>Holiday Name</th><th>Date</th><th>Type</th><th></th></tr></thead>
-          <tbody id="holidays-tbody">${holidays.map(h => `<tr id="holiday-row-${h.id}">
+          <tbody id="holidays-tbody">${pagination.items.map(h => `<tr id="holiday-row-${h.id}">
             <td style="font-weight:500;color:#e2e8f0">${h.name}</td>
             <td style="color:#94a3b8">${fmtDate(h.date)}</td>
             <td><span class="badge badge-${h.type==='national'?'done':'inprogress'}">${h.type||'national'}</span></td>
             <td><button class="btn btn-sm btn-outline" style="color:#f43f5e;border-color:#f43f5e" onclick="deleteHoliday2('${h.id}')"><i class="fas fa-trash"></i></button></td>
           </tr>`).join('')}</tbody>
         </table>`}
+        <div style="margin-top:12px">${renderPager(pagination, 'goHolidaysPage', 'goHolidaysPage', 'holidays')}</div>
       </div>
     </div>`
   } else if (tab === 'tech') {
@@ -1023,6 +1067,12 @@ async function deleteHoliday2(id) {
     toast('Deleted', 'info')
     document.getElementById('holiday-row-' + id)?.remove()
   } catch(e) { toast(e.message, 'error') }
+}
+
+function goHolidaysPage(page) {
+  _holidaysPage = Math.max(1, Number(page) || 1)
+  const el = document.getElementById('page-settings-view')
+  if (el) { el.dataset.loaded=''; loadPage('settings-view', el) }
 }
 
 async function showAddTechModal2() {

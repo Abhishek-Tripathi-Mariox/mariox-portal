@@ -61,7 +61,7 @@ clients.get('/:id', async (c) => {
         GROUP BY p.id ORDER BY p.created_at DESC
       `).bind(id).all(),
       c.env.DB.prepare(`
-        SELECT * FROM invoices WHERE client_id=? ORDER BY issue_date DESC
+        SELECT * FROM invoices WHERE client_id=? ORDER BY datetime(created_at) DESC, datetime(issue_date) DESC, id DESC
       `).bind(id).all(),
       c.env.DB.prepare(`
         SELECT * FROM client_notifications WHERE client_id=? ORDER BY created_at DESC LIMIT 20

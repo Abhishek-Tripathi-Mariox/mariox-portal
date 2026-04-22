@@ -63,12 +63,63 @@ const API = {
     if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)
     return data
   },
-  get:    (u) => API.req('GET', u),
+  get:    (u, opts = {}) => API.req('GET', buildUrl(u, opts?.params)),
   post:   (u, b) => API.req('POST', u, b),
   put:    (u, b) => API.req('PUT', u, b),
   patch:  (u, b) => API.req('PATCH', u, b),
   delete: (u) => API.req('DELETE', u),
 }
+
+function buildUrl(url, params = {}) {
+  if (!params || typeof params !== 'object') return url
+  const search = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      search.set(key, String(value))
+    }
+  })
+  const qs = search.toString()
+  if (!qs) return url
+  return url + (url.includes('?') ? '&' : '?') + qs
+}
+
+function paginateClient(items, page = 1, limit = 10) {
+  const total = Array.isArray(items) ? items.length : 0
+  const safeLimit = Math.max(1, Number(limit) || 10)
+  const totalPages = Math.max(1, Math.ceil(total / safeLimit))
+  const safePage = Math.min(Math.max(1, Number(page) || 1), totalPages)
+  const start = total ? ((safePage - 1) * safeLimit) + 1 : 0
+  const end = total ? Math.min(safePage * safeLimit, total) : 0
+  return {
+    items: Array.isArray(items) ? items.slice((safePage - 1) * safeLimit, safePage * safeLimit) : [],
+    total,
+    page: safePage,
+    limit: safeLimit,
+    totalPages,
+    hasMore: safePage < totalPages,
+    start,
+    end,
+  }
+}
+
+function renderPager(pagination, prevFn, nextFn, label = 'items') {
+  if (!pagination) return ''
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-top:1px solid var(--border);flex-wrap:wrap">
+      <div style="font-size:12px;color:#94a3b8">
+        ${pagination.total ? `Showing ${pagination.start}-${pagination.end} of ${pagination.total} ${label}` : `No ${label} found`}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-sm btn-outline" ${pagination.page <= 1 ? 'disabled' : ''} onclick="${prevFn}(${pagination.page - 1})">Previous</button>
+        <span style="font-size:12px;color:#64748b">Page ${pagination.page} of ${pagination.totalPages || 1}</span>
+        <button class="btn btn-sm btn-outline" ${!pagination.hasMore ? 'disabled' : ''} onclick="${nextFn}(${pagination.page + 1})">Next</button>
+      </div>
+    </div>`
+}
+
+window.buildUrl = buildUrl
+window.paginateClient = paginateClient
+window.renderPager = renderPager
 
 // ── Toast ────────────────────────────────────────────────────
 function toast(msg, type='info', dur=3500) {
@@ -614,14 +665,37 @@ function loadPage(page, el) {
 }
 
 // ── Init ──────────────────────────────────────────────────────
-(function init() {
+function resolveInitialPage() {
+  const path = (location.pathname || '/').replace(/\/+$/, '').toLowerCase()
+  const legacyMap = {
+    '/devportaloverview': 'super-dashboard',
+    '/devportaldashboard': 'super-dashboard',
+    '/overview': 'super-dashboard',
+    '/dashboard': 'super-dashboard',
+    '/pm-dashboard': 'pm-dashboard',
+    '/dev-dashboard': 'dev-dashboard',
+  }
+  return legacyMap[path] || null
+}
+
+function init() {
   // If URL is /accept-invite, defer to project-extensions.js
   if (location.pathname === '/accept-invite') return
 
   if (loadAuth()) {
-    if (_user.role === 'client') renderClientPortal()
-    else { Router.navigate(defaultPage()) }
+    if (_user.role === 'client') {
+      if (typeof renderClientPortal === 'function') renderClientPortal()
+    } else {
+      const initialPage = resolveInitialPage() || defaultPage()
+      Router.navigate(initialPage)
+    }
   } else {
     renderLogin()
   }
-})()
+}
+
+if (document.readyState === 'complete') {
+  init()
+} else {
+  window.addEventListener('load', init, { once: true })
+}

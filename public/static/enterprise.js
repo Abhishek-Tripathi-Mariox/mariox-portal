@@ -2,6 +2,33 @@
 // enterprise.js  – Super Admin, PM, Developer pages + Kanban
 // ═══════════════════════════════════════════════════════════
 
+const _projectsPageLimit = 10
+const _sprintsPageLimit = 4
+const _milestonesPageLimit = 6
+const _myTasksPageLimit = 10
+const _resourcesPageLimit = 8
+const _approvalQueuePageLimit = 10
+const _clientsPageLimit = 6
+const _teamOverviewPageLimit = 8
+
+let _projectsListPage = 1
+let _sprintsViewPage = 1
+let _milestonesViewPage = 1
+let _myTasksPage = 1
+let _resourcesPage = 1
+let _approvalQueuePage = 1
+let _clientsListPage = 1
+let _teamOverviewPage = 1
+
+function rerenderEnterprisePage(page, stateSetter) {
+  stateSetter()
+  const el = document.getElementById('page-' + page)
+  if (el) {
+    el.dataset.loaded = ''
+    loadPage(page, el)
+  }
+}
+
 /* ── SUPER ADMIN DASHBOARD ──────────────────────────────── */
 async function renderSuperDashboard(el) {
   el.innerHTML = `<div class="page-header"><div><h1 class="page-title">Super Admin Overview</h1><p class="page-subtitle">Platform health, billing, and team metrics</p></div><div class="page-actions"><button class="btn btn-primary" onclick="Router.navigate('billing-admin')"><i class="fas fa-file-invoice-dollar"></i>Manage Billing</button></div></div><div style="display:flex;align-items:center;gap:10px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
@@ -111,6 +138,50 @@ function statCard(label, value, icon, color, sub='') {
       <div class="stat-icon" style="background:${color}22;color:${color}"><i class="${icon}"></i></div>
     </div>
   </div>`
+}
+
+function showEditProjectModal(projectId) {
+  return openProjectModal(projectId)
+}
+
+function goProjectsPage(page) {
+  _projectsListPage = Math.max(1, Number(page) || 1)
+  rerenderEnterprisePage('projects-list', () => {})
+}
+
+function goSprintsPage(page) {
+  _sprintsViewPage = Math.max(1, Number(page) || 1)
+  rerenderEnterprisePage('sprints-view', () => {})
+}
+
+function goMilestonesPage(page) {
+  _milestonesViewPage = Math.max(1, Number(page) || 1)
+  rerenderEnterprisePage('milestones-view', () => {})
+}
+
+function goMyTasksPage(page) {
+  _myTasksPage = Math.max(1, Number(page) || 1)
+  rerenderEnterprisePage('my-tasks', () => {})
+}
+
+function goResourcesPage(page) {
+  _resourcesPage = Math.max(1, Number(page) || 1)
+  rerenderEnterprisePage('resources-view', () => {})
+}
+
+function goApprovalQueuePage(page) {
+  _approvalQueuePage = Math.max(1, Number(page) || 1)
+  rerenderEnterprisePage('approval-queue', () => {})
+}
+
+function goClientsPage(page) {
+  _clientsListPage = Math.max(1, Number(page) || 1)
+  rerenderEnterprisePage('clients-list', () => {})
+}
+
+function goTeamOverviewPage(page) {
+  _teamOverviewPage = Math.max(1, Number(page) || 1)
+  rerenderEnterprisePage('team-overview', () => {})
 }
 
 /* ── PM DASHBOARD ────────────────────────────────────────── */
@@ -312,10 +383,13 @@ async function renderProjectsList(el) {
     const projects = proj.projects || proj || []
     const clientMap = {}
     ;(clients.clients||[]).forEach(c => clientMap[c.id]=c)
+    const pagination = paginateClient(projects, _projectsListPage, _projectsPageLimit)
+    _projectsListPage = pagination.page
+    const visibleProjects = pagination.items
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Projects</h1><p class="page-subtitle">${projects.length} total projects</p></div>
+      <div><h1 class="page-title">Projects</h1><p class="page-subtitle">${pagination.total} total projects</p></div>
       <div class="page-actions">
         <div class="search-wrap"><i class="fas fa-search"></i><input class="search-bar" placeholder="Search projects…" oninput="filterTable(this.value,'proj-table')"/></div>
         ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="showCreateProjectModal()"><i class="fas fa-plus"></i>New Project</button>`:''}
@@ -326,7 +400,7 @@ async function renderProjectsList(el) {
         <table class="data-table" id="proj-table">
           <thead><tr><th>Project</th><th>Client</th><th>PM</th><th>Status</th><th>Priority</th><th>Progress</th><th>Hours</th><th>Due Date</th><th>Actions</th></tr></thead>
           <tbody>
-            ${projects.map(p=>{
+            ${visibleProjects.map(p=>{
               const cl = p.client_id ? clientMap[p.client_id] : null
               const burnPct = p.total_allocated_hours>0 ? Math.round((p.consumed_hours/p.total_allocated_hours)*100) : 0
               return `<tr>
@@ -358,6 +432,7 @@ async function renderProjectsList(el) {
             }).join('')}
           </tbody>
         </table>
+        ${renderPager(pagination, 'goProjectsPage', 'goProjectsPage', 'projects')}
       </div>
     </div>`
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
@@ -1038,15 +1113,17 @@ async function renderSprintsView(el) {
     const sprints = spData.sprints||[]
     const projects = proj.projects||proj||[]
     const projMap = {}; projects.forEach(p=>projMap[p.id]=p)
+    const pagination = paginateClient(sprints, _sprintsViewPage, _sprintsPageLimit)
+    _sprintsViewPage = pagination.page
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Sprints</h1><p class="page-subtitle">${sprints.length} sprints across all projects</p></div>
+      <div><h1 class="page-title">Sprints</h1><p class="page-subtitle">${pagination.total} sprints across all projects</p></div>
       <div class="page-actions">
         ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="showCreateSprintModal()"><i class="fas fa-plus"></i>New Sprint</button>`:''}
       </div>
     </div>
-    ${sprints.map(s => {
+    ${pagination.items.map(s => {
       const pct = s.total_story_points>0 ? Math.round((s.completed_story_points/s.total_story_points)*100) : 0
       return `
       <div class="card" style="margin-bottom:14px">
@@ -1075,6 +1152,7 @@ async function renderSprintsView(el) {
         </div>
       </div>`
     }).join('') || '<div class="empty-state"><i class="fas fa-bolt"></i><p>No sprints created yet</p></div>'}
+    ${renderPager(pagination, 'goSprintsPage', 'goSprintsPage', 'sprints')}
     `
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }
@@ -1126,16 +1204,18 @@ async function renderMilestonesView(el) {
     const milestones = msData.milestones||[]
     const projects = proj.projects||proj||[]
     const projMap = {}; projects.forEach(p=>projMap[p.id]=p)
+    const pagination = paginateClient(milestones, _milestonesViewPage, _milestonesPageLimit)
+    _milestonesViewPage = pagination.page
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">Track deliverables and billing milestones</p></div>
+      <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">${pagination.total} deliverables and billing milestones</p></div>
       <div class="page-actions">
         ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="showCreateMilestoneModal()"><i class="fas fa-plus"></i>New Milestone</button>`:''}
       </div>
     </div>
     <div class="grid-2">
-      ${milestones.map(m=>`
+      ${pagination.items.map(m=>`
         <div class="card">
           <div class="card-header">
             <div>
@@ -1161,7 +1241,9 @@ async function renderMilestonesView(el) {
             </div>`:''}
           </div>
         </div>`).join('') || '<div class="empty-state"><i class="fas fa-flag"></i><p>No milestones defined</p></div>'}
-    </div>`
+    </div>
+    ${renderPager(pagination, 'goMilestonesPage', 'goMilestonesPage', 'milestones')}
+    `
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }
 
@@ -1211,10 +1293,12 @@ async function renderMyTasks(el) {
     const assigneeId = _user.role==='developer' ? _user.sub : ''
     const data = await API.get('/tasks' + (assigneeId?'?assignee_id='+assigneeId:''))
     const tasks = data.tasks||[]
+    const pagination = paginateClient(tasks, _myTasksPage, _myTasksPageLimit)
+    _myTasksPage = pagination.page
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">${_user.role==='developer'?'My Tasks':'All Tasks'}</h1><p class="page-subtitle">${tasks.length} tasks</p></div>
+      <div><h1 class="page-title">${_user.role==='developer'?'My Tasks':'All Tasks'}</h1><p class="page-subtitle">${pagination.total} tasks</p></div>
       <div class="page-actions">
         <select class="form-select" style="width:140px" onchange="filterByStatus(this.value,'my-tasks-table')">
           <option value="">All Status</option>
@@ -1232,7 +1316,7 @@ async function renderMyTasks(el) {
         <table class="data-table" id="my-tasks-table">
           <thead><tr><th>Task</th><th>Project</th><th>Type</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Due</th><th>Hours</th><th></th></tr></thead>
           <tbody>
-            ${tasks.map(t=>`
+            ${pagination.items.map(t=>`
             <tr data-status="${t.status}" data-priority="${t.priority}">
               <td style="max-width:220px">
                 <div style="display:flex;align-items:center;gap:6px">${taskTypeIcon(t.task_type)}<span style="font-weight:500;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.title}</span></div>
@@ -1249,6 +1333,7 @@ async function renderMyTasks(el) {
             </tr>`).join('')}
           </tbody>
         </table>
+        ${renderPager(pagination, 'goMyTasksPage', 'goMyTasksPage', 'tasks')}
       </div>
     </div>`
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
@@ -1282,6 +1367,8 @@ async function renderResourcesView(el) {
     const [usersData, proj, dash] = await Promise.all([API.get('/users?role=developer'), API.get('/projects'), API.get('/dashboard/pm')])
     const devs = usersData.users||usersData||[]
     const d = dash.data||{}
+    const pagination = paginateClient(d.utilization || [], _resourcesPage, _resourcesPageLimit)
+    _resourcesPage = pagination.page
 
     el.innerHTML = `
     <div class="page-header">
@@ -1299,7 +1386,7 @@ async function renderResourcesView(el) {
         <table class="data-table">
           <thead><tr><th>Developer</th><th>Designation</th><th>Monthly Cap</th><th>This Month</th><th>Utilization</th><th>Projects</th><th>Allocated Total</th><th>Status</th></tr></thead>
           <tbody>
-            ${(d.utilization||[]).map(u=>`
+            ${pagination.items.map(u=>`
             <tr>
               <td><div style="display:flex;align-items:center;gap:8px">${avatar(u.full_name,u.avatar_color,'sm')}<span style="font-weight:500;color:#e2e8f0">${u.full_name}</span></div></td>
               <td><span style="font-size:12px;color:#94a3b8">${u.designation}</span></td>
@@ -1317,6 +1404,7 @@ async function renderResourcesView(el) {
             </tr>`).join('')}
           </tbody>
         </table>
+        ${renderPager(pagination, 'goResourcesPage', 'goResourcesPage', 'developers')}
       </div>
     </div>`
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
@@ -1328,11 +1416,13 @@ async function renderApprovalQueue(el) {
   try {
     const data = await API.get('/timesheets?approval_status=pending')
     const logs = data.timesheets||data||[]
+    const pagination = paginateClient(logs, _approvalQueuePage, _approvalQueuePageLimit)
+    _approvalQueuePage = pagination.page
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Approval Queue</h1><p class="page-subtitle">${logs.length} pending approvals</p></div>
+      <div><h1 class="page-title">Approval Queue</h1><p class="page-subtitle">${pagination.total} pending approvals</p></div>
       <div class="page-actions">
-        ${logs.length>0?`<button class="btn btn-success" onclick="bulkApprove()"><i class="fas fa-check-double"></i>Approve All</button>`:''}
+        ${pagination.total>0?`<button class="btn btn-success" onclick="bulkApprove()"><i class="fas fa-check-double"></i>Approve All</button>`:''}
       </div>
     </div>
     <div class="card">
@@ -1340,7 +1430,7 @@ async function renderApprovalQueue(el) {
         <table class="data-table">
           <thead><tr><th><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)" style="accent-color:#6366f1"/></th><th>Developer</th><th>Project</th><th>Date</th><th>Task</th><th>Hours</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
-            ${logs.map(l=>`
+            ${pagination.items.map(l=>`
             <tr id="log-row-${l.id}">
               <td><input type="checkbox" class="log-check" value="${l.id}" style="accent-color:#6366f1"/></td>
               <td><div style="display:flex;align-items:center;gap:8px">${avatar(l.full_name||'?',l.avatar_color||'#6366f1','sm')}<span>${l.full_name||l.user_id}</span></div></td>
@@ -1358,6 +1448,7 @@ async function renderApprovalQueue(el) {
             </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;padding:30px;color:#64748b"><i class="fas fa-check-circle" style="margin-right:6px;color:#10b981"></i>All timesheets approved!</td></tr>'}
           </tbody>
         </table>
+        ${renderPager(pagination, 'goApprovalQueuePage', 'goApprovalQueuePage', 'approvals')}
       </div>
     </div>`
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
@@ -1399,12 +1490,14 @@ async function renderClientsList(el) {
   try {
     const data = await API.get('/clients')
     const clients = data.clients||[]
+    const pagination = paginateClient(clients, _clientsListPage, _clientsPageLimit)
+    _clientsListPage = pagination.page
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Clients</h1><p class="page-subtitle">${clients.length} client companies</p></div>
+      <div><h1 class="page-title">Clients</h1><p class="page-subtitle">${pagination.total} client companies</p></div>
     </div>
     <div class="grid-2">
-      ${clients.map(cl=>`
+      ${pagination.items.map(cl=>`
         <div class="client-project-card" onclick="showClientDetail('${cl.id}')">
           <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
             ${avatar(cl.company_name,cl.avatar_color,'lg')}
@@ -1424,7 +1517,9 @@ async function renderClientsList(el) {
             <span style="font-size:12px;color:#475569">${cl.industry||'—'}</span>
           </div>
         </div>`).join('') || '<div class="empty-state"><i class="fas fa-building"></i><p>No clients registered</p></div>'}
-    </div>`
+    </div>
+    ${renderPager(pagination, 'goClientsPage', 'goClientsPage', 'clients')}
+    `
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }
 
@@ -1465,12 +1560,19 @@ function switchTab(btn, targetId) {
 }
 
 /* ── BILLING ADMIN ──────────────────────────────────────── */
+let _billingInvoicePage = 1
+const _billingInvoiceLimit = 10
+
 async function renderBillingAdmin(el) {
   el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
-    const data = await API.get('/invoices')
+    const data = await API.get('/invoices?page=' + _billingInvoicePage + '&limit=' + _billingInvoiceLimit)
     const invoices = data.invoices||[]
     const s = data.summary||{}
+    const pagination = data.pagination || { total: invoices.length, page: _billingInvoicePage, limit: _billingInvoiceLimit, totalPages: 1, hasMore: false }
+    _billingInvoicePage = pagination.page || _billingInvoicePage
+    const start = pagination.total ? ((pagination.page - 1) * pagination.limit) + 1 : 0
+    const end = Math.min(pagination.page * pagination.limit, pagination.total || 0)
     el.innerHTML = `
     <div class="page-header">
       <div><h1 class="page-title">Billing & Invoices</h1><p class="page-subtitle">Manage all client invoices and payments</p></div>
@@ -1484,11 +1586,11 @@ async function renderBillingAdmin(el) {
       ${statCard('Pending', fmtCurrency(s.total_pending||0), 'fas fa-clock', '#f59e0b', 'awaiting payment')}
       ${statCard('Overdue', fmtCurrency(s.total_overdue||0), 'fas fa-exclamation-triangle', '#f43f5e', `${s.overdue_count||0} overdue`)}
     </div>
-    <div class="card">
-      <div class="card-header">
-        <span style="font-weight:600">All Invoices</span>
-        <div style="display:flex;gap:8px">
-          <select class="form-select" style="width:130px" onchange="filterTable(this.value,'inv-table')">
+      <div class="card">
+        <div class="card-header">
+          <span style="font-weight:600">All Invoices</span>
+          <div style="display:flex;gap:8px">
+            <select class="form-select" style="width:130px" onchange="filterTable(this.value,'inv-table')">
             <option value="">All Status</option>
             ${['pending','sent','paid','partially_paid','overdue','cancelled'].map(s=>`<option value="${s}">${s}</option>`).join('')}
           </select>
@@ -1516,9 +1618,30 @@ async function renderBillingAdmin(el) {
             </tr>`).join('')}
           </tbody>
         </table>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-top:1px solid #1e1e45;flex-wrap:wrap">
+          <div style="font-size:12px;color:#94a3b8">
+            ${pagination.total ? `Showing ${start}-${end} of ${pagination.total}` : 'No invoices found'}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn btn-sm btn-outline" ${pagination.page <= 1 ? 'disabled' : ''} onclick="goBillingInvoicePage(${pagination.page - 1})">Previous</button>
+            <span style="font-size:12px;color:#64748b">Page ${pagination.page} of ${pagination.totalPages || 1}</span>
+            <button class="btn btn-sm btn-outline" ${!pagination.hasMore ? 'disabled' : ''} onclick="goBillingInvoicePage(${pagination.page + 1})">Next</button>
+          </div>
+        </div>
       </div>
     </div>`
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
+}
+
+function goBillingInvoicePage(page) {
+  const nextPage = Math.max(1, Number(page) || 1)
+  if (_billingInvoicePage === nextPage) return
+  _billingInvoicePage = nextPage
+  const el = document.getElementById('page-billing-admin')
+  if (el) {
+    el.dataset.loaded = ''
+    loadPage('billing-admin', el)
+  }
 }
 
 async function showCreateInvoiceModal() {
@@ -1554,6 +1677,78 @@ async function showCreateInvoiceModal() {
   </div>`, 'modal-lg')
 }
 
+async function showEditInvoiceModal(id) {
+  try {
+    const [invRes, projRes, clientsRes, msRes] = await Promise.all([
+      API.get(`/invoices/${id}`),
+      API.get('/projects'),
+      API.get('/clients'),
+      API.get('/milestones')
+    ])
+    const inv = invRes.invoice || invRes.data || invRes
+    const projects = projRes.projects || projRes || []
+    const allClients = clientsRes.clients || []
+    const milestones = msRes.milestones || []
+    showModal(`
+    <div class="modal-header"><h3>Edit Invoice</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Client</label><select class="form-select" id="ei-client">${allClients.map(c=>`<option value="${c.id}" ${c.id===inv.client_id?'selected':''}>${c.company_name}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">Project</label><select class="form-select" id="ei-project">${projects.map(p=>`<option value="${p.id}" ${p.id===inv.project_id?'selected':''}>${p.name}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-group"><label class="form-label">Milestone</label><select class="form-select" id="ei-milestone"><option value="">No milestone</option>${milestones.map(m=>`<option value="${m.id}" ${m.id===inv.milestone_id?'selected':''}>${m.title}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Invoice Title *</label><input class="form-input" id="ei-title" value="${inv.title||''}"/></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="ei-desc" style="min-height:60px">${inv.description||''}</textarea></div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">Amount</label><input class="form-input" value="${fmtCurrency(inv.amount||0)}" readonly/></div>
+        <div class="form-group"><label class="form-label">Tax %</label><input class="form-input" value="${inv.tax_pct ?? 18}" readonly/></div>
+        <div class="form-group"><label class="form-label">Total</label><input class="form-input" value="${fmtCurrency(inv.total_amount||0)}" readonly style="background:rgba(16,185,129,.07);color:#34d399"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="ei-status">${['pending','sent','overdue','partially_paid','paid','cancelled'].map(s=>`<option value="${s}" ${inv.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">Due Date *</label><input class="form-input" type="date" id="ei-due" value="${inv.due_date||''}"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Paid Amount</label><input class="form-input" type="number" id="ei-paid-amount" value="${inv.paid_amount ?? 0}"/></div>
+        <div class="form-group"><label class="form-label">Paid Date</label><input class="form-input" type="date" id="ei-paid-date" value="${inv.paid_date||''}"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Transaction Reference</label><input class="form-input" id="ei-ref" value="${inv.transaction_ref||''}" placeholder="TXN123456"/></div>
+      <div class="form-group"><label class="form-label">Payment Terms</label><input class="form-input" id="ei-terms" value="${inv.payment_terms||''}"/></div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="ei-notes" style="min-height:50px">${inv.notes||''}</textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doEditInvoice('${id}')"><i class="fas fa-save"></i>Save Changes</button>
+    </div>`, 'modal-lg')
+  } catch (e) {
+    toast('Failed to load invoice: ' + e.message, 'error')
+  }
+}
+
+async function doEditInvoice(id) {
+  const body = {
+    title: document.getElementById('ei-title')?.value.trim(),
+    description: document.getElementById('ei-desc')?.value.trim(),
+    status: document.getElementById('ei-status')?.value,
+    due_date: document.getElementById('ei-due')?.value,
+    paid_amount: parseFloat(document.getElementById('ei-paid-amount')?.value || '0'),
+    paid_date: document.getElementById('ei-paid-date')?.value || null,
+    transaction_ref: document.getElementById('ei-ref')?.value.trim(),
+    payment_terms: document.getElementById('ei-terms')?.value.trim(),
+    notes: document.getElementById('ei-notes')?.value.trim(),
+  }
+  if (!body.title || !body.due_date) return toast('Title and due date are required', 'error')
+  try {
+    await API.put(`/invoices/${id}`, body)
+    toast('Invoice updated!', 'success')
+    closeModal()
+    const el = document.getElementById('page-billing-admin')
+    if (el) { el.dataset.loaded = ''; loadPage('billing-admin', el) }
+  } catch (e) {
+    toast(e.message, 'error')
+  }
+}
+
 function calcTax() {
   const amt = parseFloat(document.getElementById('ci-amount')?.value)||0
   const tax = parseFloat(document.getElementById('ci-tax')?.value)||18
@@ -1566,6 +1761,7 @@ async function doCreateInvoice() {
   if (!body.client_id||!body.project_id||!body.title||!body.amount||!body.issue_date||!body.due_date) return toast('Fill all required fields','error')
   try {
     await API.post('/invoices',body); toast('Invoice created!','success'); closeModal()
+    _billingInvoicePage = 1
     const el=document.getElementById('page-billing-admin');if(el){el.dataset.loaded='';loadPage('billing-admin',el)}
   } catch(e){toast(e.message,'error')}
 }
@@ -1601,10 +1797,12 @@ async function renderTeamOverview(el) {
   try {
     const data = await API.get('/users')
     const users = data.users||data||[]
+    const pagination = paginateClient(users, _teamOverviewPage, _teamOverviewPageLimit)
+    _teamOverviewPage = pagination.page
     el.innerHTML = `
-    <div class="page-header"><div><h1 class="page-title">Team Overview</h1><p class="page-subtitle">${users.length} team members</p></div></div>
+    <div class="page-header"><div><h1 class="page-title">Team Overview</h1><p class="page-subtitle">${pagination.total} team members</p></div></div>
     <div class="grid-4">
-      ${users.map(u=>`
+      ${pagination.items.map(u=>`
         <div class="card" style="padding:18px;text-align:center">
           ${avatar(u.full_name,u.avatar_color,'xl')}
           <div style="margin-top:12px"><div style="font-weight:600;color:#e2e8f0">${u.full_name}</div><div style="font-size:12px;color:#94a3b8;margin-top:2px">${u.designation||u.role}</div><div style="font-size:11px;color:#64748b">${u.email}</div></div>
@@ -1613,6 +1811,8 @@ async function renderTeamOverview(el) {
             <span class="badge ${u.is_active?'badge-done':'badge-todo'}">${u.is_active?'Active':'Inactive'}</span>
           </div>
         </div>`).join('')}
-    </div>`
+    </div>
+    ${renderPager(pagination, 'goTeamOverviewPage', 'goTeamOverviewPage', 'team members')}
+    `
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }

@@ -3,6 +3,9 @@
 // Hooked into existing app.js render pipeline
 // ═══════════════════════════════════════════════════════════════
 
+let _projectTeamsPage = 1
+let _invitesPage = 1
+
 // ─── PROJECT TEAMS SECTION ────────────────────────────────────
 // Injected into the project detail page. Allows PM/admin to create
 // teams within a project, assign members, and set team leads.
@@ -16,12 +19,14 @@ async function renderProjectTeamsSection(projectId, containerEl) {
     const teams = teamsRes.data || []
     const projectDevs = devsRes.developers || []
     const canManage = ['admin', 'pm'].includes(_user.role)
+    const pagination = paginateClient(teams, _projectTeamsPage, 6)
+    _projectTeamsPage = pagination.page
 
     containerEl.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
         <div>
           <h2 style="font-size:18px;font-weight:700;margin:0">Project Teams</h2>
-          <p style="font-size:12px;color:var(--text-muted);margin:4px 0 0">${teams.length} team${teams.length === 1 ? '' : 's'} in this project</p>
+          <p style="font-size:12px;color:var(--text-muted);margin:4px 0 0">${pagination.total} team${pagination.total === 1 ? '' : 's'} in this project</p>
         </div>
         ${canManage ? `
           <button class="btn btn-primary" onclick="openCreateTeamModal('${projectId}')">
@@ -40,8 +45,9 @@ async function renderProjectTeamsSection(projectId, containerEl) {
         </div>
       ` : `
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
-          ${teams.map(t => renderTeamCard(t, projectDevs, canManage)).join('')}
+          ${pagination.items.map(t => renderTeamCard(t, projectDevs, canManage)).join('')}
         </div>
+        <div style="margin-top:12px">${renderPager(pagination, 'goProjectTeamsPage', 'goProjectTeamsPage', 'teams')}</div>
       `}
     `
   } catch (e) {
@@ -277,6 +283,12 @@ function reloadProjectTeamsSection(projectId) {
   if (el) renderProjectTeamsSection(projectId, el)
 }
 
+function goProjectTeamsPage(page) {
+  _projectTeamsPage = Math.max(1, Number(page) || 1)
+  const projectId = document.querySelector('[id^="project-teams-section-"]')?.id?.replace('project-teams-section-', '')
+  if (projectId) reloadProjectTeamsSection(projectId)
+}
+
 // Open the project teams UI in a modal (used from the projects list)
 function showProjectTeamsModal(projectId, projectName) {
   pxModal({
@@ -384,15 +396,17 @@ async function renderInvitesPanel(containerEl) {
   try {
     const res = await API.get('/invites')
     const invites = res.data || []
+    const pagination = paginateClient(invites, _invitesPage, 10)
+    _invitesPage = pagination.page
     containerEl.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div>
           <h2 style="font-size:17px;font-weight:700;margin:0">Pending Invites</h2>
-          <p style="font-size:12px;color:var(--text-muted);margin:4px 0 0">${invites.length} open invite${invites.length === 1 ? '' : 's'}</p>
+          <p style="font-size:12px;color:var(--text-muted);margin:4px 0 0">${pagination.total} open invite${pagination.total === 1 ? '' : 's'}</p>
         </div>
         <button class="btn btn-primary" onclick="openInviteUserModal()"><i class="fas fa-paper-plane"></i> Invite User</button>
       </div>
-      ${invites.length === 0 ? `
+      ${pagination.total === 0 ? `
         <div style="padding:24px;text-align:center;color:var(--text-muted);background:rgba(255,255,255,.02);border-radius:10px;border:1px dashed var(--border)">
           No pending invites. Invite developers or PMs to create their own accounts.
         </div>
@@ -403,7 +417,7 @@ async function renderInvitesPanel(containerEl) {
             <th style="padding:8px">Invited by</th><th style="padding:8px">Expires</th><th style="padding:8px">Actions</th>
           </tr></thead>
           <tbody>
-            ${invites.map(i => `
+            ${pagination.items.map(i => `
               <tr style="border-bottom:1px solid rgba(255,255,255,.05)">
                 <td style="padding:10px 8px">${escapeHtml(i.full_name)}</td>
                 <td style="padding:10px 8px;color:var(--text-muted)">${escapeHtml(i.email)}</td>
@@ -418,11 +432,18 @@ async function renderInvitesPanel(containerEl) {
             `).join('')}
           </tbody>
         </table>
+        <div style="margin-top:12px">${renderPager(pagination, 'goInvitesPage', 'goInvitesPage', 'invites')}</div>
       `}
     `
   } catch (e) {
     containerEl.innerHTML = `<div style="color:var(--danger);padding:16px">Failed to load invites: ${e.message}</div>`
   }
+}
+
+function goInvitesPage(page) {
+  _invitesPage = Math.max(1, Number(page) || 1)
+  const el = document.getElementById('invites-panel-container')
+  if (el) renderInvitesPanel(el)
 }
 
 function openInviteUserModal() {

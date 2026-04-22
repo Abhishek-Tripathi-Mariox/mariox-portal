@@ -18,7 +18,7 @@ const ClientAPI = {
     if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)
     return data
   },
-  get: (u) => ClientAPI.req('GET', u),
+  get: (u, opts = {}) => ClientAPI.req('GET', buildUrl(u, opts?.params)),
   post: (u, b) => ClientAPI.req('POST', u, b),
   patch: (u, b) => ClientAPI.req('PATCH', u, b),
 }
@@ -201,8 +201,23 @@ async function doClientSignup() {
 let _clientPage = 'cp-dashboard'
 let _clientHistory = []
 let _clientData = { projects: [], invoices: [], documents: [], notifications: [] }
+let _clientProjectsPage = 1
+let _clientMilestonesPage = 1
+let _clientDocumentsPage = 1
+let _clientActivityPage = 1
+let _clientInvoicePage = 1
+const _clientInvoiceLimit = 10
+const _clientProjectsLimit = 6
+const _clientMilestonesLimit = 6
+const _clientDocumentsLimit = 8
+const _clientActivityLimit = 8
 
 async function renderClientMain(container) {
+  _clientProjectsPage = 1
+  _clientMilestonesPage = 1
+  _clientDocumentsPage = 1
+  _clientActivityPage = 1
+  _clientInvoicePage = 1
   container.innerHTML = `
   <div style="display:flex;min-height:100vh">
     <!-- Sidebar -->
@@ -287,6 +302,26 @@ function cpNavItem(page, icon, label) {
   return `<button class="cp-nav-item" id="nav-${page}" data-page="${page}" onclick="cpNavigate('${page}')" style="width:100%;padding:9px 12px;border-radius:8px;border:none;cursor:pointer;background:transparent;color:#94a3b8;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:500;text-align:left;transition:.2s;margin-bottom:2px">
     <i class="fas ${icon}" style="width:16px;text-align:center;font-size:13px"></i>${label}
   </button>`
+}
+
+function cpGoProjectsPage(page) {
+  _clientProjectsPage = Math.max(1, Number(page) || 1)
+  cpNavigate('cp-projects')
+}
+
+function cpGoMilestonesPage(page) {
+  _clientMilestonesPage = Math.max(1, Number(page) || 1)
+  cpNavigate('cp-milestones')
+}
+
+function cpGoDocumentsPage(page) {
+  _clientDocumentsPage = Math.max(1, Number(page) || 1)
+  cpNavigate('cp-documents')
+}
+
+function cpGoActivityPage(page) {
+  _clientActivityPage = Math.max(1, Number(page) || 1)
+  cpNavigate('cp-activity')
 }
 
 function cpNavigate(page) {
@@ -379,21 +414,22 @@ async function renderCpDashboard(el) {
     const clientId = _user.sub || _user.id
     const [clientData, invData, actData] = await Promise.all([
       ClientAPI.get('/clients/' + clientId),
-      ClientAPI.get('/invoices?client_id=' + clientId),
+      ClientAPI.get('/invoices?client_id=' + clientId + '&page=1&limit=4'),
       ClientAPI.get('/activity?limit=8&client_id=' + clientId).catch(() => ({ logs: [] }))
     ])
     const client = clientData.client || {}
     const projects = clientData.projects || []
     const invoices = invData.invoices || []
+    const summary = invData.summary || {}
     const logs = actData.logs || []
 
     const totalBudget = projects.reduce((s, p) => s + (p.estimated_budget_hours || 0), 0)
     const consumedHrs = projects.reduce((s, p) => s + (p.consumed_hours || 0), 0)
     const allocHrs = projects.reduce((s, p) => s + (p.total_allocated_hours || 0), 0)
     const activeProjects = projects.filter(p => p.status === 'active').length
-    const totalBilled = invoices.reduce((s, i) => s + (i.total_amount || 0), 0)
-    const totalPaid = invoices.reduce((s, i) => s + (i.paid_amount || 0), 0)
-    const pendingInvoices = invoices.filter(i => ['pending','sent','overdue'].includes(i.status)).length
+    const totalBilled = summary.total_value || 0
+    const totalPaid = summary.total_paid || 0
+    const pendingInvoices = summary.pending_count ?? invoices.filter(i => ['pending','sent','overdue'].includes(i.status)).length
 
     el.innerHTML = `
     <div class="page-header">
@@ -450,7 +486,7 @@ async function renderCpDashboard(el) {
           <div>
             <div style="font-size:12px;color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.04em">Pending Invoices</div>
             <div style="font-size:28px;font-weight:700;color:${pendingInvoices > 0 ? '#f59e0b' : '#10b981'};margin-top:6px">${pendingInvoices}</div>
-            <div style="font-size:12px;color:#94a3b8;margin-top:4px">${invoices.length} total invoices</div>
+            <div style="font-size:12px;color:#94a3b8;margin-top:4px">${summary.total_invoices ?? invoices.length} total invoices</div>
           </div>
           <div style="width:42px;height:42px;border-radius:10px;background:rgba(245,158,11,.1);display:flex;align-items:center;justify-content:center">
             <i class="fas fa-file-invoice" style="color:#f59e0b;font-size:16px"></i>
@@ -531,14 +567,16 @@ async function renderCpProjects(el) {
     const clientId = _user.sub || _user.id
     const data = await ClientAPI.get('/clients/' + clientId)
     const projects = data.projects || []
+    const pagination = paginateClient(projects, _clientProjectsPage, _clientProjectsLimit)
+    _clientProjectsPage = pagination.page
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">My Projects</h1><p class="page-subtitle">${projects.length} project${projects.length !== 1 ? 's' : ''} assigned to your account</p></div>
+      <div><h1 class="page-title">My Projects</h1><p class="page-subtitle">${pagination.total} project${pagination.total !== 1 ? 's' : ''} assigned to your account</p></div>
     </div>
-    ${projects.length === 0 ? '<div class="empty-state"><i class="fas fa-layer-group"></i><p>No projects assigned yet. Contact your project manager.</p></div>' :
+    ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-layer-group"></i><p>No projects assigned yet. Contact your project manager.</p></div>' :
     `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">
-      ${projects.map(p => {
+      ${pagination.items.map(p => {
         const burn = p.total_allocated_hours > 0 ? Math.round((p.consumed_hours / p.total_allocated_hours) * 100) : 0
         const daysLeft = p.expected_end_date ? Math.ceil((new Date(p.expected_end_date) - new Date()) / 86400000) : null
         return `<div class="card" style="padding:20px;cursor:pointer;transition:.2s" onclick="cpViewProject('${p.id}')" onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='#1e1e45'">
@@ -562,7 +600,9 @@ async function renderCpProjects(el) {
             ${daysLeft !== null ? `<span style="color:${daysLeft<0?'#f43f5e':daysLeft<7?'#f59e0b':'#64748b'}"><i class="fas fa-calendar" style="margin-right:4px"></i>${daysLeft < 0 ? Math.abs(daysLeft)+'d overdue' : daysLeft+'d left'}</span>` : ''}
           </div>
         </div>`}).join('')}
-    </div>`}
+    </div>
+    ${renderPager(pagination, 'cpGoProjectsPage', 'cpGoProjectsPage', 'projects')}
+    `}
     `
   } catch(e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
@@ -724,13 +764,15 @@ async function renderCpMilestones(el) {
     // Fetch milestones for all client projects
     const msData = await ClientAPI.get('/milestones?project_ids=' + projectIds.join(','))
     const milestones = msData.milestones || []
+    const pagination = paginateClient(milestones, _clientMilestonesPage, _clientMilestonesLimit)
+    _clientMilestonesPage = pagination.page
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">Project milestones and delivery timeline</p></div>
+      <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">${pagination.total} project milestones and delivery timeline</p></div>
     </div>
-    ${milestones.length === 0 ? '<div class="empty-state"><i class="fas fa-flag"></i><p>No milestones set yet.</p></div>' :
-    milestones.map(m => {
+    ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-flag"></i><p>No milestones set yet.</p></div>' :
+    pagination.items.map(m => {
       const pct = m.completion_percentage || 0
       const isOverdue = m.due_date && new Date(m.due_date) < new Date() && m.status !== 'completed'
       return `<div class="card" style="padding:20px;margin-bottom:14px">
@@ -754,6 +796,7 @@ async function renderCpMilestones(el) {
         </div>
         ${m.amount ? `<div style="margin-top:10px;font-size:12px;color:#94a3b8"><i class="fas fa-indian-rupee-sign" style="margin-right:4px;color:#10b981"></i>Billing milestone: <strong style="color:#10b981">${fmtCurrency(m.amount)}</strong></div>` : ''}
       </div>`}).join('')}
+    ${renderPager(pagination, 'cpGoMilestonesPage', 'cpGoMilestonesPage', 'milestones')}
     `
   } catch(e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
@@ -771,9 +814,11 @@ async function renderCpDocuments(el) {
     const docsData = await ClientAPI.get('/documents?visibility=client' + (selectedProject ? '&project_id=' + selectedProject : ''))
     const docs = docsData.documents || []
     const categories = docsData.categories || []
+    const pagination = paginateClient(docs, _clientDocumentsPage, _clientDocumentsLimit)
+    _clientDocumentsPage = pagination.page
 
     const docsByCategory = {}
-    docs.forEach(d => {
+    pagination.items.forEach(d => {
       const cat = d.category || 'other'
       if (!docsByCategory[cat]) docsByCategory[cat] = []
       docsByCategory[cat].push(d)
@@ -794,7 +839,7 @@ async function renderCpDocuments(el) {
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Project Documents</h1><p class="page-subtitle">${docs.length} document${docs.length !== 1 ? 's' : ''} available</p></div>
+      <div><h1 class="page-title">Project Documents</h1><p class="page-subtitle">${pagination.total} document${pagination.total !== 1 ? 's' : ''} available</p></div>
       <div class="page-actions">
         <select class="form-select" style="min-width:200px" onchange="cpReloadDocs(this.value)">
           <option value="">All Projects</option>
@@ -803,7 +848,7 @@ async function renderCpDocuments(el) {
       </div>
     </div>
 
-    ${docs.length === 0 ? '<div class="empty-state"><i class="fas fa-folder-open"></i><p>No documents available for your projects yet.</p></div>' :
+    ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-folder-open"></i><p>No documents available for your projects yet.</p></div>' :
 
     Object.keys(docsByCategory).map(cat => `
       <div style="margin-bottom:20px">
@@ -843,6 +888,7 @@ async function renderCpDocuments(el) {
             </div>`).join('')}
         </div>
       </div>`).join('')}
+    ${renderPager(pagination, 'cpGoDocumentsPage', 'cpGoDocumentsPage', 'documents')}
     `
     // Store for reload
     window._cpDocProject = selectedProject
@@ -853,6 +899,7 @@ async function renderCpDocuments(el) {
 
 async function cpReloadDocs(projectId) {
   window._cpDocProject = projectId
+  _clientDocumentsPage = 1
   renderCpDocuments(document.getElementById('cp-main'))
 }
 
@@ -884,14 +931,18 @@ function docFileColor(type) {
 async function renderCpInvoices(el) {
   try {
     const clientId = _user.sub || _user.id
-    const data = await ClientAPI.get('/invoices?client_id=' + clientId)
+    const data = await ClientAPI.get('/invoices?client_id=' + clientId + '&page=' + _clientInvoicePage + '&limit=' + _clientInvoiceLimit)
     const invoices = data.invoices || []
     const summary = data.summary || {}
+    const pagination = data.pagination || { total: invoices.length, page: _clientInvoicePage, limit: _clientInvoiceLimit, totalPages: 1, hasMore: false }
+    _clientInvoicePage = pagination.page || _clientInvoicePage
 
-    const totalAmount = invoices.reduce((s,i) => s+(i.total_amount||0),0)
-    const totalPaid = invoices.reduce((s,i) => s+(i.paid_amount||0),0)
-    const totalPending = invoices.filter(i=>['pending','sent'].includes(i.status)).reduce((s,i) => s+(i.total_amount||0),0)
-    const totalOverdue = invoices.filter(i=>i.status==='overdue').reduce((s,i) => s+(i.total_amount||0),0)
+    const totalAmount = summary.total_value || 0
+    const totalPaid = summary.total_paid || 0
+    const totalPending = summary.total_pending || 0
+    const totalOverdue = summary.total_overdue || 0
+    const start = pagination.total ? ((pagination.page - 1) * pagination.limit) + 1 : 0
+    const end = Math.min(pagination.page * pagination.limit, pagination.total || 0)
 
     el.innerHTML = `
     <div class="page-header">
@@ -902,22 +953,22 @@ async function renderCpInvoices(el) {
       <div class="card" style="padding:18px">
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:500">Total Invoiced</div>
         <div style="font-size:24px;font-weight:700;color:#e2e8f0;margin:6px 0">${fmtCurrency(totalAmount)}</div>
-        <div style="font-size:11px;color:#94a3b8">${invoices.length} invoice${invoices.length!==1?'s':''}</div>
+        <div style="font-size:11px;color:#94a3b8">${summary.total_invoices ?? invoices.length} invoice${(summary.total_invoices ?? invoices.length) !== 1 ? 's' : ''}</div>
       </div>
       <div class="card" style="padding:18px">
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:500">Paid</div>
         <div style="font-size:24px;font-weight:700;color:#10b981;margin:6px 0">${fmtCurrency(totalPaid)}</div>
-        <div style="font-size:11px;color:#94a3b8">${invoices.filter(i=>i.status==='paid').length} invoices paid</div>
+        <div style="font-size:11px;color:#94a3b8">${summary.paid_count || invoices.filter(i=>i.status==='paid').length} invoices paid</div>
       </div>
       <div class="card" style="padding:18px">
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:500">Pending</div>
         <div style="font-size:24px;font-weight:700;color:#f59e0b;margin:6px 0">${fmtCurrency(totalPending)}</div>
-        <div style="font-size:11px;color:#94a3b8">${invoices.filter(i=>['pending','sent'].includes(i.status)).length} awaiting payment</div>
+        <div style="font-size:11px;color:#94a3b8">${summary.pending_count ?? invoices.filter(i=>['pending','sent'].includes(i.status)).length} awaiting payment</div>
       </div>
       <div class="card" style="padding:18px">
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:500">Overdue</div>
         <div style="font-size:24px;font-weight:700;color:${totalOverdue>0?'#f43f5e':'#94a3b8'};margin:6px 0">${fmtCurrency(totalOverdue)}</div>
-        <div style="font-size:11px;color:#94a3b8">${invoices.filter(i=>i.status==='overdue').length} overdue</div>
+        <div style="font-size:11px;color:#94a3b8">${summary.overdue_count || invoices.filter(i=>i.status==='overdue').length} overdue</div>
       </div>
     </div>
 
@@ -943,11 +994,29 @@ async function renderCpInvoices(el) {
               </td>
             </tr>`}).join('')}</tbody>
         </table>`}
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-top:1px solid #1e1e45;flex-wrap:wrap">
+          <div style="font-size:12px;color:#94a3b8">
+            ${pagination.total ? `Showing ${start}-${end} of ${pagination.total}` : 'No invoices found'}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn btn-sm btn-outline" ${pagination.page <= 1 ? 'disabled' : ''} onclick="cpGoInvoicePage(${pagination.page - 1})">Previous</button>
+            <span style="font-size:12px;color:#64748b">Page ${pagination.page} of ${pagination.totalPages || 1}</span>
+            <button class="btn btn-sm btn-outline" ${!pagination.hasMore ? 'disabled' : ''} onclick="cpGoInvoicePage(${pagination.page + 1})">Next</button>
+          </div>
+        </div>
       </div>
     </div>`
   } catch(e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
   }
+}
+
+function cpGoInvoicePage(page) {
+  const nextPage = Math.max(1, Number(page) || 1)
+  if (nextPage === _clientInvoicePage) return
+  _clientInvoicePage = nextPage
+  const main = document.getElementById('cp-main')
+  if (main) renderCpInvoices(main)
 }
 
 async function cpViewInvoice(invoiceId) {
@@ -1000,19 +1069,21 @@ async function renderCpActivity(el) {
     const clientId = _user.sub || _user.id
     const data = await ClientAPI.get('/activity?client_id=' + clientId + '&limit=50').catch(() => ({ logs: [] }))
     const logs = data.logs || data.activity || []
+    const pagination = paginateClient(logs, _clientActivityPage, _clientActivityLimit)
+    _clientActivityPage = pagination.page
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Activity Feed</h1><p class="page-subtitle">Latest updates on your projects</p></div>
+      <div><h1 class="page-title">Activity Feed</h1><p class="page-subtitle">${pagination.total} latest updates on your projects</p></div>
     </div>
     <div class="card" style="padding:0">
       <div style="padding:16px;border-bottom:1px solid #1e1e45">
         <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Recent Activity</div>
       </div>
-      ${logs.length === 0 ? '<div class="empty-state"><i class="fas fa-bell"></i><p>No recent activity yet.</p></div>' :
+      ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-bell"></i><p>No recent activity yet.</p></div>' :
       `<div style="padding:0">
-        ${logs.map((log, i) => `
-          <div style="display:flex;gap:14px;padding:14px 16px;${i<logs.length-1?'border-bottom:1px solid #1e1e45':''}">
+        ${pagination.items.map((log, i) => `
+          <div style="display:flex;gap:14px;padding:14px 16px;${i<pagination.items.length-1?'border-bottom:1px solid #1e1e45':''}">
             <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:0">
               <div style="width:32px;height:32px;border-radius:50%;background:${cpActivityColor(log.action)};display:flex;align-items:center;justify-content:center">
                 <i class="fas ${cpActivityIcon(log.action)}" style="color:#fff;font-size:12px"></i>
@@ -1029,6 +1100,7 @@ async function renderCpActivity(el) {
             </div>
           </div>`).join('')}
       </div>`}
+      ${renderPager(pagination, 'cpGoActivityPage', 'cpGoActivityPage', 'activities')}
     </div>`
   } catch(e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`

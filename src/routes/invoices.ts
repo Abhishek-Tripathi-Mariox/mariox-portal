@@ -33,28 +33,65 @@ invoices.get('/', async (c) => {
   try {
     const { project_id, client_id, status } = c.req.query()
     const user = c.get('user')
-    let sql = invoiceQuery + ' WHERE 1=1'
+    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '10', 10) || 10))
+    const offset = (page - 1) * limit
+    let where = ' WHERE 1=1'
     const params: any[] = []
-    if (project_id) { sql += ' AND i.project_id=?'; params.push(project_id) }
-    if (client_id) { sql += ' AND i.client_id=?'; params.push(client_id) }
-    if (status) { sql += ' AND i.status=?'; params.push(status) }
+    if (project_id) { where += ' AND i.project_id=?'; params.push(project_id) }
+    if (client_id) { where += ' AND i.client_id=?'; params.push(client_id) }
+    if (status) { where += ' AND i.status=?'; params.push(status) }
     // Developers get no invoices
-    if (user.role === 'developer') return c.json({ invoices: [], summary: {} })
-    sql += ' ORDER BY i.issue_date DESC'
-    const result = await c.env.DB.prepare(sql).bind(...params).all()
+    if (user.role === 'developer') {
+      return c.json({
+        invoices: [],
+        summary: {
+          total_invoices: 0,
+          total_value: 0,
+          total_paid: 0,
+          total_pending: 0,
+          total_overdue: 0,
+          paid_count: 0,
+          overdue_count: 0,
+          pending_count: 0,
+        },
+        pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+      })
+    }
 
+    const result = await c.env.DB.prepare(
+      invoiceQuery + where + `
+      ORDER BY datetime(i.created_at) DESC, datetime(i.issue_date) DESC, i.id DESC
+      LIMIT ? OFFSET ?
+    `
+    ).bind(...params, limit, offset).all()
+
+    const totalRow = await c.env.DB.prepare(`SELECT COUNT(*) as total FROM invoices i${where}`).bind(...params).first() as any
     // Summary stats
     const stats = await c.env.DB.prepare(`
       SELECT 
-        COUNT(*) as total,
-        SUM(total_amount) as total_value,
-        SUM(CASE WHEN status='paid' THEN paid_amount ELSE 0 END) as total_paid,
-        SUM(CASE WHEN status IN ('pending','sent') THEN total_amount ELSE 0 END) as total_pending,
-        SUM(CASE WHEN status='overdue' THEN total_amount ELSE 0 END) as total_overdue,
-        COUNT(CASE WHEN status='overdue' THEN 1 END) as overdue_count
-      FROM invoices WHERE 1=1
-    `).first()
-    return c.json({ invoices: result.results, summary: stats })
+        COUNT(*) as total_invoices,
+        COALESCE(SUM(total_amount), 0) as total_value,
+        COALESCE(SUM(CASE WHEN status='paid' THEN paid_amount ELSE 0 END), 0) as total_paid,
+        COALESCE(SUM(CASE WHEN status IN ('pending','sent') THEN total_amount ELSE 0 END), 0) as total_pending,
+        COALESCE(SUM(CASE WHEN status='overdue' THEN total_amount ELSE 0 END), 0) as total_overdue,
+        COALESCE(SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END), 0) as paid_count,
+        COALESCE(SUM(CASE WHEN status='overdue' THEN 1 ELSE 0 END), 0) as overdue_count,
+        COALESCE(SUM(CASE WHEN status IN ('pending','sent','overdue') THEN 1 ELSE 0 END), 0) as pending_count
+      FROM invoices i${where}
+    `).bind(...params).first() as any
+    const total = totalRow?.total || 0
+    return c.json({
+      invoices: result.results,
+      summary: stats,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasMore: offset + result.results.length < total,
+      },
+    })
   } catch(e: any) { return c.json({ error: e.message }, 500) }
 })
 

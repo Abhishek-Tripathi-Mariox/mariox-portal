@@ -2,7 +2,7 @@
   "name": "webapp",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0",
     "tw:build": "tailwindcss -i ./public/static/tailwind-input.css -o ./public/static/tailwind.css --minify",
     "tw:watch": "tailwindcss -i ./public/static/tailwind-input.css -o ./public/static/tailwind.css --watch",
     "build": "npm run tw:build && vite build",
