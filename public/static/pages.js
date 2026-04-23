@@ -8,7 +8,7 @@ router.register('developers', async () => {
       <div class="animate-fade-in">
         <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
           <div><h1 class="page-title">Developers</h1><p class="page-subtitle">${devs.length} team members</p></div>
-          <button class="btn btn-primary" onclick="openAddDeveloperModal()"><i class="fas fa-user-plus"></i> Add Developer</button>
+          ${state.user?.role === 'admin' ? '<button class="btn btn-primary" onclick="openAddDeveloperModal()"><i class="fas fa-user-plus"></i> Add User</button>' : ''}
         </div>
         <div style="display:flex;gap:10px;margin-bottom:16px">
           <input type="text" id="dev-search" class="form-input" style="max-width:280px" placeholder="Search developers..." oninput="filterDevTable()"/>
@@ -64,10 +64,12 @@ function renderDevCard(d) {
       </div>
       <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
         <button class="btn btn-secondary btn-sm" onclick="router.navigate('developer-detail',{id:'${d.id}'})"><i class="fas fa-eye"></i> View</button>
-        <button class="btn btn-secondary btn-sm" onclick="openEditDeveloperModal('${d.id}')"><i class="fas fa-edit"></i> Edit</button>
-        <button class="btn btn-sm ${d.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleDevStatus('${d.id}',${!d.is_active})">
-          <i class="fas fa-${d.is_active ? 'ban' : 'check'}"></i> ${d.is_active ? 'Deactivate' : 'Activate'}
-        </button>
+        ${['admin','pm'].includes(state.user?.role) ? `
+          <button class="btn btn-secondary btn-sm" onclick="openEditDeveloperModal('${d.id}')"><i class="fas fa-edit"></i> Edit</button>
+          <button class="btn btn-sm ${d.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleDevStatus('${d.id}',${!d.is_active})">
+            <i class="fas fa-${d.is_active ? 'ban' : 'check'}"></i> ${d.is_active ? 'Deactivate' : 'Activate'}
+          </button>
+        ` : ''}
       </div>
     </div>
   `
@@ -106,7 +108,7 @@ function openDeveloperModal(dev = null) {
   modal.innerHTML = `
     <div class="modal-box lg">
       <div class="modal-header">
-        <h2 style="font-size:16px;font-weight:700"><i class="fas fa-user-plus" style="color:var(--primary-light);margin-right:8px"></i>${dev ? 'Edit' : 'Add'} Developer</h2>
+        <h2 style="font-size:16px;font-weight:700"><i class="fas fa-user-plus" style="color:var(--primary-light);margin-right:8px"></i>${dev ? 'Edit' : 'Add'} User</h2>
         <button onclick="document.getElementById('dev-modal').remove()" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer"><i class="fas fa-times"></i></button>
       </div>
       <div class="modal-body">
@@ -119,7 +121,10 @@ function openDeveloperModal(dev = null) {
             <select id="dev-role" class="form-select">
               <option value="developer" ${dev?.role==='developer'?'selected':''}>Developer</option>
               <option value="pm" ${dev?.role==='pm'?'selected':''}>Project Manager</option>
+              <option value="pc" ${dev?.role==='pc'?'selected':''}>Project Coordinator</option>
+              <option value="team" ${dev?.role==='team'?'selected':''}>Team Member</option>
               <option value="admin" ${dev?.role==='admin'?'selected':''}>Admin</option>
+              <option value="client" ${dev?.role==='client'?'selected':''}>Client</option>
             </select>
           </div>
           <div class="form-group"><label class="form-label">Joining Date</label><input id="dev-joining" class="form-input" type="date" value="${dev?.joining_date||''}"/></div>
@@ -134,11 +139,11 @@ function openDeveloperModal(dev = null) {
           <input id="dev-skills" class="form-input" value="${dev?.skill_tags ? (typeof dev.skill_tags==='string'?JSON.parse(dev.skill_tags):dev.skill_tags).join(', ') : ''}" placeholder="Backend, API, DevOps"/></div>
         <div class="form-group"><label class="form-label">Remarks</label>
           <textarea id="dev-remarks" class="form-textarea" rows="2" placeholder="Additional notes...">${dev?.remarks||''}</textarea></div>
-        ${!dev ? `<div class="form-group"><label class="form-label">Password</label><input id="dev-password" class="form-input" type="password" placeholder="Default: Password@123" /></div>` : ''}
+        ${!dev ? `<div class="form-group"><label class="form-label">Password</label><input id="dev-password" class="form-input" type="password" placeholder="Enter temporary password" /></div>` : ''}
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="document.getElementById('dev-modal').remove()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveDeveloper('${dev?.id||''}')"><i class="fas fa-save"></i> ${dev ? 'Update' : 'Create'} Developer</button>
+        <button class="btn btn-primary" onclick="saveDeveloper('${dev?.id||''}')"><i class="fas fa-save"></i> ${dev ? 'Update' : 'Create'} User</button>
       </div>
     </div>
   `
@@ -166,7 +171,7 @@ async function saveDeveloper(id) {
     if (!id && document.getElementById('dev-password')) payload.password = document.getElementById('dev-password').value
     if (id) await API.put(`/users/${id}`, payload)
     else await API.post('/users', payload)
-    utils.toast(`Developer ${id ? 'updated' : 'created'} successfully!`, 'success')
+    utils.toast(`User ${id ? 'updated' : 'created'} successfully!`, 'success')
     document.getElementById('dev-modal')?.remove()
     router.navigate('developers')
   } catch (e) { utils.toast('Failed: ' + (e.response?.data?.error || e.message), 'error') }

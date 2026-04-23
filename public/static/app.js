@@ -47,6 +47,35 @@ const utils = {
 
 const BASE = '/api'
 let _token = null, _user = null
+const SIDEBAR_GROUP_STORAGE_KEY = 'devportal_sidebar_groups'
+const SIDEBAR_PAGE_GROUPS = {
+  'super-dashboard': 'admin',
+  'clients-list': 'admin',
+  'billing-admin': 'admin',
+  'team-overview': 'admin',
+  'pm-dashboard': 'pm',
+  'projects-list': 'pm',
+  'kanban-board': 'pm',
+  'sprints-view': 'pm',
+  'milestones-view': 'pm',
+  'documents-center': 'pm',
+  'resources-view': 'pm',
+  'dev-dashboard': 'dev',
+  'my-tasks': 'dev',
+  'timesheets-view': 'dev',
+  'approval-queue': 'dev',
+  'reports-view': 'analytics',
+  'alerts-view': 'analytics',
+  'settings-view': 'settings',
+}
+const SIDEBAR_GROUP_DEFAULTS = {
+  admin: true,
+  pm: true,
+  dev: true,
+  analytics: false,
+  settings: true,
+}
+let _sidebarGroupState = loadSidebarGroupState()
 
 // ── API helper ───────────────────────────────────────────────
 const API = {
@@ -102,12 +131,26 @@ function paginateClient(items, page = 1, limit = 10) {
   }
 }
 
-function renderPager(pagination, prevFn, nextFn, label = 'items') {
+const PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100, 200]
+window.PAGE_SIZE_OPTIONS = PAGE_SIZE_OPTIONS
+
+function renderPager(pagination, prevFn, nextFn, label = 'items', pageKey = '') {
   if (!pagination) return ''
+  const currentLimit = Number(pagination.limit || PAGE_SIZE_OPTIONS[0])
+  const pageSizeControl = pageKey ? `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:#64748b;white-space:nowrap">Rows per page</span>
+        <select class="form-select" style="width:96px;padding:8px 28px 8px 10px" onchange="setEnterprisePageSize('${pageKey}', this.value)">
+          ${PAGE_SIZE_OPTIONS.map(size => `<option value="${size}" ${currentLimit===size?'selected':''}>${size}</option>`).join('')}
+        </select>
+      </div>` : ''
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-top:1px solid var(--border);flex-wrap:wrap">
-      <div style="font-size:12px;color:#94a3b8">
-        ${pagination.total ? `Showing ${pagination.start}-${pagination.end} of ${pagination.total} ${label}` : `No ${label} found`}
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="font-size:12px;color:#94a3b8">
+          ${pagination.total ? `Showing ${pagination.start}-${pagination.end} of ${pagination.total} ${label}` : `No ${label} found`}
+        </div>
+        ${pageSizeControl}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="btn btn-sm btn-outline" ${pagination.page <= 1 ? 'disabled' : ''} onclick="${prevFn}(${pagination.page - 1})">Previous</button>
@@ -121,6 +164,49 @@ window.buildUrl = buildUrl
 window.paginateClient = paginateClient
 window.renderPager = renderPager
 
+function loadSidebarGroupState() {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_GROUP_STORAGE_KEY)
+    return raw ? { ...SIDEBAR_GROUP_DEFAULTS, ...JSON.parse(raw) } : { ...SIDEBAR_GROUP_DEFAULTS }
+  } catch {
+    return { ...SIDEBAR_GROUP_DEFAULTS }
+  }
+}
+
+function saveSidebarGroupState() {
+  try {
+    localStorage.setItem(SIDEBAR_GROUP_STORAGE_KEY, JSON.stringify(_sidebarGroupState))
+  } catch {}
+}
+
+function applySidebarGroupState() {
+  document.querySelectorAll('[data-nav-group]').forEach(group => {
+    const key = group.dataset.navGroup
+    const isOpen = _sidebarGroupState[key] !== false
+    group.classList.toggle('is-open', isOpen)
+    group.classList.toggle('is-collapsed', !isOpen)
+    const toggle = group.querySelector('[data-nav-toggle]')
+    if (toggle) toggle.setAttribute('aria-expanded', String(isOpen))
+  })
+}
+
+function toggleSidebarGroup(groupKey) {
+  if (!groupKey) return
+  _sidebarGroupState[groupKey] = !(_sidebarGroupState[groupKey] !== false)
+  saveSidebarGroupState()
+  applySidebarGroupState()
+}
+
+function ensureSidebarGroupOpen(page) {
+  const groupKey = SIDEBAR_PAGE_GROUPS[page]
+  if (!groupKey) return
+  if (_sidebarGroupState[groupKey] === false) {
+    _sidebarGroupState[groupKey] = true
+    saveSidebarGroupState()
+  }
+  applySidebarGroupState()
+}
+
 // ── Toast ────────────────────────────────────────────────────
 function toast(msg, type='info', dur=3500) {
   let ct = document.getElementById('toast-container')
@@ -128,7 +214,7 @@ function toast(msg, type='info', dur=3500) {
   const icons = { success:'fa-check-circle', error:'fa-exclamation-circle', info:'fa-info-circle' }
   const t = document.createElement('div')
   t.className = `toast ${type}`
-  t.innerHTML = `<i class="fas ${icons[type]||'fa-info-circle'}" style="color:${type==='success'?'#34d399':type==='error'?'#fb7185':'#818cf8'}"></i><span>${msg}</span>`
+  t.innerHTML = `<i class="fas ${icons[type]||'fa-info-circle'}" style="color:${type==='success'?'#10b981':type==='error'?'#ef4444':'#2563eb'}"></i><span>${msg}</span>`
   ct.appendChild(t)
   setTimeout(() => t.remove(), dur)
 }
@@ -162,19 +248,21 @@ const Router = {
     }
     this.current = { page, params }
     renderApp()
+    if (window.innerWidth <= 768) closeSidebar()
     updateBackButton()
   },
   back() {
     if (this.history.length === 0) return
     this.current = this.history.pop()
     renderApp()
+    if (window.innerWidth <= 768) closeSidebar()
     updateBackButton()
   }
 }
 
 // ── Colour helpers ───────────────────────────────────────────
 function initials(name='') { return name.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase() }
-function avatar(name, color='#6366f1', size='') {
+function avatar(name, color='#2563EB', size='') {
   return `<div class="avatar ${size}" style="background:${color}">${initials(name)}</div>`
 }
 
@@ -209,7 +297,7 @@ function docCategoryIcon(cat) {
   return ic[cat] || '📄'
 }
 function docCategoryColor(cat) {
-  const c = { sow:'#6366f1', brd:'#06b6d4', frd:'#8b5cf6', uiux:'#ec4899', wireframes:'#f59e0b', meeting_notes:'#10b981', technical:'#64748b', test_report:'#f97316', release:'#14b8a6', billing:'#22c55e', contract:'#3b82f6', other:'#475569' }
+  const c = { sow:'#2563eb', brd:'#06b6d4', frd:'#6366f1', uiux:'#f43f5e', wireframes:'#f59e0b', meeting_notes:'#10b981', technical:'#64748b', test_report:'#f97316', release:'#14b8a6', billing:'#22c55e', contract:'#3b82f6', other:'#475569' }
   return c[cat] || '#475569'
 }
 
@@ -225,6 +313,8 @@ function renderApp() {
     bindNav()
   }
   const pg = Router.current?.page || defaultPage()
+  ensureSidebarGroupOpen(pg)
+  applySidebarGroupState()
   showPage(pg)
   updateNav(pg)
   updateTopbar(pg)
@@ -240,66 +330,100 @@ function defaultPage() {
 function buildShell() {
   const role = _user.role
   const navAdmin = role === 'admin' ? `
-    <div class="nav-section">
-      <div class="nav-section-title">Admin</div>
-      <a class="nav-item" data-page="super-dashboard"><span class="nav-icon"><i class="fas fa-chart-pie"></i></span>Overview</a>
-      <a class="nav-item" data-page="clients-list"><span class="nav-icon"><i class="fas fa-building"></i></span>Clients</a>
-      <a class="nav-item" data-page="billing-admin"><span class="nav-icon"><i class="fas fa-file-invoice-dollar"></i></span>Billing <span class="nav-badge" id="nb-overdue">!</span></a>
-      <a class="nav-item" data-page="team-overview"><span class="nav-icon"><i class="fas fa-users"></i></span>Team</a>
+    <div class="nav-section nav-group nav-group-admin" data-nav-group="admin">
+      <button class="nav-section-toggle" type="button" data-nav-toggle="admin" aria-expanded="true">
+        <span class="nav-section-heading"><i class="fas fa-sparkles"></i> Admin</span>
+        <span class="nav-section-chip">Core</span>
+        <i class="fas fa-chevron-down nav-section-caret"></i>
+      </button>
+      <div class="nav-section-body">
+        <a class="nav-item" data-page="super-dashboard"><span class="nav-icon"><i class="fas fa-chart-pie"></i></span>Overview</a>
+        <a class="nav-item" data-page="clients-list"><span class="nav-icon"><i class="fas fa-building"></i></span>Clients</a>
+        <a class="nav-item" data-page="billing-admin"><span class="nav-icon"><i class="fas fa-file-invoice-dollar"></i></span>Billing <span class="nav-badge" id="nb-overdue">!</span></a>
+        <a class="nav-item" data-page="team-overview"><span class="nav-icon"><i class="fas fa-users"></i></span>Team</a>
+      </div>
     </div>` : ''
 
   const navPm = ['admin','pm'].includes(role) ? `
-    <div class="nav-section">
-      <div class="nav-section-title">Project Management</div>
-      <a class="nav-item" data-page="pm-dashboard"><span class="nav-icon"><i class="fas fa-gauge-high"></i></span>PM Dashboard</a>
-      <a class="nav-item" data-page="projects-list"><span class="nav-icon"><i class="fas fa-layer-group"></i></span>Projects</a>
-      <a class="nav-item" data-page="kanban-board"><span class="nav-icon"><i class="fas fa-columns"></i></span>Kanban Board</a>
-      <a class="nav-item" data-page="sprints-view"><span class="nav-icon"><i class="fas fa-bolt"></i></span>Sprints</a>
-      <a class="nav-item" data-page="milestones-view"><span class="nav-icon"><i class="fas fa-flag"></i></span>Milestones</a>
-      <a class="nav-item" data-page="documents-center"><span class="nav-icon"><i class="fas fa-folder-open"></i></span>Documents</a>
-      <a class="nav-item" data-page="resources-view"><span class="nav-icon"><i class="fas fa-users-gear"></i></span>Resources</a>
+    <div class="nav-section nav-group nav-group-pm" data-nav-group="pm">
+      <button class="nav-section-toggle" type="button" data-nav-toggle="pm" aria-expanded="true">
+        <span class="nav-section-heading"><i class="fas fa-layer-group"></i> Project Management</span>
+        <span class="nav-section-chip">Work</span>
+        <i class="fas fa-chevron-down nav-section-caret"></i>
+      </button>
+      <div class="nav-section-body">
+        <a class="nav-item" data-page="pm-dashboard"><span class="nav-icon"><i class="fas fa-gauge-high"></i></span>PM Dashboard</a>
+        <a class="nav-item" data-page="projects-list"><span class="nav-icon"><i class="fas fa-layer-group"></i></span>Projects</a>
+        <a class="nav-item" data-page="kanban-board"><span class="nav-icon"><i class="fas fa-columns"></i></span>Kanban Board</a>
+        <a class="nav-item" data-page="sprints-view"><span class="nav-icon"><i class="fas fa-bolt"></i></span>Sprints</a>
+        <a class="nav-item" data-page="milestones-view"><span class="nav-icon"><i class="fas fa-flag"></i></span>Milestones</a>
+        <a class="nav-item" data-page="documents-center"><span class="nav-icon"><i class="fas fa-folder-open"></i></span>Documents</a>
+        <a class="nav-item" data-page="resources-view"><span class="nav-icon"><i class="fas fa-users-gear"></i></span>Resources</a>
+      </div>
     </div>` : ''
 
   const navDev = `
-    <div class="nav-section">
-      <div class="nav-section-title">${role === 'developer' ? 'My Work' : 'Developer View'}</div>
-      ${role === 'developer' ? `<a class="nav-item" data-page="dev-dashboard"><span class="nav-icon"><i class="fas fa-gauge"></i></span>My Dashboard</a>` : ''}
-      <a class="nav-item" data-page="my-tasks"><span class="nav-icon"><i class="fas fa-list-check"></i></span>Tasks</a>
-      <a class="nav-item" data-page="timesheets-view"><span class="nav-icon"><i class="fas fa-clock"></i></span>Timesheets</a>
-      ${role !== 'developer' ? `<a class="nav-item" data-page="approval-queue"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span>Approvals <span class="nav-badge" id="nb-approval">0</span></a>` : ''}
+    <div class="nav-section nav-group nav-group-dev" data-nav-group="dev">
+      <button class="nav-section-toggle" type="button" data-nav-toggle="dev" aria-expanded="true">
+        <span class="nav-section-heading"><i class="fas fa-code"></i> ${role === 'developer' ? 'My Work' : 'Developer View'}</span>
+        <span class="nav-section-chip">${role === 'developer' ? 'Me' : 'Dev'}</span>
+        <i class="fas fa-chevron-down nav-section-caret"></i>
+      </button>
+      <div class="nav-section-body">
+        ${role === 'developer' ? `<a class="nav-item" data-page="dev-dashboard"><span class="nav-icon"><i class="fas fa-gauge"></i></span>My Dashboard</a>` : ''}
+        <a class="nav-item" data-page="my-tasks"><span class="nav-icon"><i class="fas fa-list-check"></i></span>Tasks</a>
+        <a class="nav-item" data-page="timesheets-view"><span class="nav-icon"><i class="fas fa-clock"></i></span>Timesheets</a>
+        ${role !== 'developer' ? `<a class="nav-item" data-page="approval-queue"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span>Approvals <span class="nav-badge" id="nb-approval">0</span></a>` : ''}
+      </div>
     </div>`
 
   const navReports = `
-    <div class="nav-section">
-      <div class="nav-section-title">Analytics</div>
-      <a class="nav-item" data-page="reports-view"><span class="nav-icon"><i class="fas fa-chart-bar"></i></span>Reports</a>
-      <a class="nav-item" data-page="alerts-view"><span class="nav-icon"><i class="fas fa-bell"></i></span>Alerts <span class="nav-badge" id="nb-alerts">0</span></a>
+    <div class="nav-section nav-group nav-group-analytics" data-nav-group="analytics">
+      <button class="nav-section-toggle" type="button" data-nav-toggle="analytics" aria-expanded="false">
+        <span class="nav-section-heading"><i class="fas fa-wand-magic-sparkles"></i> Analytics</span>
+        <span class="nav-section-chip">Insight</span>
+        <i class="fas fa-chevron-down nav-section-caret"></i>
+      </button>
+      <div class="nav-section-body">
+        <a class="nav-item" data-page="reports-view"><span class="nav-icon"><i class="fas fa-chart-bar"></i></span>Reports</a>
+        <a class="nav-item" data-page="alerts-view"><span class="nav-icon"><i class="fas fa-bell"></i></span>Alerts <span class="nav-badge" id="nb-alerts">0</span></a>
+      </div>
     </div>`
 
   return `
   <div id="sidebar">
     <div class="logo">
-      <h1><i class="fas fa-rocket" style="color:#6366f1;margin-right:8px"></i>DevPortal</h1>
-      <span>Mariox Software</span>
+      <div class="sidebar-logo-mark"><i class="fas fa-rocket"></i></div>
+      <div class="sidebar-logo-text">
+        <h1>DevPortal</h1>
+        <span>Mariox Software</span>
+      </div>
     </div>
     ${navAdmin}${navPm}${navDev}${navReports}
-    <div class="nav-section">
-      <div class="nav-section-title">Settings</div>
-      <a class="nav-item" data-page="settings-view"><span class="nav-icon"><i class="fas fa-gear"></i></span>Settings</a>
+    <div class="nav-section nav-group nav-group-settings" data-nav-group="settings">
+      <button class="nav-section-toggle" type="button" data-nav-toggle="settings" aria-expanded="true">
+        <span class="nav-section-heading"><i class="fas fa-sliders"></i> Settings</span>
+        <span class="nav-section-chip">App</span>
+        <i class="fas fa-chevron-down nav-section-caret"></i>
+      </button>
+      <div class="nav-section-body">
+        <a class="nav-item" data-page="settings-view"><span class="nav-icon"><i class="fas fa-gear"></i></span>Settings</a>
+      </div>
     </div>
     <div class="sidebar-footer">
       <div class="user-card" onclick="showProfileModal()">
-        ${avatar(_user.name||_user.full_name, _user.avatar_color||'#6366f1')}
+        ${avatar(_user.name||_user.full_name, _user.avatar_color||'#2563EB')}
         <div style="min-width:0">
-          <div style="font-size:13px;font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_user.name||_user.full_name}</div>
-          <div style="font-size:11px;color:#64748b;text-transform:capitalize">${_user.role}</div>
+          <div style="font-size:13px;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_user.name||_user.full_name}</div>
+          <div style="font-size:11px;color:#94a3b8;text-transform:capitalize">${_user.role}</div>
         </div>
-        <i class="fas fa-ellipsis" style="color:#475569;margin-left:auto;font-size:12px"></i>
+        <i class="fas fa-ellipsis" style="color:#64748b;margin-left:auto;font-size:12px"></i>
       </div>
     </div>
   </div>
+  <div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
   <div id="topbar">
-    <button class="icon-btn" onclick="toggleSidebar()" style="display:none" id="menu-toggle"><i class="fas fa-bars"></i></button>
+    <button class="topbar-hamburger" onclick="toggleSidebar()" id="menu-toggle" aria-label="Toggle sidebar"><i class="fas fa-bars"></i></button>
     <button class="icon-btn" id="back-btn" onclick="Router.back()" style="display:none" data-tip="Go Back"><i class="fas fa-arrow-left"></i></button>
     <div class="breadcrumb" id="breadcrumb">
       <span>DevPortal</span><i class="fas fa-chevron-right" style="font-size:10px"></i><span class="current" id="bc-current">Dashboard</span>
@@ -355,6 +479,7 @@ function updateNav(page) {
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.toggle('active', n.dataset.page === page)
   })
+  ensureSidebarGroupOpen(page)
 }
 
 const breadcrumbMap = {
@@ -379,9 +504,18 @@ function updateBackButton() {
 
 function bindNav() {
   document.getElementById('sidebar').addEventListener('click', e => {
+    const toggle = e.target.closest('[data-nav-toggle]')
+    if (toggle) {
+      toggleSidebarGroup(toggle.dataset.navToggle)
+      return
+    }
     const item = e.target.closest('[data-page]')
-    if (item) { Router.navigate(item.dataset.page) }
+    if (item) {
+      Router.navigate(item.dataset.page)
+      if (window.innerWidth <= 768) closeSidebar()
+    }
   })
+  applySidebarGroupState()
   loadBadges()
 }
 
@@ -403,8 +537,26 @@ async function loadBadges() {
 }
 
 function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open')
+  const sidebar = document.getElementById('sidebar')
+  const overlay = document.getElementById('sidebar-overlay')
+  if (!sidebar) return
+  sidebar.classList.toggle('mobile-open')
+  const isOpen = sidebar.classList.contains('mobile-open')
+  if (overlay) overlay.classList.toggle('show', isOpen)
+  document.body.style.overflow = isOpen ? 'hidden' : ''
 }
+
+function closeSidebar() {
+  const sidebar = document.getElementById('sidebar')
+  const overlay = document.getElementById('sidebar-overlay')
+  if (sidebar) sidebar.classList.remove('mobile-open')
+  if (overlay) overlay.classList.remove('show')
+  document.body.style.overflow = ''
+}
+
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768) closeSidebar()
+})
 
 function logout() {
   clearAuth()
@@ -419,63 +571,30 @@ function renderLogin() {
   <div id="login-page">
     <div class="login-card">
       <div class="login-logo">
-        <div style="width:52px;height:52px;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.3);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:22px">🚀</div>
+        <div class="login-logo-mark">🚀</div>
         <h1>DevPortal</h1>
-        <p>Mariox Software – Project & Client Platform</p>
+        <p>Mariox Software - Project & Client Platform</p>
       </div>
-      <div id="login-tabs" style="display:flex;gap:4px;margin-bottom:20px;background:rgba(255,255,255,.04);border-radius:8px;padding:3px">
-        <button class="btn w-full" id="tab-staff" onclick="switchLoginTab('staff')" style="background:rgba(99,102,241,.2);color:#818cf8;border-radius:6px">Staff Login</button>
-        <button class="btn w-full" id="tab-client" onclick="switchLoginTab('client')" style="background:transparent;color:#64748b;border-radius:6px">Client Portal</button>
-      </div>
-      <div id="staff-login-form">
+      <div>
         <form onsubmit="doLogin();return false;" autocomplete="on">
-        <div class="form-group">
-          <label class="form-label">Email</label>
-          <input id="login-email" type="email" class="form-input" placeholder="you@mariox.in" value="admin@devtrack.com" autocomplete="email"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Password</label>
-          <div style="position:relative">
-            <input id="login-pass" type="password" class="form-input" placeholder="••••••••" value="Admin@123" autocomplete="current-password"/>
-            <button type="button" onclick="togglePass('login-pass',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input id="login-email" type="email" class="form-input" placeholder="you@mariox.in" autocomplete="email"/>
           </div>
-        </div>
-        <button type="submit" class="btn btn-primary w-full" style="margin-top:4px"><i class="fas fa-sign-in-alt"></i>Sign In</button>
-        </form>
-        <div style="margin-top:16px">
-          <p style="font-size:11px;color:#475569;text-align:center;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Quick Access</p>
-          <div class="quick-logins">
-            ${[['admin@devtrack.com','Admin@123','⚡ Super Admin','#6366f1'],['sarah.pm@devtrack.com','Password@123','📋 PM - Sarah','#0ea5e9'],['rahul@devtrack.com','Password@123','💻 Dev - Rahul','#f59e0b'],['priya@devtrack.com','Password@123','🎨 Dev - Priya','#ec4899']].map(([e,p,n,c])=>`<div class="quick-login-btn" onclick="quickLogin('${e}','${p}')"><div class="ql-name">${n}</div><div class="ql-role">${e}</div></div>`).join('')}
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <div style="position:relative">
+              <input id="login-pass" type="password" class="form-input" placeholder="••••••••" autocomplete="current-password"/>
+              <button type="button" onclick="togglePass('login-pass',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
+            </div>
           </div>
-        </div>
-      </div>
-      <div id="client-login-form" style="display:none">
-        <form onsubmit="doClientLogin();return false;" autocomplete="on">
-        <div class="form-group">
-          <label class="form-label">Company Email</label>
-          <input id="cl-email" type="email" class="form-input" placeholder="admin@yourcompany.com" value="admin@growniq.com" autocomplete="email"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Password</label>
-          <input id="cl-pass" type="password" class="form-input" placeholder="••••••••" value="Password@123" autocomplete="current-password"/>
-        </div>
-        <button type="submit" class="btn btn-primary w-full" style="margin-top:4px"><i class="fas fa-sign-in-alt"></i>Client Sign In</button>
+          <button type="submit" class="btn btn-primary w-full" style="margin-top:4px"><i class="fas fa-sign-in-alt"></i>Sign In</button>
         </form>
-        <div style="margin-top:14px;padding:12px;background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.2);border-radius:8px;font-size:12px;color:#94a3b8">
-          <p style="margin-bottom:6px;font-weight:600;color:#22d3ee"><i class="fas fa-info-circle mr-1"></i>Demo Client Accounts</p>
-          ${[['admin@growniq.com','Growniq Technologies'],['admin@healwin.com','HealWin Healthcare'],['admin@kavach.com','Kavach Security']].map(([e,n])=>`<div class="quick-login-btn" style="margin-top:4px" onclick="quickClientLogin('${e}')"><div class="ql-name">${n}</div><div class="ql-role">${e}</div></div>`).join('')}
-        </div>
-        <p style="text-align:center;margin-top:14px;font-size:12px;color:#475569">New client? <a href="#" onclick="showClientSignup()" style="color:#818cf8;text-decoration:none">Request Access</a></p>
+        <p style="text-align:center;margin-top:14px;font-size:12px;color:#64748b">One sign-in for staff and client accounts</p>
+        <p style="text-align:center;margin-top:6px;font-size:12px;color:#64748b">New client? <a href="#" onclick="showClientSignup()" style="color:#2563eb;text-decoration:none;font-weight:700">Request Access</a></p>
       </div>
     </div>
   </div>`
-}
-
-function switchLoginTab(tab) {
-  document.getElementById('staff-login-form').style.display = tab==='staff' ? '' : 'none'
-  document.getElementById('client-login-form').style.display = tab==='client' ? '' : 'none'
-  document.getElementById('tab-staff').style.cssText = tab==='staff' ? 'background:rgba(99,102,241,.2);color:#818cf8;border-radius:6px' : 'background:transparent;color:#64748b;border-radius:6px'
-  document.getElementById('tab-client').style.cssText = tab==='client' ? 'background:rgba(99,102,241,.2);color:#818cf8;border-radius:6px' : 'background:transparent;color:#64748b;border-radius:6px'
 }
 
 async function doLogin() {
@@ -483,33 +602,36 @@ async function doLogin() {
   const password = document.getElementById('login-pass').value
   if (!email || !password) return toast('Enter email and password', 'error')
   try {
-    const data = await API.post('/auth/login', { email, password })
-    saveAuth(data.token, { ...data.user, role: data.user.role })
-    toast('Welcome back, ' + (data.user.full_name||data.user.name) + '!', 'success')
-    Router.navigate(defaultPage())
+    let data = null
+    try {
+      data = await API.post('/auth/login', { email, password })
+      saveAuth(data.token, { ...data.user, role: data.user.role })
+      toast('Welcome back, ' + (data.user.full_name||data.user.name) + '!', 'success')
+      Router.navigate(defaultPage())
+      return
+    } catch (staffErr) {
+      try {
+        data = await API.post('/client-auth/login', { email, password })
+        saveAuth(data.token, { ...data.client, role: 'client', name: data.client.contact_name })
+        toast('Welcome, ' + data.client.contact_name + '!', 'success')
+        renderClientPortal()
+        return
+      } catch {
+        throw staffErr
+      }
+    }
   } catch(e) { toast(e.message, 'error') }
 }
 
 async function doClientLogin() {
   const email = document.getElementById('cl-email').value.trim()
-  const password = document.getElementById('cl-pass').value || 'Password@123'
+  const password = document.getElementById('cl-pass').value
   try {
     const data = await API.post('/client-auth/login', { email, password })
     saveAuth(data.token, { ...data.client, role: 'client', name: data.client.contact_name })
     toast('Welcome, ' + data.client.contact_name + '!', 'success')
     renderClientPortal()
   } catch(e) { toast(e.message || 'Login failed', 'error') }
-}
-
-function quickLogin(email, pass) {
-  document.getElementById('login-email').value = email
-  document.getElementById('login-pass').value = pass
-  doLogin()
-}
-function quickClientLogin(email) {
-  document.getElementById('cl-email').value = email
-  document.getElementById('cl-pass').value = 'Password@123'
-  doClientLogin()
 }
 function togglePass(id, btn) {
   const inp = document.getElementById(id)
@@ -583,7 +705,7 @@ function showProfileModal() {
   showModal(`
     <div class="modal-header"><h3>My Profile</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body" style="text-align:center">
-      ${avatar(_user.name||_user.full_name, _user.avatar_color||'#6366f1','xl')}
+      ${avatar(_user.name||_user.full_name, _user.avatar_color||'#2563EB','xl')}
       <div style="margin-top:14px">
         <div style="font-size:18px;font-weight:700;color:#fff">${_user.name||_user.full_name}</div>
         <div style="font-size:13px;color:#94a3b8;text-transform:capitalize;margin-top:2px">${_user.role} • ${_user.designation||'DevPortal'}</div>

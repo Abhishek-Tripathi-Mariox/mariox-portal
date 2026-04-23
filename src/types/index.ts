@@ -14,7 +14,7 @@ export interface User {
   id: string
   email: string
   full_name: string
-  role: 'admin' | 'pm' | 'developer' | 'client'
+  role: 'admin' | 'pm' | 'pc' | 'developer' | 'team' | 'client'
   designation?: string
   avatar_color?: string
   is_active?: number

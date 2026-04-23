@@ -6,13 +6,24 @@
 export const ROLES = {
   ADMIN: 'admin',
   PM: 'pm',
+  PC: 'pc',
   DEVELOPER: 'developer',
+  TEAM: 'team',
   CLIENT: 'client',
 } as const
 
 export const ADMIN_ROLES = [ROLES.ADMIN]
-export const PM_ROLES = [ROLES.ADMIN, ROLES.PM]
-export const DEV_ROLES = [ROLES.ADMIN, ROLES.PM, ROLES.DEVELOPER]
+export const PM_ROLES = [ROLES.ADMIN, ROLES.PM, ROLES.PC]
+export const DEV_ROLES = [ROLES.ADMIN, ROLES.PM, ROLES.PC, ROLES.DEVELOPER, ROLES.TEAM]
+
+export const USER_ROLES = [
+  ROLES.ADMIN,
+  ROLES.PM,
+  ROLES.PC,
+  ROLES.DEVELOPER,
+  ROLES.TEAM,
+  ROLES.CLIENT,
+] as const
 
 // Project Status
 export const PROJECT_STATUS = {

@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { generateId } from '../utils/helpers'
+import { USER_ROLES } from '../constants'
 
 type Bindings = { DB: D1Database }
 type Variables = { user: any }
@@ -8,6 +9,20 @@ type Variables = { user: any }
 const users = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 users.use('*', authMiddleware)
+
+function normalizeRole(role: any): string {
+  return String(role || '').toLowerCase().trim()
+}
+
+function getRoleFilter(role: string) {
+  const normalized = normalizeRole(role)
+  if (normalized === 'pm') return { clause: 'u.role IN (?, ?)', values: ['pm', 'pc'] }
+  if (normalized === 'developer') return { clause: 'u.role IN (?, ?)', values: ['developer', 'team'] }
+  if (normalized === 'admin') return { clause: 'u.role = ?', values: ['admin'] }
+  if (normalized === 'client') return { clause: 'u.role = ?', values: ['client'] }
+  if (normalized === 'pc' || normalized === 'team') return { clause: 'u.role = ?', values: [normalized] }
+  return null
+}
 
 // Get all users (developers/PMs)
 users.get('/', async (c) => {
@@ -22,7 +37,16 @@ users.get('/', async (c) => {
       FROM users u WHERE 1=1
     `
     const params: any[] = []
-    if (role) { query += ' AND u.role = ?'; params.push(role) }
+    if (role) {
+      const roleFilter = getRoleFilter(role)
+      if (roleFilter) {
+        query += ` AND ${roleFilter.clause}`
+        params.push(...roleFilter.values)
+      } else {
+        query += ' AND u.role = ?'
+        params.push(normalizeRole(role))
+      }
+    }
     if (active !== undefined) { query += ' AND u.is_active = ?'; params.push(active === 'true' ? 1 : 0) }
     query += ' ORDER BY u.full_name'
 
@@ -72,13 +96,25 @@ users.get('/:id', async (c) => {
   }
 })
 
-// Create user (PM/Admin only)
-users.post('/', requireRole('admin', 'pm'), async (c) => {
+// Create user (Admin only)
+users.post('/', requireRole('admin'), async (c) => {
   try {
     const body = await c.req.json()
+    const email = String(body.email || '').toLowerCase().trim()
+    const fullName = String(body.full_name || '').trim()
+    const password = String(body.password || '')
+    const role = normalizeRole(body.role || 'developer')
+
+    if (!email || !fullName || !password) {
+      return c.json({ error: 'Full name, email and password are required' }, 400)
+    }
+    if (!USER_ROLES.includes(role as any)) {
+      return c.json({ error: `Role must be one of: ${USER_ROLES.join(', ')}` }, 400)
+    }
+
     const id = generateId('user')
     const encoder = new TextEncoder()
-    const data = encoder.encode((body.password || 'Password@123') + 'devtrack-salt-2025')
+    const data = encoder.encode(password + 'devtrack-salt-2025')
     const hashBuffer = await crypto.subtle.digest('SHA-256', data)
     const hashArray = Array.from(new Uint8Array(hashBuffer))
     const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
@@ -87,7 +123,7 @@ users.post('/', requireRole('admin', 'pm'), async (c) => {
       INSERT INTO users (id, email, password_hash, full_name, role, phone, designation, tech_stack, skill_tags, joining_date, daily_work_hours, working_days_per_week, hourly_cost, monthly_available_hours, reporting_pm_id, avatar_color, remarks)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      id, body.email.toLowerCase(), passwordHash, body.full_name, body.role || 'developer',
+      id, email, passwordHash, fullName, role,
       body.phone || null, body.designation || null,
       body.tech_stack ? JSON.stringify(body.tech_stack) : null,
       body.skill_tags ? JSON.stringify(body.skill_tags) : null,
@@ -101,7 +137,7 @@ users.post('/', requireRole('admin', 'pm'), async (c) => {
     ).run()
 
     const newUser = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first()
-    return c.json({ data: newUser, message: 'Developer created successfully' }, 201)
+    return c.json({ data: newUser, message: 'User created successfully' }, 201)
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
   }
@@ -127,7 +163,7 @@ users.put('/:id', requireRole('admin', 'pm'), async (c) => {
       body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1, id
     ).run()
     const updated = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first()
-    return c.json({ data: updated, message: 'Developer updated successfully' })
+    return c.json({ data: updated, message: 'User updated successfully' })
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
   }
@@ -139,7 +175,7 @@ users.patch('/:id/status', requireRole('admin', 'pm'), async (c) => {
     const id = c.req.param('id')
     const { is_active } = await c.req.json()
     await c.env.DB.prepare('UPDATE users SET is_active=?, updated_at=datetime(\'now\') WHERE id=?').bind(is_active ? 1 : 0, id).run()
-    return c.json({ message: `Developer ${is_active ? 'activated' : 'deactivated'} successfully` })
+    return c.json({ message: `User ${is_active ? 'activated' : 'deactivated'} successfully` })
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
   }

@@ -7,6 +7,13 @@ type Bindings = { DB: D1Database; JWT_SECRET: string; PASSWORD_SALT: string }
 
 const auth = new Hono<{ Bindings: Bindings }>()
 
+function normalizeRole(role: string) {
+  const value = (role || '').toLowerCase()
+  if (value === 'pc') return 'pm'
+  if (value === 'team') return 'developer'
+  return value
+}
+
 // Simple hash function (in production use bcrypt via Workers)
 async function hashPassword(password: string, salt: string): Promise<string> {
   const encoder = new TextEncoder()
@@ -41,7 +48,7 @@ auth.post('/login', async (c) => {
     const payload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
+      role: normalizeRole(user.role),
       name: user.full_name,
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24h
     }
@@ -53,7 +60,7 @@ auth.post('/login', async (c) => {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
-        role: user.role,
+        role: normalizeRole(user.role),
         designation: user.designation,
         avatar_color: user.avatar_color,
       }
@@ -73,7 +80,13 @@ auth.post('/verify', async (c) => {
       'SELECT id, email, full_name, role, designation, avatar_color FROM users WHERE id = ? AND is_active = 1'
     ).bind(payload.sub).first() as any
     if (!user) return c.json({ valid: false }, 401)
-    return c.json({ valid: true, user })
+    return c.json({
+      valid: true,
+      user: {
+        ...user,
+        role: normalizeRole(user.role),
+      },
+    })
   } catch {
     return c.json({ valid: false }, 401)
   }
@@ -88,9 +101,9 @@ auth.post('/change-password', async (c) => {
     const { current_password, new_password } = await c.req.json()
     const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.sub).first() as any
     if (!user) return c.json({ error: 'User not found' }, 404)
-    const valid = await verifyPassword(current_password, user.password_hash)
+    const valid = await verifyPassword(current_password, user.password_hash, c.env.PASSWORD_SALT)
     if (!valid) return c.json({ error: 'Current password is incorrect' }, 400)
-    const newHash = await hashPassword(new_password)
+    const newHash = await hashPassword(new_password, c.env.PASSWORD_SALT)
     await c.env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(newHash, payload.sub).run()
     return c.json({ message: 'Password changed successfully' })
   } catch (e) {

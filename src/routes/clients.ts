@@ -1,10 +1,18 @@
 import { Hono } from 'hono'
 import { verify } from 'hono/jwt'
 
-type Bindings = { DB: D1Database; JWT_SECRET: string }
+type Bindings = { DB: D1Database; JWT_SECRET: string; PASSWORD_SALT: string }
 type Variables = { user: any }
 
 const clients = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+
+async function hashPassword(password: string, salt: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(password + salt)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+}
 
 // Auth middleware (supports both internal users and clients)
 clients.use('*', async (c, next) => {
@@ -35,6 +43,54 @@ clients.get('/', async (c) => {
     `).all()
     return c.json({ clients: result.results })
   } catch(e: any) { return c.json({ error: e.message }, 500) }
+})
+
+// POST /api/clients
+clients.post('/', async (c) => {
+  try {
+    const user = c.get('user')
+    if (user.role !== 'admin') return c.json({ error: 'Forbidden' }, 403)
+
+    const body = await c.req.json()
+    const email = String(body.email || '').toLowerCase().trim()
+    const password = String(body.password || '')
+    const company_name = String(body.company_name || '').trim()
+    const contact_name = String(body.contact_name || '').trim()
+    if (!email || !password || !company_name || !contact_name) {
+      return c.json({ error: 'email, password, company_name and contact_name are required' }, 400)
+    }
+
+    const [existingClient, existingUser] = await Promise.all([
+      c.env.DB.prepare('SELECT id FROM clients WHERE email = ?').bind(email).first(),
+      c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first(),
+    ])
+    if (existingClient || existingUser) return c.json({ error: 'Email already exists' }, 409)
+
+    const id = 'client-' + Date.now()
+    const password_hash = await hashPassword(password, c.env.PASSWORD_SALT)
+    const colors = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ec4899','#8b5cf6','#f97316']
+    const avatar_color = body.avatar_color || colors[Math.floor(Math.random() * colors.length)]
+
+    await c.env.DB.prepare(`
+      INSERT INTO clients (id, email, password_hash, company_name, contact_name, phone, website, industry, avatar_color, is_active, email_verified)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
+    `).bind(
+      id,
+      email,
+      password_hash,
+      company_name,
+      contact_name,
+      body.phone || null,
+      body.website || null,
+      body.industry || null,
+      avatar_color
+    ).run()
+
+    const created = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(id).first()
+    return c.json({ client: created, data: created, message: 'Client created successfully' }, 201)
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
 })
 
 // GET /api/clients/:id

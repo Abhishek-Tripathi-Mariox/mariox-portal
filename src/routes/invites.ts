@@ -30,7 +30,9 @@ invites.post('/', authMiddleware, requireRole('admin', 'pm'), async (c) => {
     const { email, full_name, role } = body
 
     if (!email || !full_name) return c.json({ error: 'email and full_name required' }, 400)
-    if (!['developer', 'pm'].includes(role)) return c.json({ error: 'role must be developer or pm' }, 400)
+    if (!['developer', 'team', 'pm', 'pc'].includes(role)) {
+      return c.json({ error: 'role must be developer, team, pm or pc' }, 400)
+    }
 
     // Check if already a user
     const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email.toLowerCase().trim()).first()

@@ -80,9 +80,6 @@ function renderClientLogin(container) {
           <i class="fas fa-sign-in-alt"></i> Sign In to Portal
         </button>
         </form>
-        <div style="margin-top:16px;text-align:center;font-size:12px;color:#64748b">
-          Demo: <strong style="color:#94a3b8">admin@growniq.com</strong> / <strong style="color:#94a3b8">Password@123</strong>
-        </div>
       </div>
 
       <!-- Signup Form -->

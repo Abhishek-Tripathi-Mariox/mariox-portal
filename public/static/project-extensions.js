@@ -152,6 +152,76 @@ async function openCreateTeamModal(projectId) {
   })
 }
 
+async function openCreateTeamFromOverviewModal() {
+  try {
+    const projectsRes = await API.get('/projects')
+    const projects = projectsRes.projects || projectsRes.data || []
+    if (!projects.length) {
+      toast('No projects found. Create a project first.', 'error')
+      return
+    }
+    pxModal({
+      title: 'Create Team',
+      body: `
+        <div class="form-group">
+          <label class="form-label">Project *</label>
+          <select id="team-project" class="form-select" onchange="loadTeamLeadOptionsForModal(this.value)">
+            <option value="">Select project</option>
+            ${projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)} (${escapeHtml(p.code || '')})</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Team name *</label><input id="team-name" class="form-input" placeholder="e.g. Backend Squad" autofocus/></div>
+        <div class="form-group"><label class="form-label">Description</label><textarea id="team-desc" class="form-input" rows="2" placeholder="What does this team do?"></textarea></div>
+        <div style="display:grid;grid-template-columns:1fr 120px;gap:10px">
+          <div class="form-group"><label class="form-label">Team lead</label>
+            <select id="team-lead" class="form-select">
+              <option value="">— No lead —</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Colour</label><input id="team-color" type="color" value="#6366f1" class="form-input" style="height:40px;padding:3px"/></div>
+        </div>
+      `,
+      confirmText: 'Create Team',
+      large: true,
+      onConfirm: async () => {
+        const projectId = document.getElementById('team-project').value
+        const name = document.getElementById('team-name').value.trim()
+        if (!projectId) { toast('Please select a project', 'error'); return false }
+        if (!name) { toast('Team name is required', 'error'); return false }
+        try {
+          await API.post(`/project-teams/project/${projectId}`, {
+            name,
+            description: document.getElementById('team-desc').value.trim(),
+            team_lead_id: document.getElementById('team-lead').value || null,
+            color: document.getElementById('team-color').value,
+          })
+          toast('Team created', 'success')
+          const el = document.getElementById('page-team-overview')
+          if (el) { el.dataset.loaded = ''; loadPage('team-overview', el) }
+          return true
+        } catch (e) { toast('Failed: ' + e.message, 'error'); return false }
+      }
+    })
+    loadTeamLeadOptionsForModal('')
+  } catch (e) {
+    toast('Failed to load projects: ' + e.message, 'error')
+  }
+}
+
+async function loadTeamLeadOptionsForModal(projectId) {
+  const leadSelect = document.getElementById('team-lead')
+  if (!leadSelect) return
+  leadSelect.innerHTML = '<option value="">— No lead —</option>'
+  if (!projectId) return
+  try {
+    const res = await API.get(`/projects/${projectId}/developers`)
+    const devs = res.developers || []
+    leadSelect.innerHTML = `<option value="">— No lead —</option>${devs.map(d => `<option value="${d.user_id}">${escapeHtml(d.full_name)}</option>`).join('')}`
+  } catch (e) {
+    leadSelect.innerHTML = '<option value="">— No lead —</option>'
+  }
+}
+
 async function openEditTeamModal(teamId) {
   try {
     const res = await API.get(`/project-teams/${teamId}`)
@@ -455,7 +525,8 @@ function openInviteUserModal() {
       <div class="form-group"><label class="form-label">Role *</label>
         <select id="inv-role" class="form-select">
           <option value="developer">Developer</option>
-          ${_user.role === 'admin' ? '<option value="pm">Project Manager</option>' : ''}
+          <option value="team">Team Member</option>
+          ${_user.role === 'admin' ? '<option value="pm">Project Manager</option><option value="pc">Project Coordinator</option>' : ''}
         </select>
       </div>
       <div style="font-size:11px;color:var(--text-muted);padding:8px;background:rgba(99,102,241,.08);border-radius:6px;border-left:3px solid var(--primary)">

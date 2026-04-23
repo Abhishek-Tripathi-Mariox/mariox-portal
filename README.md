@@ -18,19 +18,9 @@
 
 | Role | Email | Password |
 |------|-------|----------|
-| Admin/CTO | admin@devtrack.com | Admin@123 |
-| Project Manager | sarah.pm@devtrack.com | Password@123 |
-| Project Manager | james.pm@devtrack.com | Password@123 |
-| Developer | rahul@devtrack.com | Password@123 |
-| Developer | priya@devtrack.com | Password@123 |
-| Developer | amit@devtrack.com | Password@123 |
-| Developer | neha@devtrack.com | Password@123 |
-| Developer | arjun@devtrack.com | Password@123 |
-| Developer | divya@devtrack.com | Password@123 |
-| Client (Growniq) | admin@growniq.com | Password@123 |
-| Client (HealWin) | admin@healwin.com | Password@123 |
-| Client (Kavach) | admin@kavach.com | Password@123 |
-| Client (RetailEdge) | admin@retailedge.com | Password@123 |
+| Admin | akash@marioxsoftware.com | mariox@123 |
+
+All other users are created from the admin panel after signing in.
 
 ---
 
@@ -38,7 +28,7 @@
 
 ### ✅ Authentication & RBAC
 - JWT-based authentication (HS256 algorithm, 24h expiry)
-- Role-based access control: Admin, Project Manager, Developer, Client
+- Role-based access control: Admin, Project Manager, Project Coordinator, Developer, Team Member, Client
 - Separate client auth flow (`/client-auth/login`)
 - Password management (change password)
 
