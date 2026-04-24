@@ -22,9 +22,9 @@ This document summarizes the bugs found and fixed in the PMportal codebase durin
 ## Migration fixes
 
 ### 4. Mismatched emails in `migrations/0005_fix_password_hashes.sql`
-**Before:** The password-fix UPDATE referenced `vikram@devtrack.com` and `anjali@devtrack.com`, neither of which are seeded by `0002_seed.sql`. Meanwhile the actually-seeded emails `arjun@devtrack.com` and `divya@devtrack.com` were missing from the list.
+**Before:** The password-fix UPDATE referenced `vikram@devtrack.com` and `anjali@devtrack.com`, neither of which are part of the current bootstrap data. Meanwhile the actually-seeded emails `arjun@devtrack.com` and `divya@devtrack.com` were missing from the list.
 **Impact:** Two real demo accounts never had their hash updated by this migration. (They happened to still work because the hash was already correct in the initial seed, but if anyone ran 0005 on a partial DB, those accounts would break.)
-**Fix:** Updated the email list to match `0002_seed.sql` exactly.
+**Fix:** Updated the email list to match the bootstrap data exactly.
 
 ## Frontend fixes
 
@@ -56,8 +56,6 @@ npx wrangler d1 create devtrack-pro-production
 
 # apply all migrations + seed data
 npx wrangler d1 migrations apply devtrack-pro-production --local
-npx wrangler d1 execute devtrack-pro-production --local --file=./migrations/0002_seed.sql
-npx wrangler d1 execute devtrack-pro-production --local --file=./migrations/0004_enterprise_seed.sql
 
 # build and run
 npm run build

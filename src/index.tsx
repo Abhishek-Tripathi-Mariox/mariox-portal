@@ -23,7 +23,31 @@ import projectTeamsRoutes from './routes/project-teams'
 import kanbanPermsRoutes from './routes/kanban-permissions'
 import invitesRoutes from './routes/invites'
 
-type Bindings = { DB: D1Database; JWT_SECRET: string; PASSWORD_SALT: string }
+type Bindings = {
+  DB: D1Database
+  JWT_SECRET: string
+  PASSWORD_SALT: string
+  EMAIL?: {
+    send: (message: {
+      to: string | string[]
+      from: string | { email: string; name?: string }
+      subject: string
+      html?: string
+      text?: string
+      cc?: string | string[]
+      bcc?: string | string[]
+      replyTo?: string | { email: string; name?: string }
+    }) => Promise<unknown>
+  }
+  SENDER_EMAIL?: string
+  APP_PASSWORD?: string
+  SMTP_HOST?: string
+  SMTP_PORT?: string
+  SMTP_USER?: string
+  SMTP_PASS?: string
+  SMTP_FROM?: string
+  SMTP_SECURE?: string
+}
 
 const app = new Hono<{ Bindings: Bindings }>()
 

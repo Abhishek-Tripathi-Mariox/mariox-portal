@@ -11,10 +11,10 @@
     "deploy": "npm run build && wrangler pages deploy dist",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:local": "wrangler d1 migrations apply devtrack-pro-production --local",
-    "db:seed": "wrangler d1 execute devtrack-pro-production --local --file=./migrations/0002_seed.sql",
+    "db:seed": "wrangler d1 execute devtrack-pro-production --local --file=./migrations/0009_admin_seed.sql",
     "db:seed:admin": "wrangler d1 execute devtrack-pro-production --local --file=./migrations/0009_admin_seed.sql",
-    "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run db:seed",
-    "db:init:admin": "rm -rf .wrangler/state && wrangler d1 execute devtrack-pro-production --local --file=./migrations/0001_initial.sql && wrangler d1 execute devtrack-pro-production --local --file=./migrations/0003_enterprise.sql && wrangler d1 execute devtrack-pro-production --local --file=./migrations/0006_kanban_columns.sql && wrangler d1 execute devtrack-pro-production --local --file=./migrations/0007_project_teams_and_permissions.sql && wrangler d1 execute devtrack-pro-production --local --file=./migrations/0009_admin_seed.sql",
+    "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local",
+    "db:init:admin": "rm -rf .wrangler/state && npm run db:migrate:local",
     "db:reset:admin": "npm run db:init:admin",
     "db:migrate:prod": "wrangler d1 migrations apply devtrack-pro-production --remote"
   },

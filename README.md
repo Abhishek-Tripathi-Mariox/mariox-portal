@@ -288,9 +288,8 @@ All other users are created from the admin panel after signing in.
 
 **Migrations:**
 - `migrations/0001_initial.sql` — Core schema (users, projects, timesheets, leaves, alerts, settings)
-- `migrations/0002_seed.sql` — Demo seed data for core tables
 - `migrations/0003_enterprise.sql` — Enterprise schema (tasks, sprints, milestones, documents, invoices, clients, activity)
-- `migrations/0004_enterprise_seed.sql` — Demo seed data for enterprise tables
+- `migrations/0009_admin_seed.sql` — Admin bootstrap data
 
 ---
 
@@ -334,9 +333,8 @@ webapp/
 │   └── styles.css                 # Custom CSS (sidebar, cards, forms, animations)
 ├── migrations/
 │   ├── 0001_initial.sql
-│   ├── 0002_seed.sql
 │   ├── 0003_enterprise.sql
-│   └── 0004_enterprise_seed.sql
+│   └── 0009_admin_seed.sql
 ├── tailwind.config.js             # Tailwind v3 config (custom colors, shadows)
 ├── postcss.config.js              # PostCSS config
 ├── ecosystem.config.cjs           # PM2 config
@@ -366,23 +364,31 @@ npx wrangler d1 create webapp-production
 cat > .dev.vars <<'EOF'
 JWT_SECRET=your-secret-value
 PASSWORD_SALT=your-password-salt
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=abhishek@marioxsoftware.com
+SMTP_PASS=your-app-password
+SMTP_FROM=abhishek@marioxsoftware.com
+SMTP_SECURE=false
 EOF
 
 # Or set them in Cloudflare as secrets for production
 npx wrangler pages secret put JWT_SECRET
 npx wrangler pages secret put PASSWORD_SALT
+npx wrangler pages secret put SMTP_HOST
+npx wrangler pages secret put SMTP_PORT
+npx wrangler pages secret put SMTP_USER
+npx wrangler pages secret put SMTP_PASS
+npx wrangler pages secret put SMTP_FROM
+npx wrangler pages secret put SMTP_SECURE
 
-# 4. Apply all migrations
+# 4. Apply all migrations, including the admin bootstrap seed
 npx wrangler d1 migrations apply webapp-production --local
 
-# 5. Seed demo data
-npx wrangler d1 execute webapp-production --local --file=./migrations/0002_seed.sql
-npx wrangler d1 execute webapp-production --local --file=./migrations/0004_enterprise_seed.sql
-
-# 6. Build (Tailwind + Vite)
+# 5. Build (Tailwind + Vite)
 npm run build
 
-# 7. Start development server
+# 6. Start development server
 npm run dev:sandbox
 # or with PM2:
 pm2 start ecosystem.config.cjs
@@ -411,8 +417,6 @@ npx wrangler pages deploy dist --project-name pmportal
 
 # 6. Apply migrations to production
 npx wrangler d1 migrations apply webapp-production
-npx wrangler d1 execute webapp-production --file=./migrations/0002_seed.sql
-npx wrangler d1 execute webapp-production --file=./migrations/0004_enterprise_seed.sql
 ```
 
 ---

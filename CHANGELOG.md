@@ -11,10 +11,9 @@
   - `user_invites` — one-time signup tokens for developer/PM onboarding
   - New columns: `users.must_change_password`, `project_assignments.project_team_id`, `tasks.project_team_id`
 
-- **`migrations/0008_seed_teams_and_permissions.sql`** — seeds:
-  - Default permission matrix for every existing project (admin & PM full; developer view+create+move+edit-own+comment; client view+comment)
-  - Example teams for Growniq (Backend Squad, Frontend Team) and HealWin (Mobile Team, Telemedicine)
-  - Default kanban columns for every existing project (Backlog → To Do → In Progress → In Review → QA → Done → Blocked)
+- **`migrations/0009_admin_seed.sql`** — admin bootstrap:
+  - Core company settings record
+  - Admin user account for `akash@marioxsoftware.com`
 
 ### Backend
 

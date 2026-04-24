@@ -102,6 +102,13 @@ async function openEditDeveloperModal(id) {
 }
 
 function openDeveloperModal(dev = null) {
+  const roleOptions = [
+    ['developer', 'Developer'],
+    ['pm', 'PM'],
+    ['pc', 'PC'],
+    ['team', 'Team'],
+  ]
+  const selectedRole = dev?.role || 'developer'
   const modal = document.createElement('div')
   modal.className = 'modal-overlay'
   modal.id = 'dev-modal'
@@ -119,12 +126,7 @@ function openDeveloperModal(dev = null) {
           <div class="form-group"><label class="form-label">Designation</label><input id="dev-designation" class="form-input" value="${dev?.designation||''}" placeholder="Senior Developer"/></div>
           <div class="form-group"><label class="form-label">Role</label>
             <select id="dev-role" class="form-select">
-              <option value="developer" ${dev?.role==='developer'?'selected':''}>Developer</option>
-              <option value="pm" ${dev?.role==='pm'?'selected':''}>Project Manager</option>
-              <option value="pc" ${dev?.role==='pc'?'selected':''}>Project Coordinator</option>
-              <option value="team" ${dev?.role==='team'?'selected':''}>Team Member</option>
-              <option value="admin" ${dev?.role==='admin'?'selected':''}>Admin</option>
-              <option value="client" ${dev?.role==='client'?'selected':''}>Client</option>
+              ${roleOptions.map(([value, label]) => `<option value="${value}" ${selectedRole === value ? 'selected' : ''}>${label}</option>`).join('')}
             </select>
           </div>
           <div class="form-group"><label class="form-label">Joining Date</label><input id="dev-joining" class="form-input" type="date" value="${dev?.joining_date||''}"/></div>
@@ -429,14 +431,15 @@ function renderSelectedDevs() {
   if (!cont) return
   if (!window._projSelectedDevs.length) {
     cont.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px;text-align:center">No developers selected yet. Click developers above to add them.</div>'
+    updateProjectDevCount()
     return
   }
   cont.innerHTML = window._projSelectedDevs.map(d => `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-input);border-radius:8px;border:1px solid rgba(108,95,252,0.3)">
-      <div style="width:28px;height:28px;border-radius:50%;background:#6C5FFC;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${d.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>
+      <div style="width:28px;height:28px;border-radius:50%;background:#6C5FFC;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${escapeHtml(d.name.split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:600;color:var(--text-primary)">${d.name}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${d.designation||'Developer'}</div>
+        <div style="font-size:12px;font-weight:600;color:var(--text-primary)">${escapeHtml(d.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(d.designation||'Developer')}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
         <input type="number" value="${d.hours}" min="0" placeholder="Hrs" style="width:65px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:12px" oninput="updateDevHours('${d.id}',this.value)" title="Allocated hours"/>
@@ -444,11 +447,17 @@ function renderSelectedDevs() {
         <button onclick="toggleDevSelection('${d.id}','${d.name}','${d.designation||''}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:13px" title="Remove"><i class="fas fa-times-circle"></i></button>
       </div>
     </div>`).join('')
+  updateProjectDevCount()
 }
 
 function updateDevHours(devId, val) {
   const dev = window._projSelectedDevs.find(d => d.id === devId)
   if (dev) dev.hours = parseFloat(val) || 0
+}
+
+function updateProjectDevCount() {
+  const cnt = document.getElementById('dev-sel-count')
+  if (cnt) cnt.textContent = `${window._projSelectedDevs.length} selected`
 }
 
 function openProjectModal(id = null) {
@@ -468,6 +477,7 @@ function openProjectModal(id = null) {
     const devs = devsRes.users || devsRes.data || []
     const adminRes = await API.get('/users?role=admin')
     const pms = [...(pmsRes.users || pmsRes.data || []), ...(adminRes.users || adminRes.data || [])]
+    const esc = (value = '') => escapeHtml(value)
 
     // Pre-select current developers
     window._projSelectedDevs = currentDevs.map(d => ({
@@ -476,104 +486,153 @@ function openProjectModal(id = null) {
       designation: d.designation || 'Developer',
       hours: d.allocated_hours || 0
     }))
-
-    const modal = document.createElement('div')
-    modal.className = 'modal-overlay'
-    modal.id = 'proj-modal'
-    modal.innerHTML = `
-      <div class="modal-box" style="max-width:780px;width:95vw;max-height:92vh;overflow-y:auto">
-        <div class="modal-header">
-          <h2 style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
-            <i class="fas fa-folder-${proj ? 'open' : 'plus'}" style="color:#6C5FFC"></i>
-            ${proj ? 'Edit' : 'New'} Project
-          </h2>
-          <button onclick="document.getElementById('proj-modal').remove()" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer"><i class="fas fa-times"></i></button>
+    showModal(`
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="summary-icon blue" style="background:var(--primary-light);color:var(--primary)"><i class="fas fa-folder-${proj ? 'open' : 'plus'}"></i></div>
+          <div>
+            <h3>${proj ? 'Edit Project' : 'New Project'}</h3>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Capture the project, team, and delivery details in one place.</div>
+          </div>
         </div>
-        <div class="modal-body" style="padding:20px">
-          <!-- Section: Basic Info -->
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6C5FFC;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid rgba(108,95,252,.2)"><i class="fas fa-info-circle"></i> Project Details</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-            <div class="form-group" style="margin:0"><label class="form-label">Project Name *</label><input id="proj-name" class="form-input" value="${proj?.name||''}" placeholder="e.g. DevTrack Pro"/></div>
-            <div class="form-group" style="margin:0"><label class="form-label">Project Code *</label><input id="proj-code" class="form-input" value="${proj?.code||''}" placeholder="e.g. DTP-001"/></div>
-            <div class="form-group" style="margin:0"><label class="form-label">Client Name</label><input id="proj-client" class="form-input" value="${proj?.client_name||''}" placeholder="Client company name"/></div>
-            <div class="form-group" style="margin:0"><label class="form-label">Project Type</label>
-              <select id="proj-type" class="form-select">${['development','maintenance','support','consulting'].map(t=>`<option value="${t}" ${proj?.project_type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select></div>
-            <div class="form-group" style="margin:0"><label class="form-label">Start Date *</label><input id="proj-start" class="form-input" type="date" value="${proj?.start_date||''}"/></div>
-            <div class="form-group" style="margin:0"><label class="form-label">End Date *</label><input id="proj-end" class="form-input" type="date" value="${proj?.expected_end_date||''}"/></div>
-            <div class="form-group" style="margin:0"><label class="form-label">Priority</label>
-              <select id="proj-priority" class="form-select">${['critical','high','medium','low'].map(t=>`<option value="${t}" ${proj?.priority===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select></div>
-            <div class="form-group" style="margin:0"><label class="form-label">Status</label>
-              <select id="proj-status" class="form-select">${['active','on_hold','completed','archived','cancelled'].map(t=>`<option value="${t}" ${proj?.status===t?'selected':''}>${t.replace('_',' ').charAt(0).toUpperCase()+t.replace('_',' ').slice(1)}</option>`).join('')}</select></div>
+        <button class="close-btn" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <div class="page-banner" style="margin-bottom:16px">
+          <h2>${proj ? esc(proj.name || 'Edit Project') : 'Create a New Project'}</h2>
+          <p>${proj ? 'Update the project plan, team assignments, and budget without leaving the workspace.' : 'The project record, default Kanban permissions, and starter columns will be created automatically when you save.'}</p>
+          <div class="hero-pills">
+            <span class="hero-pill"><i class="fas fa-info-circle"></i> Details</span>
+            <span class="hero-pill"><i class="fas fa-users"></i> Team</span>
+            <span class="hero-pill"><i class="fas fa-coins"></i> Budget</span>
           </div>
+        </div>
 
-          <!-- Section: Team -->
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6C5FFC;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid rgba(108,95,252,.2)"><i class="fas fa-users"></i> Team Assignment</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-            <div class="form-group" style="margin:0"><label class="form-label">Project Manager *</label>
-              <select id="proj-pm" class="form-select"><option value="">Select PM</option>${pms.map(p=>`<option value="${p.id}" ${proj?.pm_id===p.id?'selected':''}>${p.full_name} (${p.role})</option>`).join('')}</select></div>
-            <div class="form-group" style="margin:0"><label class="form-label">Team Lead</label>
-              <select id="proj-lead" class="form-select"><option value="">None</option>${devs.map(d=>`<option value="${d.id}" ${proj?.team_lead_id===d.id?'selected':''}>${d.full_name}</option>`).join('')}</select></div>
-          </div>
-          <!-- Multi-developer selector -->
-          <div class="form-group">
-            <label class="form-label" style="display:flex;align-items:center;justify-content:space-between">
-              <span><i class="fas fa-code" style="color:#6C5FFC;margin-right:6px"></i>Allocated Developers <span style="font-size:10px;color:var(--text-muted);font-weight:400">(select all developers for this project)</span></span>
-              <span id="dev-sel-count" style="font-size:11px;color:#6C5FFC;font-weight:600">${window._projSelectedDevs.length} selected</span>
-            </label>
-            <!-- Dev list with checkboxes -->
-            <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
-              <div style="padding:8px 12px;background:var(--bg-input);border-bottom:1px solid var(--border)">
-                <input type="text" class="form-input" placeholder="Search developers…" style="margin:0" oninput="filterDevDropdown(this.value)"/>
+        <div style="display:grid;grid-template-columns:minmax(0,1.45fr) minmax(280px,0.85fr);gap:16px">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="card">
+              <div class="card-header">
+                <h3>Project Details</h3>
+                <span style="font-size:12px;color:var(--text-muted)">Required fields are marked *</span>
               </div>
-              <div id="dev-dropdown-list" style="max-height:180px;overflow-y:auto;padding:8px">
-                ${devs.length === 0 ? '<div style="color:var(--text-muted);font-size:12px;padding:8px;text-align:center">No developers found</div>' :
-                devs.map(d => {
-                  const isSel = window._projSelectedDevs.some(s => s.id === d.id)
-                  return `<div data-dev-row="${d.id}" onclick="toggleDevSelection('${d.id}','${d.full_name}','${d.designation||''}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:.15s;border:1px solid ${isSel?'#6C5FFC':'transparent'};background:${isSel?'rgba(108,95,252,0.08)':''};margin-bottom:4px">
-                    <input type="checkbox" data-dev-cb="${d.id}" ${isSel?'checked':''} onchange="toggleDevSelection('${d.id}','${d.full_name}','${d.designation||''}')" onclick="event.stopPropagation()" style="accent-color:#6C5FFC;width:15px;height:15px"/>
-                    <div style="width:28px;height:28px;border-radius:50%;background:${d.avatar_color||'#6C5FFC'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${d.full_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>
-                    <div style="flex:1">
-                      <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${d.full_name}</div>
-                      <div style="font-size:11px;color:var(--text-muted)">${d.designation||'Developer'}</div>
+              <div class="card-body">
+                <div class="grid-2" style="gap:12px">
+                  <div class="form-group"><label class="form-label">Project Name *</label><input id="proj-name" class="form-input" value="${esc(proj?.name||'')}" placeholder="e.g. DevTrack Pro"/></div>
+                  <div class="form-group"><label class="form-label">Project Code *</label><input id="proj-code" class="form-input" value="${esc(proj?.code||'')}" placeholder="e.g. DTP-001"/></div>
+                  <div class="form-group"><label class="form-label">Client Name</label><input id="proj-client" class="form-input" value="${esc(proj?.client_name||'')}" placeholder="Client company name"/></div>
+                  <div class="form-group"><label class="form-label">Project Type</label>
+                    <select id="proj-type" class="form-select">${['development','maintenance','support','consulting'].map(t=>`<option value="${t}" ${proj?.project_type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select></div>
+                  <div class="form-group"><label class="form-label">Start Date *</label><input id="proj-start" class="form-input" type="date" value="${esc(proj?.start_date||'')}"/></div>
+                  <div class="form-group"><label class="form-label">End Date *</label><input id="proj-end" class="form-input" type="date" value="${esc(proj?.expected_end_date||'')}"/></div>
+                  <div class="form-group"><label class="form-label">Priority</label>
+                    <select id="proj-priority" class="form-select">${['critical','high','medium','low'].map(t=>`<option value="${t}" ${proj?.priority===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select></div>
+                  <div class="form-group"><label class="form-label">Status</label>
+                    <select id="proj-status" class="form-select">${['active','on_hold','completed','archived','cancelled'].map(t=>`<option value="${t}" ${proj?.status===t?'selected':''}>${t.replace('_',' ').charAt(0).toUpperCase()+t.replace('_',' ').slice(1)}</option>`).join('')}</select></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header"><h3>Team Assignment</h3></div>
+              <div class="card-body">
+                <div class="grid-2" style="gap:12px;margin-bottom:16px">
+                  <div class="form-group"><label class="form-label">Project Manager *</label>
+                    <select id="proj-pm" class="form-select"><option value="">Select PM</option>${pms.map(p=>`<option value="${p.id}" ${proj?.pm_id===p.id?'selected':''}>${esc(p.full_name)} (${esc(p.role)})</option>`).join('')}</select></div>
+                  <div class="form-group"><label class="form-label">Team Lead</label>
+                    <select id="proj-lead" class="form-select"><option value="">None</option>${devs.map(d=>`<option value="${d.id}" ${proj?.team_lead_id===d.id?'selected':''}>${esc(d.full_name)}</option>`).join('')}</select></div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                    <span><i class="fas fa-code" style="color:#6C5FFC;margin-right:6px"></i>Allocated Developers</span>
+                    <span id="dev-sel-count" style="font-size:11px;color:#6C5FFC;font-weight:600">${window._projSelectedDevs.length} selected</span>
+                  </label>
+                  <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
+                    <div style="padding:8px 12px;background:var(--surface-2);border-bottom:1px solid var(--border)">
+                      <input type="text" class="form-input" placeholder="Search developers…" style="margin:0" oninput="filterDevDropdown(this.value)"/>
                     </div>
-                    ${isSel ? '<i class="fas fa-check-circle" style="color:#6C5FFC;font-size:14px"></i>' : ''}
-                  </div>`
-                }).join('')}
+                    <div id="dev-dropdown-list" style="max-height:180px;overflow-y:auto;padding:8px">
+                      ${devs.length === 0 ? '<div style="color:var(--text-muted);font-size:12px;padding:8px;text-align:center">No developers found</div>' :
+                      devs.map(d => {
+                        const isSel = window._projSelectedDevs.some(s => s.id === d.id)
+                        return `<div data-dev-row="${d.id}" onclick="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||'')}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:.15s;border:1px solid ${isSel?'#6C5FFC':'transparent'};background:${isSel?'rgba(108,95,252,0.08)':''};margin-bottom:4px">
+                          <input type="checkbox" data-dev-cb="${d.id}" ${isSel?'checked':''} onchange="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||'')}')" onclick="event.stopPropagation()" style="accent-color:#6C5FFC;width:15px;height:15px"/>
+                          <div style="width:28px;height:28px;border-radius:50%;background:${d.avatar_color||'#6C5FFC'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${esc((d.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
+                          <div style="flex:1">
+                            <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${esc(d.full_name)}</div>
+                            <div style="font-size:11px;color:var(--text-muted)">${esc(d.designation||'Developer')}</div>
+                          </div>
+                          ${isSel ? '<i class="fas fa-check-circle" style="color:#6C5FFC;font-size:14px"></i>' : ''}
+                        </div>`
+                      }).join('')}
+                    </div>
+                  </div>
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                  <label class="form-label"><i class="fas fa-clock" style="color:#f59e0b;margin-right:6px"></i>Hour Allocation per Developer</label>
+                  <div id="selected-devs-list" style="display:flex;flex-direction:column;gap:8px"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header"><h3>Budget & Notes</h3></div>
+              <div class="card-body">
+                <div class="grid-4" style="gap:12px;margin-bottom:16px">
+                  <div class="form-group"><label class="form-label">Total Hours</label><input id="proj-hours" class="form-input" type="number" value="${proj?.total_allocated_hours||0}"/></div>
+                  <div class="form-group"><label class="form-label">Budget Hours</label><input id="proj-budget" class="form-input" type="number" value="${proj?.estimated_budget_hours||0}"/></div>
+                  <div class="form-group"><label class="form-label">Revenue (₹)</label><input id="proj-revenue" class="form-input" type="number" value="${proj?.revenue||0}"/></div>
+                  <div class="form-group"><label class="form-label">Billable</label>
+                    <select id="proj-billable" class="form-select"><option value="1" ${proj?.billable?'selected':''}>Yes</option><option value="0" ${!proj?.billable?'selected':''}>No</option></select></div>
+                </div>
+                <div class="form-group"><label class="form-label">Description</label><textarea id="proj-desc" class="form-textarea" rows="2">${esc(proj?.description||'')}</textarea></div>
+                <div class="form-group" style="margin-bottom:0"><label class="form-label">Remarks</label><textarea id="proj-remarks" class="form-textarea" rows="2">${esc(proj?.remarks||'')}</textarea></div>
               </div>
             </div>
           </div>
-          <!-- Selected devs with hour allocation -->
-          <div class="form-group">
-            <label class="form-label"><i class="fas fa-clock" style="color:#f59e0b;margin-right:6px"></i>Hour Allocation per Developer</label>
-            <div id="selected-devs-list" style="display:flex;flex-direction:column;gap:8px"></div>
-          </div>
 
-          <!-- Section: Budget -->
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6C5FFC;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid rgba(108,95,252,.2)"><i class="fas fa-coins"></i> Budget & Hours</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px">
-            <div class="form-group" style="margin:0"><label class="form-label">Total Hours</label><input id="proj-hours" class="form-input" type="number" value="${proj?.total_allocated_hours||0}"/></div>
-            <div class="form-group" style="margin:0"><label class="form-label">Budget Hours</label><input id="proj-budget" class="form-input" type="number" value="${proj?.estimated_budget_hours||0}"/></div>
-            <div class="form-group" style="margin:0"><label class="form-label">Revenue (₹)</label><input id="proj-revenue" class="form-input" type="number" value="${proj?.revenue||0}"/></div>
-            <div class="form-group" style="margin:0"><label class="form-label">Billable</label>
-              <select id="proj-billable" class="form-select"><option value="1" ${proj?.billable?'selected':''}>Yes</option><option value="0" ${!proj?.billable?'selected':''}>No</option></select></div>
-          </div>
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="card">
+              <div class="card-header"><h3>Creation Guide</h3></div>
+              <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+                <div class="selection-chip"><i class="fas fa-check"></i> Project, Kanban permissions, and default columns are created on save.</div>
+                <div class="selection-chip"><i class="fas fa-user-tie"></i> Assign PM, team lead, and developers before creating the project.</div>
+                <div class="selection-chip"><i class="fas fa-calendar"></i> Start and end dates are validated before submit.</div>
+                <div class="selection-chip"><i class="fas fa-coins"></i> Hours must be greater than zero.</div>
+              </div>
+            </div>
 
-          <div class="form-group"><label class="form-label">Description</label><textarea id="proj-desc" class="form-textarea" rows="2">${proj?.description||''}</textarea></div>
-          <div class="form-group"><label class="form-label">Remarks</label><textarea id="proj-remarks" class="form-textarea" rows="2">${proj?.remarks||''}</textarea></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-outline" onclick="document.getElementById('proj-modal').remove()">Cancel</button>
-          <button class="btn btn-primary" onclick="saveProject('${proj?.id||''}')"><i class="fas fa-save"></i> ${proj ? 'Update' : 'Create'} Project</button>
+            <div class="card">
+              <div class="card-header"><h3>Snapshot</h3></div>
+              <div class="card-body" style="display:grid;gap:10px">
+                <div style="padding:12px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border)">
+                  <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;font-weight:700">Project</div>
+                  <div style="font-size:14px;font-weight:700;margin-top:4px">${proj ? esc(proj.name || '') : 'New project draft'}</div>
+                  <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${proj ? esc(proj.code || '') : 'Will be available in Projects after save'}</div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+                  <div style="padding:10px 12px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border)">
+                    <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase">Team</div>
+                    <div style="font-size:13px;font-weight:700;margin-top:3px">${window._projSelectedDevs.length} devs</div>
+                  </div>
+                  <div style="padding:10px 12px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border)">
+                    <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase">Dates</div>
+                    <div style="font-size:13px;font-weight:700;margin-top:3px">${proj?.start_date ? esc(proj.start_date) : 'Not set'}</div>
+                  </div>
+                </div>
+                <div style="padding:12px;border-radius:12px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.14);color:var(--text-secondary);font-size:13px;line-height:1.6">
+                  Default kanban access and starter columns are seeded automatically when the project is saved.
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    `
-    document.body.appendChild(modal)
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveProject('${proj?.id||''}')"><i class="fas fa-save"></i> ${proj ? 'Update' : 'Create'} Project</button>
+      </div>
+    `, 'modal-xl')
     renderSelectedDevs()
-    // Update count when devs are toggled
-    setInterval(() => {
-      const cnt = document.getElementById('dev-sel-count')
-      if (cnt) cnt.textContent = window._projSelectedDevs.length + ' selected'
-    }, 300)
   }
   fetchAndOpen()
 }
@@ -634,8 +693,21 @@ async function saveProject(id) {
     }
 
     utils.toast(`Project ${id ? 'updated' : 'created'} successfully!`, 'success')
-    document.getElementById('proj-modal')?.remove()
+    closeModal()
     window._projSelectedDevs = []
+    const currentPage = window.Router?.current?.page
+    if (currentPage === 'projects-list') {
+      const listEl = document.getElementById('page-projects-list')
+      if (listEl) {
+        listEl.dataset.loaded = ''
+        loadPage('projects-list', listEl)
+        return
+      }
+    }
+    if (window.Router?.navigate) {
+      Router.navigate('projects-list')
+      return
+    }
     router.navigate('projects')
   } catch (e) { utils.toast('Failed: ' + e.message, 'error') }
 }

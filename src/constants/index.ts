@@ -25,6 +25,14 @@ export const USER_ROLES = [
   ROLES.CLIENT,
 ] as const
 
+// Roles that can be created through the internal staff creation flows
+export const STAFF_CREATE_ROLES = [
+  ROLES.PM,
+  ROLES.PC,
+  ROLES.TEAM,
+  ROLES.DEVELOPER,
+] as const
+
 // Project Status
 export const PROJECT_STATUS = {
   ACTIVE: 'active',

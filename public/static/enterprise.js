@@ -29,6 +29,15 @@ function normalizePageSize(limit, fallback = 10) {
   return ENTERPRISE_PAGE_SIZE_OPTIONS.includes(next) ? next : fallback
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 const pageSizeRegistry = {
   'projects-list': {
     getPage: () => _projectsListPage,
@@ -220,6 +229,9 @@ function statCard(label, value, icon, color, sub='') {
 
 function showEditProjectModal(projectId) {
   return openProjectModal(projectId)
+}
+function showCreateProjectModal() {
+  return openProjectModal()
 }
 
 function goProjectsPage(page) {
@@ -470,7 +482,7 @@ async function renderProjectsList(el) {
       <div><h1 class="page-title">Projects</h1><p class="page-subtitle">${pagination.total} total projects</p></div>
       <div class="page-actions">
         <div class="search-wrap"><i class="fas fa-search"></i><input class="search-bar" placeholder="Search projects…" oninput="filterTable(this.value,'proj-table')"/></div>
-        ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="showCreateProjectModal()"><i class="fas fa-plus"></i>New Project</button>`:''}
+        ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i>New Project</button>`:''}
       </div>
     </div>
     <div class="card">
@@ -1823,6 +1835,7 @@ async function renderBillingAdmin(el) {
                 <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#f43f5e':'#94a3b8'}">${fmtDate(i.due_date)}</td>
                 <td>
                   <div style="display:flex;gap:4px">
+                    ${_user.role==='admin'?`<button class="btn btn-xs btn-outline" title="Send Invoice" aria-label="Send Invoice" onclick="showSendInvoiceModal('${i.id}')"><i class="fas fa-paper-plane"></i></button>`:''}
                     ${_user.role==='admin'&&i.status!=='paid'?`<button class="btn btn-xs btn-success" onclick="showMarkPaidModal('${i.id}','${i.invoice_number}',${i.total_amount})"><i class="fas fa-check"></i>Mark Paid</button>`:''}
                     ${_user.role==='admin'?`<button class="btn btn-xs btn-outline" onclick="showEditInvoiceModal('${i.id}')"><i class="fas fa-edit"></i></button>`:''}
                   </div>
@@ -1929,6 +1942,75 @@ async function showEditInvoiceModal(id) {
   }
 }
 
+async function showSendInvoiceModal(id) {
+  try {
+    const res = await API.get(`/invoices/${id}`)
+    const inv = res.invoice || res.data || res
+    const defaultTo = escapeHtml(inv.client_email || '')
+    const defaultSubject = escapeHtml(`Invoice ${inv.invoice_number} from ${inv.company_name || 'DevPortal'}`)
+    const previewAmount = fmtCurrency(inv.total_amount || 0)
+    const previewDue = fmtDate(inv.due_date)
+    const previewProject = escapeHtml(inv.project_name || '—')
+    const previewClient = escapeHtml(inv.company_name || '—')
+
+    showModal(`
+    <div class="modal-header"><h3>Send Invoice</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div style="background:linear-gradient(135deg, rgba(99,102,241,.12), rgba(16,185,129,.10));border:1px solid rgba(99,102,241,.18);border-radius:16px;padding:16px 18px;margin-bottom:18px">
+        <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.12em">Invoice Preview</div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px">
+          <div>
+            <div style="font-size:11px;color:#64748b">Invoice</div>
+            <div style="font-weight:700;color:#e2e8f0">${escapeHtml(inv.invoice_number)}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#64748b">Amount</div>
+            <div style="font-weight:700;color:#10b981">${previewAmount}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#64748b">Client</div>
+            <div style="font-weight:700;color:#e2e8f0">${previewClient}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#64748b">Project</div>
+            <div style="font-weight:700;color:#e2e8f0">${previewProject}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#64748b">Due Date</div>
+            <div style="font-weight:700;color:#e2e8f0">${previewDue}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#64748b">Status</div>
+            <div style="font-weight:700;color:#e2e8f0">${escapeHtml(String(inv.status || 'pending').replace('_', ' '))}</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client Email *</label>
+        <input class="form-input" id="se-to" type="email" value="${defaultTo}" placeholder="client@company.com"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">CC</label>
+        <input class="form-input" id="se-cc" placeholder="finance@company.com, accounts@company.com"/>
+        <div style="font-size:12px;color:#64748b;margin-top:6px">Comma-separated emails supported.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Subject</label>
+        <input class="form-input" id="se-subject" value="${defaultSubject}" placeholder="Invoice subject"/>
+      </div>
+      <div style="font-size:13px;color:#94a3b8;line-height:1.6">
+        The invoice will be sent in the same billing format used by the system email template.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doSendInvoice('${id}')"><i class="fas fa-paper-plane"></i>Send Invoice</button>
+    </div>`, 'modal-lg')
+  } catch (e) {
+    toast('Failed to load invoice: ' + e.message, 'error')
+  }
+}
+
 async function doEditInvoice(id) {
   const body = {
     title: document.getElementById('ei-title')?.value.trim(),
@@ -1945,6 +2027,24 @@ async function doEditInvoice(id) {
   try {
     await API.put(`/invoices/${id}`, body)
     toast('Invoice updated!', 'success')
+    closeModal()
+    const el = document.getElementById('page-billing-admin')
+    if (el) { el.dataset.loaded = ''; loadPage('billing-admin', el) }
+  } catch (e) {
+    toast(e.message, 'error')
+  }
+}
+
+async function doSendInvoice(id) {
+  const body = {
+    to: document.getElementById('se-to')?.value.trim(),
+    cc: document.getElementById('se-cc')?.value.trim(),
+    subject: document.getElementById('se-subject')?.value.trim(),
+  }
+  if (!body.to) return toast('Client email is required', 'error')
+  try {
+    await API.post(`/invoices/${id}/send-email`, body)
+    toast('Invoice email sent!', 'success')
     closeModal()
     const el = document.getElementById('page-billing-admin')
     if (el) { el.dataset.loaded = ''; loadPage('billing-admin', el) }

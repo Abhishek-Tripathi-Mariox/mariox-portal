@@ -517,6 +517,12 @@ function goInvitesPage(page) {
 }
 
 function openInviteUserModal() {
+  const inviteRoleOptions = [
+    ['developer', 'Developer'],
+    ['pm', 'PM'],
+    ['pc', 'PC'],
+    ['team', 'Team'],
+  ]
   pxModal({
     title: 'Invite a new user',
     body: `
@@ -524,9 +530,7 @@ function openInviteUserModal() {
       <div class="form-group"><label class="form-label">Email *</label><input id="inv-email" type="email" class="form-input" placeholder="jane@company.com"/></div>
       <div class="form-group"><label class="form-label">Role *</label>
         <select id="inv-role" class="form-select">
-          <option value="developer">Developer</option>
-          <option value="team">Team Member</option>
-          ${_user.role === 'admin' ? '<option value="pm">Project Manager</option><option value="pc">Project Coordinator</option>' : ''}
+          ${inviteRoleOptions.map(([value, label]) => `<option value="${value}" ${value === 'developer' ? 'selected' : ''}>${label}</option>`).join('')}
         </select>
       </div>
       <div style="font-size:11px;color:var(--text-muted);padding:8px;background:rgba(99,102,241,.08);border-radius:6px;border-left:3px solid var(--primary)">

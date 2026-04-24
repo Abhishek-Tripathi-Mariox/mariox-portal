@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { generateId } from '../utils/helpers'
+import { STAFF_CREATE_ROLES } from '../constants'
 
 type Bindings = { DB: D1Database }
 type Variables = { user: any }
@@ -30,8 +31,8 @@ invites.post('/', authMiddleware, requireRole('admin', 'pm'), async (c) => {
     const { email, full_name, role } = body
 
     if (!email || !full_name) return c.json({ error: 'email and full_name required' }, 400)
-    if (!['developer', 'team', 'pm', 'pc'].includes(role)) {
-      return c.json({ error: 'role must be developer, team, pm or pc' }, 400)
+    if (!STAFF_CREATE_ROLES.includes(role)) {
+      return c.json({ error: `role must be one of: ${STAFF_CREATE_ROLES.join(', ')}` }, 400)
     }
 
     // Check if already a user

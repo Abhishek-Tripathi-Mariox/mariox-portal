@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { generateId } from '../utils/helpers'
-import { USER_ROLES } from '../constants'
+import { STAFF_CREATE_ROLES } from '../constants'
 
 type Bindings = { DB: D1Database }
 type Variables = { user: any }
@@ -108,8 +108,8 @@ users.post('/', requireRole('admin'), async (c) => {
     if (!email || !fullName || !password) {
       return c.json({ error: 'Full name, email and password are required' }, 400)
     }
-    if (!USER_ROLES.includes(role as any)) {
-      return c.json({ error: `Role must be one of: ${USER_ROLES.join(', ')}` }, 400)
+    if (!STAFF_CREATE_ROLES.includes(role as any)) {
+      return c.json({ error: `Role must be one of: ${STAFF_CREATE_ROLES.join(', ')}` }, 400)
     }
 
     const id = generateId('user')
