@@ -108,48 +108,55 @@ function openDeveloperModal(dev = null) {
     ['pc', 'PC'],
     ['team', 'Team'],
   ]
+  const isEdit = !!(dev && dev.id)
   const selectedRole = dev?.role || 'developer'
-  const modal = document.createElement('div')
-  modal.className = 'modal-overlay'
-  modal.id = 'dev-modal'
-  modal.innerHTML = `
-    <div class="modal-box lg">
-      <div class="modal-header">
-        <h2 style="font-size:16px;font-weight:700"><i class="fas fa-user-plus" style="color:var(--primary-light);margin-right:8px"></i>${dev ? 'Edit' : 'Add'} User</h2>
-        <button onclick="document.getElementById('dev-modal').remove()" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer"><i class="fas fa-times"></i></button>
-      </div>
-      <div class="modal-body">
-        <div class="grid-2">
-          <div class="form-group"><label class="form-label">Full Name *</label><input id="dev-name" class="form-input" value="${dev?.full_name||''}" placeholder="Rahul Sharma"/></div>
-          <div class="form-group"><label class="form-label">Email *</label><input id="dev-email" class="form-input" type="email" value="${dev?.email||''}" placeholder="rahul@company.com"/></div>
-          <div class="form-group"><label class="form-label">Phone</label><input id="dev-phone" class="form-input" value="${dev?.phone||''}" placeholder="+91-9876543210"/></div>
-          <div class="form-group"><label class="form-label">Designation</label><input id="dev-designation" class="form-input" value="${dev?.designation||''}" placeholder="Senior Developer"/></div>
-          <div class="form-group"><label class="form-label">Role</label>
-            <select id="dev-role" class="form-select">
-              ${roleOptions.map(([value, label]) => `<option value="${value}" ${selectedRole === value ? 'selected' : ''}>${label}</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group"><label class="form-label">Joining Date</label><input id="dev-joining" class="form-input" type="date" value="${dev?.joining_date||''}"/></div>
-          <div class="form-group"><label class="form-label">Daily Work Hours</label><input id="dev-daily-hours" class="form-input" type="number" value="${dev?.daily_work_hours||8}" min="1" max="12"/></div>
-          <div class="form-group"><label class="form-label">Monthly Available Hours</label><input id="dev-monthly-hours" class="form-input" type="number" value="${dev?.monthly_available_hours||160}"/></div>
-          <div class="form-group"><label class="form-label">Hourly Cost (₹)</label><input id="dev-hourly-cost" class="form-input" type="number" value="${dev?.hourly_cost||0}"/></div>
-          <div class="form-group"><label class="form-label">Avatar Color</label><input id="dev-color" class="form-input" type="color" value="${dev?.avatar_color||'#6366f1'}" style="height:40px;cursor:pointer"/></div>
+  const tech = dev?.tech_stack ? (typeof dev.tech_stack === 'string' ? (() => { try { return JSON.parse(dev.tech_stack) } catch { return [] } })() : dev.tech_stack) : []
+  const skills = dev?.skill_tags ? (typeof dev.skill_tags === 'string' ? (() => { try { return JSON.parse(dev.skill_tags) } catch { return [] } })() : dev.skill_tags) : []
+
+  const html = `
+    <div class="modal-header">
+      <h3><i class="fas fa-user-plus" style="color:var(--primary-light);margin-right:8px"></i>${isEdit ? 'Edit' : 'Add'} User</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="form-group"><label class="form-label">Full Name *</label><input id="dev-name" class="form-input" value="${dev?.full_name||''}" placeholder="Rahul Sharma"/></div>
+        <div class="form-group"><label class="form-label">Email *</label><input id="dev-email" class="form-input" type="email" value="${dev?.email||''}" placeholder="rahul@company.com"/></div>
+        <div class="form-group"><label class="form-label">Phone</label><input id="dev-phone" class="form-input" value="${dev?.phone||''}" placeholder="+91-9876543210"/></div>
+        <div class="form-group"><label class="form-label">Designation</label><input id="dev-designation" class="form-input" value="${dev?.designation||''}" placeholder="Senior Developer"/></div>
+        <div class="form-group"><label class="form-label">Role</label>
+          <select id="dev-role" class="form-select">
+            ${roleOptions.map(([value, label]) => `<option value="${value}" ${selectedRole === value ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
         </div>
-        <div class="form-group"><label class="form-label">Tech Stack (comma separated)</label>
-          <input id="dev-tech" class="form-input" value="${dev?.tech_stack ? (typeof dev.tech_stack==='string'?JSON.parse(dev.tech_stack):dev.tech_stack).join(', ') : ''}" placeholder="React, Node.js, PostgreSQL"/></div>
-        <div class="form-group"><label class="form-label">Skill Tags (comma separated)</label>
-          <input id="dev-skills" class="form-input" value="${dev?.skill_tags ? (typeof dev.skill_tags==='string'?JSON.parse(dev.skill_tags):dev.skill_tags).join(', ') : ''}" placeholder="Backend, API, DevOps"/></div>
-        <div class="form-group"><label class="form-label">Remarks</label>
-          <textarea id="dev-remarks" class="form-textarea" rows="2" placeholder="Additional notes...">${dev?.remarks||''}</textarea></div>
-        ${!dev ? `<div class="form-group"><label class="form-label">Password</label><input id="dev-password" class="form-input" type="password" placeholder="Enter temporary password" /></div>` : ''}
+        <div class="form-group"><label class="form-label">Joining Date</label><input id="dev-joining" class="form-input" type="date" value="${dev?.joining_date||''}"/></div>
+        <div class="form-group"><label class="form-label">Daily Work Hours</label><input id="dev-daily-hours" class="form-input" type="number" value="${dev?.daily_work_hours||8}" min="1" max="12"/></div>
+        <div class="form-group"><label class="form-label">Monthly Available Hours</label><input id="dev-monthly-hours" class="form-input" type="number" value="${dev?.monthly_available_hours||160}"/></div>
+        <div class="form-group"><label class="form-label">Hourly Cost (₹)</label><input id="dev-hourly-cost" class="form-input" type="number" value="${dev?.hourly_cost||0}"/></div>
+        <div class="form-group"><label class="form-label">Avatar Color</label><input id="dev-color" class="form-input" type="color" value="${dev?.avatar_color||'#6366f1'}" style="height:40px;cursor:pointer;padding:4px"/></div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="document.getElementById('dev-modal').remove()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveDeveloper('${dev?.id||''}')"><i class="fas fa-save"></i> ${dev ? 'Update' : 'Create'} User</button>
-      </div>
+      <div class="form-group"><label class="form-label">Tech Stack (comma separated)</label>
+        <input id="dev-tech" class="form-input" value="${Array.isArray(tech) ? tech.join(', ') : ''}" placeholder="React, Node.js, PostgreSQL"/></div>
+      <div class="form-group"><label class="form-label">Skill Tags (comma separated)</label>
+        <input id="dev-skills" class="form-input" value="${Array.isArray(skills) ? skills.join(', ') : ''}" placeholder="Backend, API, DevOps"/></div>
+      <div class="form-group"><label class="form-label">Remarks</label>
+        <textarea id="dev-remarks" class="form-textarea" rows="2" placeholder="Additional notes...">${dev?.remarks||''}</textarea></div>
+      ${!isEdit ? `<div class="form-group"><label class="form-label">Password *</label><input id="dev-password" class="form-input" type="password" placeholder="Temporary password"/></div>` : ''}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDeveloper('${dev?.id||''}')"><i class="fas fa-save"></i> ${isEdit ? 'Update' : 'Create'} User</button>
     </div>
   `
-  document.body.appendChild(modal)
+  if (typeof showModal === 'function') {
+    showModal(html, 'modal-lg')
+  } else {
+    const modal = document.createElement('div')
+    modal.className = 'modal-overlay'
+    modal.id = 'dev-modal'
+    modal.innerHTML = `<div class="modal modal-lg">${html}</div>`
+    document.body.appendChild(modal)
+  }
 }
 
 async function saveDeveloper(id) {
@@ -174,8 +181,11 @@ async function saveDeveloper(id) {
     if (id) await API.put(`/users/${id}`, payload)
     else await API.post('/users', payload)
     utils.toast(`User ${id ? 'updated' : 'created'} successfully!`, 'success')
+    if (typeof closeModal === 'function') closeModal()
     document.getElementById('dev-modal')?.remove()
     router.navigate('developers')
+    const teamEl = document.getElementById('page-team-overview')
+    if (teamEl && typeof loadPage === 'function') { teamEl.dataset.loaded = ''; loadPage('team-overview', teamEl) }
   } catch (e) { utils.toast('Failed: ' + (e.response?.data?.error || e.message), 'error') }
 }
 
@@ -439,7 +449,7 @@ function renderSelectedDevs() {
       <div style="width:28px;height:28px;border-radius:50%;background:#6C5FFC;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${escapeHtml(d.name.split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:600;color:var(--text-primary)">${escapeHtml(d.name)}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(d.designation||'Developer')}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(d.designation||'staff')}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
         <input type="number" value="${d.hours}" min="0" placeholder="Hrs" style="width:65px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:12px" oninput="updateDevHours('${d.id}',this.value)" title="Allocated hours"/>
@@ -470,20 +480,30 @@ function openProjectModal(id = null) {
       const devsRes = await API.get(`/projects/${id}/developers`).catch(() => ({ developers: [] }))
       currentDevs = devsRes.developers || []
     }
-    const [devsRes, pmsRes] = await Promise.all([
+    const [devsRes, pmsRes, adminRes, clientsRes, teamsRes, teamUsersRes] = await Promise.all([
       API.get('/users?role=developer'),
-      API.get('/users?role=pm')
+      API.get('/users?role=pm'),
+      API.get('/users?role=admin'),
+      API.get('/clients').catch(() => ({ clients: [] })),
+      API.get('/project-teams').catch(() => ({ teams: [] })),
+      API.get('/users?role=team').catch(() => ({ users: [] })),
     ])
     const devs = devsRes.users || devsRes.data || []
-    const adminRes = await API.get('/users?role=admin')
     const pms = [...(pmsRes.users || pmsRes.data || []), ...(adminRes.users || adminRes.data || [])]
+    const clients = clientsRes.clients || clientsRes.data || []
+    const teams = teamsRes.teams || teamsRes.data || []
+    const teamUsers = teamUsersRes.users || teamUsersRes.data || []
     const esc = (value = '') => escapeHtml(value)
+    const initialAssignment = (proj?.assignment_type === 'external') ? 'external' : 'in_house'
+    window._projAssignmentType = initialAssignment
+    window._projExternalTeamId = proj?.external_team_id || ''
+    window._projExternalAssigneeType = proj?.external_assignee_type || 'team'
 
     // Pre-select current developers
     window._projSelectedDevs = currentDevs.map(d => ({
       id: d.user_id,
       name: d.full_name || d.name,
-      designation: d.designation || 'Developer',
+      designation: d.designation || d.user_role || 'Developer',
       hours: d.allocated_hours || 0
     }))
     showModal(`
@@ -519,13 +539,15 @@ function openProjectModal(id = null) {
                 <div class="grid-2" style="gap:12px">
                   <div class="form-group"><label class="form-label">Project Name *</label><input id="proj-name" class="form-input" value="${esc(proj?.name||'')}" placeholder="e.g. DevTrack Pro"/></div>
                   <div class="form-group"><label class="form-label">Project Code *</label><input id="proj-code" class="form-input" value="${esc(proj?.code||'')}" placeholder="e.g. DTP-001"/></div>
-                  <div class="form-group"><label class="form-label">Client Name</label><input id="proj-client" class="form-input" value="${esc(proj?.client_name||'')}" placeholder="Client company name"/></div>
+                  <div class="form-group"><label class="form-label">Client</label>
+                    <select id="proj-client-id" class="form-select">
+                      <option value="">— Internal / None —</option>
+                      ${clients.map(c=>`<option value="${esc(c.id)}" data-name="${esc(c.company_name||c.contact_name||'')}" ${proj?.client_id===c.id?'selected':''}>${esc(c.company_name||c.contact_name||c.email)}</option>`).join('')}
+                    </select></div>
                   <div class="form-group"><label class="form-label">Project Type</label>
                     <select id="proj-type" class="form-select">${['development','maintenance','support','consulting'].map(t=>`<option value="${t}" ${proj?.project_type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select></div>
                   <div class="form-group"><label class="form-label">Start Date *</label><input id="proj-start" class="form-input" type="date" value="${esc(proj?.start_date||'')}"/></div>
-                  <div class="form-group"><label class="form-label">End Date *</label><input id="proj-end" class="form-input" type="date" value="${esc(proj?.expected_end_date||'')}"/></div>
-                  <div class="form-group"><label class="form-label">Priority</label>
-                    <select id="proj-priority" class="form-select">${['critical','high','medium','low'].map(t=>`<option value="${t}" ${proj?.priority===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select></div>
+                  <div class="form-group"><label class="form-label">End Date</label><input id="proj-end" class="form-input" type="date" value="${esc(proj?.expected_end_date||'')}"/></div>
                   <div class="form-group"><label class="form-label">Status</label>
                     <select id="proj-status" class="form-select">${['active','on_hold','completed','archived','cancelled'].map(t=>`<option value="${t}" ${proj?.status===t?'selected':''}>${t.replace('_',' ').charAt(0).toUpperCase()+t.replace('_',' ').slice(1)}</option>`).join('')}</select></div>
                 </div>
@@ -539,37 +561,68 @@ function openProjectModal(id = null) {
                   <div class="form-group"><label class="form-label">Project Manager *</label>
                     <select id="proj-pm" class="form-select"><option value="">Select PM</option>${pms.map(p=>`<option value="${p.id}" ${proj?.pm_id===p.id?'selected':''}>${esc(p.full_name)} (${esc(p.role)})</option>`).join('')}</select></div>
                   <div class="form-group"><label class="form-label">Team Lead</label>
-                    <select id="proj-lead" class="form-select"><option value="">None</option>${devs.map(d=>`<option value="${d.id}" ${proj?.team_lead_id===d.id?'selected':''}>${esc(d.full_name)}</option>`).join('')}</select></div>
+                    <select id="proj-lead" class="form-select"><option value="">None</option>${devs.map(d=>`<option value="${d.id}" ${proj?.team_lead_id===d.id?'selected':''}>${esc(d.full_name)} (${esc(d.role || d.designation || 'staff')})</option>`).join('')}</select></div>
                 </div>
+
                 <div class="form-group">
-                  <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-                    <span><i class="fas fa-code" style="color:#6C5FFC;margin-right:6px"></i>Allocated Developers</span>
-                    <span id="dev-sel-count" style="font-size:11px;color:#6C5FFC;font-weight:600">${window._projSelectedDevs.length} selected</span>
-                  </label>
-                  <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
-                    <div style="padding:8px 12px;background:var(--surface-2);border-bottom:1px solid var(--border)">
-                      <input type="text" class="form-input" placeholder="Search developers…" style="margin:0" oninput="filterDevDropdown(this.value)"/>
-                    </div>
-                    <div id="dev-dropdown-list" style="max-height:180px;overflow-y:auto;padding:8px">
-                      ${devs.length === 0 ? '<div style="color:var(--text-muted);font-size:12px;padding:8px;text-align:center">No developers found</div>' :
-                      devs.map(d => {
-                        const isSel = window._projSelectedDevs.some(s => s.id === d.id)
-                        return `<div data-dev-row="${d.id}" onclick="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||'')}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:.15s;border:1px solid ${isSel?'#6C5FFC':'transparent'};background:${isSel?'rgba(108,95,252,0.08)':''};margin-bottom:4px">
-                          <input type="checkbox" data-dev-cb="${d.id}" ${isSel?'checked':''} onchange="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||'')}')" onclick="event.stopPropagation()" style="accent-color:#6C5FFC;width:15px;height:15px"/>
-                          <div style="width:28px;height:28px;border-radius:50%;background:${d.avatar_color||'#6C5FFC'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${esc((d.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
-                          <div style="flex:1">
-                            <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${esc(d.full_name)}</div>
-                            <div style="font-size:11px;color:var(--text-muted)">${esc(d.designation||'Developer')}</div>
-                          </div>
-                          ${isSel ? '<i class="fas fa-check-circle" style="color:#6C5FFC;font-size:14px"></i>' : ''}
-                        </div>`
-                      }).join('')}
-                    </div>
+                  <label class="form-label">Assignment Type *</label>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button type="button" id="proj-assign-inhouse" onclick="setProjectAssignmentType('in_house')" class="btn ${initialAssignment==='in_house'?'btn-primary':'btn-outline'}" style="flex:1;min-width:140px">
+                      <i class="fas fa-building"></i> In-house
+                    </button>
+                    <button type="button" id="proj-assign-external" onclick="setProjectAssignmentType('external')" class="btn ${initialAssignment==='external'?'btn-primary':'btn-outline'}" style="flex:1;min-width:140px">
+                      <i class="fas fa-users-cog"></i> External
+                    </button>
                   </div>
                 </div>
-                <div class="form-group" style="margin-bottom:0">
-                  <label class="form-label"><i class="fas fa-clock" style="color:#f59e0b;margin-right:6px"></i>Hour Allocation per Developer</label>
-                  <div id="selected-devs-list" style="display:flex;flex-direction:column;gap:8px"></div>
+
+                <div id="proj-assign-inhouse-panel" style="display:${initialAssignment==='in_house'?'block':'none'}">
+                  <div class="form-group">
+                    <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                      <span><i class="fas fa-code" style="color:#6C5FFC;margin-right:6px"></i>Allocated Developers</span>
+                      <span id="dev-sel-count" style="font-size:11px;color:#6C5FFC;font-weight:600">${window._projSelectedDevs.length} selected</span>
+                    </label>
+                    <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
+                      <div style="padding:8px 12px;background:var(--surface-2);border-bottom:1px solid var(--border)">
+                        <input type="text" class="form-input" placeholder="Search developers…" style="margin:0" oninput="filterDevDropdown(this.value)"/>
+                      </div>
+                      <div id="dev-dropdown-list" style="max-height:180px;overflow-y:auto;padding:8px">
+                        ${devs.length === 0 ? '<div style="color:var(--text-muted);font-size:12px;padding:8px;text-align:center">No developers found</div>' :
+                        devs.map(d => {
+                          const isSel = window._projSelectedDevs.some(s => s.id === d.id)
+                          return `<div data-dev-row="${d.id}" onclick="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||d.role||'')}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:.15s;border:1px solid ${isSel?'#6C5FFC':'transparent'};background:${isSel?'rgba(108,95,252,0.08)':''};margin-bottom:4px">
+                            <input type="checkbox" data-dev-cb="${d.id}" ${isSel?'checked':''} onchange="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||d.role||'')}')" onclick="event.stopPropagation()" style="accent-color:#6C5FFC;width:15px;height:15px"/>
+                            <div style="width:28px;height:28px;border-radius:50%;background:${d.avatar_color||'#6C5FFC'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${esc((d.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
+                            <div style="flex:1">
+                              <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${esc(d.full_name)}</div>
+                              <div style="font-size:11px;color:var(--text-muted)">${esc(d.designation||d.role||'staff')}</div>
+                            </div>
+                            ${isSel ? '<i class="fas fa-check-circle" style="color:#6C5FFC;font-size:14px"></i>' : ''}
+                          </div>`
+                        }).join('')}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label"><i class="fas fa-clock" style="color:#f59e0b;margin-right:6px"></i>Hour Allocation per Developer</label>
+                    <div id="selected-devs-list" style="display:flex;flex-direction:column;gap:8px"></div>
+                  </div>
+                </div>
+
+                <div id="proj-assign-external-panel" style="display:${initialAssignment==='external'?'block':'none'}">
+                  <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label"><i class="fas fa-users-cog" style="color:#6C5FFC;margin-right:6px"></i>Select External Team / Member *</label>
+                    <select id="proj-external-team" class="form-select">
+                      <option value="">— Select —</option>
+                      ${teams.length ? `<optgroup label="Project Teams">
+                        ${teams.map(t=>`<option value="${esc(t.id)}" data-kind="team" ${window._projExternalTeamId===t.id && window._projExternalAssigneeType==='team'?'selected':''}>${esc(t.name)}${t.member_count?` · ${t.member_count} members`:''}${t.lead_name?` · Lead: ${esc(t.lead_name)}`:''}</option>`).join('')}
+                      </optgroup>` : ''}
+                      ${teamUsers.length ? `<optgroup label="Team Members (role: team)">
+                        ${teamUsers.map(u=>`<option value="${esc(u.id)}" data-kind="user" ${window._projExternalTeamId===u.id && window._projExternalAssigneeType==='user'?'selected':''}>${esc(u.full_name)}${u.designation?` · ${esc(u.designation)}`:''}</option>`).join('')}
+                      </optgroup>` : ''}
+                    </select>
+                    ${teams.length===0 && teamUsers.length===0 ? '<div style="color:var(--text-muted);font-size:12px;margin-top:6px">No external teams or team members available.</div>' : ''}
+                  </div>
                 </div>
               </div>
             </div>
@@ -646,17 +699,48 @@ function filterDevDropdown(query) {
   })
 }
 
+function setProjectAssignmentType(type) {
+  if (type !== 'in_house' && type !== 'external') return
+  window._projAssignmentType = type
+  const inHousePanel = document.getElementById('proj-assign-inhouse-panel')
+  const externalPanel = document.getElementById('proj-assign-external-panel')
+  if (inHousePanel) inHousePanel.style.display = type === 'in_house' ? 'block' : 'none'
+  if (externalPanel) externalPanel.style.display = type === 'external' ? 'block' : 'none'
+  const inBtn = document.getElementById('proj-assign-inhouse')
+  const exBtn = document.getElementById('proj-assign-external')
+  if (inBtn) {
+    inBtn.classList.toggle('btn-primary', type === 'in_house')
+    inBtn.classList.toggle('btn-outline', type !== 'in_house')
+  }
+  if (exBtn) {
+    exBtn.classList.toggle('btn-primary', type === 'external')
+    exBtn.classList.toggle('btn-outline', type !== 'external')
+  }
+}
+
 async function saveProject(id) {
   try {
+    const clientSelect = document.getElementById('proj-client-id')
+    const clientOpt = clientSelect?.selectedOptions?.[0]
+    const assignmentType = window._projAssignmentType === 'external' ? 'external' : 'in_house'
+    const externalSelect = document.getElementById('proj-external-team')
+    const externalOpt = externalSelect?.selectedOptions?.[0]
+    const externalTeamId = assignmentType === 'external' ? (externalSelect?.value || '') : ''
+    const externalAssigneeType = assignmentType === 'external'
+      ? (externalOpt?.dataset?.kind || 'team')
+      : null
     const payload = {
       name: document.getElementById('proj-name').value.trim(),
       code: document.getElementById('proj-code').value.trim(),
-      client_name: document.getElementById('proj-client').value.trim(),
+      client_id: clientSelect?.value || null,
+      client_name: clientOpt?.dataset?.name || null,
       project_type: document.getElementById('proj-type').value,
       start_date: document.getElementById('proj-start').value,
-      expected_end_date: document.getElementById('proj-end').value,
-      priority: document.getElementById('proj-priority').value,
+      expected_end_date: document.getElementById('proj-end').value || null,
       status: document.getElementById('proj-status').value,
+      assignment_type: assignmentType,
+      external_team_id: externalTeamId || null,
+      external_assignee_type: externalAssigneeType,
       total_allocated_hours: parseFloat(document.getElementById('proj-hours').value)||0,
       estimated_budget_hours: parseFloat(document.getElementById('proj-budget').value)||0,
       pm_id: document.getElementById('proj-pm').value||null,
@@ -666,8 +750,11 @@ async function saveProject(id) {
       description: document.getElementById('proj-desc').value,
       remarks: document.getElementById('proj-remarks').value,
     }
-    if (!payload.name || !payload.code || !payload.start_date || !payload.expected_end_date) {
-      utils.toast('Please fill required fields (Name, Code, Start Date, End Date)', 'error'); return
+    if (!payload.name || !payload.code || !payload.start_date) {
+      utils.toast('Please fill required fields (Name, Code, Start Date)', 'error'); return
+    }
+    if (assignmentType === 'external' && !externalTeamId) {
+      utils.toast('Please select an external team or team member', 'error'); return
     }
     let projId = id
     if (id) {
@@ -677,18 +764,22 @@ async function saveProject(id) {
       projId = res.data?.id || res.id
     }
 
-    // Save developer assignments (bulk)
-    if (projId && window._projSelectedDevs.length > 0) {
-      const developers = window._projSelectedDevs.map(d => ({
-        user_id: d.id,
-        allocated_hours: d.hours || 0,
-        role: 'developer'
-      }))
-      await API.post(`/projects/${projId}/assign-bulk`, { developers }).catch(e => {
-        console.warn('Could not save developer allocations:', e.message)
-      })
-    } else if (projId && window._projSelectedDevs.length === 0 && id) {
-      // If editing and all devs removed, send empty array
+    // Save developer assignments only for in-house; external relies on the linked team
+    if (assignmentType === 'in_house') {
+      if (projId && window._projSelectedDevs.length > 0) {
+        const developers = window._projSelectedDevs.map(d => ({
+          user_id: d.id,
+          allocated_hours: d.hours || 0,
+          role: 'developer'
+        }))
+        await API.post(`/projects/${projId}/assign-bulk`, { developers }).catch(e => {
+          console.warn('Could not save developer allocations:', e.message)
+        })
+      } else if (projId && window._projSelectedDevs.length === 0 && id) {
+        await API.post(`/projects/${projId}/assign-bulk`, { developers: [] }).catch(() => {})
+      }
+    } else if (projId && id) {
+      // Switching to external — clear any previous in-house developer allocations
       await API.post(`/projects/${projId}/assign-bulk`, { developers: [] }).catch(() => {})
     }
 

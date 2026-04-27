@@ -10,6 +10,40 @@ type Variables = { user: any }
 const projectTeams = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 projectTeams.use('*', authMiddleware)
 
+async function createTeam(c: any, projectId: string | null, body: any) {
+  const user = c.get('user')
+  const id = generateId('pt')
+  const projectFilter = projectId ? 'project_id = ?' : 'project_id IS NULL'
+  const insertParams: any[] = [
+    id,
+    projectId,
+    body.name.trim(),
+    body.description || null,
+    body.team_lead_id || null,
+    body.color || '#6366f1',
+    ...(projectId ? [projectId] : []),
+    user.sub,
+  ]
+
+  const positionSql = `
+    COALESCE((SELECT MAX(position)+1 FROM project_teams WHERE ${projectFilter}), 0)
+  `
+
+  await c.env.DB.prepare(`
+    INSERT INTO project_teams (id, project_id, name, description, team_lead_id, color, position, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ${positionSql}, ?)
+  `).bind(...insertParams).run()
+
+  if (body.team_lead_id) {
+    await c.env.DB.prepare(`
+      INSERT OR IGNORE INTO project_team_members (id, project_team_id, user_id, role)
+      VALUES (?, ?, ?, 'lead')
+    `).bind(generateId('ptm'), id, body.team_lead_id).run()
+  }
+
+  return id
+}
+
 // GET /api/projects/:projectId/teams — list teams in a project
 projectTeams.get('/project/:projectId', async (c) => {
   try {
@@ -42,36 +76,30 @@ projectTeams.get('/project/:projectId', async (c) => {
   }
 })
 
+// POST /api/project-teams — create a team, optionally attached to a project
+projectTeams.post('/', requireRole('admin', 'pm'), async (c) => {
+  try {
+    const body = await c.req.json()
+    const projectId = body.project_id ? String(body.project_id) : null
+
+    if (!body.name?.trim()) return c.json({ error: 'Team name is required' }, 400)
+    const id = await createTeam(c, projectId, body)
+    return c.json({ data: { id, project_id: projectId }, message: 'Team created successfully' }, 201)
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
 // POST /api/projects/:projectId/teams — create a team within a project
 projectTeams.post('/project/:projectId', requireRole('admin', 'pm'), async (c) => {
   try {
-    const user = c.get('user')
     const projectId = c.req.param('projectId')
     const body = await c.req.json()
 
     if (!body.name?.trim()) return c.json({ error: 'Team name is required' }, 400)
 
-    const id = generateId('pt')
-    await c.env.DB.prepare(`
-      INSERT INTO project_teams (id, project_id, name, description, team_lead_id, color, position, created_by)
-      VALUES (?, ?, ?, ?, ?, ?,
-        COALESCE((SELECT MAX(position)+1 FROM project_teams WHERE project_id = ?), 0),
-        ?)
-    `).bind(
-      id, projectId, body.name.trim(), body.description || null,
-      body.team_lead_id || null, body.color || '#6366f1',
-      projectId, user.sub
-    ).run()
-
-    // If a lead was specified, add them as a team member with role 'lead'
-    if (body.team_lead_id) {
-      await c.env.DB.prepare(`
-        INSERT OR IGNORE INTO project_team_members (id, project_team_id, user_id, role)
-        VALUES (?, ?, ?, 'lead')
-      `).bind(generateId('ptm'), id, body.team_lead_id).run()
-    }
-
-    return c.json({ data: { id }, message: 'Team created successfully' }, 201)
+    const id = await createTeam(c, projectId, body)
+    return c.json({ data: { id, project_id: projectId }, message: 'Team created successfully' }, 201)
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
   }
@@ -85,7 +113,7 @@ projectTeams.get('/:teamId', async (c) => {
       SELECT pt.*, u.full_name as lead_name, u.avatar_color as lead_avatar, p.name as project_name
       FROM project_teams pt
       LEFT JOIN users u ON pt.team_lead_id = u.id
-      JOIN projects p ON pt.project_id = p.id
+      LEFT JOIN projects p ON pt.project_id = p.id
       WHERE pt.id = ?
     `).bind(teamId).first()
     if (!team) return c.json({ error: 'Team not found' }, 404)

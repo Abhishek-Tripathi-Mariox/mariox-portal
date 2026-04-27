@@ -6,18 +6,64 @@
 let _projectTeamsPage = 1
 let _invitesPage = 1
 
+const TEAM_ROLE_LABELS = {
+  admin: 'Admin',
+  pm: 'PM',
+  pc: 'PC',
+  developer: 'Team Member',
+  team: 'Team Member',
+}
+
+function getTeamMemberRoleLabel(role) {
+  const normalized = String(role || '').toLowerCase()
+  return TEAM_ROLE_LABELS[normalized] || normalized
+}
+
+function normalizeTeamStaff(users = []) {
+  return users
+    .filter((user) => ['admin', 'pm', 'pc', 'developer', 'team'].includes(String(user.role || '').toLowerCase()))
+    .map((user) => ({
+      ...user,
+      role: String(user.role || '').toLowerCase(),
+    }))
+    .sort((a, b) => {
+      const order = { admin: 0, pm: 1, pc: 2, developer: 3, team: 4 }
+      const diff = (order[a.role] ?? 99) - (order[b.role] ?? 99)
+      return diff || String(a.full_name || '').localeCompare(String(b.full_name || ''))
+    })
+}
+
+async function getTeamStaffCandidates(projectId) {
+  const res = await API.get('/users')
+  const allUsers = res.users || res.data || []
+  const activeUsers = normalizeTeamStaff(allUsers).filter((user) => Number(user.is_active || 0) === 1)
+  if (!projectId) return activeUsers
+
+  try {
+    const projectDevsRes = await API.get(`/projects/${projectId}/developers`)
+    const assignedIds = new Set((projectDevsRes.developers || []).map((row) => String(row.user_id)))
+    return activeUsers.sort((a, b) => {
+      const aAssigned = assignedIds.has(String(a.id)) ? 0 : 1
+      const bAssigned = assignedIds.has(String(b.id)) ? 0 : 1
+      return aAssigned - bAssigned || String(a.full_name || '').localeCompare(String(b.full_name || ''))
+    })
+  } catch {
+    return activeUsers
+  }
+}
+
 // ─── PROJECT TEAMS SECTION ────────────────────────────────────
 // Injected into the project detail page. Allows PM/admin to create
 // teams within a project, assign members, and set team leads.
 
 async function renderProjectTeamsSection(projectId, containerEl) {
   try {
-    const [teamsRes, devsRes] = await Promise.all([
+    const [teamsRes, staffRes] = await Promise.all([
       API.get(`/project-teams/project/${projectId}`),
-      API.get(`/projects/${projectId}/developers`),
+      getTeamStaffCandidates(projectId),
     ])
     const teams = teamsRes.data || []
-    const projectDevs = devsRes.developers || []
+    const projectStaff = staffRes || []
     const canManage = ['admin', 'pm'].includes(_user.role)
     const pagination = paginateClient(teams, _projectTeamsPage, 6)
     _projectTeamsPage = pagination.page
@@ -45,7 +91,7 @@ async function renderProjectTeamsSection(projectId, containerEl) {
         </div>
       ` : `
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
-          ${pagination.items.map(t => renderTeamCard(t, projectDevs, canManage)).join('')}
+          ${pagination.items.map(t => renderTeamCard(t, projectStaff, canManage)).join('')}
         </div>
         <div style="margin-top:12px">${renderPager(pagination, 'goProjectTeamsPage', 'goProjectTeamsPage', 'teams')}</div>
       `}
@@ -116,8 +162,7 @@ function toggleTeamMenu(id) {
 }
 
 async function openCreateTeamModal(projectId) {
-  const devsRes = await API.get(`/projects/${projectId}/developers`)
-  const devs = devsRes.developers || []
+  const staff = await getTeamStaffCandidates(projectId)
   pxModal({
     title: 'Create New Team',
     body: `
@@ -127,7 +172,7 @@ async function openCreateTeamModal(projectId) {
         <div class="form-group"><label class="form-label">Team lead</label>
           <select id="team-lead" class="form-select">
             <option value="">— No lead —</option>
-            ${devs.map(d => `<option value="${d.user_id}">${escapeHtml(d.full_name)}</option>`).join('')}
+            ${staff.map(d => `<option value="${d.id}">${escapeHtml(d.full_name)} (${getTeamMemberRoleLabel(d.role)})</option>`).join('')}
           </select>
         </div>
         <div class="form-group"><label class="form-label">Colour</label><input id="team-color" type="color" value="#6366f1" class="form-input" style="height:40px;padding:3px"/></div>
@@ -156,19 +201,19 @@ async function openCreateTeamFromOverviewModal() {
   try {
     const projectsRes = await API.get('/projects')
     const projects = projectsRes.projects || projectsRes.data || []
-    if (!projects.length) {
-      toast('No projects found. Create a project first.', 'error')
-      return
-    }
     pxModal({
       title: 'Create Team',
       body: `
         <div class="form-group">
-          <label class="form-label">Project *</label>
+          <label class="form-label">Project (Optional)</label>
           <select id="team-project" class="form-select" onchange="loadTeamLeadOptionsForModal(this.value)">
-            <option value="">Select project</option>
-            ${projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)} (${escapeHtml(p.code || '')})</option>`).join('')}
+            ${
+              projects.length
+                ? `<option value="">Select project</option>${projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)} (${escapeHtml(p.code || '')})</option>`).join('')}`
+                : `<option value="">No projects available</option>`
+            }
           </select>
+          <div class="form-hint">Project choose karna optional hai. Team bina project ke bhi create ho sakti hai.</div>
         </div>
         <div class="form-group"><label class="form-label">Team name *</label><input id="team-name" class="form-input" placeholder="e.g. Backend Squad" autofocus/></div>
         <div class="form-group"><label class="form-label">Description</label><textarea id="team-desc" class="form-input" rows="2" placeholder="What does this team do?"></textarea></div>
@@ -184,12 +229,12 @@ async function openCreateTeamFromOverviewModal() {
       confirmText: 'Create Team',
       large: true,
       onConfirm: async () => {
-        const projectId = document.getElementById('team-project').value
+        const projectId = document.getElementById('team-project').value || null
         const name = document.getElementById('team-name').value.trim()
-        if (!projectId) { toast('Please select a project', 'error'); return false }
         if (!name) { toast('Team name is required', 'error'); return false }
         try {
-          await API.post(`/project-teams/project/${projectId}`, {
+          await API.post('/project-teams', {
+            project_id: projectId,
             name,
             description: document.getElementById('team-desc').value.trim(),
             team_lead_id: document.getElementById('team-lead').value || null,
@@ -204,19 +249,16 @@ async function openCreateTeamFromOverviewModal() {
     })
     loadTeamLeadOptionsForModal('')
   } catch (e) {
-    toast('Failed to load projects: ' + e.message, 'error')
+    toast('Failed to load team form: ' + e.message, 'error')
   }
 }
 
 async function loadTeamLeadOptionsForModal(projectId) {
   const leadSelect = document.getElementById('team-lead')
   if (!leadSelect) return
-  leadSelect.innerHTML = '<option value="">— No lead —</option>'
-  if (!projectId) return
   try {
-    const res = await API.get(`/projects/${projectId}/developers`)
-    const devs = res.developers || []
-    leadSelect.innerHTML = `<option value="">— No lead —</option>${devs.map(d => `<option value="${d.user_id}">${escapeHtml(d.full_name)}</option>`).join('')}`
+    const staff = await getTeamStaffCandidates(projectId)
+    leadSelect.innerHTML = `<option value="">— No lead —</option>${staff.map(d => `<option value="${d.id}">${escapeHtml(d.full_name)} (${getTeamMemberRoleLabel(d.role)})</option>`).join('')}`
   } catch (e) {
     leadSelect.innerHTML = '<option value="">— No lead —</option>'
   }
@@ -226,11 +268,18 @@ async function openEditTeamModal(teamId) {
   try {
     const res = await API.get(`/project-teams/${teamId}`)
     const t = res.data
+    const staff = await getTeamStaffCandidates(t.project_id)
     pxModal({
       title: 'Edit Team',
       body: `
         <div class="form-group"><label class="form-label">Team name *</label><input id="team-name" class="form-input" value="${escapeHtml(t.name)}"/></div>
         <div class="form-group"><label class="form-label">Description</label><textarea id="team-desc" class="form-input" rows="2">${escapeHtml(t.description || '')}</textarea></div>
+        <div class="form-group"><label class="form-label">Team lead</label>
+          <select id="team-lead" class="form-select">
+            <option value="">— No lead —</option>
+            ${staff.map(d => `<option value="${d.id}" ${String(t.team_lead_id || '') === String(d.id) ? 'selected' : ''}>${escapeHtml(d.full_name)} (${getTeamMemberRoleLabel(d.role)})</option>`).join('')}
+          </select>
+        </div>
         <div class="form-group"><label class="form-label">Colour</label><input id="team-color" type="color" value="${t.color || '#6366f1'}" class="form-input" style="height:40px;padding:3px"/></div>
       `,
       confirmText: 'Save',
@@ -242,7 +291,7 @@ async function openEditTeamModal(teamId) {
             name,
             description: document.getElementById('team-desc').value.trim(),
             color: document.getElementById('team-color').value,
-            team_lead_id: t.team_lead_id, // preserve existing; change via member management
+            team_lead_id: document.getElementById('team-lead').value || null,
           })
           toast('Team updated', 'success')
           reloadProjectTeamsSection(t.project_id)
@@ -268,8 +317,7 @@ async function openManageMembersModal(teamId) {
   try {
     const [teamRes, _] = await Promise.all([API.get(`/project-teams/${teamId}`)])
     const t = teamRes.data
-    const devsRes = await API.get(`/projects/${t.project_id}/developers`)
-    const allDevs = devsRes.developers || []
+    const allDevs = await getTeamStaffCandidates(t.project_id)
     const memberIds = new Set((t.members || []).map(m => m.user_id))
 
     const memberRows = (t.members || []).map(m => `
@@ -277,7 +325,7 @@ async function openManageMembersModal(teamId) {
         ${avatar(m.full_name, m.avatar_color || '#6366f1')}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600">${escapeHtml(m.full_name)}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(m.designation || 'Developer')}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(m.designation || 'Team Member')}</div>
         </div>
         <select onchange="updateMemberRole('${teamId}','${m.user_id}',this.value)" style="padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
           <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
@@ -289,7 +337,7 @@ async function openManageMembersModal(teamId) {
       </div>
     `).join('')
 
-    const addableDevs = allDevs.filter(d => !memberIds.has(d.user_id))
+    const addableDevs = allDevs.filter(d => !memberIds.has(d.id))
 
     pxModal({
       title: `Manage members — ${escapeHtml(t.name)}`,
@@ -300,10 +348,10 @@ async function openManageMembersModal(teamId) {
         <h4 style="font-size:13px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">Current members (${(t.members || []).length})</h4>
         ${memberRows || '<div style="font-size:12px;color:var(--text-muted);padding:8px">No members yet.</div>'}
         ${addableDevs.length ? `
-          <h4 style="font-size:13px;margin:14px 0 8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">Add developer</h4>
+          <h4 style="font-size:13px;margin:14px 0 8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">Add team member</h4>
           <div style="display:flex;gap:8px">
             <select id="add-member-id" class="form-select" style="flex:1">
-              ${addableDevs.map(d => `<option value="${d.user_id}">${escapeHtml(d.full_name)} — ${escapeHtml(d.designation || '')}</option>`).join('')}
+              ${addableDevs.map(d => `<option value="${d.id}">${escapeHtml(d.full_name)} — ${escapeHtml(d.designation || getTeamMemberRoleLabel(d.role) || '')}</option>`).join('')}
             </select>
             <select id="add-member-role" class="form-select" style="width:110px">
               <option value="member">Member</option>

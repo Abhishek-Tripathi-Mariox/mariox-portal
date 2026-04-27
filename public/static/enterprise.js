@@ -227,6 +227,16 @@ function statCard(label, value, icon, color, sub='') {
   </div>`
 }
 
+function listSectionHeader(labels, templateColumns) {
+  return `
+    <div class="card" style="margin-bottom:12px;padding:14px 16px;background:rgba(15,23,42,.72);border:1px solid rgba(148,163,184,.22);box-shadow:none">
+      <div style="display:grid;grid-template-columns:${templateColumns};gap:12px;align-items:center;font-size:12px;letter-spacing:.03em;color:#f8fafc;font-weight:700">
+        ${labels.map((label, index) => `<div style="${index === 0 ? 'padding-left:2px' : ''}">${label}</div>`).join('')}
+      </div>
+    </div>
+  `
+}
+
 function showEditProjectModal(projectId) {
   return openProjectModal(projectId)
 }
@@ -1213,6 +1223,7 @@ async function renderSprintsView(el) {
         ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="showCreateSprintModal()"><i class="fas fa-plus"></i>New Sprint</button>`:''}
       </div>
     </div>
+    ${listSectionHeader(['Sprint', 'Project / Timeline', 'Stats', 'Status / Progress'], '2.1fr 1.2fr 1fr 1.1fr')}
     ${pagination.items.map(s => {
       const pct = s.total_story_points>0 ? Math.round((s.completed_story_points/s.total_story_points)*100) : 0
       return `
@@ -1304,6 +1315,7 @@ async function renderMilestonesView(el) {
         ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="showCreateMilestoneModal()"><i class="fas fa-plus"></i>New Milestone</button>`:''}
       </div>
     </div>
+    ${listSectionHeader(['Milestone', 'Project', 'Due / Status', 'Billing / Progress'], '2fr 1.15fr 1fr 1fr')}
     <div class="grid-2">
       ${pagination.items.map(m=>`
         <div class="card">
@@ -1863,17 +1875,20 @@ function goBillingInvoicePage(page) {
 
 async function showCreateInvoiceModal() {
   const [proj, clients, ms] = await Promise.all([API.get('/projects'), API.get('/clients'), API.get('/milestones')])
-  const projects = proj.projects||proj||[]
-  const allClients = clients.clients||[]
-  const milestones = ms.milestones||[]
+  const projects = proj.projects||proj.data||proj||[]
+  const allClients = clients.clients||clients.data||[]
+  const milestones = ms.milestones||ms.data||[]
+  // Stash for the client-change handler so it can rebuild the project + milestone lists
+  window._invoiceProjects = projects
+  window._invoiceMilestones = milestones
   showModal(`
   <div class="modal-header"><h3>Create Invoice</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
   <div class="modal-body">
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Client *</label><select class="form-select" id="ci-client">${allClients.map(c=>`<option value="${c.id}">${c.company_name}</option>`).join('')}</select></div>
-      <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="ci-project">${projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Client *</label><select class="form-select" id="ci-client" onchange="onCreateInvoiceClientChanged(this.value)"><option value="">— Select a client —</option>${allClients.map(c=>`<option value="${c.id}">${c.company_name}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="ci-project" disabled onchange="onCreateInvoiceProjectChanged(this.value)"><option value="">— Select a client first —</option></select></div>
     </div>
-    <div class="form-group"><label class="form-label">Milestone (optional)</label><select class="form-select" id="ci-milestone"><option value="">No milestone</option>${milestones.map(m=>`<option value="${m.id}">${m.title}</option>`).join('')}</select></div>
+    <div class="form-group"><label class="form-label">Milestone (optional)</label><select class="form-select" id="ci-milestone" disabled><option value="">No milestone</option></select></div>
     <div class="form-group"><label class="form-label">Invoice Title *</label><input class="form-input" id="ci-title" placeholder="Phase 1 – Delivery Invoice"/></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="ci-desc" placeholder="Invoice details…" style="min-height:60px"></textarea></div>
     <div class="form-row-3">
@@ -1892,6 +1907,47 @@ async function showCreateInvoiceModal() {
     <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
     <button class="btn btn-primary" onclick="doCreateInvoice()"><i class="fas fa-file-invoice"></i>Create Invoice</button>
   </div>`, 'modal-lg')
+}
+
+function onCreateInvoiceClientChanged(clientId) {
+  const projectSelect = document.getElementById('ci-project')
+  const milestoneSelect = document.getElementById('ci-milestone')
+  const projects = window._invoiceProjects || []
+  if (!projectSelect) return
+  if (!clientId) {
+    projectSelect.disabled = true
+    projectSelect.innerHTML = '<option value="">— Select a client first —</option>'
+    if (milestoneSelect) {
+      milestoneSelect.disabled = true
+      milestoneSelect.innerHTML = '<option value="">No milestone</option>'
+    }
+    return
+  }
+  const filtered = projects.filter(p => String(p.client_id) === String(clientId))
+  projectSelect.disabled = false
+  if (!filtered.length) {
+    projectSelect.innerHTML = '<option value="">No projects for this client</option>'
+  } else {
+    projectSelect.innerHTML = `<option value="">— Select a project —</option>${filtered.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}`
+  }
+  if (milestoneSelect) {
+    milestoneSelect.disabled = true
+    milestoneSelect.innerHTML = '<option value="">Select a project first</option>'
+  }
+}
+
+function onCreateInvoiceProjectChanged(projectId) {
+  const milestoneSelect = document.getElementById('ci-milestone')
+  const milestones = window._invoiceMilestones || []
+  if (!milestoneSelect) return
+  if (!projectId) {
+    milestoneSelect.disabled = true
+    milestoneSelect.innerHTML = '<option value="">Select a project first</option>'
+    return
+  }
+  const filtered = milestones.filter(m => String(m.project_id) === String(projectId))
+  milestoneSelect.disabled = false
+  milestoneSelect.innerHTML = `<option value="">No milestone</option>${filtered.map(m=>`<option value="${m.id}">${m.title}</option>`).join('')}`
 }
 
 async function showEditInvoiceModal(id) {
@@ -1917,9 +1973,9 @@ async function showEditInvoiceModal(id) {
       <div class="form-group"><label class="form-label">Invoice Title *</label><input class="form-input" id="ei-title" value="${inv.title||''}"/></div>
       <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="ei-desc" style="min-height:60px">${inv.description||''}</textarea></div>
       <div class="form-row-3">
-        <div class="form-group"><label class="form-label">Amount</label><input class="form-input" value="${fmtCurrency(inv.amount||0)}" readonly/></div>
-        <div class="form-group"><label class="form-label">Tax %</label><input class="form-input" value="${inv.tax_pct ?? 18}" readonly/></div>
-        <div class="form-group"><label class="form-label">Total</label><input class="form-input" value="${fmtCurrency(inv.total_amount||0)}" readonly style="background:rgba(16,185,129,.07);color:#34d399"/></div>
+        <div class="form-group"><label class="form-label">Amount (pre-tax) *</label><input class="form-input" type="number" min="0" step="0.01" id="ei-amount" value="${Number(inv.amount||0)}" oninput="calcEditTax()"/></div>
+        <div class="form-group"><label class="form-label">Tax %</label><input class="form-input" type="number" min="0" max="100" step="0.01" id="ei-tax" value="${Number(inv.tax_pct ?? 18)}" oninput="calcEditTax()"/></div>
+        <div class="form-group"><label class="form-label">Total (incl. tax)</label><input class="form-input" id="ei-total" readonly value="${fmtCurrency(inv.total_amount||0)}" style="background:rgba(16,185,129,.07);color:#34d399"/></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="ei-status">${['pending','sent','overdue','partially_paid','paid','cancelled'].map(s=>`<option value="${s}" ${inv.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}</select></div>
@@ -2011,12 +2067,24 @@ async function showSendInvoiceModal(id) {
   }
 }
 
+function calcEditTax() {
+  const amount = parseFloat(document.getElementById('ei-amount')?.value || '0') || 0
+  const taxPct = parseFloat(document.getElementById('ei-tax')?.value || '0') || 0
+  const total = amount + (amount * taxPct) / 100
+  const totalEl = document.getElementById('ei-total')
+  if (totalEl) totalEl.value = fmtCurrency(total)
+}
+
 async function doEditInvoice(id) {
+  const amount = parseFloat(document.getElementById('ei-amount')?.value || '0')
+  const taxPct = parseFloat(document.getElementById('ei-tax')?.value || '0')
   const body = {
     title: document.getElementById('ei-title')?.value.trim(),
     description: document.getElementById('ei-desc')?.value.trim(),
     status: document.getElementById('ei-status')?.value,
     due_date: document.getElementById('ei-due')?.value,
+    amount: Number.isFinite(amount) ? amount : 0,
+    tax_pct: Number.isFinite(taxPct) ? taxPct : 0,
     paid_amount: parseFloat(document.getElementById('ei-paid-amount')?.value || '0'),
     paid_date: document.getElementById('ei-paid-date')?.value || null,
     transaction_ref: document.getElementById('ei-ref')?.value.trim(),
@@ -2024,6 +2092,8 @@ async function doEditInvoice(id) {
     notes: document.getElementById('ei-notes')?.value.trim(),
   }
   if (!body.title || !body.due_date) return toast('Title and due date are required', 'error')
+  if (!(body.amount >= 0)) return toast('Amount must be a non-negative number', 'error')
+  if (body.tax_pct < 0 || body.tax_pct > 100) return toast('Tax % must be between 0 and 100', 'error')
   try {
     await API.put(`/invoices/${id}`, body)
     toast('Invoice updated!', 'success')
@@ -2096,32 +2166,130 @@ async function doMarkPaid(id) {
 }
 
 /* ── TEAM OVERVIEW ──────────────────────────────────────── */
+const TEAM_ROLE_META = {
+  admin:     { label: 'Admin',     badge: 'critical'   },
+  pm:        { label: 'PM',        badge: 'inprogress' },
+  pc:        { label: 'PC',        badge: 'review'     },
+  developer: { label: 'Developer', badge: 'done'       },
+  team:      { label: 'Team',      badge: 'todo'       },
+  client:    { label: 'Client',    badge: 'review'     },
+}
+let _teamOverviewRoleFilter = ''
+
 async function renderTeamOverview(el) {
   el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
-    const [data] = await Promise.all([
-      API.get('/users'),
-    ])
-    const users = data.users||data||[]
-    const pagination = paginateClient(users, _teamOverviewPage, _teamOverviewPageLimit)
+    const data = await API.get('/users')
+    const users = (data.users || data.data || [])
+    const roleCounts = users.reduce((acc, u) => {
+      const key = String(u.role || 'other').toLowerCase()
+      acc[key] = (acc[key] || 0) + 1
+      return acc
+    }, {})
+    const filtered = _teamOverviewRoleFilter
+      ? users.filter(u => String(u.role || '').toLowerCase() === _teamOverviewRoleFilter)
+      : users
+    const pagination = paginateClient(filtered, _teamOverviewPage, _teamOverviewPageLimit)
     _teamOverviewPage = pagination.page
+    const isAdmin = _user.role === 'admin'
+    const canEdit = ['admin', 'pm'].includes(_user.role)
+
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Team Overview</h1><p class="page-subtitle">${pagination.total} team members</p></div>
-      ${_user.role === 'admin' ? `<div class="page-actions"><button class="btn btn-primary" onclick="openCreateTeamFromOverviewModal()"><i class="fas fa-users"></i>Create Team</button></div>` : ''}
+      <div><h1 class="page-title">Team Overview</h1><p class="page-subtitle">${users.length} total members · ${pagination.total} shown</p></div>
+      ${isAdmin ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="openTeamMemberModal('pm')"><i class="fas fa-user-tie"></i>Add PM</button>
+        <button class="btn btn-outline btn-sm" onclick="openTeamMemberModal('pc')"><i class="fas fa-user-check"></i>Add PC</button>
+        <button class="btn btn-outline btn-sm" onclick="openTeamMemberModal('developer')"><i class="fas fa-code"></i>Add Developer</button>
+        <button class="btn btn-outline btn-sm" onclick="openTeamMemberModal('team')"><i class="fas fa-users"></i>Add Team</button>
+        <button class="btn btn-primary btn-sm" onclick="openTeamMemberModal('')"><i class="fas fa-user-plus"></i>Add User</button>
+      </div>` : ''}
     </div>
-    <div class="grid-4">
-      ${pagination.items.map(u=>`
-        <div class="card" style="padding:18px;text-align:center">
-          ${avatar(u.full_name,u.avatar_color,'xl')}
-          <div style="margin-top:12px"><div style="font-weight:600;color:#e2e8f0">${u.full_name}</div><div style="font-size:12px;color:#94a3b8;margin-top:2px">${u.designation||u.role}</div><div style="font-size:11px;color:#64748b">${u.email}</div></div>
-          <div style="margin-top:12px;display:flex;justify-content:center;gap:8px">
-            <span class="badge badge-${u.role==='admin'?'critical':u.role==='pm'?'inprogress':'review'}" style="text-transform:capitalize">${u.role}</span>
-            <span class="badge ${u.is_active?'badge-done':'badge-todo'}">${u.is_active?'Active':'Inactive'}</span>
-          </div>
-        </div>`).join('')}
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px">
+        <div class="search-wrap" style="flex:1;min-width:240px"><i class="fas fa-search"></i><input class="search-bar" placeholder="Search members…" oninput="filterTable(this.value,'team-overview-table')"/></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${['', 'admin', 'pm', 'pc', 'developer', 'team'].map(r => {
+            const meta = r ? TEAM_ROLE_META[r] : { label: 'All' }
+            const count = r ? (roleCounts[r] || 0) : users.length
+            const active = _teamOverviewRoleFilter === r
+            return `<button class="btn btn-sm ${active ? 'btn-primary' : 'btn-outline'}" onclick="filterTeamOverviewByRole('${r}')">${meta.label} <span style="opacity:.7;margin-left:4px">${count}</span></button>`
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body p-0 table-wrap">
+        <table class="data-table" id="team-overview-table">
+          <thead><tr>
+            <th>Member</th><th>Email</th><th>Role</th><th>Designation</th>
+            <th>Capacity</th><th>Joined</th><th>Status</th>${canEdit ? '<th style="width:140px">Actions</th>' : ''}
+          </tr></thead>
+          <tbody>
+            ${pagination.items.map(u => {
+              const meta = TEAM_ROLE_META[String(u.role || '').toLowerCase()] || { label: u.role || '—', badge: 'todo' }
+              return `<tr>
+                <td>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    ${avatar(u.full_name, u.avatar_color, 'sm')}
+                    <div>
+                      <div style="font-weight:600;color:#e2e8f0">${u.full_name || '—'}</div>
+                      <div style="font-size:11px;color:#64748b">${u.phone || ''}</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span style="font-size:12px;color:#94a3b8">${u.email || '—'}</span></td>
+                <td><span class="badge badge-${meta.badge}">${meta.label}</span></td>
+                <td><span style="font-size:12px;color:#94a3b8">${u.designation || '—'}</span></td>
+                <td><span style="font-size:12px">${u.monthly_available_hours || 0}h / mo</span></td>
+                <td><span style="font-size:12px;color:#94a3b8">${u.joining_date ? fmtDate(u.joining_date) : '—'}</span></td>
+                <td><span class="badge ${u.is_active ? 'badge-done' : 'badge-todo'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
+                ${canEdit ? `<td>
+                  <div style="display:flex;gap:4px">
+                    <button class="btn btn-xs btn-outline" title="Edit" onclick="openEditTeamMember('${u.id}')"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-xs ${u.is_active ? 'btn-outline' : 'btn-primary'}" title="${u.is_active ? 'Deactivate' : 'Activate'}" onclick="toggleTeamMemberStatus('${u.id}',${!u.is_active})"><i class="fas fa-${u.is_active ? 'ban' : 'check'}"></i></button>
+                  </div>
+                </td>` : ''}
+              </tr>`
+            }).join('') || `<tr><td colspan="${canEdit ? 8 : 7}" style="text-align:center;color:#64748b;padding:24px">No team members match the current filter.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
     </div>
     ${renderPager(pagination, 'goTeamOverviewPage', 'goTeamOverviewPage', 'team members', 'team-overview')}
     `
-  } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
+}
+
+function filterTeamOverviewByRole(role) {
+  _teamOverviewRoleFilter = role || ''
+  _teamOverviewPage = 1
+  const el = document.getElementById('page-team-overview')
+  if (el) { el.dataset.loaded = ''; loadPage('team-overview', el) }
+}
+
+function openTeamMemberModal(role) {
+  if (typeof openDeveloperModal !== 'function') { toast('User modal unavailable', 'error'); return }
+  openDeveloperModal(role ? { role } : null)
+}
+
+async function openEditTeamMember(id) {
+  try {
+    const res = await API.get(`/users/${id}`)
+    if (typeof openDeveloperModal !== 'function') { toast('User modal unavailable', 'error'); return }
+    openDeveloperModal(res.data)
+  } catch (e) { toast(e.message, 'error') }
+}
+
+async function toggleTeamMemberStatus(id, active) {
+  try {
+    await API.patch(`/users/${id}/status`, { is_active: active })
+    toast(`User ${active ? 'activated' : 'deactivated'}`, 'success')
+    const el = document.getElementById('page-team-overview')
+    if (el) { el.dataset.loaded = ''; loadPage('team-overview', el) }
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
 }

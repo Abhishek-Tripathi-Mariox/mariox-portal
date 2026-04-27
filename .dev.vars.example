@@ -1,5 +1,20 @@
 JWT_SECRET=
 PASSWORD_SALT=
+LOCAL_MONGO_DB=mongodb://localhost:27017/mariox-portal
+
+# Admin seed (used by bootstrap on first run only — skipped if any of ADMIN_EMAIL / ADMIN_PASSWORD is empty)
+ADMIN_EMAIL=
+ADMIN_PASSWORD=
+ADMIN_FULL_NAME=
+ADMIN_PHONE=
+ADMIN_USER_ID=
+
+# AWS S3 (file uploads — used by /api/uploads)
+AWS_REGION=
+AWS_S3_BUCKET=
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_S3_PUBLIC_URL=
 SENDER_EMAIL=
 APP_PASSWORD=
 SMTP_HOST=smtp.gmail.com
@@ -8,3 +23,14 @@ SMTP_USER=
 SMTP_PASS=
 SMTP_FROM=
 SMTP_SECURE=false
+
+# Invoice template (optional — defaults to Mariox Software values)
+COMPANY_NAME=
+COMPANY_GSTIN=
+COMPANY_ADDRESS=
+COMPANY_STATE_CODE=
+BANK_NAME=
+BANK_ACCOUNT_HOLDER=
+BANK_ACCOUNT_NUMBER=
+BANK_IFSC=
+BANK_BRANCH=

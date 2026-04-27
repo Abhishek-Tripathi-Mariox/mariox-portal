@@ -81,6 +81,28 @@ export const DOC_CATEGORIES = [
   'technical', 'test_report', 'release', 'billing', 'contract', 'other'
 ] as const
 
+// Support Ticket Status
+export const TICKET_STATUS = {
+  OPEN: 'open',
+  IN_PROGRESS: 'in_progress',
+  WAITING_ON_CLIENT: 'waiting_on_client',
+  RESOLVED: 'resolved',
+  CLOSED: 'closed',
+} as const
+
+// Support Ticket Priority
+export const TICKET_PRIORITY = {
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  URGENT: 'urgent',
+} as const
+
+// Support Ticket Categories
+export const TICKET_CATEGORIES = [
+  'bug', 'feature_request', 'question', 'billing', 'access', 'other',
+] as const
+
 // HTTP Status Codes
 export const HTTP_STATUS = {
   OK: 200,

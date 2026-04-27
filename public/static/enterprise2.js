@@ -926,8 +926,8 @@ function switchSettingsTab2(tab) {
         <h3 style="font-size:15px;font-weight:600;color:#e2e8f0;margin:0 0 20px">System Information</h3>
         ${profileRow2('fa-building','Company','Mariox Software Services')}
         ${profileRow2('fa-code-branch','Version','DevPortal v2.0 Enterprise')}
-        ${profileRow2('fa-database','Database','Cloudflare D1 SQLite')}
-        ${profileRow2('fa-server','Platform','Cloudflare Workers/Pages')}
+        ${profileRow2('fa-database','Database','MongoDB-backed SQL')}
+        ${profileRow2('fa-server','Platform','Node.js')}
         ${profileRow2('fa-shield-halved','Security','JWT + SHA-256 Hashed Passwords')}
         ${profileRow2('fa-globe','Region','Global Edge Network')}
       </div>

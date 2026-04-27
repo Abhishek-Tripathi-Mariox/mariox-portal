@@ -1,0 +1,495 @@
+import { Router } from 'express'
+import type { MongoModels } from '../models/mongo-models'
+import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
+import { DEFAULT_KANBAN_COLUMNS } from '../constants'
+import { generateId } from '../utils/helpers'
+import {
+  validateName,
+  validateLength,
+  validateEnum,
+  validateOptional,
+  validateISODate,
+  validatePositiveNumber,
+  respondWithError,
+} from '../validators'
+
+const PROJECT_TYPES = ['development', 'maintenance', 'support', 'consulting'] as const
+const PROJECT_STATUSES = ['active', 'on_hold', 'completed', 'archived', 'cancelled'] as const
+const PROJECT_PRIORITIES = ['critical', 'high', 'medium', 'low'] as const
+const ASSIGNMENT_TYPES = ['in_house', 'external'] as const
+const ASSIGNEE_TYPES = ['team', 'user'] as const
+const PROJECT_CODE_PATTERN = /^[A-Za-z0-9_-]{2,40}$/
+
+function sum(items: any[], pick: (item: any) => number) {
+  return items.reduce((acc, item) => acc + pick(item), 0)
+}
+
+function daysBetween(from: string, to: string) {
+  if (!from || !to) return 0
+  return (new Date(to).getTime() - new Date(from).getTime()) / (1000 * 60 * 60 * 24)
+}
+
+function computeProjectMetrics(project: any) {
+  const start = String(project.start_date || '')
+  const end = String(project.expected_end_date || '')
+  const totalDays = daysBetween(start, end)
+  const elapsedDays = daysBetween(start, new Date().toISOString().slice(0, 10))
+  const remainingDays = daysBetween(new Date().toISOString().slice(0, 10), end)
+  const timelineProgress = totalDays > 0 ? Math.round((elapsedDays / totalDays) * 1000) / 10 : 0
+  const daysRemainingPct = totalDays > 0 ? Math.round((remainingDays / totalDays) * 1000) / 10 : 0
+  return { timeline_progress: timelineProgress, days_remaining_pct: daysRemainingPct }
+}
+
+export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
+  const router = Router()
+  router.use(createAuthMiddleware(jwtSecret))
+
+  router.get('/', async (req, res) => {
+    try {
+      const status = typeof req.query.status === 'string' ? req.query.status : undefined
+      const pmId = typeof req.query.pm_id === 'string' ? req.query.pm_id : undefined
+      const filter: any = {}
+      if (status) filter.status = status
+      if (pmId) filter.pm_id = pmId
+
+      const [projects, users, assignments] = await Promise.all([
+        models.projects.find(filter) as Promise<any[]>,
+        models.users.find({}) as Promise<any[]>,
+        models.projectAssignments.find({ is_active: 1 }) as Promise<any[]>,
+      ])
+
+      const usersById = new Map(users.map((u) => [String(u.id), u]))
+      const assignmentsByProject = new Map<string, any[]>()
+      for (const a of assignments) {
+        const key = String(a.project_id)
+        const list = assignmentsByProject.get(key) || []
+        list.push(a)
+        assignmentsByProject.set(key, list)
+      }
+
+      const enriched = projects.map((p) => {
+        const tl = usersById.get(String(p.team_lead_id)) as any
+        const pm = usersById.get(String(p.pm_id)) as any
+        const devs = assignmentsByProject.get(String(p.id)) || []
+        return {
+          ...p,
+          team_lead_name: tl?.full_name || null,
+          pm_name: pm?.full_name || null,
+          developer_count: devs.length,
+          ...computeProjectMetrics(p),
+        }
+      }).sort((a, b) => {
+        const priorityOrder: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 }
+        const pa = priorityOrder[a.priority || 'medium'] || 2
+        const pb = priorityOrder[b.priority || 'medium'] || 2
+        if (pa !== pb) return pb - pa
+        return String(b.created_at || '').localeCompare(String(a.created_at || ''))
+      })
+
+      return res.json({
+        projects: enriched,
+        data: { projects: enriched, data: enriched },
+      })
+    } catch {
+      return res.json({ projects: [], data: { projects: [], data: [] } })
+    }
+  })
+
+  router.get('/:id', async (req, res) => {
+    try {
+      const id = req.params.id
+      const project = await models.projects.findById(id) as any
+      if (!project) return res.status(404).json({ error: 'Project not found' })
+
+      const [users, assignments, timesheets] = await Promise.all([
+        models.users.find({}) as Promise<any[]>,
+        models.projectAssignments.find({ project_id: id, is_active: 1 }) as Promise<any[]>,
+        models.timesheets.find({ project_id: id }) as Promise<any[]>,
+      ])
+      const usersById = new Map(users.map((u) => [String(u.id), u]))
+      const loggedByUser = new Map<string, number>()
+      for (const t of timesheets) {
+        if (t.approval_status === 'rejected') continue
+        const key = String(t.user_id)
+        loggedByUser.set(key, (loggedByUser.get(key) || 0) + Number(t.hours_consumed || 0))
+      }
+
+      const enrichedAssignments = assignments.map((a) => {
+        const u = usersById.get(String(a.user_id)) as any
+        return {
+          ...a,
+          full_name: u?.full_name || null,
+          email: u?.email || null,
+          designation: u?.designation || null,
+          avatar_color: u?.avatar_color || null,
+          logged_hours: loggedByUser.get(String(a.user_id)) || 0,
+        }
+      })
+
+      const recentLogs = [...timesheets]
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+        .slice(0, 20)
+        .map((t) => ({
+          ...t,
+          full_name: usersById.get(String(t.user_id))?.full_name || null,
+          avatar_color: usersById.get(String(t.user_id))?.avatar_color || null,
+        }))
+
+      const monthMap = new Map<string, number>()
+      for (const t of timesheets) {
+        if (t.approval_status === 'rejected') continue
+        const key = String(t.date || '').slice(0, 7)
+        if (!key) continue
+        monthMap.set(key, (monthMap.get(key) || 0) + Number(t.hours_consumed || 0))
+      }
+      const monthlyBurn = [...monthMap.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, hours]) => ({ month, hours }))
+
+      const tl = usersById.get(String(project.team_lead_id))
+      const pm = usersById.get(String(project.pm_id))
+
+      const data = {
+        ...project,
+        team_lead_name: (tl as any)?.full_name || null,
+        pm_name: (pm as any)?.full_name || null,
+        ...computeProjectMetrics(project),
+        assignments: enrichedAssignments,
+        recent_logs: recentLogs,
+        monthly_burn: monthlyBurn,
+        notes: [],
+      }
+
+      return res.json({ data, project: data })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to load project' })
+    }
+  })
+
+  router.get('/:id/developers', async (req, res) => {
+    try {
+      const id = req.params.id
+      const [assignments, users] = await Promise.all([
+        models.projectAssignments.find({ project_id: id, is_active: 1 }) as Promise<any[]>,
+        models.users.find({}) as Promise<any[]>,
+      ])
+      const usersById = new Map(users.map((u) => [String(u.id), u]))
+      const developers = assignments
+        .map((a) => {
+          const u = usersById.get(String(a.user_id)) as any
+          if (!u) return null
+          return {
+            ...a,
+            full_name: u.full_name,
+            email: u.email,
+            designation: u.designation,
+            avatar_color: u.avatar_color,
+            user_role: u.role,
+          }
+        })
+        .filter(Boolean)
+        .sort((a: any, b: any) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
+      return res.json({ developers, data: developers })
+    } catch {
+      return res.json({ developers: [], data: [] })
+    }
+  })
+
+  router.post('/', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+    try {
+      const body = req.body || {}
+      const name = validateName(body.name, 'Project name', 2, 120)
+      const code = validateLength(String(body.code || '').trim(), 2, 40, 'Project code')
+      if (!PROJECT_CODE_PATTERN.test(code)) {
+        return res.status(400).json({ error: 'Project code may only contain letters, numbers, underscore or hyphen' })
+      }
+      const startDate = validateISODate(body.start_date, 'Start date')
+      const endDate = validateOptional(body.expected_end_date, (v) => validateISODate(v, 'End date'))
+      if (endDate && startDate > endDate) {
+        return res.status(400).json({ error: 'End date must be after start date' })
+      }
+      const projectType = validateEnum(body.project_type || 'development', PROJECT_TYPES, 'Project type')
+      const status = validateEnum(body.status || 'active', PROJECT_STATUSES, 'Status')
+      const priority = validateEnum(body.priority || 'medium', PROJECT_PRIORITIES, 'Priority')
+      const assignmentType = validateEnum(body.assignment_type || 'in_house', ASSIGNMENT_TYPES, 'Assignment type')
+      const externalAssigneeType = assignmentType === 'external'
+        ? validateEnum(body.external_assignee_type || 'team', ASSIGNEE_TYPES, 'External assignee type')
+        : null
+      if (assignmentType === 'external' && !body.external_team_id) {
+        return res.status(400).json({ error: 'External team is required when assignment type is external' })
+      }
+      const totalAllocatedHours = body.total_allocated_hours !== undefined
+        ? validatePositiveNumber(body.total_allocated_hours, 'Total allocated hours')
+        : 0
+      const estimatedBudgetHours = body.estimated_budget_hours !== undefined
+        ? validatePositiveNumber(body.estimated_budget_hours, 'Estimated budget hours')
+        : 0
+      const revenue = body.revenue !== undefined ? validatePositiveNumber(body.revenue, 'Revenue') : 0
+
+      const id = generateId('proj')
+      const now = new Date().toISOString()
+      const project = {
+        id,
+        name,
+        code,
+        client_name: body.client_name || null,
+        client_id: body.client_id || null,
+        description: body.description ? validateLength(String(body.description), 0, 5000, 'Description') : null,
+        project_type: projectType,
+        start_date: startDate,
+        expected_end_date: endDate,
+        priority,
+        status,
+        total_allocated_hours: totalAllocatedHours,
+        estimated_budget_hours: estimatedBudgetHours,
+        team_lead_id: body.team_lead_id || null,
+        pm_id: body.pm_id || null,
+        assignment_type: assignmentType,
+        external_team_id: assignmentType === 'external' ? (body.external_team_id || null) : null,
+        external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,
+        billable: body.billable !== undefined ? (body.billable ? 1 : 0) : 1,
+        revenue,
+        remarks: body.remarks ? validateLength(String(body.remarks), 0, 2000, 'Remarks') : null,
+        consumed_hours: 0,
+        created_at: now,
+        updated_at: now,
+      }
+      await models.projects.insertOne(project)
+
+      await models.kanbanPermissions.insertMany([
+        { id: generateId('kp'), project_id: id, role: 'admin', can_view: 1, can_create_task: 1, can_edit_any_task: 1, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 1, can_manage_columns: 1, can_comment: 1 },
+        { id: generateId('kp'), project_id: id, role: 'pm', can_view: 1, can_create_task: 1, can_edit_any_task: 1, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 1, can_manage_columns: 1, can_comment: 1 },
+        { id: generateId('kp'), project_id: id, role: 'pc', can_view: 1, can_create_task: 1, can_edit_any_task: 1, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 0, can_manage_columns: 0, can_comment: 1 },
+        { id: generateId('kp'), project_id: id, role: 'developer', can_view: 1, can_create_task: 1, can_edit_any_task: 0, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 0, can_manage_columns: 0, can_comment: 1 },
+        { id: generateId('kp'), project_id: id, role: 'team', can_view: 1, can_create_task: 1, can_edit_any_task: 0, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 0, can_manage_columns: 0, can_comment: 1 },
+        { id: generateId('kp'), project_id: id, role: 'client', can_view: 1, can_create_task: 0, can_edit_any_task: 0, can_edit_own_task: 0, can_move_task: 0, can_delete_task: 0, can_manage_columns: 0, can_comment: 1 },
+      ])
+
+      await models.kanbanColumns.insertMany(DEFAULT_KANBAN_COLUMNS.map((col) => ({
+        id: generateId('kc'),
+        project_id: id,
+        name: col.name,
+        status_key: col.status_key,
+        color: col.color,
+        position: col.position,
+        wip_limit: col.wip_limit,
+        is_done_column: col.is_done_column,
+      })))
+
+      return res.status(201).json({ data: { id }, project, message: 'Project created successfully' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  router.put('/:id', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const body = req.body || {}
+      const name = validateName(body.name, 'Project name', 2, 120)
+      const startDate = validateISODate(body.start_date, 'Start date')
+      const endDate = validateOptional(body.expected_end_date, (v) => validateISODate(v, 'End date'))
+      if (endDate && startDate > endDate) {
+        return res.status(400).json({ error: 'End date must be after start date' })
+      }
+      const projectType = validateEnum(body.project_type || 'development', PROJECT_TYPES, 'Project type')
+      const status = validateEnum(body.status || 'active', PROJECT_STATUSES, 'Status')
+      const priority = validateEnum(body.priority || 'medium', PROJECT_PRIORITIES, 'Priority')
+      const assignmentType = validateEnum(body.assignment_type || 'in_house', ASSIGNMENT_TYPES, 'Assignment type')
+      const externalAssigneeType = assignmentType === 'external'
+        ? validateEnum(body.external_assignee_type || 'team', ASSIGNEE_TYPES, 'External assignee type')
+        : null
+      if (assignmentType === 'external' && !body.external_team_id) {
+        return res.status(400).json({ error: 'External team is required when assignment type is external' })
+      }
+      const totalAllocatedHours = body.total_allocated_hours !== undefined
+        ? validatePositiveNumber(body.total_allocated_hours, 'Total allocated hours')
+        : 0
+      const estimatedBudgetHours = body.estimated_budget_hours !== undefined
+        ? validatePositiveNumber(body.estimated_budget_hours, 'Estimated budget hours')
+        : 0
+      const revenue = body.revenue !== undefined ? validatePositiveNumber(body.revenue, 'Revenue') : 0
+
+      await models.projects.updateById(id, {
+        $set: {
+          name,
+          client_name: body.client_name || null,
+          client_id: body.client_id || null,
+          description: body.description ? validateLength(String(body.description), 0, 5000, 'Description') : null,
+          project_type: projectType,
+          start_date: startDate,
+          expected_end_date: endDate,
+          priority,
+          status,
+          total_allocated_hours: totalAllocatedHours,
+          estimated_budget_hours: estimatedBudgetHours,
+          team_lead_id: body.team_lead_id || null,
+          pm_id: body.pm_id || null,
+          assignment_type: assignmentType,
+          external_team_id: assignmentType === 'external' ? (body.external_team_id || null) : null,
+          external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,
+          billable: body.billable ? 1 : 0,
+          revenue,
+          remarks: body.remarks ? validateLength(String(body.remarks), 0, 2000, 'Remarks') : null,
+          updated_at: new Date().toISOString(),
+        },
+      })
+      return res.json({ message: 'Project updated successfully' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  router.delete('/:id', requireRole('admin'), async (req, res) => {
+    try {
+      await models.projects.updateById(String(req.params.id), {
+        $set: { status: 'archived', updated_at: new Date().toISOString() },
+      })
+      return res.json({ message: 'Project archived successfully' })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to archive project' })
+    }
+  })
+
+  router.post('/:id/assign', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+    try {
+      const projectId = req.params.id
+      const body = req.body || {}
+      if (!body.user_id) return res.status(400).json({ error: 'user_id required' })
+      const existing = await models.projectAssignments.findOne({
+        project_id: projectId, user_id: body.user_id,
+      }) as any
+      const now = new Date().toISOString()
+      if (existing) {
+        await models.projectAssignments.updateById(existing.id, {
+          $set: {
+            allocated_hours: Number(body.allocated_hours || 0),
+            role: body.role || 'developer',
+            is_active: 1,
+            updated_at: now,
+          },
+        })
+      } else {
+        await models.projectAssignments.insertOne({
+          id: generateId('pa'),
+          project_id: projectId,
+          user_id: body.user_id,
+          allocated_hours: Number(body.allocated_hours || 0),
+          consumed_hours: 0,
+          role: body.role || 'developer',
+          is_active: 1,
+          created_at: now,
+          updated_at: now,
+        })
+      }
+      return res.status(201).json({ message: 'Developer assigned to project' })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to assign developer' })
+    }
+  })
+
+  router.delete('/:id/assign/:userId', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+    try {
+      const { id: projectId, userId } = req.params
+      await models.projectAssignments.updateMany(
+        { project_id: projectId, user_id: userId },
+        { $set: { is_active: 0, updated_at: new Date().toISOString() } }
+      )
+      return res.json({ message: 'Developer removed from project' })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to remove developer' })
+    }
+  })
+
+  router.patch('/:id/assign/:userId', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+    try {
+      const { id: projectId, userId } = req.params
+      const { allocated_hours, role } = req.body || {}
+      await models.projectAssignments.updateMany(
+        { project_id: projectId, user_id: userId },
+        {
+          $set: {
+            allocated_hours: Number(allocated_hours || 0),
+            role: role || 'developer',
+            updated_at: new Date().toISOString(),
+          },
+        }
+      )
+      return res.json({ message: 'Allocation updated successfully' })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to update allocation' })
+    }
+  })
+
+  router.post('/:id/assign-bulk', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+    try {
+      const projectId = req.params.id
+      const { developers } = req.body || {}
+      if (!Array.isArray(developers)) return res.status(400).json({ error: 'developers must be array' })
+
+      await models.projectAssignments.updateMany(
+        { project_id: projectId },
+        { $set: { is_active: 0, updated_at: new Date().toISOString() } }
+      )
+
+      for (const dev of developers) {
+        if (!dev?.user_id) continue
+        const existing = await models.projectAssignments.findOne({
+          project_id: projectId, user_id: dev.user_id,
+        }) as any
+        const now = new Date().toISOString()
+        if (existing) {
+          await models.projectAssignments.updateById(existing.id, {
+            $set: {
+              allocated_hours: Number(dev.allocated_hours || 0),
+              role: dev.role || 'developer',
+              is_active: 1,
+              updated_at: now,
+            },
+          })
+        } else {
+          await models.projectAssignments.insertOne({
+            id: generateId('pa'),
+            project_id: projectId,
+            user_id: dev.user_id,
+            allocated_hours: Number(dev.allocated_hours || 0),
+            consumed_hours: 0,
+            role: dev.role || 'developer',
+            is_active: 1,
+            created_at: now,
+            updated_at: now,
+          })
+        }
+      }
+      return res.json({ message: 'Developers updated successfully' })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to update assignments' })
+    }
+  })
+
+  router.post('/:id/notes', async (req, res) => {
+    try {
+      const projectId = req.params.id
+      const user = req.user as any
+      const { content } = req.body || {}
+      if (!content) return res.status(400).json({ error: 'content required' })
+      await models.activityLogs.insertOne({
+        id: generateId('note'),
+        project_id: projectId,
+        entity_type: 'project',
+        entity_id: projectId,
+        action: 'note',
+        actor_user_id: user?.sub || null,
+        actor_name: user?.name || null,
+        actor_role: user?.role || null,
+        new_value: content,
+        created_at: new Date().toISOString(),
+      })
+      return res.status(201).json({ message: 'Note added successfully' })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to add note' })
+    }
+  })
+
+  return router
+}

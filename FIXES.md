@@ -19,9 +19,9 @@ This document summarizes the bugs found and fixed in the PMportal codebase durin
 **Files affected:** `src/routes/dashboard.ts`, `src/routes/projects.ts` (two queries), `src/routes/reports.ts`.
 **Fix:** Wrapped the denominator in `NULLIF(..., 0)` so the result becomes `NULL` instead of erroring.
 
-## Migration fixes
+## Seed-data fixes
 
-### 4. Mismatched emails in `migrations/0005_fix_password_hashes.sql`
+### 4. Mismatched emails in the password bootstrap data
 **Before:** The password-fix UPDATE referenced `vikram@devtrack.com` and `anjali@devtrack.com`, neither of which are part of the current bootstrap data. Meanwhile the actually-seeded emails `arjun@devtrack.com` and `divya@devtrack.com` were missing from the list.
 **Impact:** Two real demo accounts never had their hash updated by this migration. (They happened to still work because the hash was already correct in the initial seed, but if anyone ran 0005 on a partial DB, those accounts would break.)
 **Fix:** Updated the email list to match the bootstrap data exactly.
@@ -44,22 +44,19 @@ Previously listed only 3 of the 6 developers that exist in seed data.
 
 - **Password hashes in seed match the auth algorithm.** Computed SHA-256 of `'Admin@123' + 'devtrack-salt-2025'` and confirmed it matches the hash stored for `admin@devtrack.com`. Likewise for `Password@123`. All demo logins work out of the box.
 - **Auto-consume logic is otherwise correct.** `updateConsumedHours()` properly recalculates project and assignment totals on create/edit/delete/approve/reject using the same `!= 'rejected'` filter everywhere after fix #1 and #2.
-- **All 6 migrations apply in order without conflicts.**
-- **JWT is signed and verified from Cloudflare env bindings in `auth.ts` and `client-auth.ts`.** Keep the value in `.dev.vars` locally or as a Cloudflare secret in production.
+- **All seed data entries are consistent with the current app auth flow.**
+- **JWT is signed and verified from runtime env in `auth.ts` and `client-auth.ts`.** Keep the value in `.dev.vars` locally or in your production environment variables.
 
 ## How to run after pulling these fixes
 
 ```bash
 npm install
-npx wrangler d1 create devtrack-pro-production
-# copy the returned database_id into wrangler.jsonc
-
-# apply all migrations + seed data
-npx wrangler d1 migrations apply devtrack-pro-production --local
+cp .dev.vars.example .dev.vars
+# edit .dev.vars with your MongoDB URI and auth secrets
 
 # build and run
 npm run build
-npm run dev:sandbox
+npm run dev
 ```
 
 Open <http://localhost:3000> and log in with `admin@devtrack.com` / `Admin@123`.

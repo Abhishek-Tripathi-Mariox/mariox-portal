@@ -74,7 +74,7 @@ const token_expiry = CONFIG.JWT.EXPIRY
 const max_limit = CONFIG.PAGINATION.MAX_LIMIT
 ```
 
-### 4. Database Service (`src/db/service.ts`)
+### 4. Mongo Models (`src/models/mongo-models.ts`)
 Simplified database operations:
 ```typescript
 const db = new DatabaseService(c.env.DB)

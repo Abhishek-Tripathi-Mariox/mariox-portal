@@ -37,11 +37,11 @@ src/
 │   └── (To be created - one per domain)
 │
 ├── routes/api/                # 🌐 Routes Organized by Domain
-│   ├── auth/                 # (Ready for migration)
-│   ├── projects/             # (Ready for migration)
-│   ├── users/                # (Ready for migration)
-│   ├── tasks/                # (Ready for migration)
-│   └── timesheets/           # (Ready for migration)
+│   ├── auth/                 # (Ready for implementation)
+│   ├── projects/             # (Ready for implementation)
+│   ├── users/                # (Ready for implementation)
+│   ├── tasks/                # (Ready for implementation)
+│   └── timesheets/           # (Ready for implementation)
 │
 └── PROJECT_ARCHITECTURE.md    # 📖 Complete architectural guide
 ```
@@ -73,7 +73,7 @@ src/
 - Upload settings (file types, max size)
 - Rate limiting configuration
 
-### 4. **Database Service** (`src/db/service.ts`)
+### 4. **Mongo Models** (`src/models/mongo-models.ts`)
 ```typescript
 // Simplified DB operations
 const db = new DatabaseService(c.env.DB)

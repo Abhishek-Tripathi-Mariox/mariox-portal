@@ -1,10 +1,13 @@
+import type { MongoModels } from '../models/mongo-models'
+
 // ───────────────────────────────────────────────────────────────────
 // Common Types & Interfaces
 // ───────────────────────────────────────────────────────────────────
 
-// Cloudflare Bindings
+// Runtime Bindings
 export type Bindings = {
-  DB: D1Database
+  DB: any
+  MODELS?: MongoModels
   JWT_SECRET: string
   PASSWORD_SALT: string
   EMAIL?: {

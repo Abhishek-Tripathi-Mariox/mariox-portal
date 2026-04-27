@@ -43,7 +43,7 @@
         ▼
   ┌──────────────────┐
   │    SQLite DB     │
-  │  (Cloudflare D1) │
+  │ (Mongo snapshot) │
   └──────────────────┘
 ```
 
@@ -167,7 +167,7 @@ INPUT HANDLING
 
 DATABASE & STORAGE
 ├── db/service.ts          ← Database operations
-└── migrations/            ← Schema & seeds
+└── models/                ← Mongo collections registry
 
 BUSINESS LOGIC
 ├── services/              ← Domain logic (Auth, User, Project, etc)
@@ -226,7 +226,7 @@ APP ENTRY
 │  └────────────────────────────────────────────────────────────┘ │
 │                           ↓                                      │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Database Service (src/db/service.ts)                      │ │
+│  │  Mongo Models (src/models/mongo-models.ts)                 │ │
 │  │  ├─ SELECT queries (findAll, findOne)                    │ │
 │  │  ├─ INSERT operations                                     │ │
 │  │  ├─ UPDATE operations                                     │ │

@@ -83,7 +83,7 @@ src/
 ✓ Rate limiting
 ```
 
-### 💾 Database Service (src/db/service.ts)
+### 💾 Mongo Models (src/models/mongo-models.ts)
 ```
 ✓ findAll(sql, params)
 ✓ findOne(sql, params)
@@ -298,7 +298,6 @@ npm run build                          # ✓ Works
 
 # Database
 npm run db:reset                       # Create tables & seed
-npm run db:migrate:local               # Run migrations
 
 # Development
 npm run dev:sandbox                    # Start dev server

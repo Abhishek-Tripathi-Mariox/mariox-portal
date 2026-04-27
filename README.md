@@ -3,8 +3,8 @@
 ## Project Overview
 - **Name**: Mariox DevPortal (DevTrack Pro)
 - **Goal**: Full-stack SaaS platform for project management, developer time tracking, and client portal
-- **Platform**: Cloudflare Pages + Workers (Edge Runtime)
-- **Tech Stack**: Hono + TypeScript + Tailwind CSS v3 (CLI build) + Chart.js + Cloudflare D1
+- **Platform**: Node.js + Hono
+- **Tech Stack**: Hono + TypeScript + Tailwind CSS v3 (CLI build) + Chart.js + MongoDB
 
 ---
 
@@ -260,7 +260,7 @@ All other users are created from the admin panel after signing in.
 
 ## Data Architecture
 
-### Database: Cloudflare D1 (SQLite)
+### Database: MongoDB-backed SQL layer
 
 **Tables:**
 | Table | Description |
@@ -285,11 +285,6 @@ All other users are created from the admin panel after signing in.
 | `alerts` | Internal system alerts |
 | `company_settings` | Global platform config |
 | `tech_stacks` | Technology master data |
-
-**Migrations:**
-- `migrations/0001_initial.sql` — Core schema (users, projects, timesheets, leaves, alerts, settings)
-- `migrations/0003_enterprise.sql` — Enterprise schema (tasks, sprints, milestones, documents, invoices, clients, activity)
-- `migrations/0009_admin_seed.sql` — Admin bootstrap data
 
 ---
 
@@ -331,15 +326,13 @@ webapp/
 │   ├── tailwind-input.css         # Tailwind CSS source (3 directives)
 │   ├── tailwind.css               # Built & minified Tailwind (6.6KB — NO CDN)
 │   └── styles.css                 # Custom CSS (sidebar, cards, forms, animations)
-├── migrations/
-│   ├── 0001_initial.sql
-│   ├── 0003_enterprise.sql
-│   └── 0009_admin_seed.sql
+├── src/models/
+│   └── mongo-models.ts     # Mongo collections registry
 ├── tailwind.config.js             # Tailwind v3 config (custom colors, shadows)
 ├── postcss.config.js              # PostCSS config
 ├── ecosystem.config.cjs           # PM2 config
-├── wrangler.jsonc                 # Cloudflare Pages config
-├── vite.config.ts                 # Vite + Hono cloudflare-pages plugin
+├── src/server.ts                  # Node entrypoint
+├── src/models/mongo-models.ts     # Mongo collections registry
 ├── tsconfig.json
 └── package.json
 ```
@@ -356,14 +349,11 @@ cd PMportal
 # 2. Install dependencies
 npm install
 
-# 3. Create D1 database
-npx wrangler d1 create webapp-production
-# Copy the database_id to wrangler.jsonc
-
-# 3a. Add local secrets without committing them
+# 3. Add local secrets without committing them
 cat > .dev.vars <<'EOF'
 JWT_SECRET=your-secret-value
 PASSWORD_SALT=your-password-salt
+LOCAL_MONGO_DB=mongodb://localhost:27017/mariox-portal
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=abhishek@marioxsoftware.com
@@ -372,51 +362,28 @@ SMTP_FROM=abhishek@marioxsoftware.com
 SMTP_SECURE=false
 EOF
 
-# Or set them in Cloudflare as secrets for production
-npx wrangler pages secret put JWT_SECRET
-npx wrangler pages secret put PASSWORD_SALT
-npx wrangler pages secret put SMTP_HOST
-npx wrangler pages secret put SMTP_PORT
-npx wrangler pages secret put SMTP_USER
-npx wrangler pages secret put SMTP_PASS
-npx wrangler pages secret put SMTP_FROM
-npx wrangler pages secret put SMTP_SECURE
-
-# 4. Apply all migrations, including the admin bootstrap seed
-npx wrangler d1 migrations apply webapp-production --local
-
-# 5. Build (Tailwind + Vite)
+# 4. Build the CSS bundle
 npm run build
 
-# 6. Start development server
-npm run dev:sandbox
+# 5. Start development server
+npm run dev
 # or with PM2:
 pm2 start ecosystem.config.cjs
 ```
 
 ---
 
-## Deployment to Cloudflare Pages
+## Deployment
 
 ```bash
-# 1. Authenticate
-npx wrangler login
-
-# 2. Create D1 production database
-npx wrangler d1 create webapp-production
-# Add the returned database_id to wrangler.jsonc
-
-# 3. Build
+# 1. Build
 npm run build
 
-# 4. Create Pages project
-npx wrangler pages project create pmportal --production-branch main
+# 2. Set production environment variables
+#    LOCAL_MONGO_DB, JWT_SECRET, PASSWORD_SALT, SMTP_*
 
-# 5. Deploy
-npx wrangler pages deploy dist --project-name pmportal
-
-# 6. Apply migrations to production
-npx wrangler d1 migrations apply webapp-production
+# 3. Start the Node server
+npm run start
 ```
 
 ---
@@ -425,7 +392,7 @@ npx wrangler d1 migrations apply webapp-production
 
 ```bash
 npm run tw:build   # Tailwind CSS → public/static/tailwind.css (minified, 6.6KB)
-npm run build      # tw:build + vite build → dist/_worker.js (126.89KB)
+npm run build      # tw:build
 npm run tw:watch   # Watch mode for Tailwind during dev
 ```
 
@@ -448,10 +415,10 @@ npm run tw:watch   # Watch mode for Tailwind during dev
 |------|--------|
 | All APIs (18+ endpoints) | ✅ HTTP 200 |
 | Authentication (Staff + Client) | ✅ JWT HS256 |
-| Database | ✅ Cloudflare D1 with demo data |
+| Database | ✅ MongoDB with seeded demo data |
 | Tailwind CSS | ✅ Built via CLI (no CDN) |
 | Console warnings | ✅ Zero |
 | Password form accessibility | ✅ Fixed |
 | GitHub | ✅ https://github.com/marioxsoftware/PMportal |
-| Cloudflare Deployment | ⏳ Requires API key setup |
+| Node Deployment | ✅ Configure MongoDB and environment variables |
 | **Last Updated** | 2026-03-24 |

@@ -2,38 +2,35 @@
   "name": "webapp",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "tsx watch src/server.ts",
     "tw:build": "tailwindcss -i ./public/static/tailwind-input.css -o ./public/static/tailwind.css --minify",
     "tw:watch": "tailwindcss -i ./public/static/tailwind-input.css -o ./public/static/tailwind.css --watch",
-    "build": "npm run tw:build && vite build",
-    "preview": "wrangler pages dev dist",
-    "dev:sandbox": "wrangler pages dev dist --d1=devtrack-pro-production --local --ip 0.0.0.0 --port 4000",
-    "deploy": "npm run build && wrangler pages deploy dist",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "db:migrate:local": "wrangler d1 migrations apply devtrack-pro-production --local",
-    "db:seed": "wrangler d1 execute devtrack-pro-production --local --file=./migrations/0009_admin_seed.sql",
-    "db:seed:admin": "wrangler d1 execute devtrack-pro-production --local --file=./migrations/0009_admin_seed.sql",
-    "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local",
-    "db:init:admin": "rm -rf .wrangler/state && npm run db:migrate:local",
-    "db:reset:admin": "npm run db:init:admin",
-    "db:migrate:prod": "wrangler d1 migrations apply devtrack-pro-production --remote"
+    "build": "npm run tw:build",
+    "start": "tsx src/server.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1037.0",
     "@hono/node-server": "^1.19.11",
+    "@types/express": "^5.0.6",
     "bcryptjs": "^3.0.3",
+    "express": "^5.2.1",
     "hono": "^4.12.8",
     "jose": "^6.2.1",
+    "mongodb": "^7.2.0",
+    "multer": "^2.1.1",
+    "sharp": "^0.34.5",
+    "tsx": "^4.21.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@hono/vite-build": "^1.2.0",
-    "@hono/vite-dev-server": "^0.18.2",
     "@types/bcryptjs": "^2.4.6",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^25.6.0",
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.8",
     "tailwindcss": "^3.4.19",
-    "vite": "^6.3.5",
-    "wrangler": "^4.74.0"
+    "typescript": "^6.0.3",
+    "vite": "^6.3.5"
   }
 }

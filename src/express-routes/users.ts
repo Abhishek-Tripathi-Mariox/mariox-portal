@@ -1,0 +1,372 @@
+import type { Router } from 'express'
+import { Router as createRouter } from 'express'
+import type { MongoModels } from '../models/mongo-models'
+import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
+import { STAFF_CREATE_ROLES } from '../constants'
+import { generateId } from '../utils/helpers'
+import {
+  validateEmail,
+  validateNewPassword,
+  validateName,
+  validateEnum,
+  validateOptional,
+  validatePhone,
+  validateLength,
+  validateRange,
+  validatePositiveNumber,
+  validateISODate,
+  validateHexColor,
+  respondWithError,
+} from '../validators'
+
+function normalizeRole(role: any): string {
+  return String(role || '').toLowerCase().trim()
+}
+
+function getRoleFilter(role: string) {
+  const normalized = normalizeRole(role)
+  if (normalized === 'pm') return ['pm', 'pc']
+  if (normalized === 'developer') return ['developer', 'team']
+  if (normalized === 'admin') return ['admin']
+  if (normalized === 'client') return ['client']
+  if (normalized === 'pc' || normalized === 'team') return [normalized]
+  return null
+}
+
+function sumBy<T>(items: T[], getter: (item: T) => number) {
+  return items.reduce((total, item) => total + getter(item), 0)
+}
+
+function monthStart(yearMonth = new Date().toISOString().slice(0, 7)) {
+  return `${yearMonth}-01`
+}
+
+function monthEnd(yearMonth = new Date().toISOString().slice(0, 7)) {
+  const [year, month] = yearMonth.split('-').map(Number)
+  const lastDay = new Date(year, month, 0).getDate()
+  return `${yearMonth}-${String(lastDay).padStart(2, '0')}`
+}
+
+export function createUsersRouter(models: MongoModels, jwtSecret: string) {
+  const router = createRouter()
+  const authMiddleware = createAuthMiddleware(jwtSecret)
+
+  router.use(authMiddleware)
+
+  router.get('/', async (req, res) => {
+    try {
+      const role = req.query.role as string | undefined
+      const active = req.query.active as string | undefined
+      const allUsers = await models.users.find({})
+      const activeAssignments = await models.projectAssignments.find({ is_active: 1 })
+      const currentMonthTimesheets = await models.timesheets.find({
+        date: { $gte: monthStart() },
+      })
+
+      const projectCountByUser = new Map<string, number>()
+      const allocatedByUser = new Map<string, number>()
+      const monthlyConsumedByUser = new Map<string, number>()
+
+      for (const assignment of activeAssignments as any[]) {
+        const userId = String(assignment.user_id)
+        projectCountByUser.set(userId, (projectCountByUser.get(userId) || 0) + 1)
+        allocatedByUser.set(userId, (allocatedByUser.get(userId) || 0) + Number(assignment.allocated_hours || 0))
+      }
+
+      for (const entry of currentMonthTimesheets as any[]) {
+        if (entry.approval_status === 'rejected') continue
+        const userId = String(entry.user_id)
+        monthlyConsumedByUser.set(userId, (monthlyConsumedByUser.get(userId) || 0) + Number(entry.hours_consumed || 0))
+      }
+
+      let users = allUsers as any[]
+      if (role) {
+        const allowedRoles = getRoleFilter(role)
+        if (allowedRoles) {
+          users = users.filter((user) => allowedRoles.includes(normalizeRole(user.role)))
+        } else {
+          users = users.filter((user) => normalizeRole(user.role) === normalizeRole(role))
+        }
+      }
+      if (active !== undefined) {
+        users = users.filter((user) => Number(user.is_active || 0) === (active === 'true' ? 1 : 0))
+      }
+
+      users = users
+        .map((user) => ({
+          ...user,
+          project_count: projectCountByUser.get(String(user.id)) || 0,
+          total_allocated: allocatedByUser.get(String(user.id)) || 0,
+          monthly_consumed: monthlyConsumedByUser.get(String(user.id)) || 0,
+        }))
+        .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
+
+      return res.json({ users, data: users })
+    } catch (error: any) {
+      return res.json({ users: [], data: [] })
+    }
+  })
+
+  router.get('/:id', async (req, res) => {
+    try {
+      const id = req.params.id
+      const user = await models.users.findById(id) as any
+      if (!user) return res.json({ data: { assignments: [], leaves: [], recent_logs: [] } })
+
+      const assignments = await models.projectAssignments.find({ user_id: id, is_active: 1 }) as any[]
+      const projectIds = [...new Set(assignments.map((assignment) => String(assignment.project_id)))]
+      const projects = projectIds.length
+        ? await models.projects.find({ id: { $in: projectIds } }) as any[]
+        : []
+      const projectsById = new Map(projects.map((project) => [String(project.id), project]))
+
+      const userTimesheets = await models.timesheets.find({ user_id: id }) as any[]
+      const leaves = await models.leaves.find({ user_id: id }, { sort: { start_date: -1 }, limit: 10 }) as any[]
+      const recentTimesheets = [...userTimesheets]
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.created_at || '').localeCompare(String(a.created_at || '')))
+        .slice(0, 20)
+
+      const loggedHoursByProject = new Map<string, number>()
+      for (const entry of userTimesheets) {
+        if (entry.approval_status === 'rejected') continue
+        const projectId = String(entry.project_id)
+        loggedHoursByProject.set(projectId, (loggedHoursByProject.get(projectId) || 0) + Number(entry.hours_consumed || 0))
+      }
+
+      const enrichedAssignments = assignments.map((assignment) => ({
+        ...assignment,
+        project_name: projectsById.get(String(assignment.project_id))?.name,
+        project_code: projectsById.get(String(assignment.project_id))?.code,
+        project_status: projectsById.get(String(assignment.project_id))?.status,
+        priority: projectsById.get(String(assignment.project_id))?.priority,
+        logged_hours: loggedHoursByProject.get(String(assignment.project_id)) || 0,
+      }))
+
+      const recentLogs = recentTimesheets.map((entry) => ({
+        ...entry,
+        project_name: projectsById.get(String(entry.project_id))?.name,
+      }))
+
+      return res.json({
+        data: {
+          ...user,
+          assignments: enrichedAssignments,
+          leaves,
+          recent_logs: recentLogs,
+        },
+      })
+    } catch (error: any) {
+      return res.json({ data: { assignments: [], leaves: [], recent_logs: [] } })
+    }
+  })
+
+  router.post('/', requireRole('admin'), async (req, res) => {
+    try {
+      const body = req.body || {}
+      const email = validateEmail(body.email)
+      const fullName = validateName(body.full_name, 'Full name')
+      const password = validateNewPassword(body.password)
+      const role = validateEnum(body.role || 'developer', STAFF_CREATE_ROLES, 'Role')
+
+      const phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
+      const designation = validateOptional(body.designation, (v) => validateLength(String(v).trim(), 2, 100, 'Designation'))
+      const joiningDate = validateOptional(body.joining_date, (v) => validateISODate(v, 'Joining date'))
+      const dailyHours = body.daily_work_hours !== undefined
+        ? validateRange(body.daily_work_hours, 0, 24, 'Daily work hours')
+        : 8
+      const weeklyDays = body.working_days_per_week !== undefined
+        ? validateRange(body.working_days_per_week, 0, 7, 'Working days per week')
+        : 5
+      const hourlyCost = body.hourly_cost !== undefined
+        ? validatePositiveNumber(body.hourly_cost, 'Hourly cost')
+        : 0
+      const monthlyHours = body.monthly_available_hours !== undefined
+        ? validateRange(body.monthly_available_hours, 0, 744, 'Monthly available hours')
+        : 160
+      const avatarColor = body.avatar_color
+        ? validateHexColor(body.avatar_color, 'Avatar color')
+        : '#6366f1'
+
+      const existing = await models.users.findByEmail(email)
+      if (existing) return res.status(409).json({ error: 'Email already registered' })
+
+      const encoder = new TextEncoder()
+      const data = encoder.encode(password + 'devtrack-salt-2025')
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+      const hashArray = Array.from(new Uint8Array(hashBuffer))
+      const passwordHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+
+      const created = await models.users.createStaff({
+        id: generateId('user'),
+        email,
+        password_hash: passwordHash,
+        full_name: fullName,
+        role,
+        phone,
+        designation,
+        tech_stack: body.tech_stack ? JSON.stringify(body.tech_stack) : null,
+        skill_tags: body.skill_tags ? JSON.stringify(body.skill_tags) : null,
+        joining_date: joiningDate,
+        daily_work_hours: dailyHours,
+        working_days_per_week: weeklyDays,
+        hourly_cost: hourlyCost,
+        monthly_available_hours: monthlyHours,
+        reporting_pm_id: body.reporting_pm_id || null,
+        avatar_color: avatarColor,
+        remarks: body.remarks || null,
+      })
+
+      return res.status(201).json({ data: created, message: 'User created successfully' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  router.put('/:id', requireRole('admin', 'pm'), async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const body = (req.body || {}) as any
+      const fullName = validateName(body.full_name, 'Full name')
+      const phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
+      const designation = validateOptional(body.designation, (v) => validateLength(String(v).trim(), 2, 100, 'Designation'))
+      const dailyHours = body.daily_work_hours !== undefined
+        ? validateRange(body.daily_work_hours, 0, 24, 'Daily work hours')
+        : 8
+      const weeklyDays = body.working_days_per_week !== undefined
+        ? validateRange(body.working_days_per_week, 0, 7, 'Working days per week')
+        : 5
+      const hourlyCost = body.hourly_cost !== undefined
+        ? validatePositiveNumber(body.hourly_cost, 'Hourly cost')
+        : 0
+      const monthlyHours = body.monthly_available_hours !== undefined
+        ? validateRange(body.monthly_available_hours, 0, 744, 'Monthly available hours')
+        : 160
+
+      await models.users.updateById(id, {
+        $set: {
+          full_name: fullName,
+          phone,
+          designation,
+          tech_stack: body.tech_stack ? JSON.stringify(body.tech_stack) : null,
+          skill_tags: body.skill_tags ? JSON.stringify(body.skill_tags) : null,
+          daily_work_hours: dailyHours,
+          working_days_per_week: weeklyDays,
+          hourly_cost: hourlyCost,
+          monthly_available_hours: monthlyHours,
+          reporting_pm_id: body.reporting_pm_id || null,
+          remarks: body.remarks || null,
+          is_active: body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1,
+          updated_at: new Date().toISOString(),
+        },
+      })
+      const updated = await models.users.findById(id)
+      return res.json({ data: updated, message: 'User updated successfully' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  router.patch('/:id/status', requireRole('admin', 'pm'), async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const { is_active } = (req.body || {}) as any
+      await models.users.updateById(id, {
+        $set: {
+          is_active: is_active ? 1 : 0,
+          updated_at: new Date().toISOString(),
+        },
+      })
+      return res.json({ message: `User ${is_active ? 'activated' : 'deactivated'} successfully` })
+    } catch (error: any) {
+      return res.json({ message: 'User status updated' })
+    }
+  })
+
+  router.get('/:id/utilization', async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const month = typeof req.query.month === 'string' ? req.query.month : new Date().toISOString().slice(0, 7)
+      const startDate = monthStart(month)
+      const endDate = monthEnd(month)
+
+      const user = await models.users.findById(id) as any
+      if (!user) {
+        return res.json({
+          data: {
+            user: null,
+            monthly_hours: [],
+            leaves: [],
+            holidays: 0,
+            logged: 0,
+            allocated: 0,
+            total_available: Number(req.query.total_available || 0),
+            utilization_pct: 0,
+            remaining: 0,
+          },
+        })
+      }
+
+      const leaves = await models.leaves.find({
+        user_id: id,
+        status: 'approved',
+        start_date: { $gte: startDate },
+        end_date: { $lte: endDate },
+      }) as any[]
+      const holidays = await models.holidays.countDocuments({
+        date: { $gte: startDate, $lte: endDate },
+      })
+      const logged = await models.timesheets.find({
+        user_id: id,
+        date: { $gte: startDate, $lte: endDate },
+        approval_status: { $ne: 'rejected' },
+      }) as any[]
+      const allocated = await models.projectAssignments.find({
+        user_id: id,
+        is_active: 1,
+      }) as any[]
+
+      const workingDays = Number(user.working_days_per_week) === 5 ? 22 : 26
+      const leaveDays = sumBy(leaves, (leave) => Number(leave.days_count || 0))
+      const holidayCount = Number(holidays || 0)
+      const effectiveDays = Math.max(0, workingDays - leaveDays - holidayCount)
+      const capacity = effectiveDays * Number(user.daily_work_hours || 8)
+      const loggedHours = sumBy(logged, (entry) => Number(entry.hours_consumed || 0))
+      const allocatedHours = sumBy(allocated, (entry) => Number(entry.allocated_hours || 0))
+      const utilizationPercent = capacity > 0 ? Math.round((loggedHours / capacity) * 100) : 0
+
+      return res.json({
+        data: {
+          user_id: id,
+          month,
+          working_days: workingDays,
+          leave_days: leaveDays,
+          holiday_count: holidayCount,
+          effective_days: effectiveDays,
+          capacity_hours: capacity,
+          allocated_hours: allocatedHours,
+          logged_hours: loggedHours,
+          remaining_hours: Math.max(0, capacity - loggedHours),
+          idle_hours: Math.max(0, capacity - allocatedHours),
+          utilization_percent: utilizationPercent,
+          status: utilizationPercent >= 100 ? 'overloaded' : utilizationPercent >= 70 ? 'optimal' : utilizationPercent >= 50 ? 'underutilized' : 'idle',
+        },
+      })
+    } catch (error: any) {
+      return res.json({
+        data: {
+          user: null,
+          monthly_hours: [],
+          leaves: [],
+          holidays: 0,
+          logged: 0,
+          allocated: 0,
+          total_available: 0,
+          utilization_pct: 0,
+          remaining: 0,
+        },
+      })
+    }
+  })
+
+  return router
+}

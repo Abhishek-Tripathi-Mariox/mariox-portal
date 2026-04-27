@@ -331,6 +331,32 @@ async function approveLog(id, action) {
   } catch (e) { utils.toast('Failed: ' + e.message, 'error') }
 }
 
+async function viewLogDetail(id) {
+  try {
+    const res = await API.get('/timesheets', { params: { id } })
+    const list = res.timesheets || res.data || []
+    const entry = list.find(t => String(t.id) === String(id)) || list[0]
+    if (!entry) return utils.toast('Timesheet entry not found', 'error')
+    const esc = (v = '') => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    showModal(`
+      <div class="modal-header"><h3><i class="fas fa-clock"></i> Timesheet Detail</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+      <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:10px">
+        <div><strong>User:</strong> ${esc(entry.full_name || entry.user_name || entry.user_id)}</div>
+        <div><strong>Project:</strong> ${esc(entry.project_name || entry.project_id)}</div>
+        <div><strong>Date:</strong> ${esc(utils.formatDate(entry.date))}</div>
+        <div><strong>Hours:</strong> ${esc(entry.hours_consumed)}h ${entry.is_billable ? '· Billable' : '· Non-billable'}</div>
+        ${entry.module_name ? `<div><strong>Module:</strong> ${esc(entry.module_name)}</div>` : ''}
+        <div><strong>Status:</strong> ${esc(entry.status || '')} · <strong>Approval:</strong> ${esc(entry.approval_status || 'pending')}</div>
+        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);white-space:pre-wrap"><strong>Description:</strong><br/>${esc(entry.task_description || '—')}</div>
+        ${entry.blocker_remarks ? `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(239,68,68,.06);white-space:pre-wrap"><strong>Blocker:</strong><br/>${esc(entry.blocker_remarks)}</div>` : ''}
+        ${entry.extra_hours_reason ? `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(245,158,11,.06);white-space:pre-wrap"><strong>Extra hours:</strong><br/>${esc(entry.extra_hours_reason)}</div>` : ''}
+        ${entry.pm_notes ? `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(99,102,241,.06);white-space:pre-wrap"><strong>PM notes:</strong><br/>${esc(entry.pm_notes)}</div>` : ''}
+      </div>
+      <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+    `, 'modal-lg')
+  } catch (e) { utils.toast('Failed: ' + e.message, 'error') }
+}
+
 async function bulkApprove() {
   const selected = [...document.querySelectorAll('.log-checkbox:checked')].map(c => c.value)
   const ids = selected.length > 0 ? selected : [...document.querySelectorAll('.log-checkbox')].map(c => c.value)

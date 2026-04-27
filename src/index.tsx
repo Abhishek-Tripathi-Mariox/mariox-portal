@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
-import { serveStatic } from 'hono/cloudflare-workers'
+import { serveStatic } from '@hono/node-server/serve-static'
 import authRoutes from './routes/auth'
 import clientAuthRoutes from './routes/client-auth'
 import userRoutes from './routes/users'
@@ -22,9 +22,11 @@ import activityRoutes from './routes/activity'
 import projectTeamsRoutes from './routes/project-teams'
 import kanbanPermsRoutes from './routes/kanban-permissions'
 import invitesRoutes from './routes/invites'
+import type { MongoModels } from './models/mongo-models'
 
 type Bindings = {
-  DB: D1Database
+  DB: any
+  MODELS?: MongoModels
   JWT_SECRET: string
   PASSWORD_SALT: string
   EMAIL?: {
@@ -89,7 +91,7 @@ app.route('/api/kanban-permissions', kanbanPermsRoutes)
 app.route('/api/invites', invitesRoutes)
 
 // ── Static files
-app.use('/static/*', serveStatic({ root: './' }))
+app.use('/static/*', serveStatic({ root: './public' }))
 
 // ── SPA fallback
 app.get('*', (c) => {
@@ -122,6 +124,7 @@ app.get('*', (c) => {
   <script src="/static/enterprise2.js"></script>
   <script src="/static/client-portal.js"></script>
   <script src="/static/project-extensions.js"></script>
+  <script src="/static/support.js"></script>
 </body>
 </html>`)
 })

@@ -8,7 +8,7 @@
     "lib": [
       "ESNext"
     ],
-    "types": ["vite/client"],
+    "types": ["node", "vite/client"],
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
   },

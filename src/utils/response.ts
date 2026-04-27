@@ -10,14 +10,14 @@ export const sendSuccess = (c: Context, data: any, status: number = HTTP_STATUS.
   return c.json({
     success: true,
     data,
-  } as ApiResponse, status)
+  } as ApiResponse, status as any)
 }
 
 export const sendError = (c: Context, message: string, status: number = HTTP_STATUS.INTERNAL_ERROR) => {
   return c.json({
     success: false,
     error: message,
-  } as ApiResponse, status)
+  } as ApiResponse, status as any)
 }
 
 export const sendPaginated = (
@@ -41,7 +41,7 @@ export const sendPaginated = (
         totalPages: Math.ceil(total / limit),
       },
     },
-  }, status)
+  }, status as any)
 }
 
 export const sendCreated = (c: Context, data: any) => {

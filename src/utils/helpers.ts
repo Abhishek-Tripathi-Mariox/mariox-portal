@@ -4,6 +4,10 @@ export function generateId(prefix: string = ''): string {
   return prefix ? `${prefix}-${timestamp}-${random}` : `${timestamp}-${random}`
 }
 
+export function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim().toLowerCase())
+}
+
 export function getCurrentDate(): string {
   return new Date().toISOString().split('T')[0]
 }

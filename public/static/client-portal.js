@@ -249,6 +249,7 @@ async function renderClientMain(container) {
         ${cpNavItem('cp-milestones','fa-flag','Milestones')}
         ${cpNavItem('cp-documents','fa-folder-open','Documents')}
         ${cpNavItem('cp-invoices','fa-file-invoice-dollar','Invoices & Billing')}
+        ${cpNavItem('cp-support','fa-life-ring','Support')}
         ${cpNavItem('cp-activity','fa-bell','Activity Feed')}
         ${cpNavItem('cp-profile','fa-user-cog','My Profile')}
       </nav>
@@ -338,7 +339,7 @@ function cpNavigate(page) {
   const titles = {
     'cp-dashboard': 'Dashboard', 'cp-projects': 'My Projects', 'cp-kanban': 'Task Board',
     'cp-milestones': 'Milestones', 'cp-documents': 'Documents', 'cp-invoices': 'Invoices & Billing',
-    'cp-activity': 'Activity Feed', 'cp-profile': 'My Profile'
+    'cp-support': 'Support', 'cp-activity': 'Activity Feed', 'cp-profile': 'My Profile'
   }
   const titleEl = document.getElementById('cp-page-title')
   if (titleEl) titleEl.textContent = titles[page] || page
@@ -353,6 +354,7 @@ function cpNavigate(page) {
     case 'cp-milestones':  renderCpMilestones(main); break
     case 'cp-documents':   renderCpDocuments(main); break
     case 'cp-invoices':    renderCpInvoices(main); break
+    case 'cp-support':     renderCpSupport(main); break
     case 'cp-activity':    renderCpActivity(main); break
     case 'cp-profile':     renderCpProfile(main); break
   }
@@ -372,7 +374,7 @@ function cpBack() {
   const titles = {
     'cp-dashboard': 'Dashboard', 'cp-projects': 'My Projects', 'cp-kanban': 'Task Board',
     'cp-milestones': 'Milestones', 'cp-documents': 'Documents', 'cp-invoices': 'Invoices & Billing',
-    'cp-activity': 'Activity Feed', 'cp-profile': 'My Profile'
+    'cp-support': 'Support', 'cp-activity': 'Activity Feed', 'cp-profile': 'My Profile'
   }
   const titleEl = document.getElementById('cp-page-title')
   if (titleEl) titleEl.textContent = titles[_clientPage] || _clientPage
@@ -387,6 +389,7 @@ function cpBack() {
     case 'cp-milestones':  renderCpMilestones(main); break
     case 'cp-documents':   renderCpDocuments(main); break
     case 'cp-invoices':    renderCpInvoices(main); break
+    case 'cp-support':     renderCpSupport(main); break
     case 'cp-activity':    renderCpActivity(main); break
     case 'cp-profile':     renderCpProfile(main); break
   }
@@ -752,9 +755,23 @@ async function renderCpMilestones(el) {
     const clientData = await ClientAPI.get('/clients/' + clientId)
     const projects = clientData.projects || []
     const projectIds = projects.map(p => p.id)
+    const milestonesHeader = `
+      <div class="card" style="margin:14px 0 12px;padding:14px 16px;background:rgba(15,23,42,.72);border:1px solid rgba(148,163,184,.22);box-shadow:none">
+        <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr;gap:12px;align-items:center;font-size:12px;letter-spacing:.03em;color:#f8fafc;font-weight:700">
+          <div>Milestone</div>
+          <div>Project</div>
+          <div>Due / Status</div>
+          <div>Billing / Progress</div>
+        </div>
+      </div>`
 
     if (projectIds.length === 0) {
-      el.innerHTML = '<div class="empty-state"><i class="fas fa-flag"></i><p>No projects assigned yet.</p></div>'
+      el.innerHTML = `
+      <div class="page-header">
+        <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">0 project milestones and delivery timeline</p></div>
+      </div>
+      ${milestonesHeader}
+      <div class="empty-state"><i class="fas fa-flag"></i><p>No projects assigned yet.</p></div>`
       return
     }
 
@@ -768,6 +785,7 @@ async function renderCpMilestones(el) {
     <div class="page-header">
       <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">${pagination.total} project milestones and delivery timeline</p></div>
     </div>
+    ${milestonesHeader}
     ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-flag"></i><p>No milestones set yet.</p></div>' :
     pagination.items.map(m => {
       const pct = m.completion_percentage || 0
@@ -834,14 +852,18 @@ async function renderCpDocuments(el) {
       billing: 'fa-file-invoice-dollar', contract: 'fa-file-contract', other: 'fa-file'
     }
 
+    // Stash for the upload modal
+    window._cpClientProjects = projects
+
     el.innerHTML = `
     <div class="page-header">
       <div><h1 class="page-title">Project Documents</h1><p class="page-subtitle">${pagination.total} document${pagination.total !== 1 ? 's' : ''} available</p></div>
-      <div class="page-actions">
-        <select class="form-select" style="min-width:200px" onchange="cpReloadDocs(this.value)">
+      <div class="page-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap">
+        <select class="form-select" style="min-width:160px;flex:0 1 auto" onchange="cpReloadDocs(this.value)">
           <option value="">All Projects</option>
           ${projects.map(p => `<option value="${p.id}" ${p.id === selectedProject ? 'selected' : ''}>${p.name}</option>`).join('')}
         </select>
+        <button class="btn btn-primary" style="white-space:nowrap;flex:0 0 auto" onclick="openCpUploadModal()"><i class="fas fa-upload"></i> Upload</button>
       </div>
     </div>
 
@@ -874,13 +896,14 @@ async function renderCpDocuments(el) {
                   </div>
                 </div>
               </div>
-              <div style="display:flex;gap:8px;margin-top:12px">
+              <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
                 <a href="${doc.file_url}" target="_blank" class="btn btn-sm btn-outline" style="flex:1;text-align:center;text-decoration:none" onclick="cpTrackDownload('${doc.id}')">
                   <i class="fas fa-eye"></i>Preview
                 </a>
                 <a href="${doc.file_url}" download="${doc.file_name}" class="btn btn-sm btn-primary" style="flex:1;text-align:center;text-decoration:none" onclick="cpTrackDownload('${doc.id}')">
                   <i class="fas fa-download"></i>Download
                 </a>
+                ${doc.uploaded_by_role === 'client' && String(doc.uploaded_by) === String(_user.sub || _user.id) ? `<button class="btn btn-sm btn-outline" style="color:#f87171" onclick="cpDeleteDoc('${doc.id}')" title="Delete your upload"><i class="fas fa-trash"></i></button>` : ''}
               </div>
             </div>`).join('')}
         </div>
@@ -902,6 +925,174 @@ async function cpReloadDocs(projectId) {
 
 async function cpTrackDownload(docId) {
   try { await ClientAPI.patch('/documents/' + docId + '/download', {}) } catch {}
+}
+
+function openCpUploadModal() {
+  const projects = window._cpClientProjects || []
+  const cats = [
+    { value: 'sow', label: 'Statement of Work' },
+    { value: 'brd', label: 'Business Requirements' },
+    { value: 'frd', label: 'Functional Requirements' },
+    { value: 'uiux', label: 'UI/UX Design' },
+    { value: 'wireframes', label: 'Wireframes' },
+    { value: 'meeting_notes', label: 'Meeting Notes' },
+    { value: 'technical', label: 'Technical Docs' },
+    { value: 'test_report', label: 'Test Reports' },
+    { value: 'release', label: 'Release Notes' },
+    { value: 'billing', label: 'Billing' },
+    { value: 'contract', label: 'Contracts' },
+    { value: 'other', label: 'Other' },
+  ]
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-upload"></i> Upload Document</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+      <div style="padding:10px 12px;border-radius:10px;background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.30);font-size:12px;color:#a5b4fc;line-height:1.5">
+        <i class="fas fa-info-circle"></i>
+        Pick a file (max 25 MB) — PDF, image, video, audio, or document. Images are compressed automatically before upload.
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">File *</label>
+        <input id="cp-up-file" class="form-input" type="file"
+          accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,text/*"
+          onchange="onCpUploadFilePicked(this)"/>
+        <div id="cp-up-file-info" style="font-size:11px;color:#64748b;margin-top:6px"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Title *</label>
+        <input id="cp-up-title" class="form-input" maxlength="200" placeholder="e.g. Updated wireframe v2"/>
+      </div>
+
+      <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">Project</label>
+          <select id="cp-up-project" class="form-select">
+            <option value="">— None / general —</option>
+            ${projects.map(p => `<option value="${p.id}">${p.name || p.code || p.id}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select id="cp-up-category" class="form-select">
+            ${cats.map(c => `<option value="${c.value}" ${c.value==='other'?'selected':''}>${c.label}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea id="cp-up-desc" class="form-textarea" rows="3" maxlength="2000" placeholder="Short description (optional)"></textarea>
+      </div>
+
+      <div id="cp-up-progress" style="display:none">
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Uploading…</div>
+        <div style="height:6px;border-radius:3px;background:#1e1e45;overflow:hidden">
+          <div id="cp-up-progress-bar" style="height:100%;width:0;background:#6366f1;transition:width .2s"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button id="cp-up-submit" class="btn btn-primary" onclick="submitCpUpload()"><i class="fas fa-upload"></i> Upload</button>
+    </div>
+  `, 'modal-lg')
+}
+
+function onCpUploadFilePicked(input) {
+  const file = input.files && input.files[0]
+  const info = document.getElementById('cp-up-file-info')
+  const titleEl = document.getElementById('cp-up-title')
+  if (!file) {
+    if (info) info.textContent = ''
+    return
+  }
+  const sizeMb = (file.size / (1024 * 1024)).toFixed(2)
+  const tooBig = file.size > 25 * 1024 * 1024
+  if (info) {
+    info.style.color = tooBig ? '#fda4af' : '#94a3b8'
+    info.textContent = `${file.name} · ${sizeMb} MB · ${file.type || 'unknown type'}${tooBig ? ' — exceeds 25 MB limit' : ''}`
+  }
+  if (titleEl && !titleEl.value.trim()) {
+    titleEl.value = file.name.replace(/\.[^.]+$/, '')
+  }
+}
+
+function uploadFileToServer(file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/uploads', true)
+    if (_token) xhr.setRequestHeader('Authorization', 'Bearer ' + _token)
+    const bar = document.getElementById('cp-up-progress-bar')
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && bar) {
+        bar.style.width = Math.round((e.loaded / e.total) * 100) + '%'
+      }
+    }
+    xhr.onload = () => {
+      let data = {}
+      try { data = JSON.parse(xhr.responseText) } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+      else reject(new Error((data && data.error) || `HTTP ${xhr.status}`))
+    }
+    xhr.onerror = () => reject(new Error('Network error during upload'))
+    const fd = new FormData()
+    fd.append('file', file)
+    xhr.send(fd)
+  })
+}
+
+async function submitCpUpload() {
+  const fileInput = document.getElementById('cp-up-file')
+  const file = fileInput?.files?.[0]
+  const title = document.getElementById('cp-up-title')?.value.trim()
+  const project_id = document.getElementById('cp-up-project')?.value || null
+  const category = document.getElementById('cp-up-category')?.value || 'other'
+  const description = document.getElementById('cp-up-desc')?.value.trim() || null
+  if (!file) return toast('Pick a file to upload', 'error')
+  if (file.size > 25 * 1024 * 1024) return toast('File exceeds 25 MB limit', 'error')
+  if (!title || title.length < 2) return toast('Title is required', 'error')
+
+  const submitBtn = document.getElementById('cp-up-submit')
+  const progress = document.getElementById('cp-up-progress')
+  if (submitBtn) submitBtn.disabled = true
+  if (progress) progress.style.display = ''
+
+  try {
+    const uploaded = await uploadFileToServer(file)
+    await ClientAPI.post('/documents', {
+      title,
+      file_url: uploaded.url,
+      file_name: uploaded.file_name,
+      file_type: uploaded.file_type,
+      file_size: uploaded.file_size,
+      project_id,
+      category,
+      description,
+    })
+    closeModal()
+    toast(uploaded.was_compressed ? 'Document uploaded (image compressed)' : 'Document uploaded', 'success')
+    const main = document.getElementById('cp-main')
+    if (main) renderCpDocuments(main)
+  } catch (e) {
+    if (submitBtn) submitBtn.disabled = false
+    if (progress) progress.style.display = 'none'
+    toast('Failed: ' + e.message, 'error')
+  }
+}
+
+async function cpDeleteDoc(docId) {
+  if (!confirm('Delete this document? This cannot be undone.')) return
+  try {
+    await ClientAPI.req('DELETE', '/documents/' + docId)
+    toast('Document deleted', 'success')
+    const main = document.getElementById('cp-main')
+    if (main) renderCpDocuments(main)
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
 }
 
 function docFileIcon(type) {

@@ -63,6 +63,7 @@ const SIDEBAR_PAGE_GROUPS = {
   'dev-dashboard': 'dev',
   'my-tasks': 'dev',
   'timesheets-view': 'dev',
+  'support-tickets': 'dev',
   'approval-queue': 'dev',
   'reports-view': 'analytics',
   'alerts-view': 'analytics',
@@ -373,6 +374,7 @@ function buildShell() {
         ${role === 'developer' ? `<a class="nav-item" data-page="dev-dashboard"><span class="nav-icon"><i class="fas fa-gauge"></i></span>My Dashboard</a>` : ''}
         <a class="nav-item" data-page="my-tasks"><span class="nav-icon"><i class="fas fa-list-check"></i></span>Tasks</a>
         <a class="nav-item" data-page="timesheets-view"><span class="nav-icon"><i class="fas fa-clock"></i></span>Timesheets</a>
+        <a class="nav-item" data-page="support-tickets"><span class="nav-icon"><i class="fas fa-life-ring"></i></span>Support Tickets</a>
         ${role !== 'developer' ? `<a class="nav-item" data-page="approval-queue"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span>Approvals <span class="nav-badge" id="nb-approval">0</span></a>` : ''}
       </div>
     </div>`
@@ -455,6 +457,7 @@ function buildShell() {
     <div id="page-clients-list"     class="page"></div>
     <div id="page-billing-admin"    class="page"></div>
     <div id="page-team-overview"    class="page"></div>
+    <div id="page-support-tickets"  class="page"></div>
     <div id="page-settings-view"    class="page"></div>
   </div>
   <div id="drawer-overlay" class="drawer-overlay" onclick="closeDrawer()"></div>
@@ -488,7 +491,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','support-tickets':'Support Tickets','settings-view':'Settings'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -684,10 +687,18 @@ async function doClientSignup() {
 
 // ── Modal helpers ─────────────────────────────────────────────
 function showModal(html, size='') {
-  const root = document.getElementById('modal-root')
+  let root = document.getElementById('modal-root')
+  if (!root) {
+    root = document.createElement('div')
+    root.id = 'modal-root'
+    document.body.appendChild(root)
+  }
   root.innerHTML = `<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal ${size}">${html}</div></div>`
 }
-function closeModal() { document.getElementById('modal-root').innerHTML = '' }
+function closeModal() {
+  const root = document.getElementById('modal-root')
+  if (root) root.innerHTML = ''
+}
 
 // ── Drawer helpers ────────────────────────────────────────────
 function openDrawer(html) {
@@ -781,6 +792,7 @@ function loadPage(page, el) {
     case 'clients-list':     renderClientsList(el); break
     case 'billing-admin':    renderBillingAdmin(el); break
     case 'team-overview':    renderTeamOverview(el); break
+    case 'support-tickets':  renderSupportTickets(el); break
     case 'settings-view':    renderSettingsView(el); break
     default: el.innerHTML = `<div class="page-header"><h1 class="page-title">${breadcrumbMap[page]||page}</h1></div><div class="empty-state"><i class="fas fa-hammer"></i><p>Module coming soon…</p></div>`
   }

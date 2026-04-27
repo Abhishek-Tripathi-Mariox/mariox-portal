@@ -4,14 +4,14 @@
 
 ### Database
 
-- **`migrations/0007_project_teams_and_permissions.sql`** — new tables:
+- **Project team and permission schema** — new collections:
   - `project_teams` — per-project team groupings (name, colour, lead)
   - `project_team_members` — many-to-many between users and project teams
   - `kanban_permissions` — per-project role-based permission matrix (8 permission flags × 4 roles per project)
   - `user_invites` — one-time signup tokens for developer/PM onboarding
   - New columns: `users.must_change_password`, `project_assignments.project_team_id`, `tasks.project_team_id`
 
-- **`migrations/0009_admin_seed.sql`** — admin bootstrap:
+- **Admin bootstrap data**:
   - Core company settings record
   - Admin user account for `akash@marioxsoftware.com`
 
@@ -83,9 +83,9 @@
 
 ## Things to verify after running
 
-1. Run migrations 0007 and 0008 after pulling:
+1. Verify the team and permission bootstrap data after pulling:
    ```bash
-   npx wrangler d1 migrations apply devtrack-pro-production --local
+   npm run start
    ```
 2. Log in as `admin@devtrack.com` / `Admin@123`
 3. Navigate to Projects → click the **Teams** button on any row → create a team, add members
