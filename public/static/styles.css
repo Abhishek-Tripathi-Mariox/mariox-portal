@@ -3019,18 +3019,30 @@ body::before, body::after { display: none !important; }
   border: 1px solid rgba(255,200,140,0.18) !important;
 }
 
-/* ── Sidebar logo image ─────────────────────────────────── */
-.sidebar-logo-mark img {
+/* ── Sidebar / Login logo image ─────────────────────────── */
+.sidebar-logo-mark img,
+.login-logo-mark img {
   width: 100% !important;
   height: 100% !important;
   object-fit: contain !important;
   border-radius: 8px !important;
   display: block !important;
 }
-.sidebar-logo-mark {
+.sidebar-logo-mark,
+.login-logo-mark {
   padding: 4px !important;
   background: linear-gradient(135deg, #FFE3C4 0%, #FFB347 100%) !important;
   overflow: hidden !important;
+}
+.login-logo h1 {
+  font-family: 'Playfair Display', 'Plus Jakarta Sans', serif !important;
+  font-style: italic !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.2px !important;
+  background: linear-gradient(135deg, #FFE3C4 0%, #FFB347 60%, #FF7A45 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
 }
 
 /* ── Notification bell badge ────────────────────────────── */

@@ -694,9 +694,9 @@ function renderLogin() {
   <div id="login-page">
     <div class="login-card">
       <div class="login-logo">
-        <div class="login-logo-mark">🚀</div>
-        <h1>DevPortal</h1>
-        <p>Mariox Software - Project & Client Platform</p>
+        <div class="login-logo-mark"><img src="/static/images/mariox-logo.jpg" alt="Mariox" onerror="this.outerHTML='🚀'"/></div>
+        <h1>Mariox Software</h1>
+        <p>Project &amp; Client Platform</p>
       </div>
       <div>
         <form onsubmit="doLogin();return false;" autocomplete="on">

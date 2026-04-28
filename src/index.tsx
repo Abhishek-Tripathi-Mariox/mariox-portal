@@ -100,8 +100,11 @@ app.get('*', (c) => {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta name="theme-color" content="#0B1220"/>
-  <title>DevPortal</title>
+  <meta name="theme-color" content="#1A0E08"/>
+  <title>Mariox Software</title>
+  <link rel="icon" type="image/jpeg" href="/static/images/mariox-logo.jpg"/>
+  <link rel="shortcut icon" type="image/jpeg" href="/static/images/mariox-logo.jpg"/>
+  <link rel="apple-touch-icon" href="/static/images/mariox-logo.jpg"/>
   <!-- Modern UI Font -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
