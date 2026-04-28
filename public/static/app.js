@@ -395,7 +395,7 @@ function buildShell() {
   return `
   <div id="sidebar">
     <div class="logo">
-      <div class="sidebar-logo-mark"><i class="fas fa-rocket"></i></div>
+      <div class="sidebar-logo-mark"><img src="/static/images/mariox-logo.png" alt="Mariox" onerror="this.outerHTML='<i class=\\'fas fa-rocket\\'></i>'"/></div>
       <div class="sidebar-logo-text">
         <h1>DevPortal</h1>
         <span>Mariox Software</span>

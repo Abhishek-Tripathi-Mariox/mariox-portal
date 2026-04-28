@@ -368,5 +368,128 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
+  // ── BULK IMPORT (CSV) ───────────────────────────────────
+  // Sample template download
+  router.get('/import/template.csv', (_req, res) => {
+    const sample = [
+      'full_name,email,role,designation,phone,daily_work_hours,monthly_available_hours,hourly_cost,joining_date,avatar_color,password',
+      'Rahul Sharma,rahul@example.com,developer,Senior Developer,+91-9876543210,8,160,800,2024-01-15,#FF7A45,Welcome@123',
+      'Priya Verma,priya@example.com,pm,Project Manager,+91-9876500001,8,160,1200,2023-06-01,#FFB347,Welcome@123',
+      'Aman Singh,aman@example.com,team,External Developer,+91-9876500002,8,160,600,,#C56FE6,Welcome@123',
+    ].join('\n')
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', 'attachment; filename="users_import_template.csv"')
+    return res.send(sample)
+  })
+
+  router.post('/import', requireRole('admin'), async (req, res) => {
+    try {
+      const body = req.body || {}
+      const csvText = String(body.csv || '').trim()
+      if (!csvText) return res.status(400).json({ error: 'csv is required' })
+
+      const rows = parseCsv(csvText)
+      if (rows.length < 2) return res.status(400).json({ error: 'CSV must contain a header row and at least one data row' })
+
+      const headers = rows[0].map((h) => String(h || '').trim().toLowerCase())
+      const required = ['full_name', 'email']
+      for (const r of required) {
+        if (!headers.includes(r)) return res.status(400).json({ error: `Missing required column: ${r}` })
+      }
+
+      const created: any[] = []
+      const errors: { row: number; email?: string; error: string }[] = []
+      const encoder = new TextEncoder()
+
+      for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i]
+        if (!cells || cells.every((c) => !c?.trim())) continue
+        const record: Record<string, string> = {}
+        headers.forEach((h, idx) => { record[h] = String(cells[idx] || '').trim() })
+
+        try {
+          const email = validateEmail(record.email)
+          const fullName = validateName(record.full_name, 'Full name')
+          const password = record.password ? String(record.password) : 'Welcome@123'
+          validateNewPassword(password)
+          const role = validateEnum(
+            (record.role || 'developer').toLowerCase(),
+            STAFF_CREATE_ROLES,
+            'Role',
+          )
+
+          const existing = await models.users.findByEmail(email)
+          if (existing) {
+            errors.push({ row: i + 1, email, error: 'Email already exists' })
+            continue
+          }
+
+          const data = encoder.encode(password + 'devtrack-salt-2025')
+          const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+          const passwordHash = Array.from(new Uint8Array(hashBuffer))
+            .map((b) => b.toString(16).padStart(2, '0')).join('')
+
+          const user = await models.users.createStaff({
+            id: generateId('user'),
+            email,
+            password_hash: passwordHash,
+            full_name: fullName,
+            role,
+            phone: record.phone || null,
+            designation: record.designation || null,
+            tech_stack: null,
+            skill_tags: null,
+            joining_date: record.joining_date || null,
+            daily_work_hours: Number(record.daily_work_hours) || 8,
+            working_days_per_week: 5,
+            hourly_cost: Number(record.hourly_cost) || 0,
+            monthly_available_hours: Number(record.monthly_available_hours) || 160,
+            reporting_pm_id: null,
+            avatar_color: record.avatar_color && /^#[0-9a-fA-F]{6}$/.test(record.avatar_color)
+              ? record.avatar_color
+              : '#FF7A45',
+            remarks: null,
+          })
+          created.push({ id: user.id, email, full_name: fullName, role })
+        } catch (e: any) {
+          errors.push({ row: i + 1, email: record.email, error: e?.message || 'Failed' })
+        }
+      }
+
+      return res.json({
+        created_count: created.length,
+        error_count: errors.length,
+        created,
+        errors,
+      })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
   return router
+}
+
+// ── Tiny CSV parser (handles quoted fields with commas / escaped quotes)
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let cur: string[] = []
+  let field = ''
+  let inQuotes = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') { field += '"'; i++ }
+      else if (ch === '"') { inQuotes = false }
+      else field += ch
+    } else {
+      if (ch === '"') inQuotes = true
+      else if (ch === ',') { cur.push(field); field = '' }
+      else if (ch === '\n') { cur.push(field); rows.push(cur); cur = []; field = '' }
+      else if (ch === '\r') { /* skip */ }
+      else field += ch
+    }
+  }
+  if (field || cur.length) { cur.push(field); rows.push(cur) }
+  return rows
 }

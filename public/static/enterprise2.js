@@ -526,11 +526,15 @@ async function renderReportsView(el) {
   </div>
 
   <!-- Report tabs -->
-  <div style="display:flex;gap:4px;background:#1F0F08;padding:4px;border-radius:10px;border:1px solid #2A1812;margin-bottom:20px;width:fit-content">
-    <button id="rtab-team" onclick="switchReportTab2('team')" class="report-tab active-tab" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:#FF7A45;color:#fff">Team Utilization</button>
-    <button id="rtab-project" onclick="switchReportTab2('project')" class="report-tab" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Project Status</button>
-    <button id="rtab-billing" onclick="switchReportTab2('billing')" class="report-tab" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Billing Summary</button>
-    <button id="rtab-timesheet" onclick="switchReportTab2('timesheet')" class="report-tab" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Timesheet Report</button>
+  <div style="display:flex;gap:4px;background:#1F0F08;padding:4px;border-radius:10px;border:1px solid #2A1812;margin-bottom:20px;flex-wrap:wrap">
+    <button id="rtab-team"      onclick="switchReportTab2('team')"      class="report-tab active-tab" style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:600;background:#FF7A45;color:#fff">Team Utilization</button>
+    <button id="rtab-inhouse"   onclick="switchReportTab2('inhouse')"   class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">In-house Devs</button>
+    <button id="rtab-external"  onclick="switchReportTab2('external')"  class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">External Teams</button>
+    <button id="rtab-pm"        onclick="switchReportTab2('pm')"        class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">PM-wise</button>
+    <button id="rtab-pc"        onclick="switchReportTab2('pc')"        class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">PC-wise</button>
+    <button id="rtab-project"   onclick="switchReportTab2('project')"   class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">Project Status</button>
+    <button id="rtab-billing"   onclick="switchReportTab2('billing')"   class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">Billing</button>
+    <button id="rtab-timesheet" onclick="switchReportTab2('timesheet')" class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">Timesheet</button>
   </div>
 
   <div id="report-panel"></div>`
@@ -706,6 +710,194 @@ async function loadReport2(tab) {
                 <td style="color:#64748b">${(d.total-d.billable).toFixed(1)}h</td>
                 <td>${d.projects.size}</td>
               </tr>`).join('')}</tbody>
+            </table>
+          </div>
+        </div>`
+    } else if (tab === 'inhouse') {
+      // ── In-house developer report ──────────────────────────────
+      const [usersRes, projectsRes, tsRes, allocRes] = await Promise.all([
+        API.get('/users?role=developer'),
+        API.get('/projects'),
+        API.get('/timesheets?from=' + dayjs().startOf('month').format('YYYY-MM-DD') + '&to=' + dayjs().format('YYYY-MM-DD')),
+        API.get('/allocations').catch(() => ({ allocations: [] })),
+      ])
+      const devs = (usersRes.users || usersRes.data || []).filter(u => String(u.role).toLowerCase() === 'developer')
+      const projects = projectsRes.projects || projectsRes.data || []
+      const logs = tsRes.timesheets || tsRes.data || []
+      const allocs = allocRes.allocations || allocRes.data || []
+
+      const rows = devs.map(d => {
+        const myLogs = logs.filter(l => l.user_id === d.id)
+        const totalH = myLogs.reduce((s, l) => s + parseFloat(l.hours_consumed || 0), 0)
+        const billH = myLogs.filter(l => l.is_billable).reduce((s, l) => s + parseFloat(l.hours_consumed || 0), 0)
+        const myAllocs = allocs.filter(a => a.user_id === d.id)
+        const projectIds = new Set(myAllocs.map(a => a.project_id).concat(myLogs.map(l => l.project_id).filter(Boolean)))
+        const cap = parseFloat(d.monthly_available_hours || 160)
+        const utilPct = cap > 0 ? Math.round((totalH / cap) * 100) : 0
+        return { dev: d, totalH, billH, projects: projectIds.size, utilPct, cap }
+      })
+
+      panel.innerHTML = `
+        <div class="grid-4" style="margin-bottom:16px">
+          ${miniStatCard('In-house Devs', devs.length, '#FF7A45', 'fa-code')}
+          ${miniStatCard('Hours This Month', rows.reduce((s, r) => s + r.totalH, 0).toFixed(1) + 'h', '#FFB347', 'fa-clock')}
+          ${miniStatCard('Billable', rows.reduce((s, r) => s + r.billH, 0).toFixed(1) + 'h', '#58C68A', 'fa-check-circle')}
+          ${miniStatCard('Avg Utilization', Math.round(rows.reduce((s, r) => s + r.utilPct, 0) / (rows.length || 1)) + '%', '#C56FE6', 'fa-tachometer-alt')}
+        </div>
+        <div class="card">
+          <div class="card-header"><span style="font-weight:600">In-house Developer Report</span></div>
+          <div class="card-body" style="padding:0">
+            <table class="data-table">
+              <thead><tr><th>Developer</th><th>Designation</th><th>Capacity</th><th>Logged</th><th>Billable</th><th>Utilization</th><th>Active Projects</th><th>Hourly Cost</th><th>Cost</th></tr></thead>
+              <tbody>${rows.map(r => `<tr>
+                <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.dev.full_name, r.dev.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.dev.full_name}</div><div style="font-size:10px;color:#64748b">${r.dev.email}</div></div></div></td>
+                <td style="font-size:12px;color:#94a3b8">${r.dev.designation || '—'}</td>
+                <td>${r.cap}h</td>
+                <td>${r.totalH.toFixed(1)}h</td>
+                <td style="color:#58C68A">${r.billH.toFixed(1)}h</td>
+                <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:70px"><div class="progress-fill ${r.utilPct>=80?'rose':r.utilPct>=50?'amber':'green'}" style="width:${Math.min(r.utilPct,100)}%"></div></div><span style="font-size:11px;color:${pctColor(r.utilPct)}">${r.utilPct}%</span></div></td>
+                <td>${r.projects}</td>
+                <td style="color:#94a3b8">${r.dev.hourly_cost ? '₹' + fmtNum(r.dev.hourly_cost) : '—'}</td>
+                <td style="color:#58C68A">${r.dev.hourly_cost && r.totalH ? '₹' + fmtNum(r.dev.hourly_cost * r.totalH) : '—'}</td>
+              </tr>`).join('') || '<tr><td colspan="9" style="text-align:center;color:#64748b;padding:24px">No in-house developers</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>`
+    } else if (tab === 'external') {
+      // ── External teams report ──────────────────────────────────
+      const [teamsRes, teamUsersRes, projectsRes, tsRes] = await Promise.all([
+        API.get('/project-teams').catch(() => ({ teams: [] })),
+        API.get('/users?role=team').catch(() => ({ users: [] })),
+        API.get('/projects'),
+        API.get('/timesheets?from=' + dayjs().startOf('month').format('YYYY-MM-DD') + '&to=' + dayjs().format('YYYY-MM-DD')),
+      ])
+      const teams = teamsRes.teams || teamsRes.data || []
+      const teamUsers = (teamUsersRes.users || teamUsersRes.data || [])
+      const projects = projectsRes.projects || projectsRes.data || []
+      const logs = tsRes.timesheets || tsRes.data || []
+
+      // External-projects: assignment_type === 'external'
+      const externalProjects = projects.filter(p => p.assignment_type === 'external')
+
+      // For each team, count linked projects
+      const teamRows = teams.map(t => {
+        const linked = externalProjects.filter(p => p.external_team_id === t.id && p.external_assignee_type === 'team')
+        return {
+          name: t.name,
+          lead: t.lead_name || '—',
+          members: t.member_count || 0,
+          projects: linked.length,
+          allocated: linked.reduce((s, p) => s + (p.total_allocated_hours || 0), 0),
+          consumed: linked.reduce((s, p) => s + (p.consumed_hours || 0), 0),
+        }
+      })
+
+      // For each external single-user assignee, summarize
+      const userRows = teamUsers.map(u => {
+        const linked = externalProjects.filter(p => p.external_team_id === u.id && p.external_assignee_type === 'user')
+        const myLogs = logs.filter(l => l.user_id === u.id)
+        const totalH = myLogs.reduce((s, l) => s + parseFloat(l.hours_consumed || 0), 0)
+        return {
+          dev: u,
+          projects: linked.length,
+          totalH,
+          allocated: linked.reduce((s, p) => s + (p.total_allocated_hours || 0), 0),
+        }
+      })
+
+      panel.innerHTML = `
+        <div class="grid-4" style="margin-bottom:16px">
+          ${miniStatCard('External Teams', teams.length, '#FF7A45', 'fa-users')}
+          ${miniStatCard('External Members', teamUsers.length, '#FFB347', 'fa-user-friends')}
+          ${miniStatCard('External Projects', externalProjects.length, '#C56FE6', 'fa-folder-open')}
+          ${miniStatCard('Total Allocated', fmtNum(teamRows.reduce((s, r) => s + r.allocated, 0) + userRows.reduce((s, r) => s + r.allocated, 0)) + 'h', '#FFCB47', 'fa-clock')}
+        </div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header"><span style="font-weight:600">External Teams</span></div>
+          <div class="card-body" style="padding:0">
+            <table class="data-table">
+              <thead><tr><th>Team</th><th>Lead</th><th>Members</th><th>Projects</th><th>Allocated</th><th>Consumed</th><th>Burn %</th></tr></thead>
+              <tbody>${teamRows.map(r => {
+                const burn = r.allocated > 0 ? Math.round((r.consumed / r.allocated) * 100) : 0
+                return `<tr>
+                  <td style="font-weight:500;color:#e2e8f0">${r.name}</td>
+                  <td style="font-size:12px;color:#94a3b8">${r.lead}</td>
+                  <td>${r.members}</td>
+                  <td>${r.projects}</td>
+                  <td>${fmtNum(r.allocated)}h</td>
+                  <td>${fmtNum(r.consumed)}h</td>
+                  <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:70px"><div class="progress-fill ${burn>=90?'rose':burn>=70?'amber':'green'}" style="width:${Math.min(burn,100)}%"></div></div><span style="font-size:11px;color:${pctColor(burn)}">${burn}%</span></div></td>
+                </tr>`
+              }).join('') || '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:24px">No external teams</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span style="font-weight:600">Individual External Members</span></div>
+          <div class="card-body" style="padding:0">
+            <table class="data-table">
+              <thead><tr><th>Member</th><th>Designation</th><th>Projects</th><th>Allocated</th><th>Logged This Month</th></tr></thead>
+              <tbody>${userRows.map(r => `<tr>
+                <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.dev.full_name, r.dev.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.dev.full_name}</div><div style="font-size:10px;color:#64748b">${r.dev.email}</div></div></div></td>
+                <td style="font-size:12px;color:#94a3b8">${r.dev.designation || '—'}</td>
+                <td>${r.projects}</td>
+                <td>${fmtNum(r.allocated)}h</td>
+                <td style="color:#58C68A">${r.totalH.toFixed(1)}h</td>
+              </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:24px">No external members</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>`
+    } else if (tab === 'pm' || tab === 'pc') {
+      // ── PM-wise / PC-wise report (project ownership rollup) ──
+      const role = tab
+      const [usersRes, projectsRes, tsRes] = await Promise.all([
+        API.get('/users?role=' + role),
+        API.get('/projects'),
+        API.get('/timesheets?from=' + dayjs().startOf('month').format('YYYY-MM-DD') + '&to=' + dayjs().format('YYYY-MM-DD')),
+      ])
+      const owners = (usersRes.users || usersRes.data || []).filter(u => String(u.role).toLowerCase() === role)
+      const projects = projectsRes.projects || projectsRes.data || []
+      const logs = tsRes.timesheets || tsRes.data || []
+
+      const rows = owners.map(o => {
+        const owned = projects.filter(p => (role === 'pm' ? p.pm_id : p.pc_id) === o.id)
+        const totalAlloc = owned.reduce((s, p) => s + (p.total_allocated_hours || 0), 0)
+        const totalConsumed = owned.reduce((s, p) => s + (p.consumed_hours || 0), 0)
+        const myLogs = logs.filter(l => owned.some(p => p.id === l.project_id))
+        const monthlyH = myLogs.reduce((s, l) => s + parseFloat(l.hours_consumed || 0), 0)
+        const billable = myLogs.filter(l => l.is_billable).reduce((s, l) => s + parseFloat(l.hours_consumed || 0), 0)
+        const revenue = owned.reduce((s, p) => s + (p.revenue || 0), 0)
+        return { owner: o, owned, totalAlloc, totalConsumed, monthlyH, billable, revenue }
+      })
+
+      const labelTitle = role === 'pm' ? 'Project Manager' : 'Product Coordinator'
+      panel.innerHTML = `
+        <div class="grid-4" style="margin-bottom:16px">
+          ${miniStatCard(labelTitle + 's', owners.length, '#FF7A45', 'fa-user-tie')}
+          ${miniStatCard('Total Projects', rows.reduce((s, r) => s + r.owned.length, 0), '#FFB347', 'fa-folder-open')}
+          ${miniStatCard('Hours This Month', rows.reduce((s, r) => s + r.monthlyH, 0).toFixed(1) + 'h', '#58C68A', 'fa-clock')}
+          ${miniStatCard('Total Revenue', '₹' + fmtNum(rows.reduce((s, r) => s + r.revenue, 0)), '#C56FE6', 'fa-indian-rupee-sign')}
+        </div>
+        <div class="card">
+          <div class="card-header"><span style="font-weight:600">${labelTitle}-wise Report</span></div>
+          <div class="card-body" style="padding:0">
+            <table class="data-table">
+              <thead><tr><th>${labelTitle}</th><th>Projects</th><th>Active</th><th>Allocated Hours</th><th>Consumed</th><th>Burn %</th><th>Hours This Month</th><th>Billable</th><th>Revenue</th></tr></thead>
+              <tbody>${rows.map(r => {
+                const active = r.owned.filter(p => p.status === 'active').length
+                const burn = r.totalAlloc > 0 ? Math.round((r.totalConsumed / r.totalAlloc) * 100) : 0
+                return `<tr>
+                  <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.owner.full_name, r.owner.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.owner.full_name}</div><div style="font-size:10px;color:#64748b">${r.owner.email}</div></div></div></td>
+                  <td>${r.owned.length}</td>
+                  <td><span class="badge badge-${active > 0 ? 'green' : 'gray'}">${active}</span></td>
+                  <td>${fmtNum(r.totalAlloc)}h</td>
+                  <td>${fmtNum(r.totalConsumed)}h</td>
+                  <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:70px"><div class="progress-fill ${burn>=90?'rose':burn>=70?'amber':'green'}" style="width:${Math.min(burn,100)}%"></div></div><span style="font-size:11px;color:${pctColor(burn)}">${burn}%</span></div></td>
+                  <td>${r.monthlyH.toFixed(1)}h</td>
+                  <td style="color:#58C68A">${r.billable.toFixed(1)}h</td>
+                  <td style="color:#FFB347;font-weight:600">₹${fmtNum(r.revenue)}</td>
+                </tr>`
+              }).join('') || `<tr><td colspan="9" style="text-align:center;color:#64748b;padding:24px">No ${labelTitle.toLowerCase()}s</td></tr>`}</tbody>
             </table>
           </div>
         </div>`

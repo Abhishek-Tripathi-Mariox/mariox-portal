@@ -1676,7 +1676,7 @@ async function renderClientsList(el) {
     el.innerHTML = `
     <div class="page-header">
       <div><h1 class="page-title">Clients</h1><p class="page-subtitle">${pagination.total} client companies</p></div>
-      ${_user.role === 'admin' ? `<div class="page-actions"><button class="btn btn-primary" onclick="openCreateClientModal()"><i class="fas fa-user-plus"></i>Add Client</button></div>` : ''}
+      ${_user.role === 'admin' ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="openImportClientsModal()"><i class="fas fa-file-csv"></i>Import CSV</button><button class="btn btn-primary" onclick="openCreateClientModal()"><i class="fas fa-user-plus"></i>Add Client</button></div>` : ''}
     </div>
     <div class="grid-2">
       ${pagination.items.map(cl=>`
@@ -2196,7 +2196,8 @@ async function renderTeamOverview(el) {
     el.innerHTML = `
     <div class="page-header">
       <div><h1 class="page-title">Team Overview</h1><p class="page-subtitle">${users.length} total members · ${pagination.total} shown</p></div>
-      ${isAdmin ? `<div class="page-actions">
+      ${isAdmin ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" onclick="openImportUsersModal()"><i class="fas fa-file-csv"></i>Import CSV</button>
         <button class="btn btn-primary btn-sm" onclick="openTeamMemberModal('')"><i class="fas fa-user-plus"></i>Add User</button>
       </div>` : ''}
     </div>
@@ -2287,4 +2288,128 @@ async function toggleTeamMemberStatus(id, active) {
     const el = document.getElementById('page-team-overview')
     if (el) { el.dataset.loaded = ''; loadPage('team-overview', el) }
   } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+/* ── BULK CSV IMPORT (users + clients) ────────────────────── */
+const IMPORT_TEMPLATES = {
+  users: {
+    filename: 'users_import_template.csv',
+    headers: 'full_name,email,role,designation,phone,daily_work_hours,monthly_available_hours,hourly_cost,joining_date,avatar_color,password',
+    rows: [
+      'Rahul Sharma,rahul@example.com,developer,Senior Developer,+91-9876543210,8,160,800,2024-01-15,#FF7A45,Welcome@123',
+      'Priya Verma,priya@example.com,pm,Project Manager,+91-9876500001,8,160,1200,2023-06-01,#FFB347,Welcome@123',
+      'Aman Singh,aman@example.com,team,External Developer,+91-9876500002,8,160,600,,#C56FE6,Welcome@123',
+    ],
+  },
+  clients: {
+    filename: 'clients_import_template.csv',
+    headers: 'company_name,contact_name,email,phone,website,industry,avatar_color,password',
+    rows: [
+      'Acme Corp,Anita Joshi,anita@acme.com,+91-9876543210,https://acme.com,SaaS,#FF7A45,Welcome@123',
+      'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,#FFB347,Welcome@123',
+    ],
+  },
+}
+
+function downloadImportTemplate(kind) {
+  const tpl = IMPORT_TEMPLATES[kind]
+  if (!tpl) { toast('Unknown template', 'error'); return }
+  const csv = [tpl.headers, ...tpl.rows].join('\n') + '\n'
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = tpl.filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function _importModalHtml(kind) {
+  const isUsers = kind === 'users'
+  const title = isUsers ? 'Import Team Members' : 'Import Clients'
+  const cols = isUsers
+    ? 'full_name, email, role, designation, phone, daily_work_hours, monthly_available_hours, hourly_cost, joining_date, avatar_color, password'
+    : 'company_name, contact_name, email, phone, website, industry, avatar_color, password'
+  return `
+    <div class="modal-header">
+      <h3><i class="fas fa-file-csv" style="color:var(--accent);margin-right:6px"></i>${title}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <div style="padding:12px 14px;border-radius:10px;background:rgba(255,180,120,0.10);border:1px solid rgba(255,180,120,0.25);font-size:12.5px;line-height:1.55;color:var(--text-secondary)">
+        <i class="fas fa-circle-info" style="color:var(--accent);margin-right:6px"></i>
+        Upload a <strong>CSV file</strong> with a header row. Excel users: <em>File → Save As → CSV (UTF-8)</em>.<br/>
+        <strong>Required columns:</strong> ${isUsers ? 'full_name, email' : 'company_name, contact_name, email'}<br/>
+        <strong>All columns:</strong> <span style="color:var(--text-muted);font-family:'IBM Plex Mono',monospace;font-size:11px">${cols}</span><br/>
+        <strong>Default password</strong> if blank: <code>Welcome@123</code> — users should change on first login.
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn btn-outline btn-sm" onclick="downloadImportTemplate('${kind}')"><i class="fas fa-download"></i> Download sample template</button>
+      </div>
+
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">CSV File *</label>
+        <input id="import-csv-file" type="file" accept=".csv,text/csv" class="form-input" style="padding:10px"/>
+        <div class="form-hint">Pick a .csv file (Excel users: File → Save As → CSV UTF-8).</div>
+      </div>
+
+      <div id="import-result" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="import-submit-btn" onclick="submitImportCsv('${kind}')"><i class="fas fa-upload"></i> Import</button>
+    </div>
+  `
+}
+
+function openImportUsersModal()   { showModal(_importModalHtml('users'), 'modal-lg') }
+function openImportClientsModal() { showModal(_importModalHtml('clients'), 'modal-lg') }
+
+async function submitImportCsv(kind) {
+  const fileInput = document.getElementById('import-csv-file')
+  const submitBtn = document.getElementById('import-submit-btn')
+  const file = fileInput?.files?.[0]
+  if (!file) { toast('Please choose a CSV file', 'error'); return }
+  const csv = (await file.text()).trim()
+  if (!csv) { toast('CSV file is empty', 'error'); return }
+
+  const url = kind === 'users' ? '/users/import' : '/clients/import'
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing…' }
+  try {
+    const res = await API.post(url, { csv })
+    const created = res.created_count || 0
+    const errCount = res.error_count || 0
+    const errors = res.errors || []
+    const result = document.getElementById('import-result')
+    if (result) {
+      result.style.display = ''
+      result.innerHTML = `
+        <div style="padding:12px 14px;border-radius:10px;background:rgba(88,198,138,0.10);border:1px solid rgba(88,198,138,0.30);color:#86E0A8;font-size:13px;margin-bottom:8px">
+          <i class="fas fa-check-circle"></i> <strong>${created}</strong> ${kind === 'users' ? 'team members' : 'clients'} imported successfully.
+        </div>
+        ${errCount > 0 ? `
+          <div style="padding:12px 14px;border-radius:10px;background:rgba(255,94,58,0.10);border:1px solid rgba(255,94,58,0.30);color:#FF8866;font-size:12.5px;line-height:1.5">
+            <i class="fas fa-triangle-exclamation"></i> <strong>${errCount}</strong> rows skipped:
+            <ul style="margin:6px 0 0 18px;padding:0">
+              ${errors.slice(0, 25).map(e => `<li>Row ${e.row}${e.email ? ' (' + _supEsc(e.email) + ')' : ''}: ${_supEsc(e.error)}</li>`).join('')}
+              ${errors.length > 25 ? `<li>…and ${errors.length - 25} more</li>` : ''}
+            </ul>
+          </div>
+        ` : ''}
+      `
+    }
+    toast(`${created} imported${errCount ? `, ${errCount} skipped` : ''}`, errCount ? 'warning' : 'success')
+
+    // Refresh the list page
+    const pageId = kind === 'users' ? 'page-team-overview' : 'page-clients-list'
+    const el = document.getElementById(pageId)
+    if (el) { el.dataset.loaded = ''; loadPage(kind === 'users' ? 'team-overview' : 'clients-list', el) }
+  } catch (e) {
+    toast('Import failed: ' + (e.message || 'unknown'), 'error')
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-upload"></i> Import' }
+  }
 }

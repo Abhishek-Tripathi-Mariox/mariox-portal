@@ -256,7 +256,8 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
       </td>
       <td style="vertical-align:top;text-align:right">
         <div style="font-size:11px;color:#374151">For ${escapeHtml(companyName)}</div>
-        <div style="margin-top:48px;font-size:11px;color:#374151;border-top:1px solid #cbd5e1;display:inline-block;padding:6px 18px 0">Authorized Signatory</div>
+        <div style="margin-top:8px"><img src="${escapeHtml(env.PUBLIC_BASE_URL || '')}/static/images/mariox-sign.png" alt="Authorized Signature" style="max-height:64px;max-width:200px;display:inline-block"/></div>
+        <div style="margin-top:6px;font-size:11px;color:#374151;border-top:1px solid #cbd5e1;display:inline-block;padding:6px 18px 0">Authorized Signatory</div>
       </td>
     </tr>
   </table>

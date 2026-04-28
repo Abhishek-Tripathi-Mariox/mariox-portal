@@ -217,5 +217,123 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
     }
   })
 
+  // ── BULK IMPORT (CSV) ──────────────────────────────────────
+  router.get('/import/template.csv', (_req, res) => {
+    const sample = [
+      'company_name,contact_name,email,phone,website,industry,avatar_color,password',
+      'Acme Corp,Anita Joshi,anita@acme.com,+91-9876543210,https://acme.com,SaaS,#FF7A45,Welcome@123',
+      'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,#FFB347,Welcome@123',
+    ].join('\n')
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', 'attachment; filename="clients_import_template.csv"')
+    return res.send(sample)
+  })
+
+  router.post('/import', async (req, res) => {
+    try {
+      const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
+      if (!['admin', 'pm', 'pc'].includes(role)) {
+        return res.status(403).json({ error: 'Forbidden' })
+      }
+
+      const body = req.body || {}
+      const csvText = String(body.csv || '').trim()
+      if (!csvText) return res.status(400).json({ error: 'csv is required' })
+
+      const rows = parseCsv(csvText)
+      if (rows.length < 2) return res.status(400).json({ error: 'CSV must contain header + data rows' })
+
+      const headers = rows[0].map((h) => String(h || '').trim().toLowerCase())
+      for (const r of ['company_name', 'contact_name', 'email']) {
+        if (!headers.includes(r)) return res.status(400).json({ error: `Missing required column: ${r}` })
+      }
+
+      const created: any[] = []
+      const errors: { row: number; email?: string; error: string }[] = []
+      const encoder = new TextEncoder()
+
+      for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i]
+        if (!cells || cells.every((c) => !c?.trim())) continue
+        const record: Record<string, string> = {}
+        headers.forEach((h, idx) => { record[h] = String(cells[idx] || '').trim() })
+
+        try {
+          const email = validateEmail(record.email)
+          const company = validateName(record.company_name, 'Company name', 2, 120)
+          const contact = validateName(record.contact_name, 'Contact name', 2, 100)
+          const password = record.password ? String(record.password) : 'Welcome@123'
+          validateNewPassword(password)
+
+          const [exClient, exUser] = await Promise.all([
+            models.clients.findByEmail(email),
+            models.users.findByEmail(email),
+          ])
+          if (exClient || exUser) {
+            errors.push({ row: i + 1, email, error: 'Email already exists' })
+            continue
+          }
+
+          const data = encoder.encode(password + passwordSalt)
+          const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+          const passwordHash = Array.from(new Uint8Array(hashBuffer))
+            .map((b) => b.toString(16).padStart(2, '0')).join('')
+
+          const cl = await models.clients.createClient({
+            email,
+            password_hash: passwordHash,
+            company_name: company,
+            contact_name: contact,
+            phone: record.phone || null,
+            website: record.website || null,
+            industry: record.industry || null,
+            avatar_color: record.avatar_color && /^#[0-9a-fA-F]{6}$/.test(record.avatar_color)
+              ? record.avatar_color
+              : '#FF7A45',
+            is_active: 1,
+            email_verified: 1,
+          })
+          created.push({ id: (cl as any)?.id, email, company_name: company })
+        } catch (e: any) {
+          errors.push({ row: i + 1, email: record.email, error: e?.message || 'Failed' })
+        }
+      }
+
+      return res.json({
+        created_count: created.length,
+        error_count: errors.length,
+        created,
+        errors,
+      })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
   return router
+}
+
+// ── Tiny CSV parser (handles quoted fields with commas / escaped quotes)
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let cur: string[] = []
+  let field = ''
+  let inQuotes = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') { field += '"'; i++ }
+      else if (ch === '"') { inQuotes = false }
+      else field += ch
+    } else {
+      if (ch === '"') inQuotes = true
+      else if (ch === ',') { cur.push(field); field = '' }
+      else if (ch === '\n') { cur.push(field); rows.push(cur); cur = []; field = '' }
+      else if (ch === '\r') { /* skip */ }
+      else field += ch
+    }
+  }
+  if (field || cur.length) { cur.push(field); rows.push(cur) }
+  return rows
 }
