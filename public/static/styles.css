@@ -2716,11 +2716,17 @@ body::before, body::after { display: none !important; }
 }
 .sidebar-logo-text span,
 .logo span {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
-  letter-spacing: 0.6px !important;
-  font-size: 9.5px !important;
-  text-transform: uppercase !important;
-  color: rgba(232,210,189,0.55) !important;
+  font-family: 'Playfair Display', 'Plus Jakarta Sans', serif !important;
+  font-style: italic !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.2px !important;
+  font-size: 16px !important;
+  text-transform: none !important;
+  background: linear-gradient(135deg, #FFE3C4 0%, #FFB347 60%, #FF7A45 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  display: block !important;
 }
 
 /* Page hero / banner serif accent for headlines */
