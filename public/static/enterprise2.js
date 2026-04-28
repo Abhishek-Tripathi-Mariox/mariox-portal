@@ -918,76 +918,168 @@ function exportReportCSV() {
   a.click(); URL.revokeObjectURL(url)
 }
 
-/* ── ALERTS VIEW ───────────────────────────────────────── */
+/* ── ALERTS + NOTIFICATIONS (unified inbox) ───────────── */
+const NOTIF_TYPE_ICON = {
+  ticket_created:       { icon: 'fa-ticket', color: '#FF7A45' },
+  ticket_assigned:      { icon: 'fa-user-check', color: '#C56FE6' },
+  ticket_status:        { icon: 'fa-circle-half-stroke', color: '#FFA577' },
+  ticket_priority:      { icon: 'fa-flag', color: '#FFCB47' },
+  ticket_comment:       { icon: 'fa-message', color: '#FFB67A' },
+  ticket_internal_note: { icon: 'fa-lock', color: '#FFCB47' },
+}
+
 async function renderAlertsView(el) {
   el.innerHTML = `<div style="padding:40px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
   try {
-    const data = await API.get('/alerts')
-    const alerts = data.alerts || data || []
-    const unread = alerts.filter(a => !a.is_read)
-    const dismissed = alerts.filter(a => a.is_dismissed)
-    const active = alerts.filter(a => !a.is_dismissed)
-    const filtered = _alertsSeverityFilter ? active.filter(a => a.severity === _alertsSeverityFilter) : active
-    const pagination = paginateClient(filtered, _alertsViewPage, 10)
-    _alertsViewPage = pagination.page
+    const [alertsRes, notifsRes] = await Promise.all([
+      API.get('/alerts').catch(() => ({ alerts: [] })),
+      API.get('/notifications/me?limit=200').catch(() => ({ notifications: [] })),
+    ])
+    const alerts = alertsRes.alerts || alertsRes.data || []
+    const notifs = notifsRes.notifications || notifsRes.data || []
 
     const sevColor = { critical:'#FF5E3A', high:'#FF7A45', warning:'#FFCB47', info:'#F4C842', low:'#64748b' }
     const sevIcon = { critical:'fa-circle-exclamation', high:'fa-exclamation-triangle', warning:'fa-triangle-exclamation', info:'fa-info-circle', low:'fa-circle-info' }
 
+    // Merge into a single inbox list sorted by created_at desc
+    const items = [
+      ...alerts
+        .filter(a => !a.is_dismissed)
+        .map(a => ({
+          kind: 'alert',
+          id: a.id,
+          title: a.title,
+          body: a.message,
+          created_at: a.created_at,
+          is_read: !!a.is_read,
+          severity: a.severity || 'info',
+          icon: sevIcon[a.severity] || 'fa-circle-info',
+          color: sevColor[a.severity] || '#64748b',
+          link: null,
+          raw: a,
+        })),
+      ...notifs.map(n => {
+        const ic = NOTIF_TYPE_ICON[n.type] || { icon: 'fa-bell', color: '#FFB347' }
+        return {
+          kind: 'notif',
+          id: n.id,
+          title: n.title,
+          body: n.body || '',
+          created_at: n.created_at,
+          is_read: !!n.is_read,
+          severity: 'info',
+          icon: ic.icon,
+          color: ic.color,
+          link: n.link || null,
+          actor_name: n.actor_name || null,
+          raw: n,
+        }
+      }),
+    ].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+
+    const unread = items.filter(i => !i.is_read)
+    const filterSev = _alertsSeverityFilter || ''
+    const filtered = filterSev
+      ? items.filter(i => i.kind === 'alert' && i.severity === filterSev)
+      : items
+    const pagination = paginateClient(filtered, _alertsViewPage, 12)
+    _alertsViewPage = pagination.page
+
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Alerts & Notifications</h1><p class="page-subtitle">${unread.length} unread alerts</p></div>
-      <div class="page-actions">
-        <button class="btn btn-outline" onclick="markAllAlertsRead()"><i class="fas fa-check-double"></i>Mark All Read</button>
-        <button class="btn btn-primary" onclick="generateNewAlerts()"><i class="fas fa-refresh"></i>Generate Alerts</button>
+      <div><h1 class="page-title">Alerts &amp; Notifications</h1><p class="page-subtitle">${unread.length} unread · ${items.length} total</p></div>
+      <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="markAllInboxRead()"><i class="fas fa-check-double"></i>Mark All Read</button>
+        ${typeof generateNewAlerts === 'function' ? '<button class="btn btn-primary" onclick="generateNewAlerts()"><i class="fas fa-refresh"></i>Generate Alerts</button>' : ''}
       </div>
     </div>
 
     <div class="grid-4" style="margin-bottom:16px">
-      ${miniStatCard('Total Alerts', active.length, '#FF7A45', 'fa-bell')}
+      ${miniStatCard('Total', items.length, '#FF7A45', 'fa-bell')}
       ${miniStatCard('Unread', unread.length, '#FF5E3A', 'fa-envelope')}
-      ${miniStatCard('Critical', alerts.filter(a=>a.severity==='critical'&&!a.is_dismissed).length, '#FF7A45', 'fa-circle-exclamation')}
-      ${miniStatCard('Dismissed', dismissed.length, '#64748b', 'fa-ban')}
+      ${miniStatCard('Activity', notifs.length, '#FFB347', 'fa-message')}
+      ${miniStatCard('System Alerts', alerts.filter(a => !a.is_dismissed).length, '#FFCB47', 'fa-triangle-exclamation')}
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <button class="btn btn-sm btn-outline" onclick="filterAlerts('')" id="af-all" style="background:rgba(255,122,69,.15);color:#FFB347">All</button>
-      <button class="btn btn-sm btn-outline" onclick="filterAlerts('critical')" id="af-critical">🔴 Critical</button>
-      <button class="btn btn-sm btn-outline" onclick="filterAlerts('high')" id="af-high">🟠 High</button>
-      <button class="btn btn-sm btn-outline" onclick="filterAlerts('warning')" id="af-warning">🟡 Warning</button>
-      <button class="btn btn-sm btn-outline" onclick="filterAlerts('info')" id="af-info">🔵 Info</button>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-outline" onclick="filterAlerts('')" id="af-all" ${!filterSev?'style="background:rgba(255,122,69,.15);color:#FFB347"':''}>All</button>
+      <button class="btn btn-sm btn-outline" onclick="filterAlerts('critical')" id="af-critical" ${filterSev==='critical'?'style="background:rgba(255,94,58,.15);color:#FF8866"':''}>🔴 Critical alerts</button>
+      <button class="btn btn-sm btn-outline" onclick="filterAlerts('high')" id="af-high" ${filterSev==='high'?'style="background:rgba(255,122,69,.15);color:#FFB347"':''}>🟠 High alerts</button>
+      <button class="btn btn-sm btn-outline" onclick="filterAlerts('warning')" id="af-warning" ${filterSev==='warning'?'style="background:rgba(255,203,71,.15);color:#FFD986"':''}>🟡 Warning alerts</button>
     </div>
 
     <div id="alerts-list">
-      ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-bell-slash"></i><p>No active alerts. System is healthy!</p></div>' :
-      pagination.items.map(alert => `
-        <div class="card" id="alert-${alert.id}" style="padding:16px;margin-bottom:10px;border-left:3px solid ${sevColor[alert.severity]||'#64748b'};${!alert.is_read?'background:rgba(255,122,69,.04)':''}">
+      ${pagination.total === 0
+        ? '<div class="empty-state"><i class="fas fa-bell-slash"></i><p>Inbox is clear — no alerts or notifications.</p></div>'
+        : pagination.items.map(it => `
+        <div class="card inbox-row" id="inbox-${it.kind}-${it.id}" style="padding:14px 16px;margin-bottom:10px;border-left:3px solid ${it.color};${!it.is_read?'background:rgba(255,122,69,.04)':''};cursor:${it.link?'pointer':'default'}" ${it.link?`onclick="onInboxClick('${it.kind}','${it.id}','${it.link}')"`:''}>
           <div style="display:flex;align-items:flex-start;gap:12px">
-            <div style="width:36px;height:36px;border-radius:8px;background:${sevColor[alert.severity]||'#64748b'}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              <i class="fas ${sevIcon[alert.severity]||'fa-circle-info'}" style="color:${sevColor[alert.severity]||'#64748b'};font-size:14px"></i>
+            <div style="width:36px;height:36px;border-radius:8px;background:${it.color}22;border:1px solid ${it.color}55;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="fas ${it.icon}" style="color:${it.color};font-size:14px"></i>
             </div>
             <div style="flex:1;min-width:0">
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                <div style="font-size:14px;font-weight:600;color:#e2e8f0">${alert.title}</div>
-                <span class="badge" style="background:${sevColor[alert.severity]||'#64748b'}22;color:${sevColor[alert.severity]||'#94a3b8'};border-color:${sevColor[alert.severity]||'#64748b'}">${alert.severity}</span>
-                ${!alert.is_read ? '<span class="badge badge-inprogress" style="font-size:9px">New</span>' : ''}
+                <div style="font-size:13.5px;font-weight:700;color:var(--text-primary)">${escapeInbox(it.title)}</div>
+                <span class="badge" style="background:${it.color}22;color:${it.color};border-color:${it.color};font-size:9.5px">${it.kind === 'alert' ? it.severity : (it.raw.type || 'activity').replace(/_/g, ' ')}</span>
+                ${!it.is_read ? '<span class="badge badge-inprogress" style="font-size:9px">New</span>' : ''}
               </div>
-              <div style="font-size:13px;color:#94a3b8;margin-top:4px;line-height:1.5">${alert.message}</div>
-              <div style="font-size:11px;color:#64748b;margin-top:6px">${fmtDate(alert.created_at)}</div>
+              ${it.body ? `<div style="font-size:12.5px;color:var(--text-secondary);margin-top:4px;line-height:1.5">${escapeInbox(it.body)}</div>` : ''}
+              <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${fmtDate(it.created_at)}${it.actor_name ? ' · by ' + escapeInbox(it.actor_name) : ''}</div>
             </div>
-            <div style="display:flex;gap:6px;flex-shrink:0">
-              ${!alert.is_read ? `<button class="btn btn-sm btn-outline" onclick="markAlertRead2('${alert.id}')"><i class="fas fa-eye"></i>Read</button>` : ''}
-              <button class="btn btn-sm btn-outline" onclick="dismissAlert2('${alert.id}')" style="color:#64748b"><i class="fas fa-times"></i></button>
+            <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
+              ${!it.is_read ? `<button class="btn btn-sm btn-outline" onclick="markInboxRead('${it.kind}','${it.id}')" title="Mark read"><i class="fas fa-eye"></i></button>` : ''}
+              ${it.kind === 'alert' ? `<button class="btn btn-sm btn-outline" onclick="dismissAlert2('${it.id}')" style="color:#9F8678" title="Dismiss"><i class="fas fa-times"></i></button>` : ''}
             </div>
           </div>
         </div>`).join('')}
     </div>
-    <div style="margin-top:12px">${renderPager(pagination, 'goAlertsPage', 'goAlertsPage', 'alerts')}</div>
+    <div style="margin-top:12px">${renderPager(pagination, 'goAlertsPage', 'goAlertsPage', 'items')}</div>
     `
-
-    window._allAlerts = active
+    window._allAlerts = alerts.filter(a => !a.is_dismissed)
   } catch(e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
+}
+
+function escapeInbox(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+async function markInboxRead(kind, id) {
+  try {
+    if (kind === 'alert') await API.patch('/alerts/' + id + '/read', {})
+    else                   await API.post('/notifications/' + id + '/read', {})
+    const row = document.getElementById('inbox-' + kind + '-' + id)
+    if (row) {
+      row.style.background = 'transparent'
+      row.querySelector('.btn[title="Mark read"]')?.remove()
+      row.querySelector('.badge-inprogress')?.remove()
+    }
+    if (typeof pollNotifications === 'function') pollNotifications()
+  } catch(e) { toast(e.message, 'error') }
+}
+
+async function markAllInboxRead() {
+  try {
+    await Promise.all([
+      API.post('/alerts/read-all', {}).catch(() => API.patch('/alerts/read-all', {}).catch(() => {})),
+      API.post('/notifications/read-all', {}).catch(() => {}),
+    ])
+    toast('All marked read', 'success')
+    const el = document.getElementById('page-alerts-view')
+    if (el) { el.dataset.loaded = ''; renderAlertsView(el) }
+    if (typeof pollNotifications === 'function') pollNotifications()
+  } catch(e) { toast(e.message, 'error') }
+}
+
+function onInboxClick(kind, id, link) {
+  // mark read on the way out
+  markInboxRead(kind, id)
+  if (link && link.startsWith('ticket:')) {
+    const ticketId = link.slice('ticket:'.length)
+    if (typeof openSupportDetail === 'function') openSupportDetail(ticketId)
   }
 }
 
@@ -1507,4 +1599,255 @@ async function changePasswordProfile() {
     document.getElementById('prof-new').value = ''
     document.getElementById('prof-conf').value = ''
   } catch(e) { toast(e.message, 'error') }
+}
+
+/* ── LEAVES VIEW ─────────────────────────────────────────── */
+let _leavesPage = 1
+let _leavesFilterStatus = ''
+
+const LEAVE_TYPE_LABEL = {
+  casual: 'Casual', sick: 'Sick', earned: 'Earned',
+  unpaid: 'Unpaid', maternity: 'Maternity', paternity: 'Paternity',
+  wfh: 'Work from Home', other: 'Other',
+}
+
+async function renderLeavesView(el) {
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:#9F8678"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
+  try {
+    const role = String(_user?.role || '').toLowerCase()
+    const isManager = ['admin', 'pm', 'pc'].includes(role)
+
+    const [leavesRes, devsRes] = await Promise.all([
+      API.get('/leaves'),
+      isManager ? API.get('/users').catch(() => ({ users: [] })) : Promise.resolve({ users: [] }),
+    ])
+    const leaves = leavesRes.leaves || leavesRes.data || []
+    const allUsers = devsRes.users || devsRes.data || []
+    const eligibleAssignees = allUsers.filter(u => ['developer', 'team', 'pm', 'pc'].includes(String(u.role).toLowerCase()))
+
+    const filtered = _leavesFilterStatus
+      ? leaves.filter(l => l.status === _leavesFilterStatus)
+      : leaves
+    const pagination = paginateClient(filtered, _leavesPage, 12)
+    _leavesPage = pagination.page
+
+    const pendingCount  = leaves.filter(l => l.status === 'pending').length
+    const approvedCount = leaves.filter(l => l.status === 'approved').length
+    const rejectedCount = leaves.filter(l => l.status === 'rejected').length
+
+    el.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">${isManager ? 'Leave Management' : 'My Leaves'}</h1>
+          <p class="page-subtitle">${isManager ? 'Approve or reject team leave requests' : 'Apply for leave and track status'}</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-primary" onclick="openLeaveApplyModal()"><i class="fas fa-plus"></i> Apply for Leave</button>
+        </div>
+      </div>
+
+      <div class="grid-4" style="margin-bottom:16px">
+        ${miniStatCard('Total Requests', leaves.length, '#FF7A45', 'fa-umbrella-beach')}
+        ${miniStatCard('Pending',  pendingCount,  '#FFCB47', 'fa-hourglass-half')}
+        ${miniStatCard('Approved', approvedCount, '#58C68A', 'fa-check-circle')}
+        ${miniStatCard('Rejected', rejectedCount, '#FF5E3A', 'fa-times-circle')}
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-outline" onclick="filterLeaves('')"        ${!_leavesFilterStatus           ?'style="background:rgba(255,122,69,.15);color:#FFB347"':''}>All</button>
+        <button class="btn btn-sm btn-outline" onclick="filterLeaves('pending')" ${_leavesFilterStatus==='pending' ?'style="background:rgba(255,203,71,.15);color:#FFD986"':''}>Pending</button>
+        <button class="btn btn-sm btn-outline" onclick="filterLeaves('approved')" ${_leavesFilterStatus==='approved'?'style="background:rgba(88,198,138,.15);color:#86E0A8"':''}>Approved</button>
+        <button class="btn btn-sm btn-outline" onclick="filterLeaves('rejected')" ${_leavesFilterStatus==='rejected'?'style="background:rgba(255,94,58,.15);color:#FF8866"':''}>Rejected</button>
+      </div>
+
+      <div class="card">
+        <div class="card-body" style="padding:0">
+          <table class="data-table">
+            <thead><tr>
+              ${isManager ? '<th>Employee</th>' : ''}
+              <th>Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>Status</th><th style="width:160px">Actions</th>
+            </tr></thead>
+            <tbody>
+              ${pagination.total === 0
+                ? `<tr><td colspan="${isManager?8:7}" style="text-align:center;color:#9F8678;padding:36px"><i class="fas fa-umbrella-beach" style="font-size:24px;opacity:.5;margin-bottom:8px;display:block"></i>No leave requests yet.</td></tr>`
+                : pagination.items.map(l => renderLeaveRow(l, role, isManager)).join('')}
+            </tbody>
+          </table>
+          ${renderPager(pagination, 'goLeavesPage', 'goLeavesPage', 'leaves')}
+        </div>
+      </div>
+    `
+
+    // Stash data for the modal
+    window._leaveAssignees = eligibleAssignees
+    window._isLeaveManager = isManager
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
+}
+
+function renderLeaveRow(l, currentRole, isManager) {
+  const statusBadge = l.status === 'approved'
+    ? '<span class="badge badge-green">Approved</span>'
+    : l.status === 'rejected'
+      ? '<span class="badge badge-red">Rejected</span>'
+      : '<span class="badge badge-yellow">Pending</span>'
+  const isOwner = l.user_id === _user?.sub
+  const canApprove = isManager && l.status === 'pending'
+  const canDelete = isOwner || _user?.role === 'admin'
+
+  return `<tr>
+    ${isManager ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(l.full_name || '—', l.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(l.full_name || '—')}</span></div></td>` : ''}
+    <td><span class="badge badge-blue">${LEAVE_TYPE_LABEL[l.leave_type] || l.leave_type}</span></td>
+    <td style="font-size:12px;color:#9F8678">${fmtDate(l.start_date)}</td>
+    <td style="font-size:12px;color:#9F8678">${fmtDate(l.end_date)}</td>
+    <td style="font-weight:700;color:#FFF1E6">${l.days_count}</td>
+    <td style="font-size:12px;color:#E8D2BD;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeInbox(l.reason || '')}">${escapeInbox(l.reason || '—')}</td>
+    <td>${statusBadge}</td>
+    <td>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        ${canApprove ? `
+          <button class="btn btn-success btn-xs" onclick="approveLeaveAction('${l.id}','approved')" title="Approve"><i class="fas fa-check"></i></button>
+          <button class="btn btn-danger btn-xs"  onclick="approveLeaveAction('${l.id}','rejected')" title="Reject"><i class="fas fa-times"></i></button>` : ''}
+        ${canDelete ? `<button class="btn btn-icon btn-xs" onclick="deleteLeaveAction('${l.id}')" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
+      </div>
+    </td>
+  </tr>`
+}
+
+function filterLeaves(status) {
+  _leavesFilterStatus = status || ''
+  _leavesPage = 1
+  const el = document.getElementById('page-leaves-view')
+  if (el) { el.dataset.loaded = ''; renderLeavesView(el) }
+}
+
+function goLeavesPage(page) {
+  _leavesPage = Math.max(1, Number(page) || 1)
+  const el = document.getElementById('page-leaves-view')
+  if (el) { el.dataset.loaded = ''; renderLeavesView(el) }
+}
+
+function openLeaveApplyModal() {
+  const isManager = !!window._isLeaveManager
+  const assignees = Array.isArray(window._leaveAssignees) ? window._leaveAssignees : []
+  const selfName = _user?.name || _user?.full_name || 'Me'
+
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-umbrella-beach" style="color:var(--accent);margin-right:6px"></i>Apply for Leave</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      ${isManager ? `
+        <div class="form-group">
+          <label class="form-label">Employee *</label>
+          <select id="lv-user" class="form-select">
+            <option value="${_user.sub}" selected>${escapeInbox(selfName)} (me)</option>
+            ${assignees.map(u => `<option value="${u.id}">${escapeInbox(u.full_name)} (${u.role})</option>`).join('')}
+          </select>
+        </div>
+      ` : `<input type="hidden" id="lv-user" value="${_user.sub}"/>`}
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Leave Type *</label>
+          <select id="lv-type" class="form-select">
+            <option value="casual">Casual</option>
+            <option value="sick">Sick</option>
+            <option value="earned">Earned</option>
+            <option value="unpaid">Unpaid</option>
+            <option value="wfh">Work from Home</option>
+            <option value="maternity">Maternity</option>
+            <option value="paternity">Paternity</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Days</label>
+          <input id="lv-days" class="form-input" type="number" value="1" min="0.5" step="0.5"/>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">From *</label>
+          <input id="lv-from" class="form-input" type="date" onchange="recalcLeaveDays()"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">To *</label>
+          <input id="lv-to" class="form-input" type="date" onchange="recalcLeaveDays()"/>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Reason</label>
+        <textarea id="lv-reason" class="form-textarea" rows="3" placeholder="Reason for the leave (optional but recommended)"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitLeaveApply()"><i class="fas fa-paper-plane"></i> Submit Request</button>
+    </div>
+  `, 'modal-lg')
+
+  // Default From = today
+  const today = new Date().toISOString().slice(0, 10)
+  const f = document.getElementById('lv-from'); if (f) f.value = today
+  const t = document.getElementById('lv-to');   if (t) t.value = today
+}
+
+function recalcLeaveDays() {
+  const from = document.getElementById('lv-from')?.value
+  const to   = document.getElementById('lv-to')?.value
+  if (!from || !to) return
+  const diff = Math.ceil((new Date(to) - new Date(from)) / (1000*60*60*24)) + 1
+  const d = document.getElementById('lv-days')
+  if (d) d.value = Math.max(0.5, diff)
+}
+
+async function submitLeaveApply() {
+  const userId = document.getElementById('lv-user')?.value || _user.sub
+  const type = document.getElementById('lv-type').value
+  const from = document.getElementById('lv-from').value
+  const to   = document.getElementById('lv-to').value
+  const days = parseFloat(document.getElementById('lv-days').value) || 1
+  const reason = document.getElementById('lv-reason').value.trim()
+  if (!from || !to) { toast('From and To dates are required', 'error'); return }
+  if (new Date(from) > new Date(to)) { toast('From date must be before To date', 'error'); return }
+  try {
+    await API.post('/leaves', {
+      user_id: userId,
+      leave_type: type,
+      start_date: from,
+      end_date: to,
+      days_count: days,
+      reason,
+    })
+    toast('Leave request submitted', 'success')
+    closeModal()
+    const el = document.getElementById('page-leaves-view')
+    if (el) { el.dataset.loaded = ''; renderLeavesView(el) }
+    if (typeof loadBadges === 'function') loadBadges()
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function approveLeaveAction(id, status) {
+  try {
+    await API.patch(`/leaves/${id}/approve`, { status })
+    toast(`Leave ${status}`, 'success')
+    const el = document.getElementById('page-leaves-view')
+    if (el) { el.dataset.loaded = ''; renderLeavesView(el) }
+    if (typeof pollNotifications === 'function') pollNotifications()
+    if (typeof loadBadges === 'function') loadBadges()
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+async function deleteLeaveAction(id) {
+  if (!confirm('Delete this leave request?')) return
+  try {
+    await API.delete(`/leaves/${id}`)
+    toast('Deleted', 'success')
+    const el = document.getElementById('page-leaves-view')
+    if (el) { el.dataset.loaded = ''; renderLeavesView(el) }
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
 }

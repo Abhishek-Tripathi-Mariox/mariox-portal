@@ -65,6 +65,7 @@ const SIDEBAR_PAGE_GROUPS = {
   'timesheets-view': 'dev',
   'support-tickets': 'dev',
   'approval-queue': 'dev',
+  'leaves-view': 'dev',
   'reports-view': 'analytics',
   'alerts-view': 'analytics',
   'settings-view': 'settings',
@@ -374,6 +375,7 @@ function buildShell() {
         ${role === 'developer' ? `<a class="nav-item" data-page="dev-dashboard"><span class="nav-icon"><i class="fas fa-gauge"></i></span>My Dashboard</a>` : ''}
         <a class="nav-item" data-page="my-tasks"><span class="nav-icon"><i class="fas fa-list-check"></i></span>Tasks</a>
         <a class="nav-item" data-page="timesheets-view"><span class="nav-icon"><i class="fas fa-clock"></i></span>Timesheets</a>
+        <a class="nav-item" data-page="leaves-view"><span class="nav-icon"><i class="fas fa-umbrella-beach"></i></span>Leaves <span class="nav-badge" id="nb-leaves">0</span></a>
         <a class="nav-item" data-page="support-tickets"><span class="nav-icon"><i class="fas fa-life-ring"></i></span>Support Tickets</a>
         ${role !== 'developer' ? `<a class="nav-item" data-page="approval-queue"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span>Approvals <span class="nav-badge" id="nb-approval">0</span></a>` : ''}
       </div>
@@ -451,6 +453,7 @@ function buildShell() {
     <div id="page-my-tasks"         class="page"></div>
     <div id="page-timesheets-view"  class="page"></div>
     <div id="page-approval-queue"   class="page"></div>
+    <div id="page-leaves-view"      class="page"></div>
     <div id="page-reports-view"     class="page"></div>
     <div id="page-alerts-view"      class="page"></div>
     <div id="page-clients-list"     class="page"></div>
@@ -488,7 +491,7 @@ const breadcrumbMap = {
   'super-dashboard':'Overview','pm-dashboard':'PM Dashboard','dev-dashboard':'My Dashboard',
   'projects-list':'Projects','kanban-board':'Kanban Board','sprints-view':'Sprints',
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
-  'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals',
+  'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
   'billing-admin':'Billing & Invoices','team-overview':'Team','support-tickets':'Support Tickets','settings-view':'Settings'
 }
@@ -524,10 +527,15 @@ function bindNav() {
 
 async function loadBadges() {
   try {
-    const data = await API.get('/alerts')
-    const unread = (data.alerts||[]).filter(a=>!a.is_read&&!a.is_dismissed).length
+    const [alertsData, notifData] = await Promise.all([
+      API.get('/alerts').catch(() => ({ alerts: [] })),
+      API.get('/notifications/unread-count').catch(() => ({ unread_count: 0 })),
+    ])
+    const alertUnread = (alertsData.alerts||[]).filter(a=>!a.is_read&&!a.is_dismissed).length
+    const notifUnread = notifData.unread_count || 0
+    const total = alertUnread + notifUnread
     const nb = document.getElementById('nb-alerts')
-    if (nb) { nb.textContent = unread||''; nb.style.display = unread?'':'none' }
+    if (nb) { nb.textContent = total||''; nb.style.display = total?'':'none' }
   } catch {}
   try {
     const data = await API.get('/timesheets?approval_status=pending')
@@ -594,6 +602,9 @@ function _notifSetBadge(count) {
       badge.style.display = 'none'
     }
   }
+  // Sidebar "Alerts" badge is owned by loadBadges() (alerts + notifications).
+  // Refresh it whenever the bell count changes so both stay in sync.
+  if (typeof loadBadges === 'function') loadBadges()
 }
 
 function _notifShowToast(n) {
@@ -910,7 +921,7 @@ async function showNotifications() {
       </div>
       <div class="modal-body" style="padding:0">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted)">
-          <span>${data.unread_count || 0} unread · ${items.length} recent</span>
+          <span id="notif-panel-summary">${data.unread_count || 0} unread · ${items.length} recent</span>
           ${items.length ? '<button class="btn btn-xs btn-outline" onclick="markAllNotifsRead()"><i class="fas fa-check-double"></i> Mark all read</button>' : ''}
         </div>
         <div class="notif-list">
@@ -918,16 +929,32 @@ async function showNotifications() {
         </div>
       </div>
     `, 'modal-lg')
+
+    // Auto-mark-all-read when the panel opens (Slack/Freshdesk pattern):
+    // user has now "seen" them. Update both badges immediately.
+    const hasUnread = items.some((n) => !n.is_read)
+    if (hasUnread) {
+      API.post('/notifications/read-all', {}).catch(() => {})
+      _notifSetBadge(0)
+    }
   } catch (e) {
     toast('Failed to load notifications: ' + e.message, 'error')
   }
 }
 
 async function onNotifClick(id, link) {
+  // Optimistic UI update: clear unread look from the row right away
+  const row = document.querySelector(`.notif-row[data-id="${CSS.escape(id)}"]`)
+  if (row) {
+    row.classList.remove('is-unread')
+    row.querySelector('.notif-row-dot')?.remove()
+  }
   try { await API.post(`/notifications/${id}/read`, {}) } catch {}
-  closeModal()
+  // Update badges immediately
+  if (_notifState.unreadCount > 0) _notifSetBadge(Math.max(0, _notifState.unreadCount - 1))
   pollNotifications()
   if (link && typeof link === 'string' && link.startsWith('ticket:')) {
+    closeModal()
     const ticketId = link.slice('ticket:'.length)
     if (typeof openSupportDetail === 'function') {
       openSupportDetail(ticketId)
@@ -940,8 +967,15 @@ async function onNotifClick(id, link) {
 async function markAllNotifsRead() {
   try {
     await API.post('/notifications/read-all', {})
+    // Optimistic: clear all unread visuals in the panel without closing it
+    document.querySelectorAll('.notif-row.is-unread').forEach((row) => {
+      row.classList.remove('is-unread')
+      row.querySelector('.notif-row-dot')?.remove()
+    })
+    const summary = document.getElementById('notif-panel-summary')
+    if (summary) summary.textContent = '0 unread · ' + (_notifState.recent?.length || 0) + ' recent'
+    _notifSetBadge(0)
     toast('Marked all notifications read', 'success')
-    closeModal()
     pollNotifications()
   } catch (e) {
     toast('Failed: ' + e.message, 'error')
@@ -985,6 +1019,7 @@ function loadPage(page, el) {
     case 'my-tasks':         renderMyTasks(el); break
     case 'timesheets-view':  renderTimesheetsView(el); break
     case 'approval-queue':   renderApprovalQueue(el); break
+    case 'leaves-view':      renderLeavesView(el); break
     case 'reports-view':     renderReportsView(el); break
     case 'alerts-view':      renderAlertsView(el); break
     case 'clients-list':     renderClientsList(el); break
