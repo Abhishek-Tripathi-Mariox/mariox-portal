@@ -37,7 +37,7 @@ const utils = {
     return `<span class="badge ${map[status]||'badge-todo'}">${(status||'unknown').replace('_',' ')}</span>`
   },
   progressBar: (pct, color='green') => {
-    const colors = { green:'#10b981', yellow:'#f59e0b', red:'#ef4444', blue:'#6366f1' }
+    const colors = { green:'#58C68A', yellow:'#FFCB47', red:'#FF5E3A', blue:'#FF7A45' }
     const bg = colors[color] || color
     const w = Math.max(0, Math.min(100, Number(pct||0)))
     return `<div class="progress-bar"><div class="progress-fill" style="width:${w}%;background:${bg}"></div></div>`
@@ -215,7 +215,7 @@ function toast(msg, type='info', dur=3500) {
   const icons = { success:'fa-check-circle', error:'fa-exclamation-circle', info:'fa-info-circle' }
   const t = document.createElement('div')
   t.className = `toast ${type}`
-  t.innerHTML = `<i class="fas ${icons[type]||'fa-info-circle'}" style="color:${type==='success'?'#10b981':type==='error'?'#ef4444':'#2563eb'}"></i><span>${msg}</span>`
+  t.innerHTML = `<i class="fas ${icons[type]||'fa-info-circle'}" style="color:${type==='success'?'#58C68A':type==='error'?'#FF5E3A':'#FF7A45'}"></i><span>${msg}</span>`
   ct.appendChild(t)
   setTimeout(() => t.remove(), dur)
 }
@@ -263,7 +263,7 @@ const Router = {
 
 // ── Colour helpers ───────────────────────────────────────────
 function initials(name='') { return name.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase() }
-function avatar(name, color='#2563EB', size='') {
+function avatar(name, color='#FF7A45', size='') {
   return `<div class="avatar ${size}" style="background:${color}">${initials(name)}</div>`
 }
 
@@ -292,13 +292,13 @@ function timeAgo(d) {
   if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago'
   return Math.floor(diff/86400000) + 'd ago'
 }
-function pctColor(p) { return p >= 90 ? '#f43f5e' : p >= 70 ? '#f59e0b' : '#10b981' }
+function pctColor(p) { return p >= 90 ? '#FF5E3A' : p >= 70 ? '#FFCB47' : '#58C68A' }
 function docCategoryIcon(cat) {
   const ic = { sow:'📋', brd:'📌', frd:'📐', uiux:'🎨', wireframes:'🖼️', meeting_notes:'📝', technical:'⚙️', test_report:'🧪', release:'🚀', billing:'💰', contract:'📜', other:'📄' }
   return ic[cat] || '📄'
 }
 function docCategoryColor(cat) {
-  const c = { sow:'#2563eb', brd:'#06b6d4', frd:'#6366f1', uiux:'#f43f5e', wireframes:'#f59e0b', meeting_notes:'#10b981', technical:'#64748b', test_report:'#f97316', release:'#14b8a6', billing:'#22c55e', contract:'#3b82f6', other:'#475569' }
+  const c = { sow:'#FF7A45', brd:'#F4C842', frd:'#FF7A45', uiux:'#FF5E3A', wireframes:'#FFCB47', meeting_notes:'#58C68A', technical:'#64748b', test_report:'#FF7A45', release:'#FFB347', billing:'#58C68A', contract:'#FFA577', other:'#475569' }
   return c[cat] || '#475569'
 }
 
@@ -414,7 +414,7 @@ function buildShell() {
     </div>
     <div class="sidebar-footer">
       <div class="user-card" onclick="showProfileModal()">
-        ${avatar(_user.name||_user.full_name, _user.avatar_color||'#2563EB')}
+        ${avatar(_user.name||_user.full_name, _user.avatar_color||'#FF7A45')}
         <div style="min-width:0">
           <div style="font-size:13px;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_user.name||_user.full_name}</div>
           <div style="font-size:11px;color:#94a3b8;text-transform:capitalize">${_user.role}</div>
@@ -435,7 +435,7 @@ function buildShell() {
         <i class="fas fa-search"></i>
         <input class="search-bar" placeholder="Search tasks, projects…" id="global-search" oninput="globalSearch(this.value)"/>
       </div>
-      <button class="icon-btn notif-btn" onclick="showNotifications()"><i class="fas fa-bell"></i><span class="notif-dot" id="notif-dot" style="display:none"></span></button>
+      <button class="icon-btn notif-btn" onclick="showNotifications()" data-tip="Notifications"><i class="fas fa-bell"></i><span class="notif-dot" id="notif-dot" style="display:none"></span><span class="notif-badge" id="notif-badge" style="display:none">0</span></button>
       <button class="icon-btn" onclick="logout()" data-tip="Logout"><i class="fas fa-sign-out-alt"></i></button>
     </div>
   </div>
@@ -520,6 +520,7 @@ function bindNav() {
   })
   applySidebarGroupState()
   loadBadges()
+  startNotificationPoller()
 }
 
 async function loadBadges() {
@@ -528,8 +529,6 @@ async function loadBadges() {
     const unread = (data.alerts||[]).filter(a=>!a.is_read&&!a.is_dismissed).length
     const nb = document.getElementById('nb-alerts')
     if (nb) { nb.textContent = unread||''; nb.style.display = unread?'':'none' }
-    const dot = document.getElementById('notif-dot')
-    if (dot) dot.style.display = unread ? '' : 'none'
   } catch {}
   try {
     const data = await API.get('/timesheets?approval_status=pending')
@@ -537,6 +536,127 @@ async function loadBadges() {
     const nb = document.getElementById('nb-approval')
     if (nb) { nb.textContent = cnt||'0' }
   } catch {}
+  // Notifications badge + initial sync
+  pollNotifications(true)
+}
+
+// ── Notifications: poller + sound + toast ─────────────────────
+const _notifState = {
+  lastSeenId: null,
+  lastSeenAt: null,
+  unreadCount: 0,
+  recent: [],
+  audioCtx: null,
+  timer: null,
+  initialized: false,
+}
+
+function _notifPlayDing() {
+  // Light "ding" via Web Audio API — no asset needed.
+  try {
+    if (!_notifState.audioCtx) {
+      const Ctor = window.AudioContext || window.webkitAudioContext
+      if (!Ctor) return
+      _notifState.audioCtx = new Ctor()
+    }
+    const ctx = _notifState.audioCtx
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+    const now = ctx.currentTime
+    const tone = (freq, start, dur, peak = 0.18) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, now + start)
+      gain.gain.setValueAtTime(0, now + start)
+      gain.gain.linearRampToValueAtTime(peak, now + start + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + start + dur)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(now + start)
+      osc.stop(now + start + dur + 0.02)
+    }
+    // Two-note chime
+    tone(880, 0, 0.18)
+    tone(1320, 0.10, 0.22)
+  } catch (e) {
+    // sound failures are non-fatal
+  }
+}
+
+function _notifSetBadge(count) {
+  _notifState.unreadCount = count
+  const dot = document.getElementById('notif-dot')
+  const badge = document.getElementById('notif-badge')
+  if (dot) dot.style.display = count > 0 ? '' : 'none'
+  if (badge) {
+    if (count > 0) {
+      badge.style.display = ''
+      badge.textContent = count > 99 ? '99+' : String(count)
+    } else {
+      badge.style.display = 'none'
+    }
+  }
+}
+
+function _notifShowToast(n) {
+  if (typeof toast !== 'function') return
+  const text = `${n.title}${n.body ? ' — ' + n.body : ''}`
+  toast(text.length > 140 ? text.slice(0, 140) + '…' : text, 'info')
+}
+
+async function pollNotifications(initial = false) {
+  try {
+    const res = await API.get('/notifications/unread-count')
+    const count = res.unread_count || 0
+    const latestId = res.latest_id || null
+    const recent = res.recent || []
+    const previousLastSeen = _notifState.lastSeenId
+    _notifState.recent = recent
+
+    // First load: just sync state, don't ding
+    if (!_notifState.initialized) {
+      _notifState.lastSeenId = latestId
+      _notifState.lastSeenAt = res.latest_created_at || null
+      _notifState.initialized = true
+      _notifSetBadge(count)
+      return
+    }
+
+    if (latestId && latestId !== previousLastSeen) {
+      // Find which entries are new (newer than lastSeenAt)
+      const cutoff = _notifState.lastSeenAt
+      const fresh = recent.filter((n) => !cutoff || (n.created_at && n.created_at > cutoff))
+      if (fresh.length) {
+        _notifPlayDing()
+        // Show up to 2 toasts so we don't spam
+        fresh.slice(0, 2).forEach(_notifShowToast)
+      }
+      _notifState.lastSeenId = latestId
+      _notifState.lastSeenAt = res.latest_created_at || _notifState.lastSeenAt
+    }
+    _notifSetBadge(count)
+  } catch {
+    // ignore — likely offline / unauthenticated
+  }
+}
+
+function startNotificationPoller() {
+  if (_notifState.timer) return
+  _notifState.timer = setInterval(() => {
+    if (document.visibilityState === 'visible') pollNotifications()
+  }, 20000)
+  // Resume immediately when tab becomes visible
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') pollNotifications()
+  })
+}
+
+function stopNotificationPoller() {
+  if (_notifState.timer) {
+    clearInterval(_notifState.timer)
+    _notifState.timer = null
+  }
+  _notifState.initialized = false
+  _notifSetBadge(0)
 }
 
 function toggleSidebar() {
@@ -563,6 +683,7 @@ window.addEventListener('resize', () => {
 
 function logout() {
   clearAuth()
+  if (typeof stopNotificationPoller === 'function') stopNotificationPoller()
   document.getElementById('app').innerHTML = ''
   renderLogin()
   toast('Logged out successfully', 'info')
@@ -594,7 +715,7 @@ function renderLogin() {
           <button type="submit" class="btn btn-primary w-full" style="margin-top:4px"><i class="fas fa-sign-in-alt"></i>Sign In</button>
         </form>
         <p style="text-align:center;margin-top:14px;font-size:12px;color:#64748b">One sign-in for staff and client accounts</p>
-        <p style="text-align:center;margin-top:6px;font-size:12px;color:#64748b">New client? <a href="#" onclick="showClientSignup()" style="color:#2563eb;text-decoration:none;font-weight:700">Request Access</a></p>
+        <p style="text-align:center;margin-top:6px;font-size:12px;color:#64748b">New client? <a href="#" onclick="showClientSignup()" style="color:#FF7A45;text-decoration:none;font-weight:700">Request Access</a></p>
       </div>
     </div>
   </div>`
@@ -716,7 +837,7 @@ function showProfileModal() {
   showModal(`
     <div class="modal-header"><h3>My Profile</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body" style="text-align:center">
-      ${avatar(_user.name||_user.full_name, _user.avatar_color||'#2563EB','xl')}
+      ${avatar(_user.name||_user.full_name, _user.avatar_color||'#FF7A45','xl')}
       <div style="margin-top:14px">
         <div style="font-size:18px;font-weight:700;color:#fff">${_user.name||_user.full_name}</div>
         <div style="font-size:13px;color:#94a3b8;text-transform:capitalize;margin-top:2px">${_user.role} • ${_user.designation||'DevPortal'}</div>
@@ -730,24 +851,102 @@ function showProfileModal() {
 }
 
 // ── Notifications panel ───────────────────────────────────────
+function _notifIcon(type) {
+  const map = {
+    ticket_created:        { icon: 'fa-ticket', color: '#FF7A45' },
+    ticket_assigned:       { icon: 'fa-user-check', color: '#C56FE6' },
+    ticket_status:         { icon: 'fa-circle-half-stroke', color: '#FFA577' },
+    ticket_priority:       { icon: 'fa-flag', color: '#FFCB47' },
+    ticket_comment:        { icon: 'fa-message', color: '#FFB67A' },
+    ticket_internal_note:  { icon: 'fa-lock', color: '#FFCB47' },
+  }
+  return map[type] || { icon: 'fa-bell', color: '#FFB347' }
+}
+
+function _notifTimeAgo(iso) {
+  if (!iso) return ''
+  const ms = Math.max(0, Date.now() - new Date(iso).getTime())
+  const m = Math.floor(ms / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return m + 'm ago'
+  const h = Math.floor(m / 60)
+  if (h < 24) return h + 'h ago'
+  const d = Math.floor(h / 24)
+  if (d < 30) return d + 'd ago'
+  return new Date(iso).toLocaleDateString()
+}
+
+function _notifEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
 async function showNotifications() {
   try {
-    const data = await API.get('/alerts?limit=10')
-    const alerts = data.alerts || []
-    const items = alerts.slice(0,8).map(a=>`
-      <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
-        <div style="display:flex;align-items:flex-start;gap:10px">
-          <div style="width:32px;height:32px;border-radius:8px;background:${a.severity==='critical'?'var(--danger-light)':a.severity==='warning'?'var(--warning-light)':'var(--primary-light)'};display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">
-            ${a.severity==='critical'?'🔴':a.severity==='warning'?'⚠️':'ℹ️'}
+    // Wake the audio context (browsers require a user gesture before sound plays)
+    if (_notifState.audioCtx?.state === 'suspended') _notifState.audioCtx.resume().catch(() => {})
+
+    const data = await API.get('/notifications/me?limit=50')
+    const items = data.notifications || data.data || []
+    const itemsHtml = items.map((n) => {
+      const ic = _notifIcon(n.type)
+      const unread = !n.is_read
+      return `
+        <div class="notif-row ${unread ? 'is-unread' : ''}" data-id="${_notifEsc(n.id)}" data-link="${_notifEsc(n.link || '')}" onclick="onNotifClick('${_notifEsc(n.id)}','${_notifEsc(n.link || '')}')">
+          <div class="notif-row-icon" style="background:${ic.color}22;color:${ic.color};border-color:${ic.color}55"><i class="fas ${ic.icon}"></i></div>
+          <div class="notif-row-body">
+            <div class="notif-row-title">${_notifEsc(n.title)}</div>
+            ${n.body ? `<div class="notif-row-text">${_notifEsc(n.body)}</div>` : ''}
+            <div class="notif-row-time">${_notifTimeAgo(n.created_at)}</div>
           </div>
-          <div><div style="font-size:13px;color:var(--text-primary);font-weight:600">${a.title}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">${a.message.substring(0,80)}…</div></div>
-        </div>
-      </div>`).join('')
+          ${unread ? '<span class="notif-row-dot"></span>' : ''}
+        </div>`
+    }).join('')
+
     showModal(`
-      <div class="modal-header"><h3>Notifications</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-      <div style="max-height:420px;overflow-y:auto">${items||'<div class="empty-state"><i class="fas fa-bell-slash"></i><p>No new alerts</p></div>'}</div>
-      <div class="modal-footer"><button class="btn btn-primary" onclick="Router.navigate('alerts-view');closeModal()"><i class="fas fa-list"></i>View All Alerts</button></div>`)
-  } catch(e) { toast('Failed to load notifications', 'error') }
+      <div class="modal-header">
+        <h3><i class="fas fa-bell" style="margin-right:6px"></i> Notifications</h3>
+        <button class="close-btn" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted)">
+          <span>${data.unread_count || 0} unread · ${items.length} recent</span>
+          ${items.length ? '<button class="btn btn-xs btn-outline" onclick="markAllNotifsRead()"><i class="fas fa-check-double"></i> Mark all read</button>' : ''}
+        </div>
+        <div class="notif-list">
+          ${items.length ? itemsHtml : '<div class="empty-state" style="padding:36px 18px"><i class="fas fa-bell-slash"></i><p>No notifications yet</p></div>'}
+        </div>
+      </div>
+    `, 'modal-lg')
+  } catch (e) {
+    toast('Failed to load notifications: ' + e.message, 'error')
+  }
+}
+
+async function onNotifClick(id, link) {
+  try { await API.post(`/notifications/${id}/read`, {}) } catch {}
+  closeModal()
+  pollNotifications()
+  if (link && typeof link === 'string' && link.startsWith('ticket:')) {
+    const ticketId = link.slice('ticket:'.length)
+    if (typeof openSupportDetail === 'function') {
+      openSupportDetail(ticketId)
+    } else if (window.Router?.navigate) {
+      Router.navigate('support-tickets')
+    }
+  }
+}
+
+async function markAllNotifsRead() {
+  try {
+    await API.post('/notifications/read-all', {})
+    toast('Marked all notifications read', 'success')
+    closeModal()
+    pollNotifications()
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
 }
 
 // ── Global search ─────────────────────────────────────────────

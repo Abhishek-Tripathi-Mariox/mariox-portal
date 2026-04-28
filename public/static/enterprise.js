@@ -139,14 +139,14 @@ async function renderSuperDashboard(el) {
       </div>
     </div>
     <div class="grid-4" style="margin-bottom:20px">
-      ${statCard('Total Projects', d.projects?.total||0, 'fas fa-layer-group', '#6366f1', `${d.projects?.active||0} active`)}
-      ${statCard('Active Clients', activeClients, 'fas fa-building', '#06b6d4', `${clients.length} total`)}
-      ${statCard('Total Revenue', '₹'+fmtNum(inv.total_value||0), 'fas fa-indian-rupee-sign', '#10b981', `₹${fmtNum(inv.total_paid||0)} collected`)}
-      ${statCard('Pending Invoices', inv.overdue_count||0, 'fas fa-exclamation-circle', '#f43f5e', `₹${fmtNum(inv.total_overdue||0)} overdue`)}
+      ${statCard('Total Projects', d.projects?.total||0, 'fas fa-layer-group', '#FF7A45', `${d.projects?.active||0} active`)}
+      ${statCard('Active Clients', activeClients, 'fas fa-building', '#F4C842', `${clients.length} total`)}
+      ${statCard('Total Revenue', '₹'+fmtNum(inv.total_value||0), 'fas fa-indian-rupee-sign', '#58C68A', `₹${fmtNum(inv.total_paid||0)} collected`)}
+      ${statCard('Pending Invoices', inv.overdue_count||0, 'fas fa-exclamation-circle', '#FF5E3A', `₹${fmtNum(inv.total_overdue||0)} overdue`)}
     </div>
     <div class="grid-2" style="margin-bottom:20px">
-      ${statCard('Allocated Hours', fmtNum(d.hours?.total_allocated||0)+'h', 'fas fa-clock', '#8b5cf6', `${fmtNum(d.hours?.total_consumed||0)}h consumed`)}
-      ${statCard('Team Members', (d.developers?.total||0)+' devs', 'fas fa-users', '#f59e0b', `${d.developers?.active||0} active`)}
+      ${statCard('Allocated Hours', fmtNum(d.hours?.total_allocated||0)+'h', 'fas fa-clock', '#C56FE6', `${fmtNum(d.hours?.total_consumed||0)}h consumed`)}
+      ${statCard('Team Members', (d.developers?.total||0)+' devs', 'fas fa-users', '#FFCB47', `${d.developers?.active||0} active`)}
     </div>
     <div class="grid-2" style="margin-bottom:20px">
       <div class="card">
@@ -178,9 +178,9 @@ async function renderSuperDashboard(el) {
             <tbody>${(invoiceData.invoices||[]).slice(0,6).map(i=>`
               <tr>
                 <td><div style="font-weight:500;font-size:12px;color:#e2e8f0">${i.invoice_number}</div><div style="font-size:11px;color:#64748b">${i.company_name||'—'}</div></td>
-                <td style="font-weight:600;color:#10b981">${fmtCurrency(i.total_amount)}</td>
+                <td style="font-weight:600;color:#58C68A">${fmtCurrency(i.total_amount)}</td>
                 <td><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></td>
-                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#f43f5e':'#94a3b8'}">${fmtDate(i.due_date)}</td>
+                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#94a3b8'}">${fmtDate(i.due_date)}</td>
               </tr>`).join('')}</tbody>
           </table>
         </div>
@@ -311,10 +311,10 @@ async function renderPMDashboard(el) {
       </div>
     </div>
     <div class="grid-4" style="margin-bottom:20px">
-      ${statCard('Active Projects', d.projects?.active||0, 'fas fa-layer-group', '#6366f1', `${d.projects?.total||0} total`)}
-      ${statCard('Open Tasks', allTasks.filter(t=>t.status!=='done').length, 'fas fa-list-check', '#06b6d4', `${allTasks.filter(t=>t.status==='blocked').length} blocked`)}
-      ${statCard('Team Members', d.developers?.total||0, 'fas fa-users', '#10b981', `${d.developers?.active||0} active`)}
-      ${statCard('Hours Consumed', fmtNum(d.hours?.total_consumed||0)+'h', 'fas fa-clock', '#f59e0b', `${fmtNum(d.hours?.total_remaining||0)}h remaining`)}
+      ${statCard('Active Projects', d.projects?.active||0, 'fas fa-layer-group', '#FF7A45', `${d.projects?.total||0} total`)}
+      ${statCard('Open Tasks', allTasks.filter(t=>t.status!=='done').length, 'fas fa-list-check', '#F4C842', `${allTasks.filter(t=>t.status==='blocked').length} blocked`)}
+      ${statCard('Team Members', d.developers?.total||0, 'fas fa-users', '#58C68A', `${d.developers?.active||0} active`)}
+      ${statCard('Hours Consumed', fmtNum(d.hours?.total_consumed||0)+'h', 'fas fa-clock', '#FFCB47', `${fmtNum(d.hours?.total_remaining||0)}h remaining`)}
     </div>
     ${activeSprint ? `
     <div class="sprint-header" style="margin-bottom:20px">
@@ -323,7 +323,7 @@ async function renderPMDashboard(el) {
         <button class="btn btn-sm btn-outline" onclick="Router.navigate('kanban-board')">Open Board <i class="fas fa-arrow-right"></i></button>
       </div>
       <div style="display:flex;gap:24px;margin-bottom:10px">
-        ${[['Total Points', activeSprint.total_story_points||0,'#94a3b8'],['Done', activeSprint.completed_story_points||0,'#10b981'],['Tasks', activeSprint.task_count||0,'#6366f1'],['Blocked', activeSprint.blocked_count||0,'#f43f5e']].map(([l,v,c])=>`<div class="sprint-stat"><div class="val" style="color:${c}">${v}</div><div class="lbl">${l}</div></div>`).join('')}
+        ${[['Total Points', activeSprint.total_story_points||0,'#94a3b8'],['Done', activeSprint.completed_story_points||0,'#58C68A'],['Tasks', activeSprint.task_count||0,'#FF7A45'],['Blocked', activeSprint.blocked_count||0,'#FF5E3A']].map(([l,v,c])=>`<div class="sprint-stat"><div class="val" style="color:${c}">${v}</div><div class="lbl">${l}</div></div>`).join('')}
       </div>
       <div class="progress-bar xl"><div class="progress-fill ${((activeSprint.completed_story_points/Math.max(activeSprint.total_story_points,1))*100)>=80?'green':'blue'}" style="width:${Math.min((activeSprint.completed_story_points/Math.max(activeSprint.total_story_points,1))*100,100)}%"></div></div>
     </div>` : ''}
@@ -341,7 +341,7 @@ async function renderPMDashboard(el) {
             <div style="padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onmouseenter="this.style.background='var(--hover)'" onmouseleave="this.style.background=''" onclick="openTaskDrawer('${t.id}')">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                 ${taskTypeIcon(t.task_type)}${priorityBadge(t.priority)}
-                ${t.status==='blocked'?'<span style="color:#f43f5e;font-size:11px"><i class="fas fa-ban"></i> Blocked</span>':''}
+                ${t.status==='blocked'?'<span style="color:#FF5E3A;font-size:11px"><i class="fas fa-ban"></i> Blocked</span>':''}
               </div>
               <div style="font-size:13px;color:#e2e8f0;font-weight:500">${t.title}</div>
               <div style="font-size:11px;color:#64748b;margin-top:2px">${t.project_name||'—'} • ${t.assignee_name||'Unassigned'}</div>
@@ -369,7 +369,7 @@ async function renderPMDashboard(el) {
         <div style="max-height:300px;overflow-y:auto;padding:12px 16px">
           ${(d.recent_logs||[]).slice(0,6).map(log=>`
             <div class="feed-item">
-              ${avatar(log.full_name||'?', log.avatar_color||'#6366f1','sm')}
+              ${avatar(log.full_name||'?', log.avatar_color||'#FF7A45','sm')}
               <div class="feed-content">
                 <div class="feed-title"><strong>${log.full_name}</strong> logged ${log.hours_consumed}h on ${log.project_name}</div>
                 <div class="feed-time">${log.module_name} • ${fmtDate(log.date)}</div>
@@ -385,8 +385,8 @@ async function renderPMDashboard(el) {
       if (!ctx) return
       const labels = ['Backlog','To Do','In Progress','In Review','QA','Done','Blocked']
       const keys   = ['backlog','todo','in_progress','in_review','qa','done','blocked']
-      const colors = ['#475569','#94a3b8','#06b6d4','#8b5cf6','#0ea5e9','#10b981','#f43f5e']
-      new Chart(ctx, { type:'doughnut', data:{ labels, datasets:[{ data: keys.map(k=>statusCounts[k]||0), backgroundColor: colors, borderColor: '#111128', borderWidth: 2 }] }, options:{ responsive:true, plugins:{ legend:{ position:'right', labels:{ color:'#94a3b8', font:{size:11} } } } } })
+      const colors = ['#475569','#94a3b8','#F4C842','#C56FE6','#FFA577','#58C68A','#FF5E3A']
+      new Chart(ctx, { type:'doughnut', data:{ labels, datasets:[{ data: keys.map(k=>statusCounts[k]||0), backgroundColor: colors, borderColor: '#1F0F08', borderWidth: 2 }] }, options:{ responsive:true, plugins:{ legend:{ position:'right', labels:{ color:'#94a3b8', font:{size:11} } } } } })
     }, 100)
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }
@@ -416,10 +416,10 @@ async function renderDevDashboard(el) {
       </div>
     </div>
     <div class="grid-4" style="margin-bottom:20px">
-      ${statCard("Today's Hours", todayHours+'h', 'fas fa-sun', '#f59e0b', `${8-todayHours}h remaining`)}
-      ${statCard('Open Tasks', tasks.filter(t=>t.status!=='done').length, 'fas fa-list-check', '#6366f1', `${tasks.filter(t=>t.status==='in_progress').length} in progress`)}
-      ${statCard('Hours This Month', totalLogged+'h', 'fas fa-clock', '#10b981', `of ${totalAllocated}h allocated`)}
-      ${statCard('Blocked Tasks', tasks.filter(t=>t.status==='blocked').length, 'fas fa-ban', '#f43f5e', 'needs attention')}
+      ${statCard("Today's Hours", todayHours+'h', 'fas fa-sun', '#FFCB47', `${8-todayHours}h remaining`)}
+      ${statCard('Open Tasks', tasks.filter(t=>t.status!=='done').length, 'fas fa-list-check', '#FF7A45', `${tasks.filter(t=>t.status==='in_progress').length} in progress`)}
+      ${statCard('Hours This Month', totalLogged+'h', 'fas fa-clock', '#58C68A', `of ${totalAllocated}h allocated`)}
+      ${statCard('Blocked Tasks', tasks.filter(t=>t.status==='blocked').length, 'fas fa-ban', '#FF5E3A', 'needs attention')}
     </div>
     <div class="grid-2" style="margin-bottom:20px">
       <div class="card">
@@ -448,7 +448,7 @@ async function renderDevDashboard(el) {
                 <td><div style="font-weight:500;color:#e2e8f0">${a.project_name||a.project_id}</div><span class="badge ${a.role==='lead'?'badge-inprogress':'badge-todo'}">${a.role}</span></td>
                 <td>${a.allocated_hours}h</td>
                 <td>${a.consumed_hours}h</td>
-                <td style="color:${(a.allocated_hours-a.consumed_hours)<=8?'#f43f5e':'#10b981'}">${a.allocated_hours-a.consumed_hours}h</td>
+                <td style="color:${(a.allocated_hours-a.consumed_hours)<=8?'#FF5E3A':'#58C68A'}">${a.allocated_hours-a.consumed_hours}h</td>
               </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:#64748b;padding:20px">No allocations</td></tr>'}
             </tbody>
           </table>
@@ -519,11 +519,10 @@ async function renderProjectsList(el) {
                   </div>
                 </td>
                 <td><span style="font-size:12px">${p.consumed_hours}h / ${p.total_allocated_hours}h</span></td>
-                <td style="font-size:12px;color:${new Date(p.expected_end_date)<new Date()&&p.status==='active'?'#f43f5e':'#94a3b8'}">${fmtDate(p.expected_end_date)}</td>
+                <td style="font-size:12px;color:${new Date(p.expected_end_date)<new Date()&&p.status==='active'?'#FF5E3A':'#94a3b8'}">${fmtDate(p.expected_end_date)}</td>
                 <td>
                   <div style="display:flex;gap:4px">
                     <button class="btn btn-xs btn-outline" onclick="openProjectBoard('${p.id}','${p.name}')" title="Open Kanban board"><i class="fas fa-columns"></i></button>
-                    <button class="btn btn-xs btn-outline" onclick="showProjectTeamsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Project teams"><i class="fas fa-users"></i></button>
                     ${['admin','pm'].includes(_user.role)?`<button class="btn btn-xs btn-outline" onclick="openKanbanPermissionsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i></button>`:''}
                     ${['admin','pm'].includes(_user.role)?`<button class="btn btn-xs btn-outline" onclick="showEditProjectModal('${p.id}')" title="Edit project"><i class="fas fa-edit"></i></button>`:''}
                   </div>
@@ -577,7 +576,7 @@ async function renderKanbanBoard(el) {
     }
     if (!selProject) selProject = projects[0]?.id
     if (!selProject) {
-      el.innerHTML = '<div class="empty-state"><i class="fas fa-columns fa-3x" style="color:#6C5FFC;margin-bottom:16px"></i><h3>No Projects Found</h3><p>There are no projects available to view.</p></div>'
+      el.innerHTML = '<div class="empty-state"><i class="fas fa-columns fa-3x" style="color:#FF7A45;margin-bottom:16px"></i><h3>No Projects Found</h3><p>There are no projects available to view.</p></div>'
       return
     }
 
@@ -602,7 +601,7 @@ async function renderKanbanBoard(el) {
       <!-- Board Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:0 0 16px 0;flex-wrap:wrap;gap:10px">
         <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#6C5FFC,#8b5cf6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#FF7A45,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <i class="fas fa-columns" style="color:#fff;font-size:15px"></i>
           </div>
           <div>
@@ -633,13 +632,13 @@ async function renderKanbanBoard(el) {
       ${activeSprint && !selSprint ? `
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:16px">
         <div style="display:flex;align-items:center;gap:8px">
-          <i class="fas fa-bolt" style="color:#6C5FFC;font-size:13px"></i>
+          <i class="fas fa-bolt" style="color:#FF7A45;font-size:13px"></i>
           <span style="font-size:12px;font-weight:600;color:var(--text-primary)">${activeSprint.name}</span>
           <span class="badge badge-inprogress" style="font-size:10px">Active</span>
         </div>
         <div style="flex:1;display:flex;align-items:center;gap:10px">
           <div style="flex:1;height:6px;background:var(--bg-input);border-radius:3px;overflow:hidden">
-            <div style="height:100%;background:#6C5FFC;border-radius:3px;width:${activeSprint.total_story_points > 0 ? Math.round((activeSprint.completed_story_points / activeSprint.total_story_points) * 100) : 0}%;transition:.3s"></div>
+            <div style="height:100%;background:#FF7A45;border-radius:3px;width:${activeSprint.total_story_points > 0 ? Math.round((activeSprint.completed_story_points / activeSprint.total_story_points) * 100) : 0}%;transition:.3s"></div>
           </div>
           <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">${activeSprint.completed_story_points||0}/${activeSprint.total_story_points||0} pts</span>
         </div>
@@ -656,7 +655,7 @@ async function renderKanbanBoard(el) {
 
     setupKanbanDragDrop()
   } catch(e) {
-    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle" style="color:#ef4444"></i><p style="color:#ef4444">${e.message}</p></div>`
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle" style="color:#FF5E3A"></i><p style="color:#FF5E3A">${e.message}</p></div>`
   }
 }
 
@@ -666,18 +665,18 @@ function buildKanbanColumns(cols, colDefs, projectId, sprintId, canManage) {
     colDefs = [
       { status_key: 'backlog', name: 'Backlog', color: '#64748b', wip_limit: 0, is_done_column: 0 },
       { status_key: 'todo', name: 'To Do', color: '#94a3b8', wip_limit: 0, is_done_column: 0 },
-      { status_key: 'in_progress', name: 'In Progress', color: '#3b82f6', wip_limit: 3, is_done_column: 0 },
-      { status_key: 'in_review', name: 'In Review', color: '#8b5cf6', wip_limit: 0, is_done_column: 0 },
-      { status_key: 'qa', name: 'QA', color: '#0ea5e9', wip_limit: 0, is_done_column: 0 },
-      { status_key: 'done', name: 'Done', color: '#10b981', wip_limit: 0, is_done_column: 1 },
-      { status_key: 'blocked', name: 'Blocked', color: '#ef4444', wip_limit: 0, is_done_column: 0 },
+      { status_key: 'in_progress', name: 'In Progress', color: '#FFA577', wip_limit: 3, is_done_column: 0 },
+      { status_key: 'in_review', name: 'In Review', color: '#C56FE6', wip_limit: 0, is_done_column: 0 },
+      { status_key: 'qa', name: 'QA', color: '#FFA577', wip_limit: 0, is_done_column: 0 },
+      { status_key: 'done', name: 'Done', color: '#58C68A', wip_limit: 0, is_done_column: 1 },
+      { status_key: 'blocked', name: 'Blocked', color: '#FF5E3A', wip_limit: 0, is_done_column: 0 },
     ]
   }
   return colDefs.map(col => {
     const tasks = cols[col.status_key] || []
     const wipOver = col.wip_limit > 0 && tasks.length > col.wip_limit
     const wipAt = col.wip_limit > 0 && tasks.length === col.wip_limit
-    const wipColor = wipOver ? '#ef4444' : wipAt ? '#f59e0b' : col.color
+    const wipColor = wipOver ? '#FF5E3A' : wipAt ? '#FFCB47' : col.color
     return `
     <div class="kanban-col" data-status="${col.status_key}" data-col-id="${col.id||''}" style="min-width:260px;max-width:280px">
       <div class="kanban-col-header" style="border-top:3px solid ${col.color}">
@@ -685,11 +684,11 @@ function buildKanbanColumns(cols, colDefs, projectId, sprintId, canManage) {
           <span style="width:8px;height:8px;border-radius:50%;background:${col.color};flex-shrink:0"></span>
           <span class="col-title" style="font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${col.name}</span>
           <span style="background:${wipColor}22;color:${wipColor};font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;flex-shrink:0">${tasks.length}${col.wip_limit > 0 ? '/' + col.wip_limit : ''}</span>
-          ${col.is_done_column ? '<i class="fas fa-check-circle" style="color:#10b981;font-size:11px"></i>' : ''}
+          ${col.is_done_column ? '<i class="fas fa-check-circle" style="color:#58C68A;font-size:11px"></i>' : ''}
         </div>
         ${canManage ? `<button onclick="editColumnInline('${col.id||''}','${col.name}','${col.color}',${col.wip_limit},${col.is_done_column})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:4px;flex-shrink:0" title="Edit column"><i class="fas fa-ellipsis-h"></i></button>` : ''}
       </div>
-      ${wipOver ? `<div style="font-size:10px;color:#ef4444;padding:4px 10px;background:#fef2f2;text-align:center;font-weight:600"><i class="fas fa-exclamation-triangle"></i> WIP limit exceeded</div>` : ''}
+      ${wipOver ? `<div style="font-size:10px;color:#FF5E3A;padding:4px 10px;background:#3A1A14;text-align:center;font-weight:600"><i class="fas fa-exclamation-triangle"></i> WIP limit exceeded</div>` : ''}
       <div class="kanban-tasks" data-status="${col.status_key}" data-project="${projectId}" data-sprint="${sprintId||''}" style="min-height:100px">
         ${tasks.map(t => buildTaskCard(t)).join('')}
       </div>
@@ -703,22 +702,22 @@ function buildKanbanColumns(cols, colDefs, projectId, sprintId, canManage) {
 
 function buildTaskCard(t) {
   const typeIcons = { bug: '🐛', story: '📖', task: '✓', epic: '⚡', sub_task: '↳' }
-  const typeColors = { bug: '#ef4444', story: '#06b6d4', task: '#6C5FFC', epic: '#f59e0b', sub_task: '#64748b' }
-  const prioColors = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#6b7280' }
+  const typeColors = { bug: '#FF5E3A', story: '#F4C842', task: '#FF7A45', epic: '#FFCB47', sub_task: '#64748b' }
+  const prioColors = { critical: '#FF5E3A', high: '#FF7A45', medium: '#FFCB47', low: '#6b7280' }
   const prioIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '⚪' }
   const isOverdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done'
   return `
   <div class="task-card" draggable="true" data-task-id="${t.id}" onclick="openTaskDrawer('${t.id}')">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-      <span style="font-size:11px;background:${typeColors[t.task_type]||'#6C5FFC'}22;color:${typeColors[t.task_type]||'#6C5FFC'};padding:1px 6px;border-radius:4px;font-weight:600;letter-spacing:.3px">${(t.task_type||'task').toUpperCase()}</span>
+      <span style="font-size:11px;background:${typeColors[t.task_type]||'#FF7A45'}22;color:${typeColors[t.task_type]||'#FF7A45'};padding:1px 6px;border-radius:4px;font-weight:600;letter-spacing:.3px">${(t.task_type||'task').toUpperCase()}</span>
       <span style="font-size:10px;color:var(--text-muted);margin-left:auto;font-family:monospace">#${String(t.id).split('-').pop()}</span>
     </div>
     <div style="font-size:13px;font-weight:500;color:var(--text-primary);line-height:1.4;margin-bottom:8px">${t.title}</div>
     ${t.description ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${t.description}</div>` : ''}
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">
-      ${isOverdue ? `<span style="font-size:10px;color:#ef4444;background:#fef2f2;padding:1px 6px;border-radius:4px;font-weight:600"><i class="fas fa-exclamation-circle"></i> Overdue</span>` : ''}
-      ${t.due_date ? `<span style="font-size:10px;color:${isOverdue ? '#ef4444' : 'var(--text-muted)'}"><i class="fas fa-calendar-alt"></i> ${fmtDate(t.due_date)}</span>` : ''}
-      ${t.sprint_name ? `<span style="font-size:10px;color:#6C5FFC"><i class="fas fa-bolt"></i> ${t.sprint_name}</span>` : ''}
+      ${isOverdue ? `<span style="font-size:10px;color:#FF5E3A;background:#3A1A14;padding:1px 6px;border-radius:4px;font-weight:600"><i class="fas fa-exclamation-circle"></i> Overdue</span>` : ''}
+      ${t.due_date ? `<span style="font-size:10px;color:${isOverdue ? '#FF5E3A' : 'var(--text-muted)'}"><i class="fas fa-calendar-alt"></i> ${fmtDate(t.due_date)}</span>` : ''}
+      ${t.sprint_name ? `<span style="font-size:10px;color:#FF7A45"><i class="fas fa-bolt"></i> ${t.sprint_name}</span>` : ''}
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:6px">
@@ -729,7 +728,7 @@ function buildTaskCard(t) {
       <div style="display:flex;align-items:center;gap:4px">
         ${t.subtask_count > 0 ? `<span style="font-size:10px;color:var(--text-muted)"><i class="fas fa-code-branch"></i>${t.subtask_count}</span>` : ''}
         ${t.comment_count > 0 ? `<span style="font-size:10px;color:var(--text-muted)"><i class="fas fa-comment"></i>${t.comment_count}</span>` : ''}
-        ${t.assignee_name ? `<div title="${t.assignee_name}" style="width:24px;height:24px;border-radius:50%;background:${t.assignee_color||'#6C5FFC'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${t.assignee_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>` : `<div style="width:24px;height:24px;border-radius:50%;background:var(--bg-hover);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-muted);flex-shrink:0">?</div>`}
+        ${t.assignee_name ? `<div title="${t.assignee_name}" style="width:24px;height:24px;border-radius:50%;background:${t.assignee_color||'#FF7A45'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${t.assignee_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>` : `<div style="width:24px;height:24px;border-radius:50%;background:var(--bg-hover);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-muted);flex-shrink:0">?</div>`}
       </div>
     </div>
   </div>`
@@ -827,7 +826,7 @@ async function manageBoardColumns(projectId) {
     const projName = (projData.projects || projData.data || []).find(p => p.id === projectId)?.name || projectId
     showModal(`
     <div class="modal-header">
-      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-columns" style="color:#6C5FFC"></i> Board Columns — ${projName}</h3>
+      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-columns" style="color:#FF7A45"></i> Board Columns — ${projName}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -837,11 +836,11 @@ async function manageBoardColumns(projectId) {
         <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg-input);border-radius:8px;border:1px solid var(--border)" data-col-id="${col.id}">
           <span style="width:12px;height:12px;border-radius:50%;background:${col.color};flex-shrink:0"></span>
           <span style="font-weight:600;font-size:13px;flex:1;color:var(--text-primary)">${col.name}</span>
-          ${col.wip_limit > 0 ? `<span style="font-size:11px;color:#f59e0b;background:rgba(245,158,11,.1);padding:1px 6px;border-radius:4px">WIP: ${col.wip_limit}</span>` : ''}
-          ${col.is_done_column ? `<span style="font-size:11px;color:#10b981;background:rgba(16,185,129,.1);padding:1px 6px;border-radius:4px"><i class="fas fa-check"></i> Done</span>` : ''}
+          ${col.wip_limit > 0 ? `<span style="font-size:11px;color:#FFCB47;background:rgba(255,203,71,.1);padding:1px 6px;border-radius:4px">WIP: ${col.wip_limit}</span>` : ''}
+          ${col.is_done_column ? `<span style="font-size:11px;color:#58C68A;background:rgba(88,198,138,.1);padding:1px 6px;border-radius:4px"><i class="fas fa-check"></i> Done</span>` : ''}
           <div style="display:flex;gap:4px">
             <button onclick="editColumnModal('${col.id}','${col.name}','${col.color}',${col.wip_limit},${col.is_done_column},'${projectId}')" class="btn btn-xs btn-outline" title="Edit"><i class="fas fa-pencil"></i></button>
-            ${cols.length > 1 ? `<button onclick="deleteColumn('${col.id}','${projectId}')" class="btn btn-xs btn-outline" style="color:#ef4444;border-color:#ef4444" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
+            ${cols.length > 1 ? `<button onclick="deleteColumn('${col.id}','${projectId}')" class="btn btn-xs btn-outline" style="color:#FF5E3A;border-color:#FF5E3A" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
           </div>
         </div>`).join('')}
       </div>
@@ -857,9 +856,9 @@ async function manageBoardColumns(projectId) {
           </div>
           <div class="form-group" style="width:80px;margin:0">
             <label class="form-label">Color</label>
-            <input type="color" id="new-col-color" value="#6C5FFC" class="form-input" style="height:38px;padding:2px 4px"/>
+            <input type="color" id="new-col-color" value="#FF7A45" class="form-input" style="height:38px;padding:2px 4px"/>
           </div>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted);margin-bottom:2px"><input type="checkbox" id="new-col-done" style="accent-color:#10b981"/> Done column</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted);margin-bottom:2px"><input type="checkbox" id="new-col-done" style="accent-color:#58C68A"/> Done column</label>
           <button class="btn btn-primary btn-sm" onclick="addBoardColumn('${projectId}')"><i class="fas fa-plus"></i> Add Column</button>
         </div>
       </div>
@@ -873,7 +872,7 @@ async function manageBoardColumns(projectId) {
 async function addBoardColumn(projectId) {
   const name = document.getElementById('new-col-name')?.value?.trim()
   const wip_limit = parseInt(document.getElementById('new-col-wip')?.value || '0')
-  const color = document.getElementById('new-col-color')?.value || '#6C5FFC'
+  const color = document.getElementById('new-col-color')?.value || '#FF7A45'
   const is_done_column = document.getElementById('new-col-done')?.checked ? 1 : 0
   if (!name) return toast('Enter a column name', 'error')
   try {
@@ -893,7 +892,7 @@ function editColumnModal(colId, name, color, wipLimit, isDone, projectId) {
       <div class="form-group"><label class="form-label">Color</label><input type="color" class="form-input" id="ec-color" value="${color}" style="height:38px;padding:2px 4px"/></div>
       <div class="form-group"><label class="form-label">WIP Limit (0=unlimited)</label><input class="form-input" type="number" id="ec-wip" value="${wipLimit}" min="0"/></div>
     </div>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="ec-done" ${isDone?'checked':''} style="accent-color:#10b981"/> Mark as Done/Completion column</label>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="ec-done" ${isDone?'checked':''} style="accent-color:#58C68A"/> Mark as Done/Completion column</label>
   </div>
   <div class="modal-footer">
     <button class="btn btn-outline" onclick="manageBoardColumns('${projectId}')">Back</button>
@@ -953,11 +952,11 @@ async function openTaskDrawer(taskId) {
       <div style="font-size:17px;font-weight:600;color:#fff;line-height:1.4">${t.title}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 22px;border-bottom:1px solid var(--border)">
-      ${metaItem('Assignee', t.assignee_name ? `${avatar(t.assignee_name,t.assignee_color||'#6366f1','sm')} ${t.assignee_name}` : '—')}
+      ${metaItem('Assignee', t.assignee_name ? `${avatar(t.assignee_name,t.assignee_color||'#FF7A45','sm')} ${t.assignee_name}` : '—')}
       ${metaItem('Reporter', t.reporter_name||'—')}
       ${metaItem('Project', t.project_name||'—')}
       ${metaItem('Sprint', t.sprint_name||'—')}
-      ${metaItem('Due Date', `<span style="color:${t.due_date&&new Date(t.due_date)<new Date()?'#f43f5e':'#94a3b8'}">${fmtDate(t.due_date)}</span>`)}
+      ${metaItem('Due Date', `<span style="color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#94a3b8'}">${fmtDate(t.due_date)}</span>`)}
       ${metaItem('Hours', `${t.logged_hours||0}h logged / ${t.estimated_hours||0}h est`)}
     </div>
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
@@ -974,7 +973,7 @@ async function openTaskDrawer(taskId) {
       <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Subtasks (${subtasks.length})</div>
       ${subtasks.map(st=>`
         <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(30,30,69,.4)">
-          <input type="checkbox" ${st.status==='done'?'checked':''} onchange="updateTaskStatus('${st.id}',this.checked?'done':'todo')" style="accent-color:#6366f1"/>
+          <input type="checkbox" ${st.status==='done'?'checked':''} onchange="updateTaskStatus('${st.id}',this.checked?'done':'todo')" style="accent-color:#FF7A45"/>
           <span style="font-size:13px;color:${st.status==='done'?'#475569':'#e2e8f0'};${st.status==='done'?'text-decoration:line-through':''}">${st.title}</span>
           ${statusBadge(st.status)}
         </div>`).join('')}
@@ -984,11 +983,11 @@ async function openTaskDrawer(taskId) {
       <div id="task-comments">
         ${comments.map(cm=>`
           <div class="comment-item">
-            ${avatar(cm.author_name||cm.client_name||'?', cm.author_color||cm.client_color||'#6366f1','sm')}
+            ${avatar(cm.author_name||cm.client_name||'?', cm.author_color||cm.client_color||'#FF7A45','sm')}
             <div style="flex:1">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                 <span style="font-size:12px;font-weight:600;color:#e2e8f0">${cm.author_name||cm.client_name||'Unknown'}</span>
-                ${cm.is_internal?'<span style="font-size:10px;background:rgba(99,102,241,.15);color:#818cf8;padding:1px 6px;border-radius:4px">Internal</span>':''}
+                ${cm.is_internal?'<span style="font-size:10px;background:rgba(255,122,69,.15);color:#FFB347;padding:1px 6px;border-radius:4px">Internal</span>':''}
                 <span style="font-size:11px;color:#475569;margin-left:auto">${timeAgo(cm.created_at)}</span>
               </div>
               <p style="font-size:13px;color:#94a3b8;line-height:1.5">${cm.content}</p>
@@ -998,7 +997,7 @@ async function openTaskDrawer(taskId) {
       <div class="comment-box" style="margin-top:12px">
         <textarea id="new-comment-${t.id}" placeholder="Add a comment…"></textarea>
         <div class="comment-box-footer">
-          ${['admin','pm'].includes(_user.role)?`<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#64748b;margin-right:auto;cursor:pointer"><input type="checkbox" id="comment-internal-${t.id}" style="accent-color:#6366f1"/> Internal only</label>`:''}
+          ${['admin','pm'].includes(_user.role)?`<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#64748b;margin-right:auto;cursor:pointer"><input type="checkbox" id="comment-internal-${t.id}" style="accent-color:#FF7A45"/> Internal only</label>`:''}
           <button class="btn btn-sm btn-primary" onclick="submitComment('${t.id}')"><i class="fas fa-paper-plane"></i>Comment</button>
         </div>
       </div>
@@ -1021,7 +1020,7 @@ async function openTaskDrawer(taskId) {
         }
       }).catch(() => {})
     }
-  } catch(e) { openDrawer(`<div style="padding:20px;color:#f43f5e">${e.message}</div>`) }
+  } catch(e) { openDrawer(`<div style="padding:20px;color:#FF5E3A">${e.message}</div>`) }
 }
 
 function metaItem(label, value) {
@@ -1088,7 +1087,7 @@ async function showCreateTaskModal(projectId='', sprintId='', defaultStatus='bac
 
     showModal(`
     <div class="modal-header">
-      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-plus-circle" style="color:#6C5FFC"></i> Create Task</h3>
+      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-plus-circle" style="color:#FF7A45"></i> Create Task</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -1132,8 +1131,8 @@ async function showCreateTaskModal(projectId='', sprintId='', defaultStatus='bac
         <div class="form-group"><label class="form-label">Story Points</label><input class="form-input" type="number" id="ct-points" placeholder="0" min="0"/></div>
       </div>
       <div style="display:flex;align-items:center;gap:16px;margin-top:6px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted)"><input type="checkbox" id="ct-visible" checked style="accent-color:#6C5FFC"/> Client visible</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted)"><input type="checkbox" id="ct-billable" checked style="accent-color:#6C5FFC"/> Billable</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted)"><input type="checkbox" id="ct-visible" checked style="accent-color:#FF7A45"/> Client visible</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted)"><input type="checkbox" id="ct-billable" checked style="accent-color:#FF7A45"/> Billable</label>
       </div>
     </div>
     <div class="modal-footer">
@@ -1242,9 +1241,9 @@ async function renderSprintsView(el) {
           </div>
         </div>
         <div class="card-body">
-          ${s.goal?`<p style="font-size:13px;color:#94a3b8;margin-bottom:12px"><i class="fas fa-bullseye" style="color:#6366f1;margin-right:6px"></i>${s.goal}</p>`:''}
+          ${s.goal?`<p style="font-size:13px;color:#94a3b8;margin-bottom:12px"><i class="fas fa-bullseye" style="color:#FF7A45;margin-right:6px"></i>${s.goal}</p>`:''}
           <div style="display:flex;gap:28px;margin-bottom:12px">
-            ${[['Total Tasks',s.task_count,'#94a3b8'],['Completed',s.done_count,'#10b981'],['Blocked',s.blocked_count,'#f43f5e'],['Story Points',`${s.completed_story_points}/${s.total_story_points}`,'#6366f1']].map(([l,v,c])=>`<div><div style="font-size:18px;font-weight:700;color:${c}">${v}</div><div style="font-size:11px;color:#64748b">${l}</div></div>`).join('')}
+            ${[['Total Tasks',s.task_count,'#94a3b8'],['Completed',s.done_count,'#58C68A'],['Blocked',s.blocked_count,'#FF5E3A'],['Story Points',`${s.completed_story_points}/${s.total_story_points}`,'#FF7A45']].map(([l,v,c])=>`<div><div style="font-size:18px;font-weight:700;color:${c}">${v}</div><div style="font-size:11px;color:#64748b">${l}</div></div>`).join('')}
           </div>
           <div class="progress-bar lg">
             <div class="progress-fill ${pct>=80?'green':pct>=50?'blue':'amber'}" style="width:${pct}%"></div>
@@ -1326,20 +1325,20 @@ async function renderMilestonesView(el) {
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               ${statusBadge(m.status)}
-              ${m.is_billable?`<span style="font-size:11px;background:rgba(16,185,129,.15);color:#34d399;padding:2px 7px;border-radius:10px">₹${fmtNum(m.invoice_amount)}</span>`:''}
+              ${m.is_billable?`<span style="font-size:11px;background:rgba(88,198,138,.15);color:#58C68A;padding:2px 7px;border-radius:10px">₹${fmtNum(m.invoice_amount)}</span>`:''}
             </div>
           </div>
           <div class="card-body">
             ${m.description?`<p style="font-size:13px;color:#94a3b8;margin-bottom:12px">${m.description}</p>`:''}
             <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:8px">
-              <span><i class="fas fa-calendar"></i> Due: <strong style="color:${new Date(m.due_date)<new Date()&&m.status!=='completed'?'#f43f5e':'#94a3b8'}">${fmtDate(m.due_date)}</strong></span>
+              <span><i class="fas fa-calendar"></i> Due: <strong style="color:${new Date(m.due_date)<new Date()&&m.status!=='completed'?'#FF5E3A':'#94a3b8'}">${fmtDate(m.due_date)}</strong></span>
               <span>${m.completion_pct}% complete</span>
             </div>
             <div class="progress-bar"><div class="progress-fill ${m.completion_pct>=100?'green':m.completion_pct>=70?'blue':'amber'}" style="width:${m.completion_pct}%"></div></div>
             ${['admin','pm'].includes(_user.role)?`
             <div style="display:flex;gap:8px;margin-top:12px">
-              <input type="range" min="0" max="100" value="${m.completion_pct}" style="flex:1;accent-color:#6366f1" oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="updateMilestonePct('${m.id}',this.value)"/>
-              <span style="font-size:12px;color:#6366f1;min-width:35px">${m.completion_pct}%</span>
+              <input type="range" min="0" max="100" value="${m.completion_pct}" style="flex:1;accent-color:#FF7A45" oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="updateMilestonePct('${m.id}',this.value)"/>
+              <span style="font-size:12px;color:#FF7A45;min-width:35px">${m.completion_pct}%</span>
             </div>`:''}
           </div>
         </div>`).join('') || '<div class="empty-state"><i class="fas fa-flag"></i><p>No milestones defined</p></div>'}
@@ -1369,8 +1368,8 @@ async function showCreateMilestoneModal() {
       <div class="form-group"><label class="form-label">Invoice Amount (₹)</label><input class="form-input" type="number" id="cms-amount" placeholder="0"/></div>
     </div>
     <div style="display:flex;gap:16px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-billable" style="accent-color:#6366f1"/> Billable Milestone</label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-visible" checked style="accent-color:#6366f1"/> Client Visible</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-billable" style="accent-color:#FF7A45"/> Billable Milestone</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-visible" checked style="accent-color:#FF7A45"/> Client Visible</label>
     </div>
   </div>
   <div class="modal-footer">
@@ -1429,7 +1428,7 @@ async function renderMyTasks(el) {
               <td>${priorityBadge(t.priority)}</td>
               <td>${statusBadge(t.status)}</td>
               <td>${t.assignee_name?`<div style="display:flex;align-items:center;gap:5px">${avatar(t.assignee_name,t.assignee_color,'sm')}<span style="font-size:12px">${t.assignee_name}</span></div>`:'<span style="color:#475569;font-size:12px">—</span>'}</td>
-              <td style="font-size:12px;color:${t.due_date&&new Date(t.due_date)<new Date()&&t.status!=='done'?'#f43f5e':'#94a3b8'}">${fmtDate(t.due_date)}</td>
+              <td style="font-size:12px;color:${t.due_date&&new Date(t.due_date)<new Date()&&t.status!=='done'?'#FF5E3A':'#94a3b8'}">${fmtDate(t.due_date)}</td>
               <td style="font-size:12px">${t.logged_hours||0}/${t.estimated_hours||0}h</td>
               <td><button class="btn btn-xs btn-outline" onclick="openTaskDrawer('${t.id}')"><i class="fas fa-eye"></i></button></td>
             </tr>`).join('')}
@@ -1477,10 +1476,10 @@ async function renderResourcesView(el) {
       <div><h1 class="page-title">Resource Allocation</h1><p class="page-subtitle">Team capacity, utilization, and allocation planning</p></div>
     </div>
     <div class="grid-4" style="margin-bottom:20px">
-      ${statCard('Total Developers', devs.length, 'fas fa-code', '#6366f1', `${devs.filter(d=>d.is_active).length} active`)}
-      ${statCard('Total Allocated', fmtNum(d.hours?.total_allocated||0)+'h', 'fas fa-clock', '#06b6d4', 'across all projects')}
-      ${statCard('Consumed', fmtNum(d.hours?.total_consumed||0)+'h', 'fas fa-check', '#10b981', 'logged and approved')}
-      ${statCard('Remaining', fmtNum(d.hours?.total_remaining||0)+'h', 'fas fa-hourglass-half', '#f59e0b', 'to be consumed')}
+      ${statCard('Total Developers', devs.length, 'fas fa-code', '#FF7A45', `${devs.filter(d=>d.is_active).length} active`)}
+      ${statCard('Total Allocated', fmtNum(d.hours?.total_allocated||0)+'h', 'fas fa-clock', '#F4C842', 'across all projects')}
+      ${statCard('Consumed', fmtNum(d.hours?.total_consumed||0)+'h', 'fas fa-check', '#58C68A', 'logged and approved')}
+      ${statCard('Remaining', fmtNum(d.hours?.total_remaining||0)+'h', 'fas fa-hourglass-half', '#FFCB47', 'to be consumed')}
     </div>
     <div class="card">
       <div class="card-header"><span style="font-weight:600">Developer Utilization Matrix</span></div>
@@ -1502,7 +1501,7 @@ async function renderResourcesView(el) {
               </td>
               <td>${u.project_count}</td>
               <td>${u.total_allocated}h</td>
-              <td>${u.utilization_pct>=90?'<span style="color:#f43f5e;font-size:12px">⚡ Overloaded</span>':u.utilization_pct>=50?'<span style="color:#10b981;font-size:12px">✓ Healthy</span>':'<span style="color:#f59e0b;font-size:12px">↓ Underutil.</span>'}</td>
+              <td>${u.utilization_pct>=90?'<span style="color:#FF5E3A;font-size:12px">⚡ Overloaded</span>':u.utilization_pct>=50?'<span style="color:#58C68A;font-size:12px">✓ Healthy</span>':'<span style="color:#FFCB47;font-size:12px">↓ Underutil.</span>'}</td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -1591,7 +1590,7 @@ async function renderApprovalQueue(el) {
             ${pagination.items.map(l=>`
             <tr id="log-row-${l.id}">
               <td><input type="checkbox" class="log-check table-check" value="${l.id}" onchange="updateApprovalSelectionState()"/></td>
-              <td><div style="display:flex;align-items:center;gap:8px">${avatar(l.full_name||'?',l.avatar_color||'#6366f1','sm')}<span>${l.full_name||l.user_id}</span></div></td>
+              <td><div style="display:flex;align-items:center;gap:8px">${avatar(l.full_name||'?',l.avatar_color||'#FF7A45','sm')}<span>${l.full_name||l.user_id}</span></div></td>
               <td><span style="font-size:12px;color:#94a3b8">${l.project_name||l.project_id}</span></td>
               <td style="font-size:12px">${fmtDate(l.date)}</td>
               <td style="max-width:200px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${l.task_description}</div></td>
@@ -1603,7 +1602,7 @@ async function renderApprovalQueue(el) {
                   <button class="btn btn-xs btn-danger" onclick="rejectLog('${l.id}')"><i class="fas fa-times"></i>Reject</button>
                 </div>
               </td>
-            </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;padding:30px;color:#64748b"><i class="fas fa-check-circle" style="margin-right:6px;color:#10b981"></i>All timesheets approved!</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;padding:30px;color:#64748b"><i class="fas fa-check-circle" style="margin-right:6px;color:#58C68A"></i>All timesheets approved!</td></tr>'}
           </tbody>
         </table>
         ${renderPager(pagination, 'goApprovalQueuePage', 'goApprovalQueuePage', 'approvals', 'approval-queue')}
@@ -1692,8 +1691,8 @@ async function renderClientsList(el) {
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
             <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#e2e8f0">${cl.project_count||0}</div><div style="font-size:11px;color:#64748b">Projects</div></div>
-            <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#10b981">₹${cl.total_paid?fmtNum(cl.total_paid):'0'}</div><div style="font-size:11px;color:#64748b">Paid</div></div>
-            <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#f59e0b">₹${cl.total_billed?(fmtNum(cl.total_billed-cl.total_paid)):'0'}</div><div style="font-size:11px;color:#64748b">Pending</div></div>
+            <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#58C68A">₹${cl.total_paid?fmtNum(cl.total_paid):'0'}</div><div style="font-size:11px;color:#64748b">Paid</div></div>
+            <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#FFCB47">₹${cl.total_billed?(fmtNum(cl.total_billed-cl.total_paid)):'0'}</div><div style="font-size:11px;color:#64748b">Pending</div></div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between">
             <span class="status-chip status-${cl.is_active?'active':'cancelled'}">${cl.is_active?'Active':'Inactive'}</span>
@@ -1724,7 +1723,7 @@ function openCreateClientModal() {
       </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Industry</label><input class="form-input" id="client-industry" placeholder="SaaS / Fintech"/></div>
-        <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="client-color" type="color" value="#6366f1" style="height:40px;padding:3px"/></div>
+        <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="client-color" type="color" value="#FF7A45" style="height:40px;padding:3px"/></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -1781,7 +1780,7 @@ async function showClientDetail(clientId) {
           ${projects.map(p=>`<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div style="font-weight:500;color:#e2e8f0">${p.name}</div><div style="display:flex;gap:8px;margin-top:4px">${statusBadge(p.status)}${priorityBadge(p.priority)}<span style="font-size:12px;color:#64748b">PM: ${p.pm_name||'—'}</span></div></div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No projects</p>'}
         </div>
         <div id="ct-invoices" class="tab-content">
-          ${invoices.map(i=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between"><div><div style="font-weight:500;color:#e2e8f0">${i.invoice_number}</div><div style="font-size:12px;color:#64748b">${fmtDate(i.due_date)}</div></div><div style="display:flex;align-items:center;gap:10px"><strong style="color:#10b981">${fmtCurrency(i.total_amount)}</strong><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></div></div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No invoices</p>'}
+          ${invoices.map(i=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between"><div><div style="font-weight:500;color:#e2e8f0">${i.invoice_number}</div><div style="font-size:12px;color:#64748b">${fmtDate(i.due_date)}</div></div><div style="display:flex;align-items:center;gap:10px"><strong style="color:#58C68A">${fmtCurrency(i.total_amount)}</strong><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></div></div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No invoices</p>'}
         </div>
       </div>`, 'modal-lg')
   } catch(e) { toast(e.message,'error') }
@@ -1816,10 +1815,10 @@ async function renderBillingAdmin(el) {
       </div>
     </div>
     <div class="grid-4" style="margin-bottom:20px">
-      ${statCard('Total Invoiced', fmtCurrency(s.total_value||0), 'fas fa-file-invoice', '#6366f1', `${s.total_invoices||0} invoices`)}
-      ${statCard('Collected', fmtCurrency(s.total_paid||0), 'fas fa-check-circle', '#10b981', 'payments received')}
-      ${statCard('Pending', fmtCurrency(s.total_pending||0), 'fas fa-clock', '#f59e0b', 'awaiting payment')}
-      ${statCard('Overdue', fmtCurrency(s.total_overdue||0), 'fas fa-exclamation-triangle', '#f43f5e', `${s.overdue_count||0} overdue`)}
+      ${statCard('Total Invoiced', fmtCurrency(s.total_value||0), 'fas fa-file-invoice', '#FF7A45', `${s.total_invoices||0} invoices`)}
+      ${statCard('Collected', fmtCurrency(s.total_paid||0), 'fas fa-check-circle', '#58C68A', 'payments received')}
+      ${statCard('Pending', fmtCurrency(s.total_pending||0), 'fas fa-clock', '#FFCB47', 'awaiting payment')}
+      ${statCard('Overdue', fmtCurrency(s.total_overdue||0), 'fas fa-exclamation-triangle', '#FF5E3A', `${s.overdue_count||0} overdue`)}
     </div>
       <div class="card billing-table-shell">
         <div class="card-header billing-table-header">
@@ -1838,13 +1837,13 @@ async function renderBillingAdmin(el) {
             <tbody>
               ${invoices.map(i=>`
               <tr>
-                <td><div style="font-weight:600;font-size:12px;font-family:monospace;color:#818cf8">${i.invoice_number}</div><div style="font-size:11px;color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.title}</div></td>
-                <td><div style="display:flex;align-items:center;gap:6px">${avatar(i.company_name||'?',i.client_color||'#6366f1','sm')}<span style="font-size:12px">${i.company_name||'—'}</span></div></td>
+                <td><div style="font-weight:600;font-size:12px;font-family:monospace;color:#FFB347">${i.invoice_number}</div><div style="font-size:11px;color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.title}</div></td>
+                <td><div style="display:flex;align-items:center;gap:6px">${avatar(i.company_name||'?',i.client_color||'#FF7A45','sm')}<span style="font-size:12px">${i.company_name||'—'}</span></div></td>
                 <td><span style="font-size:12px;color:#94a3b8">${i.project_name||'—'}</span></td>
-                <td><strong style="color:#10b981">${fmtCurrency(i.total_amount)}</strong>${i.paid_amount>0&&i.paid_amount<i.total_amount?`<div style="font-size:11px;color:#94a3b8">Paid: ${fmtCurrency(i.paid_amount)}</div>`:''}</td>
+                <td><strong style="color:#58C68A">${fmtCurrency(i.total_amount)}</strong>${i.paid_amount>0&&i.paid_amount<i.total_amount?`<div style="font-size:11px;color:#94a3b8">Paid: ${fmtCurrency(i.paid_amount)}</div>`:''}</td>
                 <td><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></td>
                 <td style="font-size:12px">${fmtDate(i.issue_date)}</td>
-                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#f43f5e':'#94a3b8'}">${fmtDate(i.due_date)}</td>
+                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#94a3b8'}">${fmtDate(i.due_date)}</td>
                 <td>
                   <div style="display:flex;gap:4px">
                     ${_user.role==='admin'?`<button class="btn btn-xs btn-outline" title="Send Invoice" aria-label="Send Invoice" onclick="showSendInvoiceModal('${i.id}')"><i class="fas fa-paper-plane"></i></button>`:''}
@@ -1894,7 +1893,7 @@ async function showCreateInvoiceModal() {
     <div class="form-row-3">
       <div class="form-group"><label class="form-label">Amount (pre-tax) *</label><input class="form-input" type="number" id="ci-amount" placeholder="100000" oninput="calcTax()"/></div>
       <div class="form-group"><label class="form-label">Tax %</label><input class="form-input" type="number" id="ci-tax" value="18" oninput="calcTax()"/></div>
-      <div class="form-group"><label class="form-label">Total (incl. tax)</label><input class="form-input" id="ci-total" readonly style="background:rgba(16,185,129,.07);color:#34d399"/></div>
+      <div class="form-group"><label class="form-label">Total (incl. tax)</label><input class="form-input" id="ci-total" readonly style="background:rgba(88,198,138,.07);color:#58C68A"/></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Issue Date *</label><input class="form-input" type="date" id="ci-issue" value="${dayjs().format('YYYY-MM-DD')}"/></div>
@@ -1975,7 +1974,7 @@ async function showEditInvoiceModal(id) {
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">Amount (pre-tax) *</label><input class="form-input" type="number" min="0" step="0.01" id="ei-amount" value="${Number(inv.amount||0)}" oninput="calcEditTax()"/></div>
         <div class="form-group"><label class="form-label">Tax %</label><input class="form-input" type="number" min="0" max="100" step="0.01" id="ei-tax" value="${Number(inv.tax_pct ?? 18)}" oninput="calcEditTax()"/></div>
-        <div class="form-group"><label class="form-label">Total (incl. tax)</label><input class="form-input" id="ei-total" readonly value="${fmtCurrency(inv.total_amount||0)}" style="background:rgba(16,185,129,.07);color:#34d399"/></div>
+        <div class="form-group"><label class="form-label">Total (incl. tax)</label><input class="form-input" id="ei-total" readonly value="${fmtCurrency(inv.total_amount||0)}" style="background:rgba(88,198,138,.07);color:#58C68A"/></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="ei-status">${['pending','sent','overdue','partially_paid','paid','cancelled'].map(s=>`<option value="${s}" ${inv.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}</select></div>
@@ -2012,7 +2011,7 @@ async function showSendInvoiceModal(id) {
     showModal(`
     <div class="modal-header"><h3>Send Invoice</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
-      <div style="background:linear-gradient(135deg, rgba(99,102,241,.12), rgba(16,185,129,.10));border:1px solid rgba(99,102,241,.18);border-radius:16px;padding:16px 18px;margin-bottom:18px">
+      <div style="background:linear-gradient(135deg, rgba(255,122,69,.12), rgba(88,198,138,.10));border:1px solid rgba(255,122,69,.18);border-radius:16px;padding:16px 18px;margin-bottom:18px">
         <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.12em">Invoice Preview</div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px">
           <div>
@@ -2021,7 +2020,7 @@ async function showSendInvoiceModal(id) {
           </div>
           <div>
             <div style="font-size:11px;color:#64748b">Amount</div>
-            <div style="font-weight:700;color:#10b981">${previewAmount}</div>
+            <div style="font-weight:700;color:#58C68A">${previewAmount}</div>
           </div>
           <div>
             <div style="font-size:11px;color:#64748b">Client</div>
@@ -2144,7 +2143,7 @@ function showMarkPaidModal(id, num, total) {
   showModal(`
   <div class="modal-header"><h3>Mark Invoice Paid</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
   <div class="modal-body">
-    <p style="font-size:13px;color:#94a3b8;margin-bottom:16px">Invoice: <strong style="color:#e2e8f0">${num}</strong> • Total: <strong style="color:#10b981">${fmtCurrency(total)}</strong></p>
+    <p style="font-size:13px;color:#94a3b8;margin-bottom:16px">Invoice: <strong style="color:#e2e8f0">${num}</strong> • Total: <strong style="color:#58C68A">${fmtCurrency(total)}</strong></p>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Amount Received *</label><input class="form-input" type="number" id="mp-amount" value="${total}"/></div>
       <div class="form-group"><label class="form-label">Payment Date</label><input class="form-input" type="date" id="mp-date" value="${dayjs().format('YYYY-MM-DD')}"/></div>
@@ -2197,11 +2196,7 @@ async function renderTeamOverview(el) {
     el.innerHTML = `
     <div class="page-header">
       <div><h1 class="page-title">Team Overview</h1><p class="page-subtitle">${users.length} total members · ${pagination.total} shown</p></div>
-      ${isAdmin ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-outline btn-sm" onclick="openTeamMemberModal('pm')"><i class="fas fa-user-tie"></i>Add PM</button>
-        <button class="btn btn-outline btn-sm" onclick="openTeamMemberModal('pc')"><i class="fas fa-user-check"></i>Add PC</button>
-        <button class="btn btn-outline btn-sm" onclick="openTeamMemberModal('developer')"><i class="fas fa-code"></i>Add Developer</button>
-        <button class="btn btn-outline btn-sm" onclick="openTeamMemberModal('team')"><i class="fas fa-users"></i>Add Team</button>
+      ${isAdmin ? `<div class="page-actions">
         <button class="btn btn-primary btn-sm" onclick="openTeamMemberModal('')"><i class="fas fa-user-plus"></i>Add User</button>
       </div>` : ''}
     </div>

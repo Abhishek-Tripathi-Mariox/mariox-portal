@@ -5,16 +5,16 @@
 // ═══════════════════════════════════════════════════════════
 
 const SUPPORT_PRIORITY_COLORS = {
-  urgent: '#ef4444',
-  high: '#f97316',
-  medium: '#f59e0b',
+  urgent: '#FF5E3A',
+  high: '#FF7A45',
+  medium: '#FFCB47',
   low: '#94a3b8',
 }
 const SUPPORT_STATUS_COLORS = {
-  open: '#6366f1',
-  in_progress: '#0ea5e9',
-  waiting_on_client: '#8b5cf6',
-  resolved: '#10b981',
+  open: '#FF7A45',
+  in_progress: '#FFA577',
+  waiting_on_client: '#C56FE6',
+  resolved: '#58C68A',
   closed: '#64748b',
 }
 const SUPPORT_STATUSES = ['open', 'in_progress', 'waiting_on_client', 'resolved', 'closed']
@@ -24,11 +24,27 @@ const SUPPORT_CATEGORIES = ['bug', 'feature_request', 'question', 'billing', 'ac
 const _supportState = {
   filterStatus: '',
   filterPriority: '',
+  filterProject: '',
   search: '',
   list: [],
+  projects: [],
   currentTicket: null,
   comments: [],
+  events: [],
   assignees: { groups: { managers: [], developers: [], team: [] }, project: null },
+}
+
+const SUPPORT_EVENT_ICONS = {
+  created: { icon: 'fa-circle-plus', color: '#FFB347' },
+  status_changed: { icon: 'fa-circle-half-stroke', color: '#FFA577' },
+  priority_changed: { icon: 'fa-flag', color: '#FFCB47' },
+  assignee_changed: { icon: 'fa-user-check', color: '#C56FE6' },
+  category_changed: { icon: 'fa-tags', color: '#FFB67A' },
+  project_changed: { icon: 'fa-folder', color: '#FFCB47' },
+  subject_edited: { icon: 'fa-pen', color: '#9F8678' },
+  description_edited: { icon: 'fa-file-pen', color: '#9F8678' },
+  comment_added: { icon: 'fa-message', color: '#FFB67A' },
+  internal_note_added: { icon: 'fa-lock', color: '#FFCB47' },
 }
 
 function _supEsc(value = '') {
@@ -52,8 +68,17 @@ function _supStatusLabel(s) {
 // ─── Staff page ─────────────────────────────────────────────
 async function renderSupportTickets(el) {
   el.innerHTML = `<div style="padding:40px 0;text-align:center;color:var(--text-muted)"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
-  await loadSupportList()
+  await Promise.all([loadSupportList(), loadSupportProjects()])
   paintSupportList(el)
+}
+
+async function loadSupportProjects() {
+  try {
+    const res = await API.get('/projects')
+    _supportState.projects = res.projects || res.data || []
+  } catch {
+    _supportState.projects = []
+  }
 }
 
 async function loadSupportList() {
@@ -61,6 +86,7 @@ async function loadSupportList() {
     const params = {}
     if (_supportState.filterStatus) params.status = _supportState.filterStatus
     if (_supportState.filterPriority) params.priority = _supportState.filterPriority
+    if (_supportState.filterProject) params.project_id = _supportState.filterProject
     const res = await API.get('/support/tickets', { params })
     _supportState.list = res.tickets || res.data || []
   } catch (e) {
@@ -88,6 +114,10 @@ function paintSupportList(el) {
 
     <div class="glass-card" style="padding:14px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <input class="form-input" id="sup-search" placeholder="Search tickets…" value="${_supEsc(_supportState.search)}" oninput="onSupportSearch(this.value)" style="max-width:280px"/>
+      <select class="form-select" id="sup-filter-project" onchange="onSupportFilter('project', this.value)" style="max-width:220px">
+        <option value="">All projects</option>
+        ${(_supportState.projects||[]).map(p => `<option value="${_supEsc(p.id)}" ${_supportState.filterProject===p.id?'selected':''}>${_supEsc(p.name||p.code||p.id)}</option>`).join('')}
+      </select>
       <select class="form-select" id="sup-filter-status" onchange="onSupportFilter('status', this.value)" style="max-width:180px">
         <option value="">All statuses</option>
         ${SUPPORT_STATUSES.map(s => `<option value="${s}" ${_supportState.filterStatus===s?'selected':''}>${_supStatusLabel(s)}</option>`).join('')}
@@ -144,6 +174,7 @@ function onSupportSearch(value) {
 async function onSupportFilter(kind, value) {
   if (kind === 'status') _supportState.filterStatus = value
   if (kind === 'priority') _supportState.filterPriority = value
+  if (kind === 'project') _supportState.filterProject = value
   await loadSupportList()
   const el = document.getElementById('page-support-tickets')
   if (el) paintSupportList(el)
@@ -309,6 +340,7 @@ async function openSupportDetail(ticketId) {
     const res = await API.get(`/support/tickets/${ticketId}`)
     _supportState.currentTicket = res.ticket
     _supportState.comments = res.comments || []
+    _supportState.events = res.events || []
     _supportState.assignees = { groups: { managers: [], developers: [], team: [] }, project: null }
     paintSupportDetail()
     if (res.ticket?.project_id) {
@@ -321,6 +353,100 @@ async function openSupportDetail(ticketId) {
   } catch (e) {
     toast('Failed to load ticket: ' + e.message, 'error')
   }
+}
+
+function _supBuildTimeline(events, comments) {
+  const items = []
+  for (const ev of events || []) {
+    items.push({ kind: 'event', at: ev.created_at, data: ev })
+  }
+  const commentById = new Map((comments || []).map((c) => [c.id, c]))
+  // For comment events, attach the actual comment body so we render a single rich entry
+  for (const it of items) {
+    if (it.kind === 'event' && (it.data.type === 'comment_added' || it.data.type === 'internal_note_added')) {
+      const cid = it.data.note
+      const c = cid ? commentById.get(cid) : null
+      if (c) it.comment = c
+    }
+  }
+  // If a comment exists but didn't get an event (older data), fall back to rendering it directly
+  const usedCommentIds = new Set(items.filter((i) => i.comment).map((i) => i.comment.id))
+  for (const c of comments || []) {
+    if (!usedCommentIds.has(c.id)) items.push({ kind: 'comment', at: c.created_at, data: c })
+  }
+  items.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')))
+  return items
+}
+
+function _supRelativeTime(iso) {
+  if (!iso) return ''
+  const then = new Date(iso).getTime()
+  const now = Date.now()
+  const diff = Math.max(0, now - then)
+  const min = Math.floor(diff / 60000)
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min}m ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  const d = Math.floor(hr / 24)
+  if (d < 30) return `${d}d ago`
+  return new Date(iso).toLocaleDateString()
+}
+
+function _supEventLabel(ev) {
+  const t = ev.type
+  const from = ev.from_label
+  const to = ev.to_label
+  switch (t) {
+    case 'created':         return `created this ticket`
+    case 'status_changed':  return `changed status from <strong>${_supEsc(_supStatusLabel(from || ''))}</strong> to <strong>${_supEsc(_supStatusLabel(to || ''))}</strong>`
+    case 'priority_changed':return `changed priority from <strong>${_supEsc(from || '')}</strong> to <strong>${_supEsc(to || '')}</strong>`
+    case 'assignee_changed':return `${ev.from_value ? 'reassigned' : 'assigned'} to <strong>${_supEsc(to || 'Unassigned')}</strong>${ev.from_value ? ` (was ${_supEsc(from || 'Unassigned')})` : ''}`
+    case 'category_changed':return `changed category from <strong>${_supEsc(from || '')}</strong> to <strong>${_supEsc(to || '')}</strong>`
+    case 'project_changed': return `moved to project <strong>${_supEsc(to || 'No project')}</strong>`
+    case 'subject_edited':  return `edited the subject`
+    case 'description_edited': return `edited the description`
+    case 'comment_added':   return `replied`
+    case 'internal_note_added': return `added an internal note`
+    default: return _supEsc(t)
+  }
+}
+
+function _supRenderTimelineItem(it) {
+  const ev = it.data
+  const conf = SUPPORT_EVENT_ICONS[ev.type] || { icon: 'fa-circle', color: '#94A3B8' }
+  const when = _supRelativeTime(ev.created_at || ev.at)
+  const fullTime = _supEsc(new Date(ev.created_at).toLocaleString())
+  const actor = _supEsc(ev.actor_name || 'Someone')
+
+  if (it.comment) {
+    const c = it.comment
+    const isInternal = !!c.is_internal
+    return `
+      <div class="sup-timeline-item">
+        <div class="sup-timeline-rail"><span class="sup-timeline-dot" style="background:${conf.color}"><i class="fas ${conf.icon}"></i></span></div>
+        <div class="sup-timeline-body sup-comment ${isInternal?'is-internal':''}">
+          <div class="sup-timeline-meta">
+            <strong>${actor}</strong>
+            <span>${ev.actor_role === 'client' ? 'Client' : 'Staff'}</span>
+            ${isInternal ? '<span class="sup-pill sup-pill-internal"><i class="fas fa-lock"></i> Internal note</span>' : ''}
+            <span class="sup-time" title="${fullTime}">${when}</span>
+          </div>
+          <div class="sup-comment-body">${_supEsc(c.body)}</div>
+        </div>
+      </div>`
+  }
+
+  return `
+    <div class="sup-timeline-item">
+      <div class="sup-timeline-rail"><span class="sup-timeline-dot" style="background:${conf.color}"><i class="fas ${conf.icon}"></i></span></div>
+      <div class="sup-timeline-body sup-event">
+        <div class="sup-event-line">
+          <strong>${actor}</strong> ${_supEventLabel(ev)}
+          <span class="sup-time" title="${fullTime}">· ${when}</span>
+        </div>
+      </div>
+    </div>`
 }
 
 function paintSupportDetail() {
@@ -357,38 +483,37 @@ function paintSupportDetail() {
         ? ['open', 'in_progress', 'waiting_on_client', 'resolved']
         : ['open', 'closed'])
 
-  const commentsHtml = (_supportState.comments || []).map((c) => `
-    <div style="padding:10px 12px;border-radius:10px;background:${c.is_internal?'rgba(245,158,11,.10)':'var(--surface-2)'};border:1px solid ${c.is_internal?'rgba(245,158,11,.4)':'var(--border)'}">
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-muted);margin-bottom:4px">
-        <span><strong>${_supEsc(c.author_role==='client'?'Client':'Staff')}</strong> · ${_supEsc(new Date(c.created_at).toLocaleString())}</span>
-        ${c.is_internal ? '<span style="color:#f59e0b;font-weight:600"><i class="fas fa-lock"></i> Internal</span>' : ''}
-      </div>
-      <div style="white-space:pre-wrap;color:var(--text-primary);font-size:13px;line-height:1.5">${_supEsc(c.body)}</div>
-    </div>
-  `).join('') || '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:16px">No comments yet.</div>'
+  const timeline = _supBuildTimeline(_supportState.events, _supportState.comments)
+  const timelineHtml = timeline.length
+    ? timeline.map(_supRenderTimelineItem).join('')
+    : '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:18px">No activity yet.</div>'
 
   showModal(`
     <div class="modal-header">
-      <div>
-        <h3 style="margin:0">${_supEsc(t.subject)}</h3>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:3px">#${_supEsc(String(t.id).slice(-6))} · ${_supEsc(t.project_name||'No project')} · ${_supEsc(t.client_name||'')}</div>
+      <div style="min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="sup-pill" style="background:rgba(255,255,255,0.06);color:var(--text-muted);font-family:'IBM Plex Mono',monospace;font-size:11px">#${_supEsc(String(t.id).slice(-6).toUpperCase())}</span>
+          ${_supBadge(_supStatusLabel(t.status), sColor)}
+          ${_supBadge(t.priority||'medium', pColor)}
+        </div>
+        <h3 style="margin:6px 0 0">${_supEsc(t.subject)}</h3>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${_supEsc(t.project_name||'No project')}${t.client_name?` · ${_supEsc(t.client_name)}`:''} · opened by ${_supEsc(t.created_by_name||'—')} ${_supRelativeTime(t.created_at)}</div>
       </div>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-body" style="padding:18px;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,0.9fr);gap:16px">
+    <div class="modal-body" style="padding:18px;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,0.95fr);gap:16px">
       <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
         <div class="card">
-          <div class="card-header"><h3>Description</h3></div>
+          <div class="card-header"><h3><i class="fas fa-align-left" style="margin-right:6px;color:var(--text-muted)"></i>Description</h3></div>
           <div class="card-body" style="white-space:pre-wrap;font-size:13px;line-height:1.55">${_supEsc(t.description)}</div>
         </div>
+
         <div class="card">
-          <div class="card-header"><h3>Comments</h3></div>
-          <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
-            ${commentsHtml}
-          </div>
+          <div class="card-header"><h3><i class="fas fa-clock-rotate-left" style="margin-right:6px;color:var(--text-muted)"></i>Activity</h3></div>
+          <div class="card-body sup-timeline">${timelineHtml}</div>
           <div class="card-body" style="border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
-            <textarea id="sup-comment-body" class="form-textarea" rows="3" placeholder="Write a reply…"></textarea>
-            ${isStaff ? `<label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px"><input type="checkbox" id="sup-comment-internal"/> Internal note (clients won't see this)</label>` : ''}
+            <textarea id="sup-comment-body" class="form-textarea" rows="3" placeholder="Add a reply or note…"></textarea>
+            ${isStaff ? `<label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px"><input type="checkbox" id="sup-comment-internal"/> Internal note (hidden from client)</label>` : ''}
             <div style="text-align:right">
               <button class="btn btn-primary btn-sm" onclick="postSupportComment('${_supEsc(t.id)}')"><i class="fas fa-paper-plane"></i> Send</button>
             </div>
@@ -398,14 +523,13 @@ function paintSupportDetail() {
 
       <div style="display:flex;flex-direction:column;gap:12px">
         <div class="card">
-          <div class="card-header"><h3>Status</h3></div>
+          <div class="card-header"><h3><i class="fas fa-circle-half-stroke" style="margin-right:6px;color:var(--text-muted)"></i>Status</h3></div>
           <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
-            <div>${_supBadge(_supStatusLabel(t.status), sColor)} ${_supBadge(t.priority||'medium', pColor)}</div>
             ${(isPm || role === 'developer' || role === 'team' || role === 'client') ? `
               <select id="sup-status-select" class="form-select" onchange="updateSupportField('${_supEsc(t.id)}','status',this.value)">
                 ${allowedStatuses.map(s => `<option value="${s}" ${t.status===s?'selected':''}>${_supStatusLabel(s)}</option>`).join('')}
               </select>
-            ` : ''}
+            ` : `<div>${_supBadge(_supStatusLabel(t.status), sColor)}</div>`}
             ${isPm ? `
               <select id="sup-priority-select" class="form-select" onchange="updateSupportField('${_supEsc(t.id)}','priority',this.value)">
                 ${SUPPORT_PRIORITIES.map(p => `<option value="${p}" ${t.priority===p?'selected':''}>${p}</option>`).join('')}
@@ -416,7 +540,7 @@ function paintSupportDetail() {
 
         ${isPm ? `
           <div class="card">
-            <div class="card-header"><h3>Assignment</h3></div>
+            <div class="card-header"><h3><i class="fas fa-user-check" style="margin-right:6px;color:var(--text-muted)"></i>Assignment</h3></div>
             <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
               <select id="sup-assign-select" class="form-select" onchange="assignSupport('${_supEsc(t.id)}',this.value)">
                 ${assigneeOpts.join('')}
@@ -427,17 +551,21 @@ function paintSupportDetail() {
         ` : ''}
 
         <div class="card">
-          <div class="card-header"><h3>Details</h3></div>
+          <div class="card-header"><h3><i class="fas fa-circle-info" style="margin-right:6px;color:var(--text-muted)"></i>Details</h3></div>
           <div class="card-body" style="font-size:12px;color:var(--text-muted);display:grid;gap:6px">
-            <div><strong>Created by:</strong> ${_supEsc(t.created_by_name||'—')} (${_supEsc(t.created_by_role||'')})</div>
+            <div><strong>Requester:</strong> ${_supEsc(t.created_by_name||'—')} <span style="opacity:.6">(${_supEsc(t.created_by_role||'')})</span></div>
             <div><strong>Assigned:</strong> ${_supEsc(t.assigned_to_name||'Unassigned')}</div>
-            <div><strong>Category:</strong> ${_supEsc(t.category||'')}</div>
+            <div><strong>Project:</strong> ${_supEsc(t.project_name||'—')}</div>
+            <div><strong>Client:</strong> ${_supEsc(t.client_name||'—')}</div>
+            <div><strong>Category:</strong> ${_supEsc(t.category||'—')}</div>
             <div><strong>Created:</strong> ${_supEsc(new Date(t.created_at).toLocaleString())}</div>
             <div><strong>Updated:</strong> ${_supEsc(new Date(t.updated_at).toLocaleString())}</div>
+            ${t.resolved_at ? `<div><strong>Resolved:</strong> ${_supEsc(new Date(t.resolved_at).toLocaleString())}</div>`:''}
+            ${t.closed_at ? `<div><strong>Closed:</strong> ${_supEsc(new Date(t.closed_at).toLocaleString())}</div>`:''}
           </div>
         </div>
 
-        ${isPm ? `<button class="btn btn-danger" onclick="deleteSupportTicket('${_supEsc(t.id)}')"><i class="fas fa-trash"></i> Delete ticket</button>` : ''}
+        ${isPm ? `<button class="btn btn-danger btn-sm" onclick="deleteSupportTicket('${_supEsc(t.id)}')"><i class="fas fa-trash"></i> Delete ticket</button>` : ''}
       </div>
     </div>
   `, 'modal-xl')
@@ -445,8 +573,11 @@ function paintSupportDetail() {
 
 async function updateSupportField(ticketId, field, value) {
   try {
-    const res = await API.patch(`/support/tickets/${ticketId}`, { [field]: value })
-    _supportState.currentTicket = res.ticket || res.data
+    await API.patch(`/support/tickets/${ticketId}`, { [field]: value })
+    const fresh = await API.get(`/support/tickets/${ticketId}`)
+    _supportState.currentTicket = fresh.ticket
+    _supportState.comments = fresh.comments || []
+    _supportState.events = fresh.events || []
     paintSupportDetail()
     await reloadSupportList()
     toast('Updated', 'success')
@@ -457,8 +588,11 @@ async function updateSupportField(ticketId, field, value) {
 
 async function assignSupport(ticketId, assignedToId) {
   try {
-    const res = await API.patch(`/support/tickets/${ticketId}/assign`, { assigned_to_id: assignedToId || null })
-    _supportState.currentTicket = res.ticket
+    await API.patch(`/support/tickets/${ticketId}/assign`, { assigned_to_id: assignedToId || null })
+    const fresh = await API.get(`/support/tickets/${ticketId}`)
+    _supportState.currentTicket = fresh.ticket
+    _supportState.comments = fresh.comments || []
+    _supportState.events = fresh.events || []
     paintSupportDetail()
     await reloadSupportList()
     toast(assignedToId ? 'Assigned' : 'Unassigned', 'success')
@@ -476,6 +610,7 @@ async function postSupportComment(ticketId) {
     const fresh = await API.get(`/support/tickets/${ticketId}`)
     _supportState.currentTicket = fresh.ticket
     _supportState.comments = fresh.comments || []
+    _supportState.events = fresh.events || []
     paintSupportDetail()
     toast('Comment added', 'success')
   } catch (e) {
@@ -507,7 +642,7 @@ async function renderCpSupport(container) {
         <button class="btn btn-primary" onclick="openCpSupportCreate()"><i class="fas fa-plus"></i> New Ticket</button>
       </div>
       ${list.length === 0 ? `
-        <div style="padding:48px;text-align:center;color:#64748b;border:1px dashed #1e1e45;border-radius:12px">
+        <div style="padding:48px;text-align:center;color:#64748b;border:1px dashed #2A1812;border-radius:12px">
           <i class="fas fa-life-ring" style="font-size:32px;opacity:.5"></i>
           <p style="margin-top:12px">You haven't raised any tickets yet.</p>
         </div>
@@ -517,7 +652,7 @@ async function renderCpSupport(container) {
             const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#94a3b8'
             const sColor = SUPPORT_STATUS_COLORS[t.status] || '#64748b'
             return `
-              <div onclick="openCpSupportDetail('${_supEsc(t.id)}')" style="padding:14px;border-radius:10px;background:#111128;border:1px solid #1e1e45;border-left:3px solid ${pColor};cursor:pointer">
+              <div onclick="openCpSupportDetail('${_supEsc(t.id)}')" style="padding:14px;border-radius:10px;background:#1F0F08;border:1px solid #2A1812;border-left:3px solid ${pColor};cursor:pointer">
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
                   <div style="font-size:14px;font-weight:600;color:#e2e8f0">${_supEsc(t.subject)}</div>
                   <div style="display:flex;gap:6px;flex-wrap:wrap">${_supBadge(_supStatusLabel(t.status), sColor)}${_supBadge(t.priority||'medium', pColor)}</div>
@@ -529,7 +664,7 @@ async function renderCpSupport(container) {
       `}
     `
   } catch (e) {
-    container.innerHTML = `<div style="color:#f43f5e;padding:24px;text-align:center">Failed to load tickets: ${_supEsc(e.message)}</div>`
+    container.innerHTML = `<div style="color:#FF5E3A;padding:24px;text-align:center">Failed to load tickets: ${_supEsc(e.message)}</div>`
   }
 }
 
@@ -555,13 +690,13 @@ async function openCpSupportCreate() {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:12px">
-      <div style="padding:10px 12px;border-radius:10px;background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.30);font-size:12px;color:#a5b4fc;line-height:1.5">
+      <div style="padding:10px 12px;border-radius:10px;background:rgba(255,122,69,.10);border:1px solid rgba(255,122,69,.30);font-size:12px;color:#FFCEAA;line-height:1.5">
         <i class="fas fa-info-circle"></i>
         Your ticket will be routed to the project manager. They'll then assign it to the right person on your project's team.
       </div>
 
       ${loadError ? `
-        <div style="padding:10px 12px;border-radius:10px;background:rgba(244,63,94,.10);border:1px solid rgba(244,63,94,.30);font-size:12px;color:#fda4af">
+        <div style="padding:10px 12px;border-radius:10px;background:rgba(255,94,58,.10);border:1px solid rgba(255,94,58,.30);font-size:12px;color:#FFB099">
           <i class="fas fa-triangle-exclamation"></i> Could not load your projects: ${_supEsc(loadError)}
         </div>
       ` : ''}
@@ -638,7 +773,7 @@ async function openCpSupportDetail(ticketId) {
     const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#94a3b8'
     const sColor = SUPPORT_STATUS_COLORS[t.status] || '#64748b'
     const commentsHtml = comments.map((c) => `
-      <div style="padding:10px 12px;border-radius:10px;background:#111128;border:1px solid #1e1e45">
+      <div style="padding:10px 12px;border-radius:10px;background:#1F0F08;border:1px solid #2A1812">
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#64748b;margin-bottom:4px">
           <span><strong>${_supEsc(c.author_role==='client'?'You':'Support')}</strong> · ${_supEsc(new Date(c.created_at).toLocaleString())}</span>
         </div>
@@ -655,7 +790,7 @@ async function openCpSupportDetail(ticketId) {
       </div>
       <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:12px">
         <div style="display:flex;gap:6px;flex-wrap:wrap">${_supBadge(_supStatusLabel(t.status), sColor)}${_supBadge(t.priority||'medium', pColor)}</div>
-        <div style="white-space:pre-wrap;color:#e2e8f0;font-size:13px;line-height:1.5;padding:12px;border-radius:10px;background:#111128;border:1px solid #1e1e45">${_supEsc(t.description)}</div>
+        <div style="white-space:pre-wrap;color:#e2e8f0;font-size:13px;line-height:1.5;padding:12px;border-radius:10px;background:#1F0F08;border:1px solid #2A1812">${_supEsc(t.description)}</div>
         <div style="display:flex;flex-direction:column;gap:8px">${commentsHtml}</div>
         <textarea id="cp-sup-reply" class="form-textarea" rows="3" placeholder="Reply…"></textarea>
         <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">

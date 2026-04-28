@@ -70,11 +70,13 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
       const enriched = projects.map((p) => {
         const tl = usersById.get(String(p.team_lead_id)) as any
         const pm = usersById.get(String(p.pm_id)) as any
+        const pc = usersById.get(String(p.pc_id)) as any
         const devs = assignmentsByProject.get(String(p.id)) || []
         return {
           ...p,
           team_lead_name: tl?.full_name || null,
           pm_name: pm?.full_name || null,
+          pc_name: pc?.full_name || null,
           developer_count: devs.length,
           ...computeProjectMetrics(p),
         }
@@ -148,11 +150,13 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
 
       const tl = usersById.get(String(project.team_lead_id))
       const pm = usersById.get(String(project.pm_id))
+      const pc = usersById.get(String(project.pc_id))
 
       const data = {
         ...project,
         team_lead_name: (tl as any)?.full_name || null,
         pm_name: (pm as any)?.full_name || null,
+        pc_name: (pc as any)?.full_name || null,
         ...computeProjectMetrics(project),
         assignments: enrichedAssignments,
         recent_logs: recentLogs,
@@ -244,6 +248,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         estimated_budget_hours: estimatedBudgetHours,
         team_lead_id: body.team_lead_id || null,
         pm_id: body.pm_id || null,
+        pc_id: body.pc_id || null,
         assignment_type: assignmentType,
         external_team_id: assignmentType === 'external' ? (body.external_team_id || null) : null,
         external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,
@@ -325,6 +330,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
           estimated_budget_hours: estimatedBudgetHours,
           team_lead_id: body.team_lead_id || null,
           pm_id: body.pm_id || null,
+          pc_id: body.pc_id || null,
           assignment_type: assignmentType,
           external_team_id: assignmentType === 'external' ? (body.external_team_id || null) : null,
           external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,

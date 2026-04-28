@@ -44,7 +44,7 @@ export function createClientAuthRouter(models: MongoModels, jwtSecret: string, p
       const company_name = validateName(body.company_name, 'Company name', 2, 120)
       const contact_name = validateName(body.contact_name, 'Contact name', 2, 100)
       const phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
-      const website = validateOptional(body.website, (v) => validateUrl(v, 'Website'))
+      const website = body.website ? String(body.website).trim().slice(0, 200) : null
       const industry = validateOptional(body.industry, (v) => validateLength(String(v).trim(), 2, 80, 'Industry'))
 
       const existing = await models.clients.findByEmail(email)

@@ -255,6 +255,9 @@ export class MongoModels {
   readonly notifications: MongoRepository
   readonly supportTickets: MongoRepository
   readonly supportComments: MongoRepository
+  readonly supportEvents: MongoRepository
+  readonly roles: MongoRepository
+  readonly userNotifications: MongoRepository
   readonly projectUpdates: MongoRepository
 
   constructor(private readonly db: Db) {
@@ -282,6 +285,9 @@ export class MongoModels {
     this.notifications = new MongoRepository(db.collection('client_notifications'))
     this.supportTickets = new MongoRepository(db.collection('support_tickets'))
     this.supportComments = new MongoRepository(db.collection('support_comments'))
+    this.supportEvents = new MongoRepository(db.collection('support_events'))
+    this.roles = new MongoRepository(db.collection('roles'))
+    this.userNotifications = new MongoRepository(db.collection('user_notifications'))
     this.projectUpdates = new MongoRepository(db.collection('project_updates'))
   }
 

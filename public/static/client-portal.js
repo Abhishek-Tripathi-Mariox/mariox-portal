@@ -26,7 +26,7 @@ const ClientAPI = {
 /* ═══ CLIENT PORTAL ENTRY POINT ═══════════════════════════ */
 function renderClientPortal() {
   document.body.innerHTML = `
-  <div id="client-app" class="bg-[#0a0a1a] text-gray-100 min-h-screen font-sans antialiased"></div>`
+  <div id="client-app" class="bg-[#100804] text-gray-100 min-h-screen font-sans antialiased"></div>`
   const app = document.getElementById('client-app')
 
   if (!_token || !_user || _user.role !== 'client') {
@@ -39,15 +39,15 @@ function renderClientPortal() {
 /* ═══ CLIENT LOGIN PAGE ═══════════════════════════════════ */
 function renderClientLogin(container) {
   container.innerHTML = `
-  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0a0a1a 0%,#111128 50%,#0a0a1a 100%)">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#100804 0%,#1F0F08 50%,#100804 100%)">
     <!-- Decorative background -->
-    <div style="position:fixed;top:-100px;left:-100px;width:500px;height:500px;background:radial-gradient(circle,rgba(99,102,241,.12) 0%,transparent 70%);pointer-events:none"></div>
-    <div style="position:fixed;bottom:-100px;right:-100px;width:500px;height:500px;background:radial-gradient(circle,rgba(6,182,212,.08) 0%,transparent 70%);pointer-events:none"></div>
+    <div style="position:fixed;top:-100px;left:-100px;width:500px;height:500px;background:radial-gradient(circle,rgba(255,122,69,.12) 0%,transparent 70%);pointer-events:none"></div>
+    <div style="position:fixed;bottom:-100px;right:-100px;width:500px;height:500px;background:radial-gradient(circle,rgba(244,200,66,.08) 0%,transparent 70%);pointer-events:none"></div>
 
     <div style="width:100%;max-width:460px;padding:24px">
       <!-- Logo -->
       <div style="text-align:center;margin-bottom:32px">
-        <div style="width:56px;height:56px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 0 30px rgba(99,102,241,.3)">
+        <div style="width:56px;height:56px;background:linear-gradient(135deg,#FF7A45,#C56FE6);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 0 30px rgba(255,122,69,.3)">
           <i class="fas fa-rocket" style="font-size:24px;color:#fff"></i>
         </div>
         <h1 style="font-size:24px;font-weight:700;color:#e2e8f0;margin:0">Mariox DevPortal</h1>
@@ -55,8 +55,8 @@ function renderClientLogin(container) {
       </div>
 
       <!-- Tab switcher -->
-      <div style="display:flex;background:#111128;border-radius:10px;padding:4px;margin-bottom:24px;border:1px solid #1e1e45">
-        <button id="tab-login" onclick="switchClientTab('login')" style="flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:.2s;background:#6366f1;color:#fff">Sign In</button>
+      <div style="display:flex;background:#1F0F08;border-radius:10px;padding:4px;margin-bottom:24px;border:1px solid #2A1812">
+        <button id="tab-login" onclick="switchClientTab('login')" style="flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:.2s;background:#FF7A45;color:#fff">Sign In</button>
         <button id="tab-signup" onclick="switchClientTab('signup')" style="flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Register</button>
       </div>
 
@@ -139,9 +139,9 @@ function renderClientLogin(container) {
 function switchClientTab(tab) {
   document.getElementById('form-login').style.display = tab === 'login' ? 'block' : 'none'
   document.getElementById('form-signup').style.display = tab === 'signup' ? 'block' : 'none'
-  document.getElementById('tab-login').style.background = tab === 'login' ? '#6366f1' : 'transparent'
+  document.getElementById('tab-login').style.background = tab === 'login' ? '#FF7A45' : 'transparent'
   document.getElementById('tab-login').style.color = tab === 'login' ? '#fff' : '#94a3b8'
-  document.getElementById('tab-signup').style.background = tab === 'signup' ? '#6366f1' : 'transparent'
+  document.getElementById('tab-signup').style.background = tab === 'signup' ? '#FF7A45' : 'transparent'
   document.getElementById('tab-signup').style.color = tab === 'signup' ? '#fff' : '#94a3b8'
 }
 
@@ -218,11 +218,11 @@ async function renderClientMain(container) {
   container.innerHTML = `
   <div style="display:flex;min-height:100vh">
     <!-- Sidebar -->
-    <aside id="cp-sidebar" style="width:240px;flex-shrink:0;background:#0d0d24;border-right:1px solid #1e1e45;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;transition:.3s">
+    <aside id="cp-sidebar" style="width:240px;flex-shrink:0;background:#150A05;border-right:1px solid #2A1812;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;transition:.3s">
       <!-- Logo -->
-      <div style="padding:20px 16px;border-bottom:1px solid #1e1e45">
+      <div style="padding:20px 16px;border-bottom:1px solid #2A1812">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:32px;height:32px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <div style="width:32px;height:32px;background:linear-gradient(135deg,#FF7A45,#C56FE6);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <i class="fas fa-rocket" style="font-size:14px;color:#fff"></i>
           </div>
           <div>
@@ -232,9 +232,9 @@ async function renderClientMain(container) {
         </div>
       </div>
       <!-- Client info -->
-      <div style="padding:14px 16px;border-bottom:1px solid #1e1e45">
+      <div style="padding:14px 16px;border-bottom:1px solid #2A1812">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:34px;height:34px;border-radius:50%;background:${_user.avatar_color||'#6366f1'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">${(_user.contact_name||_user.name||'C').split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase()}</div>
+          <div style="width:34px;height:34px;border-radius:50%;background:${_user.avatar_color||'#FF7A45'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">${(_user.contact_name||_user.name||'C').split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase()}</div>
           <div style="min-width:0">
             <div style="font-size:12px;font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_user.contact_name||_user.name||'Client'}</div>
             <div style="font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_user.company_name||_user.company||''}</div>
@@ -253,8 +253,8 @@ async function renderClientMain(container) {
         ${cpNavItem('cp-activity','fa-bell','Activity Feed')}
         ${cpNavItem('cp-profile','fa-user-cog','My Profile')}
       </nav>
-      <div style="padding:12px 8px;border-top:1px solid #1e1e45">
-        <button onclick="clientLogout()" style="width:100%;padding:8px 12px;border-radius:7px;background:transparent;border:1px solid #1e1e45;color:#64748b;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;transition:.2s" onmouseover="this.style.background='#1a1a38';this.style.color='#f43f5e'" onmouseout="this.style.background='transparent';this.style.color='#64748b'">
+      <div style="padding:12px 8px;border-top:1px solid #2A1812">
+        <button onclick="clientLogout()" style="width:100%;padding:8px 12px;border-radius:7px;background:transparent;border:1px solid #2A1812;color:#64748b;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;transition:.2s" onmouseover="this.style.background='#241510';this.style.color='#FF5E3A'" onmouseout="this.style.background='transparent';this.style.color='#64748b'">
           <i class="fas fa-sign-out-alt"></i>Sign Out
         </button>
       </div>
@@ -263,15 +263,15 @@ async function renderClientMain(container) {
     <!-- Main Content -->
     <div style="flex:1;margin-left:240px;display:flex;flex-direction:column;min-height:100vh">
       <!-- Top bar -->
-      <header style="background:#111128;border-bottom:1px solid #1e1e45;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50">
+      <header style="background:#1F0F08;border-bottom:1px solid #2A1812;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50">
         <div style="display:flex;align-items:center;gap:12px">
-          <button id="cp-back-btn" onclick="cpBack()" style="display:none;width:36px;height:36px;border-radius:8px;background:transparent;border:1px solid #1e1e45;color:#94a3b8;cursor:pointer;align-items:center;justify-content:center;font-size:14px"><i class="fas fa-arrow-left"></i></button>
+          <button id="cp-back-btn" onclick="cpBack()" style="display:none;width:36px;height:36px;border-radius:8px;background:transparent;border:1px solid #2A1812;color:#94a3b8;cursor:pointer;align-items:center;justify-content:center;font-size:14px"><i class="fas fa-arrow-left"></i></button>
           <h2 id="cp-page-title" style="font-size:16px;font-weight:600;color:#e2e8f0;margin:0">Dashboard</h2>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
-          <button id="cp-notif-btn" onclick="toggleCpNotifications()" style="width:36px;height:36px;border-radius:8px;background:transparent;border:1px solid #1e1e45;color:#94a3b8;cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;font-size:14px">
+          <button id="cp-notif-btn" onclick="toggleCpNotifications()" style="width:36px;height:36px;border-radius:8px;background:transparent;border:1px solid #2A1812;color:#94a3b8;cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;font-size:14px">
             <i class="fas fa-bell"></i>
-            <span id="cp-notif-badge" style="position:absolute;top:-4px;right:-4px;width:16px;height:16px;background:#f43f5e;border-radius:50%;font-size:9px;color:#fff;display:none;align-items:center;justify-content:center">0</span>
+            <span id="cp-notif-badge" style="position:absolute;top:-4px;right:-4px;width:16px;height:16px;background:#FF5E3A;border-radius:50%;font-size:9px;color:#fff;display:none;align-items:center;justify-content:center">0</span>
           </button>
           <div style="font-size:12px;color:#64748b">${_user.company_name||_user.company||''}</div>
         </div>
@@ -283,10 +283,10 @@ async function renderClientMain(container) {
   </div>
 
   <!-- Notifications dropdown -->
-  <div id="cp-notif-panel" style="position:fixed;top:56px;right:16px;width:340px;background:#111128;border:1px solid #1e1e45;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:200;display:none;overflow:hidden">
-    <div style="padding:14px 16px;border-bottom:1px solid #1e1e45;display:flex;justify-content:space-between;align-items:center">
+  <div id="cp-notif-panel" style="position:fixed;top:56px;right:16px;width:340px;background:#1F0F08;border:1px solid #2A1812;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:200;display:none;overflow:hidden">
+    <div style="padding:14px 16px;border-bottom:1px solid #2A1812;display:flex;justify-content:space-between;align-items:center">
       <span style="font-weight:600;font-size:13px;color:#e2e8f0">Notifications</span>
-      <button onclick="markAllCpNotifRead()" style="font-size:11px;color:#6366f1;background:none;border:none;cursor:pointer">Mark all read</button>
+      <button onclick="markAllCpNotifRead()" style="font-size:11px;color:#FF7A45;background:none;border:none;cursor:pointer">Mark all read</button>
     </div>
     <div id="cp-notif-list" style="max-height:320px;overflow-y:auto"></div>
   </div>`
@@ -332,8 +332,8 @@ function cpNavigate(page) {
   // Update nav active state
   document.querySelectorAll('.cp-nav-item').forEach(btn => {
     const isActive = btn.dataset.page === page
-    btn.style.background = isActive ? 'rgba(99,102,241,.15)' : 'transparent'
-    btn.style.color = isActive ? '#818cf8' : '#94a3b8'
+    btn.style.background = isActive ? 'rgba(255,122,69,.15)' : 'transparent'
+    btn.style.color = isActive ? '#FFB347' : '#94a3b8'
   })
   // Update title
   const titles = {
@@ -367,8 +367,8 @@ function cpBack() {
   // Update nav active state
   document.querySelectorAll('.cp-nav-item').forEach(btn => {
     const isActive = btn.dataset.page === _clientPage
-    btn.style.background = isActive ? 'rgba(99,102,241,.15)' : 'transparent'
-    btn.style.color = isActive ? '#818cf8' : '#94a3b8'
+    btn.style.background = isActive ? 'rgba(255,122,69,.15)' : 'transparent'
+    btn.style.color = isActive ? '#FFB347' : '#94a3b8'
   })
   // Update title
   const titles = {
@@ -452,8 +452,8 @@ async function renderCpDashboard(el) {
             <div style="font-size:28px;font-weight:700;color:#e2e8f0;margin-top:6px">${activeProjects}</div>
             <div style="font-size:12px;color:#94a3b8;margin-top:4px">${projects.length} total projects</div>
           </div>
-          <div style="width:42px;height:42px;border-radius:10px;background:rgba(99,102,241,.12);display:flex;align-items:center;justify-content:center">
-            <i class="fas fa-layer-group" style="color:#818cf8;font-size:16px"></i>
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(255,122,69,.12);display:flex;align-items:center;justify-content:center">
+            <i class="fas fa-layer-group" style="color:#FFB347;font-size:16px"></i>
           </div>
         </div>
       </div>
@@ -464,8 +464,8 @@ async function renderCpDashboard(el) {
             <div style="font-size:28px;font-weight:700;color:#e2e8f0;margin-top:6px">${consumedHrs}</div>
             <div style="font-size:12px;color:#94a3b8;margin-top:4px">${allocHrs}h allocated</div>
           </div>
-          <div style="width:42px;height:42px;border-radius:10px;background:rgba(6,182,212,.1);display:flex;align-items:center;justify-content:center">
-            <i class="fas fa-clock" style="color:#06b6d4;font-size:16px"></i>
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(244,200,66,.1);display:flex;align-items:center;justify-content:center">
+            <i class="fas fa-clock" style="color:#F4C842;font-size:16px"></i>
           </div>
         </div>
       </div>
@@ -473,11 +473,11 @@ async function renderCpDashboard(el) {
         <div style="display:flex;align-items:flex-start;justify-content:space-between">
           <div>
             <div style="font-size:12px;color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.04em">Total Billed</div>
-            <div style="font-size:28px;font-weight:700;color:#10b981;margin-top:6px">₹${fmtNum(totalBilled)}</div>
+            <div style="font-size:28px;font-weight:700;color:#58C68A;margin-top:6px">₹${fmtNum(totalBilled)}</div>
             <div style="font-size:12px;color:#94a3b8;margin-top:4px">₹${fmtNum(totalPaid)} paid</div>
           </div>
-          <div style="width:42px;height:42px;border-radius:10px;background:rgba(16,185,129,.1);display:flex;align-items:center;justify-content:center">
-            <i class="fas fa-indian-rupee-sign" style="color:#10b981;font-size:16px"></i>
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(88,198,138,.1);display:flex;align-items:center;justify-content:center">
+            <i class="fas fa-indian-rupee-sign" style="color:#58C68A;font-size:16px"></i>
           </div>
         </div>
       </div>
@@ -485,11 +485,11 @@ async function renderCpDashboard(el) {
         <div style="display:flex;align-items:flex-start;justify-content:space-between">
           <div>
             <div style="font-size:12px;color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.04em">Pending Invoices</div>
-            <div style="font-size:28px;font-weight:700;color:${pendingInvoices > 0 ? '#f59e0b' : '#10b981'};margin-top:6px">${pendingInvoices}</div>
+            <div style="font-size:28px;font-weight:700;color:${pendingInvoices > 0 ? '#FFCB47' : '#58C68A'};margin-top:6px">${pendingInvoices}</div>
             <div style="font-size:12px;color:#94a3b8;margin-top:4px">${summary.total_invoices ?? invoices.length} total invoices</div>
           </div>
-          <div style="width:42px;height:42px;border-radius:10px;background:rgba(245,158,11,.1);display:flex;align-items:center;justify-content:center">
-            <i class="fas fa-file-invoice" style="color:#f59e0b;font-size:16px"></i>
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(255,203,71,.1);display:flex;align-items:center;justify-content:center">
+            <i class="fas fa-file-invoice" style="color:#FFCB47;font-size:16px"></i>
           </div>
         </div>
       </div>
@@ -510,7 +510,7 @@ async function renderCpDashboard(el) {
                 <td>${cpStatusBadge(p.status)}</td>
                 <td>
                   <div style="display:flex;align-items:center;gap:8px">
-                    <div style="width:60px;height:4px;background:#1e1e45;border-radius:2px;overflow:hidden"><div style="height:100%;width:${Math.min(burn,100)}%;background:${burn>=90?'#f43f5e':burn>=70?'#f59e0b':'#10b981'};border-radius:2px"></div></div>
+                    <div style="width:60px;height:4px;background:#2A1812;border-radius:2px;overflow:hidden"><div style="height:100%;width:${Math.min(burn,100)}%;background:${burn>=90?'#FF5E3A':burn>=70?'#FFCB47':'#58C68A'};border-radius:2px"></div></div>
                     <span style="font-size:11px;color:#94a3b8">${burn}%</span>
                   </div>
                 </td>
@@ -524,7 +524,7 @@ async function renderCpDashboard(el) {
         <div class="card-body" style="padding:12px">
           ${logs.length === 0 ? '<div class="empty-state"><i class="fas fa-bell"></i><p>No recent activity</p></div>' :
           logs.slice(0, 6).map(log => `
-            <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #1e1e45">
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #2A1812">
               <div style="width:28px;height:28px;border-radius:50%;background:${cpActivityColor(log.action)};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">
                 <i class="fas ${cpActivityIcon(log.action)}" style="color:#fff"></i>
               </div>
@@ -548,8 +548,8 @@ async function renderCpDashboard(el) {
             <tr>
               <td><div style="font-weight:500;color:#e2e8f0;font-size:13px">${i.invoice_number}</div><div style="font-size:11px;color:#64748b">${i.title||''}</div></td>
               <td style="font-size:12px;color:#94a3b8">${i.project_name||'—'}</td>
-              <td style="font-weight:600;color:#10b981">${fmtCurrency(i.total_amount)}</td>
-              <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#f43f5e':'#94a3b8'}">${fmtDate(i.due_date)}</td>
+              <td style="font-weight:600;color:#58C68A">${fmtCurrency(i.total_amount)}</td>
+              <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#94a3b8'}">${fmtDate(i.due_date)}</td>
               <td><span class="badge ${cpInvoiceBadge(i.status)}">${i.status}</span></td>
             </tr>`).join('')}</tbody>
         </table>
@@ -579,7 +579,7 @@ async function renderCpProjects(el) {
       ${pagination.items.map(p => {
         const burn = p.total_allocated_hours > 0 ? Math.round((p.consumed_hours / p.total_allocated_hours) * 100) : 0
         const daysLeft = p.expected_end_date ? Math.ceil((new Date(p.expected_end_date) - new Date()) / 86400000) : null
-        return `<div class="card" style="padding:20px;cursor:pointer;transition:.2s" onclick="cpViewProject('${p.id}')" onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='#1e1e45'">
+        return `<div class="card" style="padding:20px;cursor:pointer;transition:.2s" onclick="cpViewProject('${p.id}')" onmouseover="this.style.borderColor='#FF7A45'" onmouseout="this.style.borderColor='#2A1812'">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
             <div>
               <div style="font-size:15px;font-weight:600;color:#e2e8f0">${p.name}</div>
@@ -590,14 +590,14 @@ async function renderCpProjects(el) {
           <p style="font-size:12px;color:#94a3b8;margin:0 0 14px;line-height:1.5">${(p.description || 'No description available.').substring(0, 100)}${(p.description||'').length > 100 ? '…' : ''}</p>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
             <span style="font-size:11px;color:#64748b">Hour Burn</span>
-            <span style="font-size:11px;font-weight:600;color:${burn>=90?'#f43f5e':burn>=70?'#f59e0b':'#10b981'}">${burn}%</span>
+            <span style="font-size:11px;font-weight:600;color:${burn>=90?'#FF5E3A':burn>=70?'#FFCB47':'#58C68A'}">${burn}%</span>
           </div>
-          <div style="width:100%;height:6px;background:#1e1e45;border-radius:3px;overflow:hidden;margin-bottom:14px">
-            <div style="height:100%;width:${Math.min(burn,100)}%;background:${burn>=90?'linear-gradient(90deg,#ef4444,#f43f5e)':burn>=70?'linear-gradient(90deg,#d97706,#f59e0b)':'linear-gradient(90deg,#059669,#10b981)'};border-radius:3px;transition:.5s"></div>
+          <div style="width:100%;height:6px;background:#2A1812;border-radius:3px;overflow:hidden;margin-bottom:14px">
+            <div style="height:100%;width:${Math.min(burn,100)}%;background:${burn>=90?'linear-gradient(90deg,#FF5E3A,#FF5E3A)':burn>=70?'linear-gradient(90deg,#E5A82C,#FFCB47)':'linear-gradient(90deg,#3FAA70,#58C68A)'};border-radius:3px;transition:.5s"></div>
           </div>
           <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b">
             <span><i class="fas fa-clock" style="margin-right:4px"></i>${p.consumed_hours}h / ${p.total_allocated_hours}h</span>
-            ${daysLeft !== null ? `<span style="color:${daysLeft<0?'#f43f5e':daysLeft<7?'#f59e0b':'#64748b'}"><i class="fas fa-calendar" style="margin-right:4px"></i>${daysLeft < 0 ? Math.abs(daysLeft)+'d overdue' : daysLeft+'d left'}</span>` : ''}
+            ${daysLeft !== null ? `<span style="color:${daysLeft<0?'#FF5E3A':daysLeft<7?'#FFCB47':'#64748b'}"><i class="fas fa-calendar" style="margin-right:4px"></i>${daysLeft < 0 ? Math.abs(daysLeft)+'d overdue' : daysLeft+'d left'}</span>` : ''}
           </div>
         </div>`}).join('')}
     </div>
@@ -640,12 +640,12 @@ async function renderCpKanban(el) {
 
     const columns = [
       { id: 'backlog', label: 'Backlog', icon: 'fa-inbox', color: '#64748b' },
-      { id: 'todo', label: 'To Do', icon: 'fa-circle-dot', color: '#818cf8' },
-      { id: 'in_progress', label: 'In Progress', icon: 'fa-spinner', color: '#06b6d4' },
-      { id: 'review', label: 'Review', icon: 'fa-eye', color: '#f59e0b' },
-      { id: 'qa', label: 'QA', icon: 'fa-bug', color: '#8b5cf6' },
-      { id: 'done', label: 'Done', icon: 'fa-check-circle', color: '#10b981' },
-      { id: 'blocked', label: 'Blocked', icon: 'fa-ban', color: '#f43f5e' },
+      { id: 'todo', label: 'To Do', icon: 'fa-circle-dot', color: '#FFB347' },
+      { id: 'in_progress', label: 'In Progress', icon: 'fa-spinner', color: '#F4C842' },
+      { id: 'review', label: 'Review', icon: 'fa-eye', color: '#FFCB47' },
+      { id: 'qa', label: 'QA', icon: 'fa-bug', color: '#C56FE6' },
+      { id: 'done', label: 'Done', icon: 'fa-check-circle', color: '#58C68A' },
+      { id: 'blocked', label: 'Blocked', icon: 'fa-ban', color: '#FF5E3A' },
     ]
 
     el.innerHTML = `
@@ -663,15 +663,15 @@ async function renderCpKanban(el) {
         ${columns.map(col => {
           const colTasks = taskList.filter(t => t.status === col.id)
           return `<div style="width:260px;flex-shrink:0">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#111128;border-radius:8px;border-top:2px solid ${col.color}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#1F0F08;border-radius:8px;border-top:2px solid ${col.color}">
               <i class="fas ${col.icon}" style="color:${col.color};font-size:12px"></i>
               <span style="font-size:12px;font-weight:600;color:#e2e8f0">${col.label}</span>
-              <span style="margin-left:auto;background:#1e1e45;color:#94a3b8;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px">${colTasks.length}</span>
+              <span style="margin-left:auto;background:#2A1812;color:#94a3b8;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px">${colTasks.length}</span>
             </div>
             <div style="display:flex;flex-direction:column;gap:8px;min-height:120px">
-              ${colTasks.length === 0 ? `<div style="padding:16px;text-align:center;color:#334155;font-size:12px;border:1px dashed #1e1e45;border-radius:8px">No tasks</div>` :
+              ${colTasks.length === 0 ? `<div style="padding:16px;text-align:center;color:#334155;font-size:12px;border:1px dashed #2A1812;border-radius:8px">No tasks</div>` :
               colTasks.map(t => `
-                <div style="background:#111128;border:1px solid #1e1e45;border-radius:8px;padding:12px;cursor:pointer;transition:.2s" onclick="cpViewTask('${t.id}')" onmouseover="this.style.borderColor='${col.color}';this.style.boxShadow='0 4px 12px rgba(0,0,0,.3)'" onmouseout="this.style.borderColor='#1e1e45';this.style.boxShadow='none'">
+                <div style="background:#1F0F08;border:1px solid #2A1812;border-radius:8px;padding:12px;cursor:pointer;transition:.2s" onclick="cpViewTask('${t.id}')" onmouseover="this.style.borderColor='${col.color}';this.style.boxShadow='0 4px 12px rgba(0,0,0,.3)'" onmouseout="this.style.borderColor='#2A1812';this.style.boxShadow='none'">
                   <div style="font-size:10px;color:#64748b;margin-bottom:6px;display:flex;align-items:center;gap:6px">
                     <span style="font-family:monospace">${t.task_key||''}</span>
                     ${priorityBadge(t.priority)}
@@ -708,18 +708,18 @@ async function cpViewTask(taskId) {
     <div class="modal-body">
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
         ${priorityBadge(t.priority)} ${statusBadge(t.status)}
-        ${t.module_name ? `<span class="badge" style="background:rgba(139,92,246,.15);color:#a78bfa">${t.module_name}</span>` : ''}
+        ${t.module_name ? `<span class="badge" style="background:rgba(197,111,230,.15);color:#D9A8F0">${t.module_name}</span>` : ''}
         ${t.estimated_hours ? `<span style="font-size:12px;color:#94a3b8"><i class="fas fa-clock" style="margin-right:4px"></i>${t.estimated_hours}h estimated</span>` : ''}
       </div>
       ${t.description ? `<p style="font-size:13px;color:#94a3b8;line-height:1.6;margin-bottom:16px">${t.description}</p>` : ''}
-      ${t.acceptance_criteria ? `<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Acceptance Criteria</div><pre style="font-size:12px;color:#94a3b8;white-space:pre-wrap;font-family:inherit;line-height:1.5;padding:10px;background:#0a0a1a;border-radius:6px;border:1px solid #1e1e45">${t.acceptance_criteria}</pre></div>` : ''}
+      ${t.acceptance_criteria ? `<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Acceptance Criteria</div><pre style="font-size:12px;color:#94a3b8;white-space:pre-wrap;font-family:inherit;line-height:1.5;padding:10px;background:#100804;border-radius:6px;border:1px solid #2A1812">${t.acceptance_criteria}</pre></div>` : ''}
 
       <!-- Comments -->
-      <div style="border-top:1px solid #1e1e45;padding-top:16px;margin-top:16px">
+      <div style="border-top:1px solid #2A1812;padding-top:16px;margin-top:16px">
         <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px">Comments (${comments.length})</div>
         ${comments.filter(cm => !cm.is_internal).map(cm => `
           <div style="display:flex;gap:10px;margin-bottom:12px">
-            <div style="width:28px;height:28px;border-radius:50%;background:${cm.author_color||'#6366f1'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${initials(cm.author_name||'U')}</div>
+            <div style="width:28px;height:28px;border-radius:50%;background:${cm.author_color||'#FF7A45'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${initials(cm.author_name||'U')}</div>
             <div style="flex:1">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                 <span style="font-size:12px;font-weight:600;color:#e2e8f0">${cm.author_name||'User'}</span>
@@ -801,15 +801,15 @@ async function renderCpMilestones(el) {
             <div style="font-size:12px;color:#64748b;margin-top:4px">${m.project_name || ''} ${m.due_date ? `• Due: ${fmtDate(m.due_date)}` : ''}</div>
           </div>
           <div style="text-align:right;flex-shrink:0;margin-left:16px">
-            <div style="font-size:22px;font-weight:700;color:${pct>=100?'#10b981':pct>=60?'#f59e0b':'#818cf8'}">${pct}%</div>
+            <div style="font-size:22px;font-weight:700;color:${pct>=100?'#58C68A':pct>=60?'#FFCB47':'#FFB347'}">${pct}%</div>
             <div style="font-size:10px;color:#64748b">complete</div>
           </div>
         </div>
         ${m.description ? `<p style="font-size:12px;color:#94a3b8;margin:0 0 12px;line-height:1.5">${m.description}</p>` : ''}
-        <div style="width:100%;height:8px;background:#1e1e45;border-radius:4px;overflow:hidden">
-          <div style="height:100%;width:${Math.min(pct,100)}%;background:${pct>=100?'linear-gradient(90deg,#059669,#10b981)':pct>=60?'linear-gradient(90deg,#d97706,#f59e0b)':'linear-gradient(90deg,#4f46e5,#6366f1)'};border-radius:4px;transition:.5s"></div>
+        <div style="width:100%;height:8px;background:#2A1812;border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${Math.min(pct,100)}%;background:${pct>=100?'linear-gradient(90deg,#3FAA70,#58C68A)':pct>=60?'linear-gradient(90deg,#E5A82C,#FFCB47)':'linear-gradient(90deg,#E0612C,#FF7A45)'};border-radius:4px;transition:.5s"></div>
         </div>
-        ${m.amount ? `<div style="margin-top:10px;font-size:12px;color:#94a3b8"><i class="fas fa-indian-rupee-sign" style="margin-right:4px;color:#10b981"></i>Billing milestone: <strong style="color:#10b981">${fmtCurrency(m.amount)}</strong></div>` : ''}
+        ${m.amount ? `<div style="margin-top:10px;font-size:12px;color:#94a3b8"><i class="fas fa-indian-rupee-sign" style="margin-right:4px;color:#58C68A"></i>Billing milestone: <strong style="color:#58C68A">${fmtCurrency(m.amount)}</strong></div>` : ''}
       </div>`}).join('')}
     ${renderPager(pagination, 'cpGoMilestonesPage', 'cpGoMilestonesPage', 'milestones')}
     `
@@ -871,16 +871,16 @@ async function renderCpDocuments(el) {
 
     Object.keys(docsByCategory).map(cat => `
       <div style="margin-bottom:20px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #1e1e45">
-          <div style="width:28px;height:28px;border-radius:7px;background:rgba(99,102,241,.12);display:flex;align-items:center;justify-content:center">
-            <i class="fas ${categoryIcons[cat]||'fa-file'}" style="color:#818cf8;font-size:12px"></i>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #2A1812">
+          <div style="width:28px;height:28px;border-radius:7px;background:rgba(255,122,69,.12);display:flex;align-items:center;justify-content:center">
+            <i class="fas ${categoryIcons[cat]||'fa-file'}" style="color:#FFB347;font-size:12px"></i>
           </div>
           <span style="font-size:13px;font-weight:600;color:#e2e8f0">${categoryLabels[cat]||cat}</span>
-          <span style="background:#1e1e45;color:#94a3b8;font-size:10px;padding:2px 7px;border-radius:10px">${docsByCategory[cat].length}</span>
+          <span style="background:#2A1812;color:#94a3b8;font-size:10px;padding:2px 7px;border-radius:10px">${docsByCategory[cat].length}</span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">
           ${docsByCategory[cat].map(doc => `
-            <div class="card" style="padding:14px;transition:.2s" onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='#1e1e45'">
+            <div class="card" style="padding:14px;transition:.2s" onmouseover="this.style.borderColor='#FF7A45'" onmouseout="this.style.borderColor='#2A1812'">
               <div style="display:flex;align-items:flex-start;gap:12px">
                 <div style="width:36px;height:36px;border-radius:8px;background:${docFileColor(doc.file_type)};display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   <i class="fas ${docFileIcon(doc.file_type)}" style="color:#fff;font-size:14px"></i>
@@ -903,7 +903,7 @@ async function renderCpDocuments(el) {
                 <a href="${doc.file_url}" download="${doc.file_name}" class="btn btn-sm btn-primary" style="flex:1;text-align:center;text-decoration:none" onclick="cpTrackDownload('${doc.id}')">
                   <i class="fas fa-download"></i>Download
                 </a>
-                ${doc.uploaded_by_role === 'client' && String(doc.uploaded_by) === String(_user.sub || _user.id) ? `<button class="btn btn-sm btn-outline" style="color:#f87171" onclick="cpDeleteDoc('${doc.id}')" title="Delete your upload"><i class="fas fa-trash"></i></button>` : ''}
+                ${doc.uploaded_by_role === 'client' && String(doc.uploaded_by) === String(_user.sub || _user.id) ? `<button class="btn btn-sm btn-outline" style="color:#FF8866" onclick="cpDeleteDoc('${doc.id}')" title="Delete your upload"><i class="fas fa-trash"></i></button>` : ''}
               </div>
             </div>`).join('')}
         </div>
@@ -949,7 +949,7 @@ function openCpUploadModal() {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:12px">
-      <div style="padding:10px 12px;border-radius:10px;background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.30);font-size:12px;color:#a5b4fc;line-height:1.5">
+      <div style="padding:10px 12px;border-radius:10px;background:rgba(255,122,69,.10);border:1px solid rgba(255,122,69,.30);font-size:12px;color:#FFCEAA;line-height:1.5">
         <i class="fas fa-info-circle"></i>
         Pick a file (max 25 MB) — PDF, image, video, audio, or document. Images are compressed automatically before upload.
       </div>
@@ -989,8 +989,8 @@ function openCpUploadModal() {
 
       <div id="cp-up-progress" style="display:none">
         <div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Uploading…</div>
-        <div style="height:6px;border-radius:3px;background:#1e1e45;overflow:hidden">
-          <div id="cp-up-progress-bar" style="height:100%;width:0;background:#6366f1;transition:width .2s"></div>
+        <div style="height:6px;border-radius:3px;background:#2A1812;overflow:hidden">
+          <div id="cp-up-progress-bar" style="height:100%;width:0;background:#FF7A45;transition:width .2s"></div>
         </div>
       </div>
     </div>
@@ -1012,7 +1012,7 @@ function onCpUploadFilePicked(input) {
   const sizeMb = (file.size / (1024 * 1024)).toFixed(2)
   const tooBig = file.size > 25 * 1024 * 1024
   if (info) {
-    info.style.color = tooBig ? '#fda4af' : '#94a3b8'
+    info.style.color = tooBig ? '#FFB099' : '#94a3b8'
     info.textContent = `${file.name} · ${sizeMb} MB · ${file.type || 'unknown type'}${tooBig ? ' — exceeds 25 MB limit' : ''}`
   }
   if (titleEl && !titleEl.value.trim()) {
@@ -1107,12 +1107,12 @@ function docFileIcon(type) {
 }
 function docFileColor(type) {
   if (!type) return '#334155'
-  if (type.includes('pdf')) return '#ef4444'
-  if (type.includes('word') || type.includes('doc')) return '#3b82f6'
-  if (type.includes('sheet') || type.includes('excel') || type.includes('xls')) return '#10b981'
-  if (type.includes('ppt')) return '#f97316'
-  if (type.includes('image')) return '#8b5cf6'
-  return '#6366f1'
+  if (type.includes('pdf')) return '#FF5E3A'
+  if (type.includes('word') || type.includes('doc')) return '#FFA577'
+  if (type.includes('sheet') || type.includes('excel') || type.includes('xls')) return '#58C68A'
+  if (type.includes('ppt')) return '#FF7A45'
+  if (type.includes('image')) return '#C56FE6'
+  return '#FF7A45'
 }
 
 /* ═══ CLIENT INVOICES ═════════════════════════════════════ */
@@ -1145,17 +1145,17 @@ async function renderCpInvoices(el) {
       </div>
       <div class="card" style="padding:18px">
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:500">Paid</div>
-        <div style="font-size:24px;font-weight:700;color:#10b981;margin:6px 0">${fmtCurrency(totalPaid)}</div>
+        <div style="font-size:24px;font-weight:700;color:#58C68A;margin:6px 0">${fmtCurrency(totalPaid)}</div>
         <div style="font-size:11px;color:#94a3b8">${summary.paid_count || invoices.filter(i=>i.status==='paid').length} invoices paid</div>
       </div>
       <div class="card" style="padding:18px">
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:500">Pending</div>
-        <div style="font-size:24px;font-weight:700;color:#f59e0b;margin:6px 0">${fmtCurrency(totalPending)}</div>
+        <div style="font-size:24px;font-weight:700;color:#FFCB47;margin:6px 0">${fmtCurrency(totalPending)}</div>
         <div style="font-size:11px;color:#94a3b8">${summary.pending_count ?? invoices.filter(i=>['pending','sent'].includes(i.status)).length} awaiting payment</div>
       </div>
       <div class="card" style="padding:18px">
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:500">Overdue</div>
-        <div style="font-size:24px;font-weight:700;color:${totalOverdue>0?'#f43f5e':'#94a3b8'};margin:6px 0">${fmtCurrency(totalOverdue)}</div>
+        <div style="font-size:24px;font-weight:700;color:${totalOverdue>0?'#FF5E3A':'#94a3b8'};margin:6px 0">${fmtCurrency(totalOverdue)}</div>
         <div style="font-size:11px;color:#94a3b8">${summary.overdue_count || invoices.filter(i=>i.status==='overdue').length} overdue</div>
       </div>
     </div>
@@ -1169,20 +1169,20 @@ async function renderCpInvoices(el) {
           <tbody>${invoices.map(inv => {
             const isOverdue = new Date(inv.due_date) < new Date() && !['paid','cancelled'].includes(inv.status)
             return `<tr>
-              <td style="font-family:monospace;font-size:12px;color:#818cf8">${inv.invoice_number}</td>
+              <td style="font-family:monospace;font-size:12px;color:#FFB347">${inv.invoice_number}</td>
               <td><div style="font-weight:500;color:#e2e8f0;font-size:13px">${inv.title||'—'}</div></td>
               <td style="font-size:12px;color:#94a3b8">${inv.project_name||'—'}</td>
               <td style="font-size:12px;color:#94a3b8">${fmtDate(inv.issue_date)}</td>
-              <td style="font-size:12px;color:${isOverdue?'#f43f5e':'#94a3b8'}">${fmtDate(inv.due_date)}${isOverdue?' <span class="badge badge-blocked" style="font-size:9px">Overdue</span>':''}</td>
+              <td style="font-size:12px;color:${isOverdue?'#FF5E3A':'#94a3b8'}">${fmtDate(inv.due_date)}${isOverdue?' <span class="badge badge-blocked" style="font-size:9px">Overdue</span>':''}</td>
               <td style="font-weight:600;color:#e2e8f0">${fmtCurrency(inv.total_amount)}</td>
-              <td style="color:${inv.paid_amount>0?'#10b981':'#64748b'}">${inv.paid_amount>0?fmtCurrency(inv.paid_amount):'—'}</td>
+              <td style="color:${inv.paid_amount>0?'#58C68A':'#64748b'}">${inv.paid_amount>0?fmtCurrency(inv.paid_amount):'—'}</td>
               <td><span class="badge ${cpInvoiceBadge(inv.status)}">${inv.status?.replace('_',' ')}</span></td>
               <td>
                 <button class="btn btn-sm btn-outline" onclick="cpViewInvoice('${inv.id}')"><i class="fas fa-eye"></i></button>
               </td>
             </tr>`}).join('')}</tbody>
         </table>`}
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-top:1px solid #1e1e45;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-top:1px solid #2A1812;flex-wrap:wrap">
           <div style="font-size:12px;color:#94a3b8">
             ${pagination.total ? `Showing ${start}-${end} of ${pagination.total}` : 'No invoices found'}
           </div>
@@ -1219,27 +1219,27 @@ async function cpViewInvoice(invoiceId) {
     <div class="modal-header"><h3>Invoice ${inv.invoice_number}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <!-- Header -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding:16px;background:#0a0a1a;border-radius:8px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding:16px;background:#100804;border-radius:8px">
         <div>
           <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.08em">Invoice</div>
-          <div style="font-size:20px;font-weight:700;color:#818cf8;font-family:monospace">${inv.invoice_number}</div>
+          <div style="font-size:20px;font-weight:700;color:#FFB347;font-family:monospace">${inv.invoice_number}</div>
         </div>
         <span class="badge ${cpInvoiceBadge(inv.status)}" style="font-size:12px;padding:6px 12px">${inv.status?.replace('_',' ')}</span>
       </div>
       <div class="form-row" style="margin-bottom:16px">
         <div><div style="font-size:11px;color:#64748b">Issue Date</div><div style="font-size:13px;color:#e2e8f0">${fmtDate(inv.issue_date)}</div></div>
-        <div><div style="font-size:11px;color:#64748b">Due Date</div><div style="font-size:13px;color:${new Date(inv.due_date)<new Date()&&inv.status!=='paid'?'#f43f5e':'#e2e8f0'}">${fmtDate(inv.due_date)}</div></div>
+        <div><div style="font-size:11px;color:#64748b">Due Date</div><div style="font-size:13px;color:${new Date(inv.due_date)<new Date()&&inv.status!=='paid'?'#FF5E3A':'#e2e8f0'}">${fmtDate(inv.due_date)}</div></div>
       </div>
       ${inv.title ? `<div style="margin-bottom:12px"><div style="font-size:11px;color:#64748b">Title</div><div style="font-size:14px;font-weight:600;color:#e2e8f0">${inv.title}</div></div>` : ''}
-      ${inv.description ? `<div style="margin-bottom:16px;padding:12px;background:#0a0a1a;border-radius:8px;font-size:12px;color:#94a3b8;line-height:1.5">${inv.description}</div>` : ''}
+      ${inv.description ? `<div style="margin-bottom:16px;padding:12px;background:#100804;border-radius:8px;font-size:12px;color:#94a3b8;line-height:1.5">${inv.description}</div>` : ''}
       <!-- Amount breakdown -->
-      <div style="background:#0a0a1a;border-radius:8px;overflow:hidden;margin-bottom:16px">
+      <div style="background:#100804;border-radius:8px;overflow:hidden;margin-bottom:16px">
         <table style="width:100%;border-collapse:collapse">
-          <tr style="border-bottom:1px solid #1e1e45"><td style="padding:10px 14px;font-size:12px;color:#94a3b8">Subtotal</td><td style="padding:10px 14px;text-align:right;font-size:12px;color:#e2e8f0">${fmtCurrency(subtotal)}</td></tr>
-          <tr style="border-bottom:1px solid #1e1e45"><td style="padding:10px 14px;font-size:12px;color:#94a3b8">Tax (${inv.tax_pct||0}%)</td><td style="padding:10px 14px;text-align:right;font-size:12px;color:#e2e8f0">${fmtCurrency(tax)}</td></tr>
-          <tr style="background:rgba(16,185,129,.05)"><td style="padding:12px 14px;font-size:14px;font-weight:700;color:#e2e8f0">Total</td><td style="padding:12px 14px;text-align:right;font-size:16px;font-weight:700;color:#10b981">${fmtCurrency(total)}</td></tr>
-          ${inv.paid_amount > 0 ? `<tr><td style="padding:10px 14px;font-size:12px;color:#10b981">Amount Paid</td><td style="padding:10px 14px;text-align:right;font-size:12px;color:#10b981">${fmtCurrency(inv.paid_amount)}</td></tr>` : ''}
-          ${(total - (inv.paid_amount||0)) > 0 && inv.status !== 'paid' ? `<tr><td style="padding:10px 14px;font-size:12px;color:#f59e0b">Balance Due</td><td style="padding:10px 14px;text-align:right;font-size:12px;color:#f59e0b">${fmtCurrency(total - (inv.paid_amount||0))}</td></tr>` : ''}
+          <tr style="border-bottom:1px solid #2A1812"><td style="padding:10px 14px;font-size:12px;color:#94a3b8">Subtotal</td><td style="padding:10px 14px;text-align:right;font-size:12px;color:#e2e8f0">${fmtCurrency(subtotal)}</td></tr>
+          <tr style="border-bottom:1px solid #2A1812"><td style="padding:10px 14px;font-size:12px;color:#94a3b8">Tax (${inv.tax_pct||0}%)</td><td style="padding:10px 14px;text-align:right;font-size:12px;color:#e2e8f0">${fmtCurrency(tax)}</td></tr>
+          <tr style="background:rgba(88,198,138,.05)"><td style="padding:12px 14px;font-size:14px;font-weight:700;color:#e2e8f0">Total</td><td style="padding:12px 14px;text-align:right;font-size:16px;font-weight:700;color:#58C68A">${fmtCurrency(total)}</td></tr>
+          ${inv.paid_amount > 0 ? `<tr><td style="padding:10px 14px;font-size:12px;color:#58C68A">Amount Paid</td><td style="padding:10px 14px;text-align:right;font-size:12px;color:#58C68A">${fmtCurrency(inv.paid_amount)}</td></tr>` : ''}
+          ${(total - (inv.paid_amount||0)) > 0 && inv.status !== 'paid' ? `<tr><td style="padding:10px 14px;font-size:12px;color:#FFCB47">Balance Due</td><td style="padding:10px 14px;text-align:right;font-size:12px;color:#FFCB47">${fmtCurrency(total - (inv.paid_amount||0))}</td></tr>` : ''}
         </table>
       </div>
       ${inv.payment_terms ? `<div style="font-size:12px;color:#64748b"><strong>Payment Terms:</strong> ${inv.payment_terms}</div>` : ''}
@@ -1265,22 +1265,22 @@ async function renderCpActivity(el) {
       <div><h1 class="page-title">Activity Feed</h1><p class="page-subtitle">${pagination.total} latest updates on your projects</p></div>
     </div>
     <div class="card" style="padding:0">
-      <div style="padding:16px;border-bottom:1px solid #1e1e45">
+      <div style="padding:16px;border-bottom:1px solid #2A1812">
         <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Recent Activity</div>
       </div>
       ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-bell"></i><p>No recent activity yet.</p></div>' :
       `<div style="padding:0">
         ${pagination.items.map((log, i) => `
-          <div style="display:flex;gap:14px;padding:14px 16px;${i<pagination.items.length-1?'border-bottom:1px solid #1e1e45':''}">
+          <div style="display:flex;gap:14px;padding:14px 16px;${i<pagination.items.length-1?'border-bottom:1px solid #2A1812':''}">
             <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:0">
               <div style="width:32px;height:32px;border-radius:50%;background:${cpActivityColor(log.action)};display:flex;align-items:center;justify-content:center">
                 <i class="fas ${cpActivityIcon(log.action)}" style="color:#fff;font-size:12px"></i>
               </div>
-              ${i < logs.length-1 ? `<div style="width:1px;flex:1;background:#1e1e45;min-height:20px;margin-top:4px"></div>` : ''}
+              ${i < logs.length-1 ? `<div style="width:1px;flex:1;background:#2A1812;min-height:20px;margin-top:4px"></div>` : ''}
             </div>
             <div style="flex:1;min-width:0;padding-top:4px">
               <div style="font-size:13px;color:#e2e8f0;line-height:1.4">${log.description || (log.action + ' ' + (log.entity_type || ''))}</div>
-              ${log.project_name ? `<div style="font-size:11px;color:#6366f1;margin-top:4px"><i class="fas fa-layer-group" style="margin-right:4px"></i>${log.project_name}</div>` : ''}
+              ${log.project_name ? `<div style="font-size:11px;color:#FF7A45;margin-top:4px"><i class="fas fa-layer-group" style="margin-right:4px"></i>${log.project_name}</div>` : ''}
               <div style="font-size:11px;color:#64748b;margin-top:4px;display:flex;align-items:center;gap:10px">
                 ${log.actor_name ? `<span><i class="fas fa-user" style="margin-right:3px"></i>${log.actor_name}</span>` : ''}
                 <span>${fmtDateRelative(log.created_at)}</span>
@@ -1308,7 +1308,7 @@ async function renderCpProfile(el) {
     <div class="grid-2">
       <div class="card" style="padding:24px">
         <div style="text-align:center;margin-bottom:24px">
-          <div style="width:72px;height:72px;border-radius:50%;background:${client.avatar_color||'#6366f1'};display:inline-flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;margin-bottom:12px">${initials(client.contact_name||'C')}</div>
+          <div style="width:72px;height:72px;border-radius:50%;background:${client.avatar_color||'#FF7A45'};display:inline-flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;margin-bottom:12px">${initials(client.contact_name||'C')}</div>
           <div style="font-size:18px;font-weight:600;color:#e2e8f0">${client.contact_name||'—'}</div>
           <div style="font-size:13px;color:#64748b;margin-top:4px">${client.company_name||'—'}</div>
           <div style="margin-top:8px"><span class="badge badge-inprogress">Client</span></div>
@@ -1317,7 +1317,7 @@ async function renderCpProfile(el) {
           ${profileRow('fa-envelope','Email',client.email||'—')}
           ${profileRow('fa-building','Company',client.company_name||'—')}
           ${client.phone ? profileRow('fa-phone','Phone',client.phone) : ''}
-          ${client.website ? profileRow('fa-globe','Website',`<a href="${client.website}" target="_blank" style="color:#6366f1">${client.website}</a>`) : ''}
+          ${client.website ? profileRow('fa-globe','Website',`<a href="${client.website}" target="_blank" style="color:#FF7A45">${client.website}</a>`) : ''}
           ${client.industry ? profileRow('fa-industry','Industry',client.industry) : ''}
         </div>
       </div>
@@ -1338,8 +1338,8 @@ async function renderCpProfile(el) {
         </div>
         <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-lock"></i>Update Password</button>
         </form>
-        <div style="margin-top:24px;padding-top:20px;border-top:1px solid #1e1e45">
-          <button class="btn btn-outline" style="width:100%;border-color:#f43f5e;color:#f43f5e" onclick="if(confirm('Sign out?'))clientLogout()"><i class="fas fa-sign-out-alt"></i>Sign Out</button>
+        <div style="margin-top:24px;padding-top:20px;border-top:1px solid #2A1812">
+          <button class="btn btn-outline" style="width:100%;border-color:#FF5E3A;color:#FF5E3A" onclick="if(confirm('Sign out?'))clientLogout()"><i class="fas fa-sign-out-alt"></i>Sign Out</button>
         </div>
       </div>
     </div>`
@@ -1349,9 +1349,9 @@ async function renderCpProfile(el) {
 }
 
 function profileRow(icon, label, value) {
-  return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1e1e45">
-    <div style="width:32px;height:32px;border-radius:8px;background:rgba(99,102,241,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      <i class="fas ${icon}" style="color:#818cf8;font-size:12px"></i>
+  return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #2A1812">
+    <div style="width:32px;height:32px;border-radius:8px;background:rgba(255,122,69,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <i class="fas ${icon}" style="color:#FFB347;font-size:12px"></i>
     </div>
     <div>
       <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">${label}</div>
@@ -1393,7 +1393,7 @@ async function loadCpNotifications() {
       list.innerHTML = notifs.length === 0 ?
         '<div style="padding:24px;text-align:center;font-size:12px;color:#64748b">No notifications</div>' :
         notifs.map(n => `
-          <div style="padding:12px 16px;border-bottom:1px solid #1e1e45;${!n.is_read?'background:rgba(99,102,241,.04)':''}">
+          <div style="padding:12px 16px;border-bottom:1px solid #2A1812;${!n.is_read?'background:rgba(255,122,69,.04)':''}">
             <div style="font-size:12px;color:#e2e8f0;line-height:1.4">${n.message}</div>
             <div style="font-size:10px;color:#64748b;margin-top:4px">${fmtDateRelative(n.created_at)}</div>
           </div>`).join('')
@@ -1423,7 +1423,7 @@ function cpInvoiceBadge(s) {
 }
 
 function cpActivityColor(action) {
-  const map = { created:'#6366f1', updated:'#06b6d4', completed:'#10b981', commented:'#8b5cf6', uploaded:'#f59e0b', status_changed:'#f97316', deleted:'#f43f5e' }
+  const map = { created:'#FF7A45', updated:'#F4C842', completed:'#58C68A', commented:'#C56FE6', uploaded:'#FFCB47', status_changed:'#FF7A45', deleted:'#FF5E3A' }
   return map[action] || '#64748b'
 }
 

@@ -1,4 +1,5 @@
 import type { MongoModels, UserRecord } from '../models/mongo-models'
+import { SYSTEM_ROLE_SEEDS } from '../constants/permissions'
 
 async function hashPassword(password: string, salt: string) {
   const encoder = new TextEncoder()
@@ -80,4 +81,34 @@ export async function bootstrapSeed(models: MongoModels, runtimeEnv: Record<stri
 
   await ensureAdminUser(models, passwordSalt, config)
   console.log(`[bootstrap] Admin seed ensured for ${adminEmail}`)
+
+  await ensureSystemRoles(models)
+}
+
+async function ensureSystemRoles(models: MongoModels) {
+  const now = new Date().toISOString()
+  for (const seed of SYSTEM_ROLE_SEEDS) {
+    const existing = await models.roles.findOne({ key: seed.key }) as any
+    if (existing) {
+      // Backfill description / name on system roles, but never overwrite the
+      // permissions admin has tweaked through the UI.
+      const patch: Record<string, unknown> = { is_system: 1, updated_at: now }
+      if (!existing.name) patch.name = seed.name
+      if (!existing.description) patch.description = seed.description
+      if (!Array.isArray(existing.permissions)) patch.permissions = seed.permissions
+      await models.roles.updateById(existing.id, { $set: patch })
+      continue
+    }
+    await models.roles.insertOne({
+      id: `role-${seed.key}`,
+      key: seed.key,
+      name: seed.name,
+      description: seed.description,
+      is_system: 1,
+      permissions: seed.permissions,
+      created_at: now,
+      updated_at: now,
+    })
+  }
+  console.log(`[bootstrap] System roles seeded (${SYSTEM_ROLE_SEEDS.length})`)
 }

@@ -101,9 +101,9 @@ async function loadTodaySummary() {
     const container = document.getElementById('today-summary')
     if (!container) return
     container.innerHTML = `
-      <div style="display:flex;justify-content:space-between;margin-bottom:12px;padding:10px;background:rgba(99,102,241,0.08);border-radius:10px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px;padding:10px;background:rgba(255,122,69,0.08);border-radius:10px">
         <span style="font-size:13px;font-weight:600">Total Hours</span>
-        <span style="font-size:20px;font-weight:800;color:${totalHours>10?'#f87171':totalHours>=8?'#34d399':'#fbbf24'}">${totalHours.toFixed(1)}h</span>
+        <span style="font-size:20px;font-weight:800;color:${totalHours>10?'#FF8866':totalHours>=8?'#58C68A':'#FFD986'}">${totalHours.toFixed(1)}h</span>
       </div>
       ${logs.map(l=>`
       <div style="padding:10px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
@@ -134,8 +134,8 @@ async function loadSuggestions() {
     }
     container.innerHTML = suggestions.map(s=>`
       <div onclick="applySuggestion('${s.project_id}','${(s.module_name||'').replace(/'/g,'')}','${(s.task_description||'').replace(/'/g,'').replace(/"/g,'')}')" 
-        style="padding:10px;background:rgba(99,102,241,0.06);border:1px dashed rgba(99,102,241,0.2);border-radius:10px;cursor:pointer;margin-bottom:8px;transition:all 0.2s"
-        onmouseover="this.style.background='rgba(99,102,241,0.12)'" onmouseout="this.style.background='rgba(99,102,241,0.06)'">
+        style="padding:10px;background:rgba(255,122,69,0.06);border:1px dashed rgba(255,122,69,0.2);border-radius:10px;cursor:pointer;margin-bottom:8px;transition:all 0.2s"
+        onmouseover="this.style.background='rgba(255,122,69,0.12)'" onmouseout="this.style.background='rgba(255,122,69,0.06)'">
         <div style="display:flex;justify-content:space-between">
           <span style="font-size:13px;font-weight:600;color:var(--primary-light)">${s.project_name}</span>
           <span style="font-size:12px;color:var(--warning)">${s.hours_consumed}h</span>
@@ -297,7 +297,7 @@ router.register('approvals', async () => {
                   <td style="font-size:12px;color:var(--text-muted)">${utils.formatDate(l.date)}</td>
                   <td><span style="font-size:12px;color:var(--primary-light)">${l.project_name}</span></td>
                   <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text-secondary)" title="${l.task_description}">${l.task_description}</td>
-                  <td><strong style="color:${l.hours_consumed>10?'#f87171':l.hours_consumed>=8?'#fbbf24':'var(--accent)'}">${l.hours_consumed}h</strong></td>
+                  <td><strong style="color:${l.hours_consumed>10?'#FF8866':l.hours_consumed>=8?'#FFD986':'var(--accent)'}">${l.hours_consumed}h</strong></td>
                   <td>${l.is_billable ? '<span class="badge badge-green">Billable</span>' : '<span class="badge badge-gray">Non-Bill</span>'}</td>
                   <td>
                     <div style="display:flex;gap:6px">
@@ -348,9 +348,9 @@ async function viewLogDetail(id) {
         ${entry.module_name ? `<div><strong>Module:</strong> ${esc(entry.module_name)}</div>` : ''}
         <div><strong>Status:</strong> ${esc(entry.status || '')} · <strong>Approval:</strong> ${esc(entry.approval_status || 'pending')}</div>
         <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);white-space:pre-wrap"><strong>Description:</strong><br/>${esc(entry.task_description || '—')}</div>
-        ${entry.blocker_remarks ? `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(239,68,68,.06);white-space:pre-wrap"><strong>Blocker:</strong><br/>${esc(entry.blocker_remarks)}</div>` : ''}
-        ${entry.extra_hours_reason ? `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(245,158,11,.06);white-space:pre-wrap"><strong>Extra hours:</strong><br/>${esc(entry.extra_hours_reason)}</div>` : ''}
-        ${entry.pm_notes ? `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(99,102,241,.06);white-space:pre-wrap"><strong>PM notes:</strong><br/>${esc(entry.pm_notes)}</div>` : ''}
+        ${entry.blocker_remarks ? `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,94,58,.06);white-space:pre-wrap"><strong>Blocker:</strong><br/>${esc(entry.blocker_remarks)}</div>` : ''}
+        ${entry.extra_hours_reason ? `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,203,71,.06);white-space:pre-wrap"><strong>Extra hours:</strong><br/>${esc(entry.extra_hours_reason)}</div>` : ''}
+        ${entry.pm_notes ? `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,122,69,.06);white-space:pre-wrap"><strong>PM notes:</strong><br/>${esc(entry.pm_notes)}</div>` : ''}
       </div>
       <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
     `, 'modal-lg')
@@ -404,13 +404,13 @@ router.register('allocations', async () => {
                     <td><strong>${d.monthly_available_hours}h</strong></td>
                     <td>
                       <div style="display:flex;align-items:center;gap:8px">
-                        <strong style="color:${d.is_overallocated?'#f87171':'inherit'}">${utils.formatNum(d.total_allocated,0)}h</strong>
+                        <strong style="color:${d.is_overallocated?'#FF8866':'inherit'}">${utils.formatNum(d.total_allocated,0)}h</strong>
                         <span style="font-size:11px;color:var(--text-muted)">(${allocPct}%)</span>
                       </div>
                       ${utils.progressBar(allocPct, d.is_overallocated ? 'red' : allocPct >= 90 ? 'yellow' : 'green')}
                     </td>
                     <td><span style="color:var(--accent)">${utils.formatNum(d.total_consumed,0)}h</span></td>
-                    <td><span style="color:${parseFloat(d.idle_hours) < 0 ? '#f87171' : '#f59e0b'}">${utils.formatNum(Math.abs(d.idle_hours),0)}h ${parseFloat(d.idle_hours) < 0 ? '(OVER)' : 'idle'}</span></td>
+                    <td><span style="color:${parseFloat(d.idle_hours) < 0 ? '#FF8866' : '#FFCB47'}">${utils.formatNum(Math.abs(d.idle_hours),0)}h ${parseFloat(d.idle_hours) < 0 ? '(OVER)' : 'idle'}</span></td>
                     <td><span class="badge badge-blue">${d.project_count} projects</span></td>
                     <td>${d.is_overallocated ? '<span class="badge badge-red"><i class="fas fa-exclamation-triangle"></i> Over-allocated</span>' : '<span class="badge badge-green">Normal</span>'}</td>
                   </tr>`}).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">No data</td></tr>'}
@@ -599,8 +599,8 @@ async function loadTeamReport() {
           labels: data.map(d => d.full_name.split(' ')[0]),
           datasets: [
             { label: 'Capacity', data: data.map(d => d.monthly_available_hours), backgroundColor: 'rgba(100,116,139,0.3)', borderColor: '#64748b', borderWidth: 1 },
-            { label: 'Allocated', data: data.map(d => parseFloat(d.allocated_hours||0)), backgroundColor: 'rgba(99,102,241,0.6)', borderColor: '#6366f1', borderWidth: 2, borderRadius: 4 },
-            { label: 'Logged', data: data.map(d => parseFloat(d.logged_hours||0)), backgroundColor: 'rgba(16,185,129,0.7)', borderColor: '#10b981', borderWidth: 2, borderRadius: 4 },
+            { label: 'Allocated', data: data.map(d => parseFloat(d.allocated_hours||0)), backgroundColor: 'rgba(255,122,69,0.6)', borderColor: '#FF7A45', borderWidth: 2, borderRadius: 4 },
+            { label: 'Logged', data: data.map(d => parseFloat(d.logged_hours||0)), backgroundColor: 'rgba(88,198,138,0.7)', borderColor: '#58C68A', borderWidth: 2, borderRadius: 4 },
           ]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { x: { grid: { display: false }, ticks: { color: '#64748b' } }, y: { grid: { color: 'rgba(45,45,107,0.5)' }, ticks: { color: '#64748b', callback: v => v + 'h' } } } }
@@ -637,17 +637,17 @@ async function loadDevReport() {
       </div>
     `
     if (d.project_breakdown?.length > 0) {
-      const colors = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6']
+      const colors = ['#FF7A45','#FFA577','#58C68A','#FFCB47','#FF5E3A','#C56FE6']
       new Chart(document.getElementById('devProjChart'), {
         type: 'doughnut',
-        data: { labels: d.project_breakdown.map(p=>p.name), datasets: [{ data: d.project_breakdown.map(p=>parseFloat(p.hours||0)), backgroundColor: colors, borderColor: '#1a1a3e', borderWidth: 3 }] },
+        data: { labels: d.project_breakdown.map(p=>p.name), datasets: [{ data: d.project_breakdown.map(p=>parseFloat(p.hours||0)), backgroundColor: colors, borderColor: '#241510', borderWidth: 3 }] },
         options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { labels: { color: '#94a3b8' } } } }
       })
     }
     if (d.daily_hours?.length > 0) {
       new Chart(document.getElementById('devDailyChart'), {
         type: 'bar',
-        data: { labels: d.daily_hours.map(x=>x.date.slice(5)), datasets: [{ data: d.daily_hours.map(x=>parseFloat(x.hours||0)), backgroundColor: 'rgba(99,102,241,0.7)', borderColor: '#6366f1', borderWidth: 2, borderRadius: 4 }] },
+        data: { labels: d.daily_hours.map(x=>x.date.slice(5)), datasets: [{ data: d.daily_hours.map(x=>parseFloat(x.hours||0)), backgroundColor: 'rgba(255,122,69,0.7)', borderColor: '#FF7A45', borderWidth: 2, borderRadius: 4 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#64748b' } }, y: { grid: { color: 'rgba(45,45,107,0.5)' }, ticks: { color: '#64748b', callback: v => v + 'h' } } } }
       })
     }
@@ -692,7 +692,7 @@ async function loadProjReport() {
     if (d.weekly_burn?.length > 0) {
       new Chart(document.getElementById('projMonthlyChart'), {
         type: 'bar',
-        data: { labels: d.weekly_burn.map(x=>x.month), datasets: [{ label: 'Hours', data: d.weekly_burn.map(x=>parseFloat(x.hours||0)), backgroundColor: 'rgba(245,158,11,0.7)', borderColor: '#f59e0b', borderWidth: 2, borderRadius: 4 }] },
+        data: { labels: d.weekly_burn.map(x=>x.month), datasets: [{ label: 'Hours', data: d.weekly_burn.map(x=>parseFloat(x.hours||0)), backgroundColor: 'rgba(255,203,71,0.7)', borderColor: '#FFCB47', borderWidth: 2, borderRadius: 4 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#64748b' } }, y: { grid: { color: 'rgba(45,45,107,0.5)' }, ticks: { color: '#64748b', callback: v => v + 'h' } } } }
       })
     }
@@ -729,7 +729,7 @@ router.register('alerts', async () => {
             <div class="alert-card ${a.severity}" id="alert-${a.id}" style="${a.is_read ? 'opacity:0.7' : ''}">
               <div style="display:flex;justify-content:space-between;align-items:flex-start">
                 <div style="display:flex;align-items:flex-start;gap:12px">
-                  <div style="width:36px;height:36px;border-radius:10px;background:${a.severity==='critical'?'rgba(239,68,68,0.15)':a.severity==='warning'?'rgba(245,158,11,0.15)':'rgba(14,165,233,0.15)'};display:flex;align-items:center;justify-content:center;font-size:16px">
+                  <div style="width:36px;height:36px;border-radius:10px;background:${a.severity==='critical'?'rgba(255,94,58,0.15)':a.severity==='warning'?'rgba(255,203,71,0.15)':'rgba(255,165,119,0.15)'};display:flex;align-items:center;justify-content:center;font-size:16px">
                     ${a.severity==='critical'?'🔴':a.severity==='warning'?'⚠️':'ℹ️'}
                   </div>
                   <div>
@@ -979,7 +979,7 @@ router.register('executive', async () => {
                       <td style="font-size:13px;font-weight:600">${p.name}</td>
                       <td style="color:var(--success)">₹${parseFloat(p.revenue||0).toLocaleString()}</td>
                       <td style="color:var(--warning)">₹${parseFloat(p.effort_cost||0).toLocaleString()}</td>
-                      <td style="color:${profit>=0?'#34d399':'#f87171'};font-weight:700">₹${profit.toLocaleString()}</td>
+                      <td style="color:${profit>=0?'#58C68A':'#FF8866'};font-weight:700">₹${profit.toLocaleString()}</td>
                     </tr>`}).join('') || '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-muted)">No data</td></tr>'}
                 </tbody>
               </table>
@@ -996,7 +996,7 @@ router.register('executive', async () => {
                   const prodScore = Math.min(100, Math.round(parseFloat(dev.total_logged||0) / 160 * 100))
                   const effortCost = parseFloat(dev.total_logged||0) * parseFloat(dev.hourly_cost||0)
                   return `<tr>
-                    <td><div style="width:28px;height:28px;border-radius:50%;background:${i===0?'#f59e0b':i===1?'#94a3b8':i===2?'#f97316':'var(--bg-hover)'};display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">${i+1}</div></td>
+                    <td><div style="width:28px;height:28px;border-radius:50%;background:${i===0?'#FFCB47':i===1?'#94a3b8':i===2?'#FF7A45':'var(--bg-hover)'};display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">${i+1}</div></td>
                     <td><div style="display:flex;align-items:center;gap:8px">
                       <div class="avatar avatar-sm" style="background:${dev.avatar_color}">${utils.getInitials(dev.full_name)}</div>
                       <div><div style="font-size:13px;font-weight:600">${dev.full_name}</div><div style="font-size:11px;color:var(--text-muted)">${dev.designation}</div></div>
@@ -1024,8 +1024,8 @@ router.register('executive', async () => {
         data: {
           labels: d.monthly_trend.map(x=>x.month),
           datasets: [
-            { label: 'Total Hours', data: d.monthly_trend.map(x=>parseFloat(x.total_hours||0)), borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.4, pointRadius: 4 },
-            { label: 'Billable', data: d.monthly_trend.map(x=>parseFloat(x.billable_hours||0)), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.05)', fill: true, tension: 0.4, pointRadius: 4 },
+            { label: 'Total Hours', data: d.monthly_trend.map(x=>parseFloat(x.total_hours||0)), borderColor: '#FF7A45', backgroundColor: 'rgba(255,122,69,0.1)', fill: true, tension: 0.4, pointRadius: 4 },
+            { label: 'Billable', data: d.monthly_trend.map(x=>parseFloat(x.billable_hours||0)), borderColor: '#58C68A', backgroundColor: 'rgba(88,198,138,0.05)', fill: true, tension: 0.4, pointRadius: 4 },
           ]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { x: { grid: { display: false }, ticks: { color: '#64748b' } }, y: { grid: { color: 'rgba(45,45,107,0.5)' }, ticks: { color: '#64748b', callback: v => v + 'h' } } } }
@@ -1049,7 +1049,7 @@ router.register('my-profile', async () => {
         <div style="display:grid;grid-template-columns:340px 1fr;gap:16px">
           <div>
             <div class="glass-card" style="padding:24px;margin-bottom:16px;text-align:center">
-              <div class="avatar avatar-xl" style="background:${d.avatar_color||'#6366f1'};margin:0 auto 12px">${utils.getInitials(d.full_name)}</div>
+              <div class="avatar avatar-xl" style="background:${d.avatar_color||'#FF7A45'};margin:0 auto 12px">${utils.getInitials(d.full_name)}</div>
               <div style="font-size:20px;font-weight:800">${d.full_name}</div>
               <div style="color:var(--text-muted);font-size:13px;margin:4px 0">${d.designation||d.role}</div>
               <div style="margin:8px 0">${d.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-gray">Inactive</span>'}</div>
@@ -1269,7 +1269,7 @@ router.register('resource-planner', async () => {
             </tbody>
           </table>
         </div>
-        <div style="margin-top:16px;padding:14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:12px;font-size:13px;color:var(--text-secondary)">
+        <div style="margin-top:16px;padding:14px;background:rgba(255,122,69,0.06);border:1px solid rgba(255,122,69,0.2);border-radius:12px;font-size:13px;color:var(--text-secondary)">
           <i class="fas fa-info-circle" style="color:var(--primary-light);margin-right:8px"></i>
           Click on any cell to plan developer tasks for that day. This is a visual planning tool to coordinate team workload.
         </div>

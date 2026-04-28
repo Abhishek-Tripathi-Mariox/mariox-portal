@@ -125,15 +125,15 @@ function renderTeamCard(t, projectDevs, canManage) {
       </div>
 
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">
-        <i class="fas fa-user-crown" style="color:#f59e0b"></i>
+        <i class="fas fa-user-crown" style="color:#FFCB47"></i>
         ${t.lead_name ? `Lead: <strong style="color:var(--text)">${escapeHtml(t.lead_name)}</strong>` : 'No team lead'}
       </div>
 
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
         ${members.slice(0, 8).map(m => `
           <div title="${escapeHtml(m.full_name)}${m.role === 'lead' ? ' (Lead)' : ''}" style="position:relative">
-            ${avatar(m.full_name, m.avatar_color || '#6366f1')}
-            ${m.role === 'lead' ? '<span style="position:absolute;top:-2px;right:-2px;background:#f59e0b;color:#fff;border-radius:50%;width:14px;height:14px;font-size:8px;display:flex;align-items:center;justify-content:center">★</span>' : ''}
+            ${avatar(m.full_name, m.avatar_color || '#FF7A45')}
+            ${m.role === 'lead' ? '<span style="position:absolute;top:-2px;right:-2px;background:#FFCB47;color:#fff;border-radius:50%;width:14px;height:14px;font-size:8px;display:flex;align-items:center;justify-content:center">★</span>' : ''}
           </div>
         `).join('')}
         ${members.length > 8 ? `<span style="font-size:11px;color:var(--text-muted);align-self:center">+${members.length - 8} more</span>` : ''}
@@ -175,7 +175,7 @@ async function openCreateTeamModal(projectId) {
             ${staff.map(d => `<option value="${d.id}">${escapeHtml(d.full_name)} (${getTeamMemberRoleLabel(d.role)})</option>`).join('')}
           </select>
         </div>
-        <div class="form-group"><label class="form-label">Colour</label><input id="team-color" type="color" value="#6366f1" class="form-input" style="height:40px;padding:3px"/></div>
+        <div class="form-group"><label class="form-label">Colour</label><input id="team-color" type="color" value="#FF7A45" class="form-input" style="height:40px;padding:3px"/></div>
       </div>
     `,
     confirmText: 'Create Team',
@@ -223,7 +223,7 @@ async function openCreateTeamFromOverviewModal() {
               <option value="">— No lead —</option>
             </select>
           </div>
-          <div class="form-group"><label class="form-label">Colour</label><input id="team-color" type="color" value="#6366f1" class="form-input" style="height:40px;padding:3px"/></div>
+          <div class="form-group"><label class="form-label">Colour</label><input id="team-color" type="color" value="#FF7A45" class="form-input" style="height:40px;padding:3px"/></div>
         </div>
       `,
       confirmText: 'Create Team',
@@ -280,7 +280,7 @@ async function openEditTeamModal(teamId) {
             ${staff.map(d => `<option value="${d.id}" ${String(t.team_lead_id || '') === String(d.id) ? 'selected' : ''}>${escapeHtml(d.full_name)} (${getTeamMemberRoleLabel(d.role)})</option>`).join('')}
           </select>
         </div>
-        <div class="form-group"><label class="form-label">Colour</label><input id="team-color" type="color" value="${t.color || '#6366f1'}" class="form-input" style="height:40px;padding:3px"/></div>
+        <div class="form-group"><label class="form-label">Colour</label><input id="team-color" type="color" value="${t.color || '#FF7A45'}" class="form-input" style="height:40px;padding:3px"/></div>
       `,
       confirmText: 'Save',
       onConfirm: async () => {
@@ -322,7 +322,7 @@ async function openManageMembersModal(teamId) {
 
     const memberRows = (t.members || []).map(m => `
       <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.04);margin-bottom:6px">
-        ${avatar(m.full_name, m.avatar_color || '#6366f1')}
+        ${avatar(m.full_name, m.avatar_color || '#FF7A45')}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600">${escapeHtml(m.full_name)}</div>
           <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(m.designation || 'Team Member')}</div>
@@ -474,7 +474,7 @@ async function openKanbanPermissionsModal(projectId, projectName) {
           `).join('')}
         </tbody>
       </table>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:10px;padding:8px;background:rgba(99,102,241,.08);border-radius:6px;border-left:3px solid var(--primary)">
+      <div style="font-size:11px;color:var(--text-muted);margin-top:10px;padding:8px;background:rgba(255,122,69,.08);border-radius:6px;border-left:3px solid var(--primary)">
         <strong>Note:</strong> "Edit own tasks" only applies to tasks where the user is the assignee. Admin keeps full access by default. Changes apply immediately on save.
       </div>
     `
@@ -581,7 +581,7 @@ function openInviteUserModal() {
           ${inviteRoleOptions.map(([value, label]) => `<option value="${value}" ${value === 'developer' ? 'selected' : ''}>${label}</option>`).join('')}
         </select>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);padding:8px;background:rgba(99,102,241,.08);border-radius:6px;border-left:3px solid var(--primary)">
+      <div style="font-size:11px;color:var(--text-muted);padding:8px;background:rgba(255,122,69,.08);border-radius:6px;border-left:3px solid var(--primary)">
         After you create this invite, you'll get a link to share with the user. They'll set their own password on first use.
       </div>
     `,
@@ -646,7 +646,7 @@ async function renderAcceptInvitePage() {
     <div id="login-page">
       <div class="login-card">
         <div class="login-logo">
-          <div style="width:52px;height:52px;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.3);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:22px">🚀</div>
+          <div style="width:52px;height:52px;background:rgba(255,122,69,.15);border:1px solid rgba(255,122,69,.3);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:22px">🚀</div>
           <h1>DevPortal</h1>
           <p>Accept your invite</p>
         </div>
@@ -660,7 +660,7 @@ async function renderAcceptInvitePage() {
     const body = document.getElementById('invite-body')
     if (!data.valid) {
       body.innerHTML = `
-        <div style="padding:16px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;color:#fca5a5;font-size:13px">
+        <div style="padding:16px;background:rgba(255,94,58,.1);border:1px solid rgba(255,94,58,.3);border-radius:8px;color:#FFB099;font-size:13px">
           <i class="fas fa-exclamation-circle"></i> ${escapeHtml(data.error || 'This invite is invalid.')}
         </div>
         <a href="/" class="btn btn-secondary w-full" style="margin-top:14px;text-decoration:none;text-align:center">Back to login</a>
@@ -670,7 +670,7 @@ async function renderAcceptInvitePage() {
     const { email, full_name, role } = data.data
     body.innerHTML = `
       <form onsubmit="submitAcceptInvite('${token}');return false" autocomplete="off">
-        <div style="padding:12px;background:rgba(16,185,129,.08);border-left:3px solid var(--success);border-radius:6px;margin-bottom:14px;font-size:13px">
+        <div style="padding:12px;background:rgba(88,198,138,.08);border-left:3px solid var(--success);border-radius:6px;margin-bottom:14px;font-size:13px">
           Welcome, <strong>${escapeHtml(full_name)}</strong>!<br/>
           <span style="color:var(--text-muted);font-size:12px">You've been invited as a <strong>${role}</strong> to ${escapeHtml(email)}.</span>
         </div>
@@ -721,7 +721,7 @@ function pxModal({ title, body, confirmText = 'Confirm', cancelText = 'Cancel', 
   const wrapper = document.createElement('div')
   wrapper.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)'
   wrapper.innerHTML = `
-    <div style="background:var(--bg-elevated,#1e293b);border:1px solid var(--border,#334155);border-radius:14px;padding:20px;width:100%;max-width:${large ? '720px' : '480px'};max-height:90vh;overflow:auto;color:var(--text,#e2e8f0)">
+    <div style="background:var(--bg-elevated,#2A1812);border:1px solid var(--border,#334155);border-radius:14px;padding:20px;width:100%;max-width:${large ? '720px' : '480px'};max-height:90vh;overflow:auto;color:var(--text,#e2e8f0)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <h3 style="margin:0;font-size:16px;font-weight:700">${escapeHtml(title)}</h3>
         <button onclick="this.closest('[data-px-modal]').remove()" style="background:none;border:none;color:var(--text-muted,#64748b);cursor:pointer;font-size:20px;line-height:1">×</button>

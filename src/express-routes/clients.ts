@@ -44,7 +44,7 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
       const company_name = validateName(body.company_name, 'Company name', 2, 120)
       const contact_name = validateName(body.contact_name, 'Contact name', 2, 100)
       const phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
-      const website = validateOptional(body.website, (v) => validateUrl(v, 'Website'))
+      const website = body.website ? String(body.website).trim().slice(0, 200) : null
       const industry = validateOptional(body.industry, (v) => validateLength(String(v).trim(), 2, 80, 'Industry'))
       const avatar_color = body.avatar_color
         ? validateHexColor(body.avatar_color, 'Avatar color')
@@ -92,7 +92,7 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
       if ('company_name' in body) patch.company_name = validateName(body.company_name, 'Company name', 2, 120)
       if ('contact_name' in body) patch.contact_name = validateName(body.contact_name, 'Contact name', 2, 100)
       if ('phone' in body) patch.phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
-      if ('website' in body) patch.website = validateOptional(body.website, (v) => validateUrl(v, 'Website'))
+      if ('website' in body) patch.website = body.website ? String(body.website).trim().slice(0, 200) : null
       if ('industry' in body) patch.industry = validateOptional(body.industry, (v) => validateLength(String(v).trim(), 2, 80, 'Industry'))
       if ('avatar_color' in body && body.avatar_color) patch.avatar_color = validateHexColor(body.avatar_color, 'Avatar color')
       if ('is_active' in body) patch.is_active = body.is_active ? 1 : 0

@@ -28,7 +28,7 @@ function renderDevCard(d) {
   const consumed = parseFloat(d.monthly_consumed || 0)
   const capacity = parseFloat(d.monthly_available_hours || 160)
   const pct = Math.round((consumed / capacity) * 100)
-  const color = pct >= 100 ? '#ef4444' : pct >= 70 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#94a3b8'
+  const color = pct >= 100 ? '#FF5E3A' : pct >= 70 ? '#58C68A' : pct >= 50 ? '#FFCB47' : '#94a3b8'
   const techStack = d.tech_stack ? (typeof d.tech_stack === 'string' ? JSON.parse(d.tech_stack) : d.tech_stack) : []
   return `
     <div class="glass-card" style="padding:20px;cursor:pointer" onclick="router.navigate('developer-detail',{id:'${d.id}'})" id="dev-card-${d.id}">
@@ -101,13 +101,21 @@ async function openEditDeveloperModal(id) {
   openDeveloperModal(res.data)
 }
 
-function openDeveloperModal(dev = null) {
-  const roleOptions = [
+async function openDeveloperModal(dev = null) {
+  // Default options (kept as a fallback if /settings/roles is not reachable)
+  let roleOptions = [
     ['developer', 'Developer'],
     ['pm', 'PM'],
     ['pc', 'PC'],
     ['team', 'Team'],
   ]
+  try {
+    const res = await API.get('/settings/roles')
+    const roles = (res.roles || res.data || []).filter(r => r.key !== 'admin' && r.key !== 'client')
+    if (roles.length) {
+      roleOptions = roles.map(r => [r.key, r.name || r.key])
+    }
+  } catch {}
   const isEdit = !!(dev && dev.id)
   const selectedRole = dev?.role || 'developer'
   const tech = dev?.tech_stack ? (typeof dev.tech_stack === 'string' ? (() => { try { return JSON.parse(dev.tech_stack) } catch { return [] } })() : dev.tech_stack) : []
@@ -133,7 +141,7 @@ function openDeveloperModal(dev = null) {
         <div class="form-group"><label class="form-label">Daily Work Hours</label><input id="dev-daily-hours" class="form-input" type="number" value="${dev?.daily_work_hours||8}" min="1" max="12"/></div>
         <div class="form-group"><label class="form-label">Monthly Available Hours</label><input id="dev-monthly-hours" class="form-input" type="number" value="${dev?.monthly_available_hours||160}"/></div>
         <div class="form-group"><label class="form-label">Hourly Cost (₹)</label><input id="dev-hourly-cost" class="form-input" type="number" value="${dev?.hourly_cost||0}"/></div>
-        <div class="form-group"><label class="form-label">Avatar Color</label><input id="dev-color" class="form-input" type="color" value="${dev?.avatar_color||'#6366f1'}" style="height:40px;cursor:pointer;padding:4px"/></div>
+        <div class="form-group"><label class="form-label">Avatar Color</label><input id="dev-color" class="form-input" type="color" value="${dev?.avatar_color||'#FF7A45'}" style="height:40px;cursor:pointer;padding:4px"/></div>
       </div>
       <div class="form-group"><label class="form-label">Tech Stack (comma separated)</label>
         <input id="dev-tech" class="form-input" value="${Array.isArray(tech) ? tech.join(', ') : ''}" placeholder="React, Node.js, PostgreSQL"/></div>
@@ -305,7 +313,7 @@ router.register('developer-detail', async ({ id }) => {
     if (d.assignments?.length > 0) {
       const ctx = document.getElementById('devDistChart')
       if (ctx) {
-        const colors = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899']
+        const colors = ['#FF7A45','#FFA577','#58C68A','#FFCB47','#FF5E3A','#C56FE6','#C56FE6']
         new Chart(ctx, {
           type: 'doughnut',
           data: {
@@ -352,9 +360,9 @@ function renderProjectCard(p) {
   const tlPct = Math.min(100, Math.max(0, parseFloat(p.timeline_progress || 0)))
   const remaining = Math.max(0, (p.total_allocated_hours || 0) - (p.consumed_hours || 0))
   const color = burnPct >= 100 ? 'red' : burnPct >= 80 ? 'yellow' : 'green'
-  const priorityColors = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#94a3b8' }
+  const priorityColors = { critical: '#FF5E3A', high: '#FF7A45', medium: '#FFCB47', low: '#94a3b8' }
   return `
-    <div class="glass-card" style="padding:20px;cursor:pointer;border-top:3px solid ${priorityColors[p.priority]||'#6366f1'}" onclick="router.navigate('project-detail',{id:'${p.id}'})" id="proj-card-${p.id}">
+    <div class="glass-card" style="padding:20px;cursor:pointer;border-top:3px solid ${priorityColors[p.priority]||'#FF7A45'}" onclick="router.navigate('project-detail',{id:'${p.id}'})" id="proj-card-${p.id}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -374,7 +382,7 @@ function renderProjectCard(p) {
           <div style="font-size:10px;color:var(--text-muted)">Allocated</div>
         </div>
         <div style="flex:1;text-align:center;padding:8px;background:rgba(255,255,255,0.03);border-radius:8px">
-          <div style="font-size:18px;font-weight:800;color:${color==='red'?'#f87171':color==='yellow'?'#fbbf24':'#34d399'}">${utils.formatNum(p.consumed_hours,0)}h</div>
+          <div style="font-size:18px;font-weight:800;color:${color==='red'?'#FF8866':color==='yellow'?'#FFD986':'#58C68A'}">${utils.formatNum(p.consumed_hours,0)}h</div>
           <div style="font-size:10px;color:var(--text-muted)">Consumed</div>
         </div>
         <div style="flex:1;text-align:center;padding:8px;background:rgba(255,255,255,0.03);border-radius:8px">
@@ -432,7 +440,7 @@ function toggleDevSelection(devId, devName, devDesig) {
   // Update dev list highlighting
   document.querySelectorAll(`[data-dev-row="${devId}"]`).forEach(row => {
     row.style.background = window._projSelectedDevs.some(d => d.id === devId) ? 'rgba(108,95,252,0.08)' : ''
-    row.style.borderColor = window._projSelectedDevs.some(d => d.id === devId) ? '#6C5FFC' : 'var(--border)'
+    row.style.borderColor = window._projSelectedDevs.some(d => d.id === devId) ? '#FF7A45' : 'var(--border)'
   })
 }
 
@@ -446,7 +454,7 @@ function renderSelectedDevs() {
   }
   cont.innerHTML = window._projSelectedDevs.map(d => `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-input);border-radius:8px;border:1px solid rgba(108,95,252,0.3)">
-      <div style="width:28px;height:28px;border-radius:50%;background:#6C5FFC;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${escapeHtml(d.name.split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
+      <div style="width:28px;height:28px;border-radius:50%;background:#FF7A45;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${escapeHtml(d.name.split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:600;color:var(--text-primary)">${escapeHtml(d.name)}</div>
         <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(d.designation||'staff')}</div>
@@ -454,7 +462,7 @@ function renderSelectedDevs() {
       <div style="display:flex;align-items:center;gap:6px">
         <input type="number" value="${d.hours}" min="0" placeholder="Hrs" style="width:65px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text-primary);font-size:12px" oninput="updateDevHours('${d.id}',this.value)" title="Allocated hours"/>
         <span style="font-size:10px;color:var(--text-muted)">hrs</span>
-        <button onclick="toggleDevSelection('${d.id}','${d.name}','${d.designation||''}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:13px" title="Remove"><i class="fas fa-times-circle"></i></button>
+        <button onclick="toggleDevSelection('${d.id}','${d.name}','${d.designation||''}')" style="background:none;border:none;color:#FF5E3A;cursor:pointer;font-size:13px" title="Remove"><i class="fas fa-times-circle"></i></button>
       </div>
     </div>`).join('')
   updateProjectDevCount()
@@ -480,16 +488,17 @@ function openProjectModal(id = null) {
       const devsRes = await API.get(`/projects/${id}/developers`).catch(() => ({ developers: [] }))
       currentDevs = devsRes.developers || []
     }
-    const [devsRes, pmsRes, adminRes, clientsRes, teamsRes, teamUsersRes] = await Promise.all([
+    const [devsRes, pmsRes, pcsRes, clientsRes, teamsRes, teamUsersRes] = await Promise.all([
       API.get('/users?role=developer'),
       API.get('/users?role=pm'),
-      API.get('/users?role=admin'),
+      API.get('/users?role=pc').catch(() => ({ users: [] })),
       API.get('/clients').catch(() => ({ clients: [] })),
       API.get('/project-teams').catch(() => ({ teams: [] })),
       API.get('/users?role=team').catch(() => ({ users: [] })),
     ])
     const devs = devsRes.users || devsRes.data || []
-    const pms = [...(pmsRes.users || pmsRes.data || []), ...(adminRes.users || adminRes.data || [])]
+    const pms = pmsRes.users || pmsRes.data || []
+    const pcs = pcsRes.users || pcsRes.data || []
     const clients = clientsRes.clients || clientsRes.data || []
     const teams = teamsRes.teams || teamsRes.data || []
     const teamUsers = teamUsersRes.users || teamUsersRes.data || []
@@ -559,9 +568,9 @@ function openProjectModal(id = null) {
               <div class="card-body">
                 <div class="grid-2" style="gap:12px;margin-bottom:16px">
                   <div class="form-group"><label class="form-label">Project Manager *</label>
-                    <select id="proj-pm" class="form-select"><option value="">Select PM</option>${pms.map(p=>`<option value="${p.id}" ${proj?.pm_id===p.id?'selected':''}>${esc(p.full_name)} (${esc(p.role)})</option>`).join('')}</select></div>
-                  <div class="form-group"><label class="form-label">Team Lead</label>
-                    <select id="proj-lead" class="form-select"><option value="">None</option>${devs.map(d=>`<option value="${d.id}" ${proj?.team_lead_id===d.id?'selected':''}>${esc(d.full_name)} (${esc(d.role || d.designation || 'staff')})</option>`).join('')}</select></div>
+                    <select id="proj-pm" class="form-select"><option value="">Select PM</option>${pms.map(p=>`<option value="${p.id}" ${proj?.pm_id===p.id?'selected':''}>${esc(p.full_name)}</option>`).join('')}</select></div>
+                  <div class="form-group"><label class="form-label">Product Coordinator</label>
+                    <select id="proj-pc" class="form-select"><option value="">None</option>${pcs.map(c=>`<option value="${c.id}" ${proj?.pc_id===c.id?'selected':''}>${esc(c.full_name)}</option>`).join('')}</select></div>
                 </div>
 
                 <div class="form-group">
@@ -579,8 +588,8 @@ function openProjectModal(id = null) {
                 <div id="proj-assign-inhouse-panel" style="display:${initialAssignment==='in_house'?'block':'none'}">
                   <div class="form-group">
                     <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-                      <span><i class="fas fa-code" style="color:#6C5FFC;margin-right:6px"></i>Allocated Developers</span>
-                      <span id="dev-sel-count" style="font-size:11px;color:#6C5FFC;font-weight:600">${window._projSelectedDevs.length} selected</span>
+                      <span><i class="fas fa-code" style="color:#FF7A45;margin-right:6px"></i>Allocated Developers</span>
+                      <span id="dev-sel-count" style="font-size:11px;color:#FF7A45;font-weight:600">${window._projSelectedDevs.length} selected</span>
                     </label>
                     <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
                       <div style="padding:8px 12px;background:var(--surface-2);border-bottom:1px solid var(--border)">
@@ -590,28 +599,24 @@ function openProjectModal(id = null) {
                         ${devs.length === 0 ? '<div style="color:var(--text-muted);font-size:12px;padding:8px;text-align:center">No developers found</div>' :
                         devs.map(d => {
                           const isSel = window._projSelectedDevs.some(s => s.id === d.id)
-                          return `<div data-dev-row="${d.id}" onclick="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||d.role||'')}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:.15s;border:1px solid ${isSel?'#6C5FFC':'transparent'};background:${isSel?'rgba(108,95,252,0.08)':''};margin-bottom:4px">
-                            <input type="checkbox" data-dev-cb="${d.id}" ${isSel?'checked':''} onchange="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||d.role||'')}')" onclick="event.stopPropagation()" style="accent-color:#6C5FFC;width:15px;height:15px"/>
-                            <div style="width:28px;height:28px;border-radius:50%;background:${d.avatar_color||'#6C5FFC'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${esc((d.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
+                          return `<div data-dev-row="${d.id}" onclick="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||d.role||'')}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:.15s;border:1px solid ${isSel?'#FF7A45':'transparent'};background:${isSel?'rgba(108,95,252,0.08)':''};margin-bottom:4px">
+                            <input type="checkbox" data-dev-cb="${d.id}" ${isSel?'checked':''} onchange="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||d.role||'')}')" onclick="event.stopPropagation()" style="accent-color:#FF7A45;width:15px;height:15px"/>
+                            <div style="width:28px;height:28px;border-radius:50%;background:${d.avatar_color||'#FF7A45'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${esc((d.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
                             <div style="flex:1">
                               <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${esc(d.full_name)}</div>
                               <div style="font-size:11px;color:var(--text-muted)">${esc(d.designation||d.role||'staff')}</div>
                             </div>
-                            ${isSel ? '<i class="fas fa-check-circle" style="color:#6C5FFC;font-size:14px"></i>' : ''}
+                            ${isSel ? '<i class="fas fa-check-circle" style="color:#FF7A45;font-size:14px"></i>' : ''}
                           </div>`
                         }).join('')}
                       </div>
                     </div>
                   </div>
-                  <div class="form-group" style="margin-bottom:0">
-                    <label class="form-label"><i class="fas fa-clock" style="color:#f59e0b;margin-right:6px"></i>Hour Allocation per Developer</label>
-                    <div id="selected-devs-list" style="display:flex;flex-direction:column;gap:8px"></div>
-                  </div>
                 </div>
 
                 <div id="proj-assign-external-panel" style="display:${initialAssignment==='external'?'block':'none'}">
                   <div class="form-group" style="margin-bottom:0">
-                    <label class="form-label"><i class="fas fa-users-cog" style="color:#6C5FFC;margin-right:6px"></i>Select External Team / Member *</label>
+                    <label class="form-label"><i class="fas fa-users-cog" style="color:#FF7A45;margin-right:6px"></i>Select External Team / Member *</label>
                     <select id="proj-external-team" class="form-select">
                       <option value="">— Select —</option>
                       ${teams.length ? `<optgroup label="Project Teams">
@@ -648,9 +653,9 @@ function openProjectModal(id = null) {
               <div class="card-header"><h3>Creation Guide</h3></div>
               <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
                 <div class="selection-chip"><i class="fas fa-check"></i> Project, Kanban permissions, and default columns are created on save.</div>
-                <div class="selection-chip"><i class="fas fa-user-tie"></i> Assign PM, team lead, and developers before creating the project.</div>
+                <div class="selection-chip"><i class="fas fa-user-tie"></i> Assign PM, product coordinator, and developers before creating the project.</div>
                 <div class="selection-chip"><i class="fas fa-calendar"></i> Start and end dates are validated before submit.</div>
-                <div class="selection-chip"><i class="fas fa-coins"></i> Hours must be greater than zero.</div>
+                <div class="selection-chip"><i class="fas fa-coins"></i> Set total project hours and revenue in the Budget section.</div>
               </div>
             </div>
 
@@ -744,7 +749,8 @@ async function saveProject(id) {
       total_allocated_hours: parseFloat(document.getElementById('proj-hours').value)||0,
       estimated_budget_hours: parseFloat(document.getElementById('proj-budget').value)||0,
       pm_id: document.getElementById('proj-pm').value||null,
-      team_lead_id: document.getElementById('proj-lead').value||null,
+      pc_id: document.getElementById('proj-pc').value||null,
+      team_lead_id: null,
       revenue: parseFloat(document.getElementById('proj-revenue').value)||0,
       billable: document.getElementById('proj-billable').value==='1',
       description: document.getElementById('proj-desc').value,
@@ -842,14 +848,14 @@ router.register('project-detail', async ({ id }) => {
                 <div>
                   <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
                     <span style="color:var(--text-muted)">Timeline Progress</span>
-                    <span style="font-weight:700;color:#0ea5e9">${tlPct}%</span>
+                    <span style="font-weight:700;color:#FFA577">${tlPct}%</span>
                   </div>
                   <div class="progress-bar" style="height:10px"><div class="progress-fill blue" style="width:${tlPct}%"></div></div>
                 </div>
                 <div>
                   <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
                     <span style="color:var(--text-muted)">Hours Burned</span>
-                    <span style="font-weight:700;color:${burnPct>=100?'#f87171':burnPct>=80?'#fbbf24':'#34d399'}">${burnPct}%</span>
+                    <span style="font-weight:700;color:${burnPct>=100?'#FF8866':burnPct>=80?'#FFD986':'#58C68A'}">${burnPct}%</span>
                   </div>
                   <div class="progress-bar" style="height:10px"><div class="progress-fill ${burnPct>=100?'red':burnPct>=80?'yellow':'green'}" style="width:${Math.min(burnPct,100)}%"></div></div>
                 </div>
@@ -914,7 +920,7 @@ router.register('project-detail', async ({ id }) => {
               <h3 style="font-size:13px;font-weight:700;margin-bottom:14px">Project Info</h3>
               ${[
                 ['PM', p.pm_name||'-'],
-                ['Team Lead', p.team_lead_name||'-'],
+                ['Product Coordinator', p.pc_name||'-'],
                 ['Start Date', utils.formatDate(p.start_date)],
                 ['Deadline', utils.formatDate(p.expected_end_date)],
                 ['Billable', p.billable ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-gray">No</span>'],
@@ -960,7 +966,7 @@ router.register('project-detail', async ({ id }) => {
           type: 'line',
           data: {
             labels: p.monthly_burn.map(d=>d.month),
-            datasets: [{label:'Hours Burned', data: p.monthly_burn.map(d=>parseFloat(d.hours||0)), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', fill:true, tension:0.4, pointBackgroundColor:'#f59e0b', pointRadius:4}]
+            datasets: [{label:'Hours Burned', data: p.monthly_burn.map(d=>parseFloat(d.hours||0)), borderColor:'#FFCB47', backgroundColor:'rgba(255,203,71,0.1)', fill:true, tension:0.4, pointBackgroundColor:'#FFCB47', pointRadius:4}]
           },
           options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false},ticks:{color:'#64748b'}},y:{grid:{color:'rgba(45,45,107,0.5)'},ticks:{color:'#64748b',callback:v=>v+'h'}}} }
         })

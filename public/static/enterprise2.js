@@ -36,14 +36,14 @@ async function renderDocumentsCenter(el) {
       filteredDocs.forEach(d => { const c = d.category||'other'; if(!byCat[c]) byCat[c]=[]; byCat[c].push(d) })
       return Object.entries(byCat).map(([cat, catDocs]) => `
         <div style="margin-bottom:24px">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1e1e45">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #2A1812">
             <span style="font-size:18px">${docCategoryIcon(cat)}</span>
             <span style="font-size:13px;font-weight:600;color:#e2e8f0">${categoryLabels[cat]||cat}</span>
-            <span style="background:#1e1e45;color:#94a3b8;font-size:10px;padding:2px 7px;border-radius:10px">${catDocs.length}</span>
+            <span style="background:#2A1812;color:#94a3b8;font-size:10px;padding:2px 7px;border-radius:10px">${catDocs.length}</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">
             ${catDocs.map(doc => `
-              <div class="card" style="padding:14px;transition:.2s" onmouseover="this.style.borderColor='${docCategoryColor(doc.category)}'" onmouseout="this.style.borderColor='#1e1e45'">
+              <div class="card" style="padding:14px;transition:.2s" onmouseover="this.style.borderColor='${docCategoryColor(doc.category)}'" onmouseout="this.style.borderColor='#2A1812'">
                 <div style="display:flex;align-items:flex-start;gap:10px">
                   <div style="width:36px;height:36px;border-radius:8px;background:${docCategoryColor(doc.category)};display:flex;align-items:center;justify-content:center;flex-shrink:0">
                     <i class="fas ${docFTypeIcon(doc.file_type)}" style="color:#fff;font-size:14px"></i>
@@ -66,7 +66,7 @@ async function renderDocumentsCenter(el) {
                   <a href="${doc.file_url||'#'}" download class="btn btn-sm btn-primary" style="flex:1;text-align:center;text-decoration:none">
                     <i class="fas fa-download"></i>Download
                   </a>
-                  ${['admin','pm'].includes(_user.role) ? `<button class="btn btn-sm btn-outline" onclick="deleteDoc('${doc.id}')" style="color:#f43f5e;border-color:#f43f5e"><i class="fas fa-trash"></i></button>` : ''}
+                  ${['admin','pm'].includes(_user.role) ? `<button class="btn btn-sm btn-outline" onclick="deleteDoc('${doc.id}')" style="color:#FF5E3A;border-color:#FF5E3A"><i class="fas fa-trash"></i></button>` : ''}
                 </div>
               </div>`).join('')}
           </div>
@@ -256,7 +256,7 @@ async function renderTimesheetsView(el) {
     <div id="ts-quick-form" style="display:none;margin-bottom:16px">
       <div class="card" style="padding:20px">
         <div style="display:flex;justify-content:space-between;margin-bottom:14px">
-          <h3 style="font-size:14px;font-weight:600;color:#e2e8f0;margin:0"><i class="fas fa-plus" style="color:#6366f1;margin-right:8px"></i>New Time Entry</h3>
+          <h3 style="font-size:14px;font-weight:600;color:#e2e8f0;margin:0"><i class="fas fa-plus" style="color:#FF7A45;margin-right:8px"></i>New Time Entry</h3>
           <button onclick="document.getElementById('ts-quick-form').style.display='none'" style="background:none;border:none;color:#64748b;cursor:pointer">✕</button>
         </div>
         <div class="form-row">
@@ -376,10 +376,10 @@ async function loadTimesheetData() {
 
     if (summaryEl) {
       summaryEl.innerHTML = `
-        ${miniStatCard('Total Hours', total.toFixed(1)+'h', '#6366f1','fa-clock')}
-        ${miniStatCard('Billable', billable.toFixed(1)+'h', '#10b981','fa-check-circle')}
+        ${miniStatCard('Total Hours', total.toFixed(1)+'h', '#FF7A45','fa-clock')}
+        ${miniStatCard('Billable', billable.toFixed(1)+'h', '#58C68A','fa-check-circle')}
         ${miniStatCard('Non-Billable', (total-billable).toFixed(1)+'h', '#64748b','fa-ban')}
-        ${miniStatCard('Pending Approval', pending, '#f59e0b','fa-hourglass-half')}`
+        ${miniStatCard('Pending Approval', pending, '#FFCB47','fa-hourglass-half')}`
     }
 
     if (!wrap) return
@@ -404,13 +404,13 @@ async function loadTimesheetData() {
             <td><div style="font-size:12px;color:#e2e8f0">${l.full_name||l.user_name||'—'}</div></td>
             <td><div style="font-size:12px;color:#94a3b8;white-space:nowrap">${l.project_name||'—'}</div><div style="font-size:10px;color:#64748b">${l.project_code||''}</div></td>
             <td style="font-size:12px;color:#94a3b8">${l.module_name||'—'}</td>
-            <td style="max-width:200px"><div style="font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.task_description||''}">${(l.task_description||'—').substring(0,60)}${(l.task_description||'').length>60?'…':''}</div>${l.blocker_remarks?`<div style="font-size:10px;color:#f43f5e;margin-top:2px"><i class="fas fa-exclamation-triangle" style="margin-right:3px"></i>${l.blocker_remarks.substring(0,40)}</div>`:''}</td>
-            <td style="font-weight:600;color:${(l.hours_consumed||0)>8?'#f59e0b':'#e2e8f0'}">${parseFloat(l.hours_consumed||0).toFixed(1)}h${l.is_billable?'':' <span style="font-size:9px;color:#64748b">(NB)</span>'}</td>
+            <td style="max-width:200px"><div style="font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.task_description||''}">${(l.task_description||'—').substring(0,60)}${(l.task_description||'').length>60?'…':''}</div>${l.blocker_remarks?`<div style="font-size:10px;color:#FF5E3A;margin-top:2px"><i class="fas fa-exclamation-triangle" style="margin-right:3px"></i>${l.blocker_remarks.substring(0,40)}</div>`:''}</td>
+            <td style="font-weight:600;color:${(l.hours_consumed||0)>8?'#FFCB47':'#e2e8f0'}">${parseFloat(l.hours_consumed||0).toFixed(1)}h${l.is_billable?'':' <span style="font-size:9px;color:#64748b">(NB)</span>'}</td>
             <td><span class="badge ${statusColors[l.status]||'badge-todo'}">${l.status||'—'}</span></td>
             <td><span class="badge ${approvalColors[l.approval_status]||'badge-todo'}">${l.approval_status||'pending'}</span>${l.pm_notes?`<div style="font-size:10px;color:#94a3b8;margin-top:2px">${l.pm_notes.substring(0,30)}</div>`:''}</td>
             ${isManager ? `<td style="white-space:nowrap">
-              ${l.approval_status==='pending'?`<button class="btn btn-sm btn-outline" style="color:#10b981;border-color:#10b981" onclick="approveTsEntry('${l.id}','approved')"><i class="fas fa-check"></i></button>
-              <button class="btn btn-sm btn-outline" style="color:#f43f5e;border-color:#f43f5e;margin-left:4px" onclick="approveTsEntry('${l.id}','rejected')"><i class="fas fa-times"></i></button>`:'—'}
+              ${l.approval_status==='pending'?`<button class="btn btn-sm btn-outline" style="color:#58C68A;border-color:#58C68A" onclick="approveTsEntry('${l.id}','approved')"><i class="fas fa-check"></i></button>
+              <button class="btn btn-sm btn-outline" style="color:#FF5E3A;border-color:#FF5E3A;margin-left:4px" onclick="approveTsEntry('${l.id}','rejected')"><i class="fas fa-times"></i></button>`:'—'}
             </td>` : ''}
           </tr>`}).join('')}
         </tbody>
@@ -526,8 +526,8 @@ async function renderReportsView(el) {
   </div>
 
   <!-- Report tabs -->
-  <div style="display:flex;gap:4px;background:#111128;padding:4px;border-radius:10px;border:1px solid #1e1e45;margin-bottom:20px;width:fit-content">
-    <button id="rtab-team" onclick="switchReportTab2('team')" class="report-tab active-tab" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:#6366f1;color:#fff">Team Utilization</button>
+  <div style="display:flex;gap:4px;background:#1F0F08;padding:4px;border-radius:10px;border:1px solid #2A1812;margin-bottom:20px;width:fit-content">
+    <button id="rtab-team" onclick="switchReportTab2('team')" class="report-tab active-tab" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:#FF7A45;color:#fff">Team Utilization</button>
     <button id="rtab-project" onclick="switchReportTab2('project')" class="report-tab" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Project Status</button>
     <button id="rtab-billing" onclick="switchReportTab2('billing')" class="report-tab" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Billing Summary</button>
     <button id="rtab-timesheet" onclick="switchReportTab2('timesheet')" class="report-tab" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Timesheet Report</button>
@@ -543,7 +543,7 @@ function switchReportTab2(tab) {
     btn.style.background = 'transparent'; btn.style.color = '#94a3b8'; btn.style.fontWeight = '500'
   })
   const active = document.getElementById('rtab-' + tab)
-  if (active) { active.style.background = '#6366f1'; active.style.color = '#fff'; active.style.fontWeight = '600' }
+  if (active) { active.style.background = '#FF7A45'; active.style.color = '#fff'; active.style.fontWeight = '600' }
   loadReport2(tab)
 }
 
@@ -563,9 +563,9 @@ async function loadReport2(tab) {
               ${users.map(u => {
                 const pct = Math.min(u.utilization_pct || 0, 100)
                 return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-                  <span style="font-size:9px;color:${pct>=80?'#f43f5e':pct>=50?'#f59e0b':'#10b981'};font-weight:600">${pct}%</span>
-                  <div style="width:100%;background:#1e1e45;border-radius:3px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end" title="${u.full_name}: ${pct}%" style="height:160px">
-                    <div style="height:${pct}%;background:${pct>=80?'linear-gradient(180deg,#ef4444,#f43f5e)':pct>=50?'linear-gradient(180deg,#d97706,#f59e0b)':'linear-gradient(180deg,#059669,#10b981)'};border-radius:3px;transition:.5s;min-height:2px"></div>
+                  <span style="font-size:9px;color:${pct>=80?'#FF5E3A':pct>=50?'#FFCB47':'#58C68A'};font-weight:600">${pct}%</span>
+                  <div style="width:100%;background:#2A1812;border-radius:3px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end" title="${u.full_name}: ${pct}%" style="height:160px">
+                    <div style="height:${pct}%;background:${pct>=80?'linear-gradient(180deg,#FF5E3A,#FF5E3A)':pct>=50?'linear-gradient(180deg,#E5A82C,#FFCB47)':'linear-gradient(180deg,#3FAA70,#58C68A)'};border-radius:3px;transition:.5s;min-height:2px"></div>
                   </div>
                   <span style="font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50px" title="${u.full_name}">${u.full_name?.split(' ')[0]}</span>
                 </div>`}).join('')}
@@ -574,7 +574,7 @@ async function loadReport2(tab) {
           <div class="card" style="padding:20px">
             <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:16px">Capacity Summary</div>
             ${users.reduce((html, u) => html + `
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e1e45">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #2A1812">
                 <div style="display:flex;align-items:center;gap:8px">
                   ${avatar(u.full_name, u.avatar_color, 'sm')}
                   <div><div style="font-size:12px;color:#e2e8f0">${u.full_name}</div><div style="font-size:10px;color:#64748b">${u.designation||u.role}</div></div>
@@ -599,7 +599,7 @@ async function loadReport2(tab) {
                 <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:70px"><div class="progress-fill ${(u.utilization_pct||0)>=80?'rose':(u.utilization_pct||0)>=50?'amber':'green'}" style="width:${Math.min(u.utilization_pct||0,100)}%"></div></div><span style="font-size:11px;color:${pctColor(u.utilization_pct||0)}">${u.utilization_pct||0}%</span></div></td>
                 <td>${u.project_count||0}</td>
                 <td style="color:#94a3b8">${u.hourly_cost ? '₹'+fmtNum(u.hourly_cost) : '—'}</td>
-                <td style="color:#10b981">${u.hourly_cost && u.monthly_consumed ? '₹'+fmtNum(u.hourly_cost * u.monthly_consumed) : '—'}</td>
+                <td style="color:#58C68A">${u.hourly_cost && u.monthly_consumed ? '₹'+fmtNum(u.hourly_cost * u.monthly_consumed) : '—'}</td>
               </tr>`).join('')}</tbody>
             </table>
           </div>
@@ -624,12 +624,12 @@ async function loadReport2(tab) {
                   <td>${statusBadge(p.status)}</td>
                   <td>${p.total_allocated_hours||0}h</td>
                   <td>${p.consumed_hours||0}h</td>
-                  <td style="color:${remaining<0?'#f43f5e':'#94a3b8'}">${remaining}h</td>
+                  <td style="color:${remaining<0?'#FF5E3A':'#94a3b8'}">${remaining}h</td>
                   <td><div style="display:flex;align-items:center;gap:6px">
                     <div class="progress-bar" style="width:60px"><div class="progress-fill ${burn>=90?'rose':burn>=70?'amber':'green'}" style="width:${Math.min(burn,100)}%"></div></div>
                     <span style="font-size:11px;color:${pctColor(burn)}">${burn}%</span>
                   </div></td>
-                  <td style="font-size:12px;color:${overdue?'#f43f5e':'#94a3b8'}">${fmtDate(p.expected_end_date)}${overdue?' <span class="badge badge-blocked" style="font-size:9px">Overdue</span>':''}</td>
+                  <td style="font-size:12px;color:${overdue?'#FF5E3A':'#94a3b8'}">${fmtDate(p.expected_end_date)}${overdue?' <span class="badge badge-blocked" style="font-size:9px">Overdue</span>':''}</td>
                   <td>${burn>=90?'🔴 Critical':burn>=70?'🟡 Warning':'🟢 Healthy'}</td>
                 </tr>`}).join('')}
               </tbody>
@@ -644,10 +644,10 @@ async function loadReport2(tab) {
       const pending = invoices.filter(i=>['pending','sent'].includes(i.status)).reduce((s,i) => s+(i.total_amount||0), 0)
       panel.innerHTML = `
         <div class="grid-4" style="margin-bottom:16px">
-          ${miniStatCard('Total Invoiced', fmtCurrency(total), '#6366f1', 'fa-file-invoice-dollar')}
-          ${miniStatCard('Collected', fmtCurrency(paid), '#10b981', 'fa-check-circle')}
-          ${miniStatCard('Outstanding', fmtCurrency(pending), '#f59e0b', 'fa-hourglass-half')}
-          ${miniStatCard('Overdue Count', invoices.filter(i=>i.status==='overdue').length, '#f43f5e', 'fa-exclamation-triangle')}
+          ${miniStatCard('Total Invoiced', fmtCurrency(total), '#FF7A45', 'fa-file-invoice-dollar')}
+          ${miniStatCard('Collected', fmtCurrency(paid), '#58C68A', 'fa-check-circle')}
+          ${miniStatCard('Outstanding', fmtCurrency(pending), '#FFCB47', 'fa-hourglass-half')}
+          ${miniStatCard('Overdue Count', invoices.filter(i=>i.status==='overdue').length, '#FF5E3A', 'fa-exclamation-triangle')}
         </div>
         <div class="card">
           <div class="card-header"><span style="font-weight:600">Invoice Summary</span></div>
@@ -655,14 +655,14 @@ async function loadReport2(tab) {
             <table class="data-table">
               <thead><tr><th>Invoice #</th><th>Client</th><th>Project</th><th>Issue Date</th><th>Due Date</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead>
               <tbody>${invoices.map(i => `<tr>
-                <td style="font-family:monospace;font-size:12px;color:#818cf8">${i.invoice_number}</td>
+                <td style="font-family:monospace;font-size:12px;color:#FFB347">${i.invoice_number}</td>
                 <td style="font-size:12px;color:#e2e8f0">${i.company_name||'—'}</td>
                 <td style="font-size:12px;color:#94a3b8">${i.project_name||'—'}</td>
                 <td style="font-size:12px;color:#94a3b8">${fmtDate(i.issue_date)}</td>
-                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#f43f5e':'#94a3b8'}">${fmtDate(i.due_date)}</td>
+                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#94a3b8'}">${fmtDate(i.due_date)}</td>
                 <td style="font-weight:600;color:#e2e8f0">${fmtCurrency(i.total_amount)}</td>
-                <td style="color:#10b981">${i.paid_amount>0?fmtCurrency(i.paid_amount):'—'}</td>
-                <td style="color:${(i.total_amount-(i.paid_amount||0))>0?'#f59e0b':'#64748b'}">${fmtCurrency(i.total_amount-(i.paid_amount||0))}</td>
+                <td style="color:#58C68A">${i.paid_amount>0?fmtCurrency(i.paid_amount):'—'}</td>
+                <td style="color:${(i.total_amount-(i.paid_amount||0))>0?'#FFCB47':'#64748b'}">${fmtCurrency(i.total_amount-(i.paid_amount||0))}</td>
                 <td><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></td>
               </tr>`).join('')}
               </tbody>
@@ -689,10 +689,10 @@ async function loadReport2(tab) {
 
       panel.innerHTML = `
         <div class="grid-4" style="margin-bottom:16px">
-          ${miniStatCard('This Month Total', totalH.toFixed(1)+'h', '#6366f1', 'fa-clock')}
-          ${miniStatCard('Billable', billH.toFixed(1)+'h', '#10b981', 'fa-check-circle')}
+          ${miniStatCard('This Month Total', totalH.toFixed(1)+'h', '#FF7A45', 'fa-clock')}
+          ${miniStatCard('Billable', billH.toFixed(1)+'h', '#58C68A', 'fa-check-circle')}
           ${miniStatCard('Non-Billable', (totalH-billH).toFixed(1)+'h', '#64748b', 'fa-ban')}
-          ${miniStatCard('Entries', logs.length, '#818cf8', 'fa-list')}
+          ${miniStatCard('Entries', logs.length, '#FFB347', 'fa-list')}
         </div>
         <div class="card">
           <div class="card-header"><span style="font-weight:600">This Month by Developer</span></div>
@@ -702,7 +702,7 @@ async function loadReport2(tab) {
               <tbody>${Object.values(byDev).map(d => `<tr>
                 <td style="font-weight:500;color:#e2e8f0;font-size:13px">${d.name}</td>
                 <td style="font-weight:600;color:#e2e8f0">${d.total.toFixed(1)}h</td>
-                <td style="color:#10b981">${d.billable.toFixed(1)}h</td>
+                <td style="color:#58C68A">${d.billable.toFixed(1)}h</td>
                 <td style="color:#64748b">${(d.total-d.billable).toFixed(1)}h</td>
                 <td>${d.projects.size}</td>
               </tr>`).join('')}</tbody>
@@ -739,7 +739,7 @@ async function renderAlertsView(el) {
     const pagination = paginateClient(filtered, _alertsViewPage, 10)
     _alertsViewPage = pagination.page
 
-    const sevColor = { critical:'#f43f5e', high:'#f97316', warning:'#f59e0b', info:'#06b6d4', low:'#64748b' }
+    const sevColor = { critical:'#FF5E3A', high:'#FF7A45', warning:'#FFCB47', info:'#F4C842', low:'#64748b' }
     const sevIcon = { critical:'fa-circle-exclamation', high:'fa-exclamation-triangle', warning:'fa-triangle-exclamation', info:'fa-info-circle', low:'fa-circle-info' }
 
     el.innerHTML = `
@@ -752,14 +752,14 @@ async function renderAlertsView(el) {
     </div>
 
     <div class="grid-4" style="margin-bottom:16px">
-      ${miniStatCard('Total Alerts', active.length, '#6366f1', 'fa-bell')}
-      ${miniStatCard('Unread', unread.length, '#f43f5e', 'fa-envelope')}
-      ${miniStatCard('Critical', alerts.filter(a=>a.severity==='critical'&&!a.is_dismissed).length, '#f97316', 'fa-circle-exclamation')}
+      ${miniStatCard('Total Alerts', active.length, '#FF7A45', 'fa-bell')}
+      ${miniStatCard('Unread', unread.length, '#FF5E3A', 'fa-envelope')}
+      ${miniStatCard('Critical', alerts.filter(a=>a.severity==='critical'&&!a.is_dismissed).length, '#FF7A45', 'fa-circle-exclamation')}
       ${miniStatCard('Dismissed', dismissed.length, '#64748b', 'fa-ban')}
     </div>
 
     <div style="display:flex;gap:8px;margin-bottom:14px">
-      <button class="btn btn-sm btn-outline" onclick="filterAlerts('')" id="af-all" style="background:rgba(99,102,241,.15);color:#818cf8">All</button>
+      <button class="btn btn-sm btn-outline" onclick="filterAlerts('')" id="af-all" style="background:rgba(255,122,69,.15);color:#FFB347">All</button>
       <button class="btn btn-sm btn-outline" onclick="filterAlerts('critical')" id="af-critical">🔴 Critical</button>
       <button class="btn btn-sm btn-outline" onclick="filterAlerts('high')" id="af-high">🟠 High</button>
       <button class="btn btn-sm btn-outline" onclick="filterAlerts('warning')" id="af-warning">🟡 Warning</button>
@@ -769,7 +769,7 @@ async function renderAlertsView(el) {
     <div id="alerts-list">
       ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-bell-slash"></i><p>No active alerts. System is healthy!</p></div>' :
       pagination.items.map(alert => `
-        <div class="card" id="alert-${alert.id}" style="padding:16px;margin-bottom:10px;border-left:3px solid ${sevColor[alert.severity]||'#64748b'};${!alert.is_read?'background:rgba(99,102,241,.04)':''}">
+        <div class="card" id="alert-${alert.id}" style="padding:16px;margin-bottom:10px;border-left:3px solid ${sevColor[alert.severity]||'#64748b'};${!alert.is_read?'background:rgba(255,122,69,.04)':''}">
           <div style="display:flex;align-items:flex-start;gap:12px">
             <div style="width:36px;height:36px;border-radius:8px;background:${sevColor[alert.severity]||'#64748b'}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <i class="fas ${sevIcon[alert.severity]||'fa-circle-info'}" style="color:${sevColor[alert.severity]||'#64748b'};font-size:14px"></i>
@@ -873,12 +873,13 @@ async function renderSettingsView(el) {
     </div>
 
     <!-- Settings tabs -->
-    <div style="display:flex;gap:4px;background:#111128;padding:4px;border-radius:10px;border:1px solid #1e1e45;margin-bottom:20px;width:fit-content">
-      <button class="settings-tab" id="stab-company" onclick="switchSettingsTab2('company')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:#6366f1;color:#fff">Company</button>
+    <div style="display:flex;gap:4px;background:#1F0F08;padding:4px;border-radius:10px;border:1px solid #2A1812;margin-bottom:20px;width:fit-content">
+      <button class="settings-tab" id="stab-company" onclick="switchSettingsTab2('company')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:#FF7A45;color:#fff">Company</button>
       <button class="settings-tab" id="stab-holidays" onclick="switchSettingsTab2('holidays')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Holidays</button>
       <button class="settings-tab" id="stab-tech" onclick="switchSettingsTab2('tech')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Tech Stacks</button>
       <button class="settings-tab" id="stab-profile" onclick="switchSettingsTab2('profile')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">My Profile</button>
       ${['admin','pm'].includes(_user.role) ? `<button class="settings-tab" id="stab-invites" onclick="switchSettingsTab2('invites')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Invites</button>` : ''}
+      ${_user.role === 'admin' ? `<button class="settings-tab" id="stab-roles" onclick="switchSettingsTab2('roles')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Roles &amp; Permissions</button>` : ''}
     </div>
 
     <div id="settings-panel">
@@ -900,7 +901,7 @@ async function renderSettingsView(el) {
 function switchSettingsTab2(tab) {
   document.querySelectorAll('.settings-tab').forEach(btn => { btn.style.background='transparent'; btn.style.color='#94a3b8'; btn.style.fontWeight='500' })
   const active = document.getElementById('stab-' + tab)
-  if (active) { active.style.background='#6366f1'; active.style.color='#fff'; active.style.fontWeight='600' }
+  if (active) { active.style.background='#FF7A45'; active.style.color='#fff'; active.style.fontWeight='600' }
   const panel = document.getElementById('settings-panel')
   if (!panel) return
 
@@ -950,7 +951,7 @@ function switchSettingsTab2(tab) {
             <td style="font-weight:500;color:#e2e8f0">${h.name}</td>
             <td style="color:#94a3b8">${fmtDate(h.date)}</td>
             <td><span class="badge badge-${h.type==='national'?'done':'inprogress'}">${h.type||'national'}</span></td>
-            <td><button class="btn btn-sm btn-outline" style="color:#f43f5e;border-color:#f43f5e" onclick="deleteHoliday2('${h.id}')"><i class="fas fa-trash"></i></button></td>
+            <td><button class="btn btn-sm btn-outline" style="color:#FF5E3A;border-color:#FF5E3A" onclick="deleteHoliday2('${h.id}')"><i class="fas fa-trash"></i></button></td>
           </tr>`).join('')}</tbody>
         </table>`}
         <div style="margin-top:12px">${renderPager(pagination, 'goHolidaysPage', 'goHolidaysPage', 'holidays')}</div>
@@ -971,7 +972,7 @@ function switchSettingsTab2(tab) {
           <div style="margin-bottom:16px">
             <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${cat}</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px">
-              ${items.map(t => `<span style="padding:5px 12px;border-radius:20px;background:#1e1e45;color:#94a3b8;font-size:12px;display:inline-flex;align-items:center;gap:6px">
+              ${items.map(t => `<span style="padding:5px 12px;border-radius:20px;background:#2A1812;color:#94a3b8;font-size:12px;display:inline-flex;align-items:center;gap:6px">
                 ${t.name}
                 <button onclick="deleteTech2('${t.id}')" style="background:none;border:none;color:#64748b;cursor:pointer;padding:0;font-size:10px;display:inline-flex;align-items:center" title="Remove">✕</button>
               </span>`).join('')}
@@ -985,7 +986,7 @@ function switchSettingsTab2(tab) {
       <div class="card" style="padding:24px">
         <h3 style="font-size:15px;font-weight:600;color:#e2e8f0;margin:0 0 20px">Profile Info</h3>
         <div style="text-align:center;margin-bottom:20px">
-          <div style="width:64px;height:64px;border-radius:50%;background:${_user.avatar_color||'#6366f1'};display:inline-flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff;margin-bottom:10px">${initials(_user.name||_user.full_name||'U')}</div>
+          <div style="width:64px;height:64px;border-radius:50%;background:${_user.avatar_color||'#FF7A45'};display:inline-flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff;margin-bottom:10px">${initials(_user.name||_user.full_name||'U')}</div>
           <div style="font-size:16px;font-weight:600;color:#e2e8f0">${_user.name||_user.full_name||'—'}</div>
           <div style="font-size:12px;color:#64748b;margin-top:2px">${_user.email||'—'}</div>
           <span class="badge badge-inprogress" style="margin-top:6px;text-transform:capitalize">${_user.role}</span>
@@ -997,8 +998,8 @@ function switchSettingsTab2(tab) {
         <div class="form-group"><label class="form-label">New Password</label><input class="form-input" id="prof-new" type="password" placeholder="Minimum 8 chars"/></div>
         <div class="form-group"><label class="form-label">Confirm Password</label><input class="form-input" id="prof-conf" type="password" placeholder="Repeat new password"/></div>
         <button class="btn btn-primary" style="width:100%" onclick="changePasswordProfile()"><i class="fas fa-lock"></i>Update Password</button>
-        <div style="margin-top:16px;padding-top:16px;border-top:1px solid #1e1e45">
-          <button class="btn btn-outline" style="width:100%;color:#f43f5e;border-color:#f43f5e" onclick="if(confirm('Sign out?')){clearAuth();location.reload()}"><i class="fas fa-sign-out-alt"></i>Sign Out</button>
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid #2A1812">
+          <button class="btn btn-outline" style="width:100%;color:#FF5E3A;border-color:#FF5E3A" onclick="if(confirm('Sign out?')){clearAuth();location.reload()}"><i class="fas fa-sign-out-alt"></i>Sign Out</button>
         </div>
       </div>
     </div>`
@@ -1006,13 +1007,199 @@ function switchSettingsTab2(tab) {
     panel.innerHTML = `<div id="invites-panel-container" style="padding:8px 0"><div style="padding:20px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading invites…</div></div>`
     const cont = document.getElementById('invites-panel-container')
     if (cont && typeof renderInvitesPanel === 'function') renderInvitesPanel(cont)
+  } else if (tab === 'roles') {
+    panel.innerHTML = `<div id="roles-panel-container"><div style="padding:20px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading roles…</div></div>`
+    renderRolesPanel()
+  }
+}
+
+// ── Roles & Permissions ─────────────────────────────────────────
+let _rolesState = { roles: [], catalogue: [] }
+
+async function renderRolesPanel() {
+  const cont = document.getElementById('roles-panel-container')
+  if (!cont) return
+  try {
+    const res = await API.get('/settings/roles')
+    _rolesState.roles = res.roles || res.data || []
+    _rolesState.catalogue = res.catalogue || []
+    paintRolesPanel()
+  } catch (e) {
+    cont.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
+}
+
+function paintRolesPanel() {
+  const cont = document.getElementById('roles-panel-container')
+  if (!cont) return
+  const roles = _rolesState.roles || []
+
+  cont.innerHTML = `
+    <div class="card">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-weight:700;font-size:15px">Role Configuration</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm btn-secondary" onclick="renderRolesPanel()"><i class="fas fa-rotate"></i> Refresh</button>
+          <button class="btn btn-sm btn-primary" onclick="openRoleEditModal('')"><i class="fas fa-plus"></i> Create Role</button>
+        </div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+        ${roles.length === 0 ? '<div class="empty-state"><i class="fas fa-shield-halved"></i><p>No roles defined yet.</p></div>' : roles.map(renderRoleCard).join('')}
+      </div>
+    </div>
+  `
+}
+
+function renderRoleCard(role) {
+  const perms = Array.isArray(role.permissions) ? role.permissions : []
+  const labelByKey = new Map()
+  for (const grp of _rolesState.catalogue || []) {
+    for (const p of grp.permissions || []) labelByKey.set(p.key, p.label)
+  }
+  const previewCount = 8
+  const previewPerms = perms.slice(0, previewCount)
+  const remaining = Math.max(0, perms.length - previewCount)
+  const isSystem = !!role.is_system
+
+  return `
+    <div class="role-card">
+      <div class="role-card-head">
+        <div>
+          <div class="role-card-title">
+            <strong>${escapeHtml(role.name || role.key)}</strong>
+            ${isSystem ? '<span class="badge badge-inprogress" style="margin-left:8px">SYSTEM</span>' : '<span class="badge badge-purple" style="margin-left:8px">CUSTOM</span>'}
+            <span style="font-size:11px;color:var(--text-muted);margin-left:10px;font-family:'IBM Plex Mono',monospace">${escapeHtml(role.key)}</span>
+          </div>
+          ${role.description ? `<div class="role-card-desc">${escapeHtml(role.description)}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-outline" onclick="openRoleEditModal('${escapeHtml(role.id)}')"><i class="fas fa-sliders"></i> Manage Permissions</button>
+          ${!isSystem ? `<button class="btn btn-sm btn-danger" onclick="deleteCustomRole('${escapeHtml(role.id)}')"><i class="fas fa-trash"></i></button>` : ''}
+        </div>
+      </div>
+      <div class="role-card-perms">
+        ${previewPerms.length === 0 ? '<span style="color:var(--text-muted);font-size:12px">No permissions yet</span>' : previewPerms.map(k => `<span class="role-perm-chip">${escapeHtml(labelByKey.get(k) || k)}</span>`).join('')}
+        ${remaining > 0 ? `<span class="role-perm-chip role-perm-chip-more">+${remaining} more</span>` : ''}
+      </div>
+    </div>
+  `
+}
+
+function openRoleEditModal(roleId) {
+  const isCreate = !roleId
+  const role = isCreate ? null : (_rolesState.roles || []).find(r => r.id === roleId)
+  if (!isCreate && !role) { toast('Role not found', 'error'); return }
+  const isSystem = role?.is_system
+
+  const granted = new Set(Array.isArray(role?.permissions) ? role.permissions : [])
+  const groups = _rolesState.catalogue || []
+
+  const groupHtml = groups.map(g => {
+    const checks = (g.permissions || []).map(p => `
+      <label class="perm-row">
+        <input type="checkbox" data-perm="${escapeHtml(p.key)}" ${granted.has(p.key)?'checked':''}/>
+        <span class="perm-row-text">
+          <span class="perm-row-label">${escapeHtml(p.label)}</span>
+          <span class="perm-row-key">${escapeHtml(p.key)}</span>
+        </span>
+      </label>
+    `).join('')
+    return `
+      <div class="perm-group">
+        <div class="perm-group-head">
+          <i class="fas ${escapeHtml(g.icon || 'fa-circle')}"></i>
+          <strong>${escapeHtml(g.label)}</strong>
+          <button class="btn btn-xs btn-outline" onclick="togglePermGroup('${escapeHtml(g.module)}', true)">All</button>
+          <button class="btn btn-xs btn-outline" onclick="togglePermGroup('${escapeHtml(g.module)}', false)">None</button>
+        </div>
+        <div class="perm-group-body" data-perm-group="${escapeHtml(g.module)}">${checks}</div>
+      </div>
+    `
+  }).join('')
+
+  showModal(`
+    <div class="modal-header">
+      <div>
+        <h3>${isCreate ? 'Create Role' : `Manage Permissions — ${escapeHtml(role.name)}`}</h3>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px">${isSystem ? 'System role: name and description are editable; key is fixed.' : 'Custom role'}</div>
+      </div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Role Name *</label>
+          <input id="role-name" class="form-input" value="${escapeHtml(role?.name || '')}" placeholder="e.g., QA Lead"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Role Key${isCreate ? '' : ' (fixed)'}</label>
+          <input id="role-key" class="form-input" ${isCreate ? '' : 'disabled'} value="${escapeHtml(role?.key || '')}" placeholder="lowercase_no_spaces"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <input id="role-desc" class="form-input" value="${escapeHtml(role?.description || '')}" placeholder="Short summary of what this role does"/>
+      </div>
+
+      <div class="perm-grid">${groupHtml}</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRoleFromModal('${escapeHtml(role?.id || '')}', ${isCreate})">
+        <i class="fas fa-save"></i> ${isCreate ? 'Create Role' : 'Save Permissions'}
+      </button>
+    </div>
+  `, 'modal-xl')
+}
+
+function togglePermGroup(moduleKey, on) {
+  const wrap = document.querySelector(`[data-perm-group="${moduleKey}"]`)
+  if (!wrap) return
+  wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = !!on })
+}
+
+async function saveRoleFromModal(roleId, isCreate) {
+  const name = document.getElementById('role-name')?.value.trim() || ''
+  const desc = document.getElementById('role-desc')?.value.trim() || ''
+  const key  = document.getElementById('role-key')?.value.trim() || ''
+  const checks = document.querySelectorAll('input[data-perm]')
+  const permissions = []
+  checks.forEach(cb => { if (cb.checked) permissions.push(cb.dataset.perm) })
+
+  if (!name || name.length < 2) return toast('Role name must be at least 2 characters', 'error')
+
+  try {
+    if (isCreate) {
+      await API.post('/settings/roles', { name, description: desc, key, permissions })
+      toast('Role created', 'success')
+    } else {
+      await API.put(`/settings/roles/${roleId}`, { name, description: desc, permissions })
+      toast('Role updated', 'success')
+    }
+    closeModal()
+    await renderRolesPanel()
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
+}
+
+async function deleteCustomRole(roleId) {
+  const role = (_rolesState.roles || []).find(r => r.id === roleId)
+  if (!role) return
+  if (!confirm(`Delete role "${role.name}"?`)) return
+  try {
+    await API.delete(`/settings/roles/${roleId}`)
+    toast('Role deleted', 'success')
+    await renderRolesPanel()
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
   }
 }
 
 function profileRow2(icon, label, value) {
-  return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #1e1e45">
-    <div style="width:32px;height:32px;border-radius:8px;background:rgba(99,102,241,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      <i class="fas ${icon}" style="color:#818cf8;font-size:12px"></i>
+  return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #2A1812">
+    <div style="width:32px;height:32px;border-radius:8px;background:rgba(255,122,69,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <i class="fas ${icon}" style="color:#FFB347;font-size:12px"></i>
     </div>
     <div><div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">${label}</div><div style="font-size:13px;color:#e2e8f0;margin-top:2px">${value}</div></div>
   </div>`

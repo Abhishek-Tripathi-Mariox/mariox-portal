@@ -12,6 +12,7 @@ import {
   validateEnum,
   respondWithError,
 } from '../validators'
+import { createUserNotifications } from './notifications'
 
 type Role = 'admin' | 'pm' | 'pc' | 'developer' | 'team' | 'client' | string
 
@@ -119,6 +120,76 @@ async function loadEligibleAssigneeIds(models: MongoModels, projectId: string | 
     for (const a of assignments) if (a.user_id) ids.add(String(a.user_id))
   }
   return ids
+}
+
+async function resolveActorName(models: MongoModels, actorId: string, actorRole: string): Promise<string> {
+  if (!actorId) return 'System'
+  if (actorRole === 'client') {
+    const c = await models.clients.findById(actorId) as any
+    return c?.contact_name || c?.company_name || c?.email || 'Client'
+  }
+  const u = await models.users.findById(actorId) as any
+  return u?.full_name || u?.email || 'Staff'
+}
+
+async function resolveUserName(models: MongoModels, userId: string | null | undefined): Promise<string | null> {
+  if (!userId) return null
+  const u = await models.users.findById(userId) as any
+  if (u) return u.full_name || u.email || null
+  const c = await models.clients.findById(userId) as any
+  return c?.contact_name || c?.company_name || c?.email || null
+}
+
+/**
+ * Stakeholders for a ticket: PM/PC of the project + the ticket creator
+ * + the current assignee (if any). Excludes the actor when caller passes
+ * actor_id on the createUserNotifications call.
+ */
+async function ticketStakeholderIds(models: MongoModels, ticket: any): Promise<string[]> {
+  const ids = new Set<string>()
+  if (ticket.created_by_id) ids.add(String(ticket.created_by_id))
+  if (ticket.assigned_to_id) ids.add(String(ticket.assigned_to_id))
+  if (ticket.project_id) {
+    const project = await models.projects.findById(ticket.project_id) as any
+    if (project?.pm_id) ids.add(String(project.pm_id))
+    if (project?.pc_id) ids.add(String(project.pc_id))
+  }
+  return Array.from(ids)
+}
+
+async function recordTicketEvent(
+  models: MongoModels,
+  params: {
+    ticketId: string
+    actorId: string
+    actorRole: string
+    type: string
+    from?: any
+    to?: any
+    fromLabel?: string | null
+    toLabel?: string | null
+    note?: string
+  },
+) {
+  try {
+    const actorName = await resolveActorName(models, params.actorId, params.actorRole)
+    await models.supportEvents.insertOne({
+      id: generateId('tevt'),
+      ticket_id: params.ticketId,
+      actor_id: params.actorId,
+      actor_role: params.actorRole,
+      actor_name: actorName,
+      type: params.type,
+      from_value: params.from ?? null,
+      to_value: params.to ?? null,
+      from_label: params.fromLabel ?? null,
+      to_label: params.toLabel ?? null,
+      note: params.note || null,
+      created_at: new Date().toISOString(),
+    })
+  } catch (e) {
+    console.warn('Failed to record ticket event:', e)
+  }
 }
 
 export function createSupportRouter(models: MongoModels, jwtSecret: string) {
@@ -269,6 +340,48 @@ export function createSupportRouter(models: MongoModels, jwtSecret: string) {
       }
 
       await models.supportTickets.insertOne(ticket)
+      await recordTicketEvent(models, {
+        ticketId: ticket.id,
+        actorId: user.sub,
+        actorRole: createdByRole,
+        type: 'created',
+        toLabel: ticket.subject,
+      })
+      const actorName = await resolveActorName(models, user.sub, createdByRole)
+      // Notify all stakeholders that a new ticket was raised
+      const stakeholders = await ticketStakeholderIds(models, ticket)
+      await createUserNotifications(models, stakeholders, {
+        type: 'ticket_created',
+        title: `New ticket: ${ticket.subject}`,
+        body: `${actorName} raised a ${ticket.priority} priority ticket`,
+        link: `ticket:${ticket.id}`,
+        actor_id: user.sub,
+        actor_name: actorName,
+        meta: { ticket_id: ticket.id, project_id: ticket.project_id },
+      })
+      if (assignedToId) {
+        const name = await resolveUserName(models, assignedToId)
+        await recordTicketEvent(models, {
+          ticketId: ticket.id,
+          actorId: user.sub,
+          actorRole: createdByRole,
+          type: 'assignee_changed',
+          from: null,
+          to: assignedToId,
+          fromLabel: 'Unassigned',
+          toLabel: name || 'Assignee',
+        })
+        // Direct ping to the assignee
+        await createUserNotifications(models, [assignedToId], {
+          type: 'ticket_assigned',
+          title: `Assigned: ${ticket.subject}`,
+          body: `${actorName} assigned this ticket to you`,
+          link: `ticket:${ticket.id}`,
+          actor_id: user.sub,
+          actor_name: actorName,
+          meta: { ticket_id: ticket.id },
+        })
+      }
       return res.status(201).json({ ticket, data: ticket })
     } catch (error: any) {
       return respondWithError(res, error, 500)
@@ -293,7 +406,12 @@ export function createSupportRouter(models: MongoModels, jwtSecret: string) {
       if (isClient(user)) commentFilter.is_internal = { $ne: 1 }
       const comments = await models.supportComments.find(commentFilter, { sort: { created_at: 1 } }) as any[]
 
-      return res.json({ ticket, comments })
+      const events = await models.supportEvents.find(
+        { ticket_id: ticket.id },
+        { sort: { created_at: 1 } },
+      ) as any[]
+
+      return res.json({ ticket, comments, events })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to load ticket' })
     }
@@ -395,7 +513,88 @@ export function createSupportRouter(models: MongoModels, jwtSecret: string) {
       }
 
       await models.supportTickets.updateById(ticket.id, { $set: patch })
-      const updated = await models.supportTickets.findById(ticket.id)
+      const updated = await models.supportTickets.findById(ticket.id) as any
+
+      const actorRole = isClient(user) ? 'client' : (isStaff(user) ? 'staff' : String(user?.role || ''))
+      const actorName = await resolveActorName(models, user.sub, actorRole)
+      const stakeholders = await ticketStakeholderIds(models, updated)
+      const trackedFields: Array<{ key: string; type: string; resolveLabels?: boolean }> = [
+        { key: 'status', type: 'status_changed' },
+        { key: 'priority', type: 'priority_changed' },
+        { key: 'category', type: 'category_changed' },
+        { key: 'subject', type: 'subject_edited' },
+        { key: 'description', type: 'description_edited' },
+        { key: 'project_id', type: 'project_changed', resolveLabels: true },
+        { key: 'assigned_to_id', type: 'assignee_changed', resolveLabels: true },
+      ]
+      for (const f of trackedFields) {
+        if (!(f.key in patch)) continue
+        const before = (ticket as any)[f.key] ?? null
+        const after = (patch as any)[f.key] ?? null
+        if (String(before || '') === String(after || '')) continue
+        let fromLabel: string | null = before ? String(before) : null
+        let toLabel: string | null = after ? String(after) : null
+        if (f.resolveLabels) {
+          if (f.key === 'assigned_to_id') {
+            fromLabel = before ? (await resolveUserName(models, before)) || 'Someone' : 'Unassigned'
+            toLabel = after ? (await resolveUserName(models, after)) || 'Someone' : 'Unassigned'
+          } else if (f.key === 'project_id') {
+            const proj = after ? await models.projects.findById(after) as any : null
+            const old = before ? await models.projects.findById(before) as any : null
+            fromLabel = old?.name || (before ? 'Previous project' : 'No project')
+            toLabel = proj?.name || (after ? 'New project' : 'No project')
+          }
+        }
+        await recordTicketEvent(models, {
+          ticketId: ticket.id,
+          actorId: user.sub,
+          actorRole,
+          type: f.type,
+          from: before,
+          to: after,
+          fromLabel,
+          toLabel,
+        })
+
+        // Emit a user-facing notification per relevant change
+        if (f.key === 'status') {
+          await createUserNotifications(models, stakeholders, {
+            type: 'ticket_status',
+            title: `${updated.subject}`,
+            body: `${actorName} moved status to ${String(after).replace(/_/g, ' ')}`,
+            link: `ticket:${ticket.id}`,
+            actor_id: user.sub,
+            actor_name: actorName,
+            meta: { ticket_id: ticket.id, status: after },
+          })
+        } else if (f.key === 'priority') {
+          await createUserNotifications(models, stakeholders, {
+            type: 'ticket_priority',
+            title: `${updated.subject}`,
+            body: `${actorName} changed priority to ${after}`,
+            link: `ticket:${ticket.id}`,
+            actor_id: user.sub,
+            actor_name: actorName,
+            meta: { ticket_id: ticket.id, priority: after },
+          })
+        } else if (f.key === 'assigned_to_id' && after) {
+          // Direct ping to the new assignee + notice for previous assignee
+          const recipients = [String(after)]
+          if (before) recipients.push(String(before))
+          await createUserNotifications(models, recipients, {
+            type: 'ticket_assigned',
+            title: `${updated.subject}`,
+            body: String(after) === String(user.sub)
+              ? `${actorName} assigned this ticket (you'll see it in your queue)`
+              : `${actorName} assigned this ticket to ${toLabel}`,
+            link: `ticket:${ticket.id}`,
+            actor_id: user.sub,
+            actor_name: actorName,
+            meta: { ticket_id: ticket.id, assigned_to_id: after },
+          })
+        }
+      }
+
       return res.json({ ticket: updated, data: updated })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to update ticket' })
@@ -411,6 +610,7 @@ export function createSupportRouter(models: MongoModels, jwtSecret: string) {
       if (!ticket) return res.status(404).json({ error: 'Ticket not found' })
       await models.supportTickets.deleteById(req.params.id)
       await models.supportComments.deleteMany({ ticket_id: req.params.id })
+      await models.supportEvents.deleteMany({ ticket_id: req.params.id })
       return res.json({ success: true })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to delete ticket' })
@@ -432,10 +632,38 @@ export function createSupportRouter(models: MongoModels, jwtSecret: string) {
         }
       }
       const now = new Date().toISOString()
+      const previousAssignee = ticket.assigned_to_id || null
+      const newAssignee = assigned_to_id || null
       await models.supportTickets.updateById(req.params.id, {
-        $set: { assigned_to_id: assigned_to_id || null, updated_at: now },
+        $set: { assigned_to_id: newAssignee, updated_at: now },
       })
-      const updated = await models.supportTickets.findById(req.params.id)
+      const updated = await models.supportTickets.findById(req.params.id) as any
+      if (String(previousAssignee || '') !== String(newAssignee || '')) {
+        const fromLabel = previousAssignee ? (await resolveUserName(models, previousAssignee)) || 'Someone' : 'Unassigned'
+        const toLabel = newAssignee ? (await resolveUserName(models, newAssignee)) || 'Someone' : 'Unassigned'
+        await recordTicketEvent(models, {
+          ticketId: ticket.id,
+          actorId: user.sub,
+          actorRole: 'staff',
+          type: 'assignee_changed',
+          from: previousAssignee,
+          to: newAssignee,
+          fromLabel,
+          toLabel,
+        })
+        const actorName = await resolveActorName(models, user.sub, 'staff')
+        if (newAssignee) {
+          await createUserNotifications(models, [newAssignee], {
+            type: 'ticket_assigned',
+            title: `${updated.subject}`,
+            body: `${actorName} assigned this ticket to you`,
+            link: `ticket:${ticket.id}`,
+            actor_id: user.sub,
+            actor_name: actorName,
+            meta: { ticket_id: ticket.id, assigned_to_id: newAssignee },
+          })
+        }
+      }
       return res.json({ ticket: updated })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to assign ticket' })
@@ -480,6 +708,30 @@ export function createSupportRouter(models: MongoModels, jwtSecret: string) {
       }
       await models.supportComments.insertOne(comment)
       await models.supportTickets.updateById(ticket.id, { $set: { updated_at: now } })
+      await recordTicketEvent(models, {
+        ticketId: ticket.id,
+        actorId: user.sub,
+        actorRole: comment.author_role,
+        type: isInternal ? 'internal_note_added' : 'comment_added',
+        toLabel: text.length > 120 ? text.slice(0, 120) + '…' : text,
+        note: comment.id,
+      })
+
+      // Notify stakeholders. Internal notes skip the client; public replies
+      // ping everyone except the author.
+      const actorName = await resolveActorName(models, user.sub, comment.author_role)
+      let recipients = await ticketStakeholderIds(models, ticket)
+      if (isInternal) recipients = recipients.filter((id) => id !== ticket.client_id)
+      const preview = text.length > 100 ? text.slice(0, 100) + '…' : text
+      await createUserNotifications(models, recipients, {
+        type: isInternal ? 'ticket_internal_note' : 'ticket_comment',
+        title: `${ticket.subject}`,
+        body: `${actorName}${isInternal ? ' added an internal note' : ' replied'}: ${preview}`,
+        link: `ticket:${ticket.id}`,
+        actor_id: user.sub,
+        actor_name: actorName,
+        meta: { ticket_id: ticket.id, comment_id: comment.id, internal: isInternal ? 1 : 0 },
+      })
       return res.status(201).json({ comment })
     } catch (error: any) {
       return respondWithError(res, error, 500)
