@@ -558,8 +558,59 @@ const _notifState = {
   initialized: false,
 }
 
-function _notifPlayDing() {
-  // Light "ding" via Web Audio API — no asset needed.
+// Per-category sound files. Drop them at the paths below (mp3/wav/ogg ok —
+// keep the same filenames or update the URLs here). Missing files fall back
+// to the synthesized two-note chime automatically.
+const NOTIF_SOUND_FILES = {
+  ticket: '/static/sounds/ticket.wav',  // support tickets — created/assigned/comment/status/priority
+  task:   '/static/sounds/task.wav',    // tasks & kanban events
+  other:  '/static/sounds/other.wav',   // everything else (leaves, alerts, generic)
+}
+const _notifAudioEls = {}      // { ticket: <Audio>, task: <Audio>, other: <Audio> }
+const _notifAudioFailed = {}   // { category: true }  — set when file fails to load
+
+function _notifSoundCategory(type) {
+  const t = String(type || '').toLowerCase()
+  if (!t) return 'other'
+  if (t.startsWith('ticket_'))                       return 'ticket'
+  if (t.startsWith('task_') || t.startsWith('kanban_')) return 'task'
+  return 'other'
+}
+
+function _notifPlayDing(type) {
+  const cat = _notifSoundCategory(type)
+  if (!_notifAudioFailed[cat] && _tryPlayCategorySound(cat)) return
+  _notifPlaySynthChime()
+}
+
+function _tryPlayCategorySound(cat) {
+  try {
+    const url = NOTIF_SOUND_FILES[cat] || NOTIF_SOUND_FILES.other
+    if (!_notifAudioEls[cat]) {
+      const el = new Audio(url)
+      el.preload = 'auto'
+      el.volume = 0.7
+      el.addEventListener('error', () => {
+        _notifAudioFailed[cat] = true
+        delete _notifAudioEls[cat]
+      })
+      _notifAudioEls[cat] = el
+    }
+    const el = _notifAudioEls[cat]
+    el.currentTime = 0
+    const p = el.play()
+    if (p && typeof p.catch === 'function') {
+      p.catch(() => { /* autoplay blocked or file missing — synth fallback handles it */ })
+    }
+    return true
+  } catch {
+    _notifAudioFailed[cat] = true
+    return false
+  }
+}
+
+function _notifPlaySynthChime() {
+  // Light "ding" via Web Audio API — used if the audio file is missing.
   try {
     if (!_notifState.audioCtx) {
       const Ctor = window.AudioContext || window.webkitAudioContext
@@ -636,7 +687,13 @@ async function pollNotifications(initial = false) {
       const cutoff = _notifState.lastSeenAt
       const fresh = recent.filter((n) => !cutoff || (n.created_at && n.created_at > cutoff))
       if (fresh.length) {
-        _notifPlayDing()
+        // Pick the highest-priority category among fresh items so the
+        // ticket sound wins over a less specific sound when both arrive together.
+        const priority = ['ticket', 'task', 'other']
+        const cats = fresh.map((n) => _notifSoundCategory(n.type))
+        const pickedCat = priority.find((p) => cats.includes(p)) || 'other'
+        const pickedItem = fresh.find((n) => _notifSoundCategory(n.type) === pickedCat) || fresh[0]
+        _notifPlayDing(pickedItem?.type)
         // Show up to 2 toasts so we don't spam
         fresh.slice(0, 2).forEach(_notifShowToast)
       }

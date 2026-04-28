@@ -58,10 +58,11 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
         ? validateRange(body.days_count, 0.5, 365, 'Days count')
         : 0
       const reason = validateOptional(body.reason, (v) => validateLength(String(v).trim(), 1, 1000, 'Reason'))
+      // Manager applying on someone else's behalf is allowed; otherwise self only.
       const targetUserId = (role === 'developer' || role === 'team') ? user.sub : (body.user_id || user.sub)
       const id = generateId('lv')
       const now = new Date().toISOString()
-      const status = (role === 'developer' || role === 'team') ? 'pending' : 'approved'
+      // Every leave starts as pending — managers can review/approve their own.
       await models.leaves.insertOne({
         id,
         user_id: targetUserId,
@@ -70,33 +71,45 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
         end_date: endDate,
         days_count: daysCount,
         reason,
-        status,
-        approved_by: status === 'approved' ? user?.sub : null,
+        status: 'pending',
+        approved_by: null,
         created_at: now,
         updated_at: now,
       })
 
-      // Notify approvers (admin/pm/pc) when a pending leave is filed
+      // Notify all approvers (admin/pm/pc) — actor excluded automatically by helper.
       const applicant = await models.users.findById(targetUserId) as any
       const applicantName = applicant?.full_name || applicant?.email || 'Someone'
-      if (status === 'pending') {
-        const approvers = await models.users.find({
-          role: { $in: ['admin', 'pm', 'pc'] },
-          is_active: 1,
-        }) as any[]
-        await createUserNotifications(
-          models,
-          approvers.map((u) => u.id),
-          {
-            type: 'leave_request',
-            title: `Leave request from ${applicantName}`,
-            body: `${leaveType} · ${startDate} → ${endDate} (${daysCount} day${daysCount === 1 ? '' : 's'})`,
-            link: `leave:${id}`,
-            actor_id: user.sub,
-            actor_name: applicantName,
-            meta: { leave_id: id, user_id: targetUserId },
-          },
-        )
+      const approvers = await models.users.find({
+        role: { $in: ['admin', 'pm', 'pc'] },
+        is_active: 1,
+      }) as any[]
+      await createUserNotifications(
+        models,
+        approvers.map((u) => u.id),
+        {
+          type: 'leave_request',
+          title: `Leave request from ${applicantName}`,
+          body: `${leaveType} · ${startDate} → ${endDate} (${daysCount} day${daysCount === 1 ? '' : 's'})${reason ? ' — ' + reason : ''}`,
+          link: `leave:${id}`,
+          actor_id: user.sub,
+          actor_name: applicantName,
+          meta: { leave_id: id, user_id: targetUserId },
+        },
+      )
+      // If a manager applied on behalf of someone else, also ping that employee
+      if (targetUserId !== user.sub) {
+        const actor = await models.users.findById(user.sub) as any
+        await createUserNotification(models, {
+          user_id: targetUserId,
+          type: 'leave_request',
+          title: `${actor?.full_name || 'A manager'} filed a leave for you`,
+          body: `${leaveType} · ${startDate} → ${endDate} (${daysCount} day${daysCount === 1 ? '' : 's'})`,
+          link: `leave:${id}`,
+          actor_id: user.sub,
+          actor_name: actor?.full_name || 'Manager',
+          meta: { leave_id: id, user_id: targetUserId },
+        })
       }
       return res.status(201).json({ message: 'Leave submitted', data: { id } })
     } catch (error: any) {
