@@ -595,6 +595,9 @@ async function renderKanbanBoard(el) {
     const cols = boardData.columns || {}
     const colDefs = boardData.column_defs || []
     const canManage = ['admin', 'pm'].includes(_user.role)
+    // Task creation is broader: developers and team members can add tasks too,
+    // both via the toolbar button and the per-column "Add task" tile.
+    const canAddTask = ['admin', 'pm', 'pc', 'developer', 'team'].includes(_user.role)
 
     // Filter sidebar for active sprint
     const activeSprint = projectSprints.find(s => s.status === 'active')
@@ -628,8 +631,8 @@ async function renderKanbanBoard(el) {
           ${canManage ? `
           <button class="btn btn-outline btn-sm" onclick="manageBoardColumns('${selProject}')" title="Configure board columns"><i class="fas fa-sliders-h"></i> Columns</button>
           <button class="btn btn-outline btn-sm" onclick="openKanbanPermissionsModal('${selProject}','${projName.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i> Permissions</button>
-          <button class="btn btn-outline btn-sm" onclick="showProjectTeamsModal('${selProject}','${projName.replace(/'/g,"\\'")}')" title="Project teams"><i class="fas fa-users"></i> Teams</button>
-          <button class="btn btn-primary btn-sm" onclick="showCreateTaskModal('${selProject}','${selSprint}','backlog')"><i class="fas fa-plus"></i> Add Task</button>` : ''}
+          <button class="btn btn-outline btn-sm" onclick="showProjectTeamsModal('${selProject}','${projName.replace(/'/g,"\\'")}')" title="Project teams"><i class="fas fa-users"></i> Teams</button>` : ''}
+          ${canAddTask ? `<button class="btn btn-primary btn-sm" onclick="showCreateTaskModal('${selProject}','${selSprint}','backlog')"><i class="fas fa-plus"></i> Add Task</button>` : ''}
         </div>
       </div>
 
@@ -653,7 +656,7 @@ async function renderKanbanBoard(el) {
       <!-- Kanban Board Scrollable Area -->
       <div style="flex:1;overflow-x:auto;overflow-y:hidden;padding-bottom:8px">
         <div class="kanban-board" id="kanban-board" style="min-height:calc(100vh - 280px)">
-          ${buildKanbanColumns(cols, colDefs, selProject, selSprint, canManage)}
+          ${buildKanbanColumns(cols, colDefs, selProject, selSprint, canManage, canAddTask)}
         </div>
       </div>
     </div>`
@@ -664,7 +667,7 @@ async function renderKanbanBoard(el) {
   }
 }
 
-function buildKanbanColumns(cols, colDefs, projectId, sprintId, canManage) {
+function buildKanbanColumns(cols, colDefs, projectId, sprintId, canManage, canAddTask) {
   if (!colDefs.length) {
     // Fallback default columns
     colDefs = [
@@ -697,7 +700,7 @@ function buildKanbanColumns(cols, colDefs, projectId, sprintId, canManage) {
       <div class="kanban-tasks" data-status="${col.status_key}" data-project="${projectId}" data-sprint="${sprintId||''}" style="min-height:100px">
         ${tasks.map(t => buildTaskCard(t)).join('')}
       </div>
-      ${canManage ? `
+      ${canAddTask ? `
       <div class="add-task-btn" onclick="showCreateTaskModal('${projectId}','${sprintId||''}','${col.status_key}')">
         <i class="fas fa-plus"></i> Add task
       </div>` : ''}
@@ -1053,23 +1056,56 @@ async function submitComment(taskId) {
 }
 
 /* ── CREATE TASK MODAL ───────────────────────────────────── */
+// Returns the users that should appear in the task assignee dropdown for a
+// given project. Strictly the people doing the work:
+//   in-house  → only assigned developers (project_assignments rows)
+//   external  → only the linked external team user
+// PM/PC are oversight roles and are intentionally NOT included here.
+async function getProjectAssignees(projectId, allUsersIndex) {
+  if (!projectId) return []
+  try {
+    const projRes = await API.get(`/projects/${projectId}`)
+    const proj = projRes.data || projRes.project || {}
+    const usersById = allUsersIndex || new Map((((await API.get('/users')).users) || []).map(u => [String(u.id), u]))
+    const out = []
+    const seen = new Set()
+    const push = (id) => {
+      const sId = String(id || '')
+      if (!sId || seen.has(sId)) return
+      const u = usersById.get(sId)
+      if (u) { out.push(u); seen.add(sId) }
+    }
+
+    if (proj.assignment_type === 'external' && proj.external_team_id) {
+      // External winner — single team user owns delivery for this project.
+      push(proj.external_team_id)
+    } else {
+      // In-house — pull active project_assignments.
+      try {
+        const projDevs = await API.get(`/projects/${projectId}/developers`)
+        for (const d of (projDevs.developers || [])) push(d.user_id)
+      } catch {}
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
 async function showCreateTaskModal(projectId='', sprintId='', defaultStatus='backlog') {
   try {
     const [proj, users, sprints] = await Promise.all([API.get('/projects'), API.get('/users'), API.get('/sprints')])
     const projects = proj.projects || proj.data || []
     const allDevs = users.users || users.data || []
     const allSprints = sprints.sprints || []
+    const usersById = new Map(allDevs.map(u => [String(u.id), u]))
 
-    // Get project-specific developers (only those assigned to the project)
-    let assignableDevs = allDevs.filter(u => ['developer','pm'].includes(u.role))
+    // Resolve assignees for the initial project (if one is preselected). When
+    // no project is chosen yet, leave the list empty — it'll be populated by
+    // updateSprintsAndStatusForProject as soon as the user picks a project.
+    let assignableDevs = []
     if (projectId) {
-      try {
-        const projDevs = await API.get(`/projects/${projectId}/developers`)
-        const assignedIds = (projDevs.developers || []).map(d => d.user_id)
-        if (assignedIds.length > 0) {
-          assignableDevs = allDevs.filter(u => assignedIds.includes(u.id) || u.role === 'pm')
-        }
-      } catch(e) {}
+      assignableDevs = await getProjectAssignees(projectId, usersById)
     }
 
     // Get custom columns for selected project
@@ -1165,17 +1201,13 @@ async function updateSprintsAndStatusForProject(projectId) {
     if (sel && cols.length > 0) {
       sel.innerHTML = cols.map(c => `<option value="${c.status_key}">${c.name}</option>`).join('')
     }
-    // Update assignee dropdown with project developers
-    const projDevs = await API.get(`/projects/${projectId}/developers`)
-    const devIds = (projDevs.developers || []).map(d => d.user_id)
-    if (devIds.length > 0) {
-      const usersData = await API.get('/users')
-      const allUsers = usersData.users || usersData.data || []
-      const devs = allUsers.filter(u => devIds.includes(u.id) || u.role === 'pm')
-      const assignSel = document.getElementById('ct-assignee')
-      if (assignSel) {
-        assignSel.innerHTML = `<option value="">Unassigned</option>${devs.map(u=>`<option value="${u.id}">${u.full_name} (${u.designation||u.role})</option>`).join('')}`
-      }
+    // Repopulate assignee dropdown using the same helper as the initial render
+    // so external projects show the linked team user (they have no project
+    // assignments rows) and in-house projects show their allocated devs.
+    const assignees = await getProjectAssignees(projectId)
+    const assignSel = document.getElementById('ct-assignee')
+    if (assignSel) {
+      assignSel.innerHTML = `<option value="">Unassigned</option>${assignees.map(u=>`<option value="${u.id}">${u.full_name} (${u.designation||u.role})</option>`).join('')}`
     }
   } catch(e) {}
 }

@@ -46,7 +46,20 @@ async function checkKanbanPerm(
     const a = await models.projectAssignments.findOne({
       project_id: projectId, user_id: userId, is_active: 1,
     })
-    if (!a) return { allowed: false, reason: 'not_assigned_to_project' }
+    if (!a) {
+      // External team users sit on the project itself (external_team_id /
+      // awarded_to_user_id) — they don't have a project_assignments row, so
+      // the assignment lookup misses them. Treat ownership of the project as
+      // equivalent assignment for the bidding/team flow.
+      const project = await models.projects.findById(projectId) as any
+      const ownsExternally = project && (
+        String(project.external_team_id || '') === String(userId) ||
+        String(project.awarded_to_user_id || '') === String(userId) ||
+        String(project.pm_id || '') === String(userId) ||
+        String(project.pc_id || '') === String(userId)
+      )
+      if (!ownsExternally) return { allowed: false, reason: 'not_assigned_to_project' }
+    }
   }
 
   const row = await models.kanbanPermissions.findOne({
