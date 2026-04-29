@@ -36,7 +36,7 @@ function toNumber(value: unknown, fallback: number) {
 }
 
 const runtimeEnv = loadRuntimeEnv()
-const mongoConnectionString = String(runtimeEnv.LOCAL_MONGO_DB || runtimeEnv.MONGODB_URI || 'mongodb://127.0.0.1:27017/mariox-portal')
+const mongoConnectionString = String(runtimeEnv.LOCAL_MONGO_DB)
 // Pass the full connection string to MongoClient so credentials, srv resolution and query params are preserved.
 const mongoUrl = new URL(mongoConnectionString)
 const mongoDbName = String(runtimeEnv.MONGODB_DB || mongoUrl.pathname.replace(/^\//, '') || 'mariox-portal')

@@ -9,10 +9,9 @@ type Bindings = { DB: D1Database; MODELS: MongoModels; JWT_SECRET: string; PASSW
 const auth = new Hono<{ Bindings: Bindings }>()
 
 function normalizeRole(role: string) {
-  const value = (role || '').toLowerCase()
-  if (value === 'pc') return 'pm'
-  if (value === 'team') return 'developer'
-  return value
+  // Pass through the real DB role. Legacy aliasing pc→pm and team→developer
+  // was masking the actual role of users in /login + /verify responses.
+  return String(role || '').toLowerCase().trim()
 }
 
 // Simple hash function (in production use bcrypt via Workers)

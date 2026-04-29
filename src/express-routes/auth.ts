@@ -13,10 +13,11 @@ import {
 const encoder = new TextEncoder()
 
 function normalizeRole(role: string) {
-  const value = String(role || '').toLowerCase()
-  if (value === 'pc') return 'pm'
-  if (value === 'team') return 'developer'
-  return value
+  // Lowercase + trim only. Earlier this function aliased pc→pm and team→developer
+  // for legacy reasons; that broke the new role-based permission system because
+  // a user whose DB role was "team" came back from /login and /verify as
+  // "developer", so the frontend never saw the team-only sidebar/access rules.
+  return String(role || '').toLowerCase().trim()
 }
 
 async function hashPassword(password: string, salt: string): Promise<string> {
@@ -89,11 +90,19 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
         projection: { id: 1, email: 1, full_name: 1, role: 1, designation: 1, avatar_color: 1 },
       }) as any
       if (!user) return res.status(401).json({ valid: false })
+      // Cache-busting so a stale 200 can't sit in any proxy/browser cache —
+      // role/designation changes need to take effect on the next reload.
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+      res.setHeader('Pragma', 'no-cache')
       return res.json({
         valid: true,
         user: {
-          ...user,
+          id: user.id,
+          email: user.email,
+          full_name: user.full_name,
           role: normalizeRole(user.role),
+          designation: user.designation,
+          avatar_color: user.avatar_color,
         },
       })
     } catch {
