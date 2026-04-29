@@ -1258,19 +1258,28 @@ function init() {
     if (_user.role === 'client') {
       if (typeof renderClientPortal === 'function') renderClientPortal()
     } else {
-      // Render immediately with cached _user so the UI doesn't flash, then
-      // re-sync from the server. If role/designation changed in the DB, the
-      // sidebar re-renders with the new permissions on the next navigation.
+      // Render the cached version first (no UI flash), then re-sync against
+      // the server in the background.
       const initialPage = resolveInitialPage() || defaultPage()
+      const cachedRole = _user.role
       Router.navigate(initialPage)
       refreshAuthFromServer().then(() => {
-        // If the server-side role no longer allows the current page, bounce to
-        // the new default. Otherwise just refresh the shell (sidebar permissions).
-        if (_user && Router.current && !canSeePage(Router.current.page)) {
+        if (!_user) { renderLogin(); return }
+        // Role/designation may have changed in the DB. renderApp() skips the
+        // shell rebuild if a sidebar already exists, so we wipe + re-mount
+        // when the role flipped — that rebuilds the sidebar with fresh
+        // permissions and bounces away from any now-forbidden page.
+        if (_user.role !== cachedRole) {
+          const app = document.getElementById('app')
+          if (app) app.innerHTML = ''
+          Router.current = null
+          Router.history = []
+          const next = canSeePage(initialPage) ? initialPage : defaultPage()
+          Router.navigate(next)
+          if (typeof toast === 'function') toast(`Your role changed to ${_user.role}`, 'info')
+        } else if (Router.current && !canSeePage(Router.current.page)) {
           Router.current = null
           Router.navigate(defaultPage())
-        } else if (_user) {
-          renderApp()
         }
       })
     }
