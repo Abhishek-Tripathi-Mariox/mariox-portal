@@ -445,7 +445,10 @@ function buildShell() {
     ],
   })
 
-  const navPm = navSection({
+  // Project Management section is for admin/pm/pc oversight only. Without
+  // this gate, team accounts saw Projects/Bidding/Kanban here too — duplicating
+  // their own "My Workspace" section since those pages are shared.
+  const navPm = ['admin', 'pm', 'pc'].includes(role) ? navSection({
     key: 'pm', heading: 'Project Management', chip: 'Work', expanded: true, icon: 'fa-layer-group',
     items: [
       navItem('pm-dashboard',    'fa-gauge-high', 'PM Dashboard'),
@@ -457,7 +460,7 @@ function buildShell() {
       navItem('documents-center','fa-folder-open', 'Documents'),
       navItem('resources-view',  'fa-users-gear',  'Resources'),
     ],
-  })
+  }) : ''
 
   const devHeading = role === 'developer' ? 'My Work' : 'Developer View'
   const devChip    = role === 'developer' ? 'Me' : 'Dev'
@@ -827,6 +830,7 @@ function _notifAutoRefreshActiveView(freshItems) {
   const refreshMap = [
     { match: (t) => t.startsWith('leave_'), page: 'leaves-view' },
     { match: (t) => t.startsWith('bid_'),   page: 'bidding-view' },
+    { match: (t) => t.startsWith('bid_'),   page: 'team-dashboard' },
     { match: (t) => t.startsWith('ticket_'), page: 'support-tickets' },
   ]
   const pagesToRefresh = new Set()
@@ -840,6 +844,16 @@ function _notifAutoRefreshActiveView(freshItems) {
       try { loadPage(page, el) } catch {}
     }
   })
+  // If a bid event arrived and an auction-detail modal is open, re-render it
+  // in place so the bid list / winner panel updates without manual reload.
+  const hasBid = [...types].some((t) => t.startsWith('bid_'))
+  if (hasBid) {
+    const open = document.querySelector('[data-auction-modal]')
+    const id = open?.getAttribute('data-auction-modal')
+    if (id && typeof openAuctionDetailModal === 'function') {
+      try { openAuctionDetailModal(id) } catch {}
+    }
+  }
   // Sidebar badges (leave count etc.) should also reflect the fresh state.
   if (typeof loadBadges === 'function') loadBadges()
 }
@@ -921,11 +935,50 @@ function renderLogin() {
           </div>
           <button type="submit" class="btn btn-primary w-full" style="margin-top:4px"><i class="fas fa-sign-in-alt"></i>Sign In</button>
         </form>
-        <p style="text-align:center;margin-top:14px;font-size:12px;color:#64748b">One sign-in for staff and client accounts</p>
-        <p style="text-align:center;margin-top:6px;font-size:12px;color:#64748b">New client? <a href="#" onclick="showClientSignup()" style="color:#FF7A45;text-decoration:none;font-weight:700">Request Access</a></p>
+        <div style="margin-top:14px;text-align:center">
+          <a href="javascript:void(0)" onclick="openForgotPasswordModal()" style="font-size:12.5px;color:#FFB347;text-decoration:none">Forgot password?</a>
+        </div>
       </div>
     </div>
   </div>`
+}
+
+function openForgotPasswordModal() {
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-key" style="color:var(--accent);margin-right:6px"></i>Forgot Password</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12.5px;color:var(--text-muted);line-height:1.5">
+        Enter the email tied to your account. If it exists, our admins will be notified and one of them will reset your password for you.
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Email</label>
+        <input id="fp-email" type="email" class="form-input" placeholder="you@mariox.in"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitForgotPassword()"><i class="fas fa-paper-plane"></i> Send request</button>
+    </div>
+  `, 'modal-md')
+}
+
+async function submitForgotPassword() {
+  const email = (document.getElementById('fp-email')?.value || '').trim()
+  if (!email) { toast('Enter your email', 'error'); return }
+  try {
+    const res = await fetch(BASE + '/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'Request failed')
+    toast(data.message || 'Reset request sent', 'success')
+    closeModal()
+  } catch (e) { toast(e.message || 'Failed', 'error') }
 }
 
 async function doLogin() {
@@ -1050,11 +1103,58 @@ function showProfileModal() {
         <div style="font-size:13px;color:#94a3b8;text-transform:capitalize;margin-top:2px">${_user.role} • ${_user.designation||'DevPortal'}</div>
         <div style="font-size:13px;color:#64748b;margin-top:4px">${_user.email}</div>
       </div>
-      <div style="margin-top:20px;display:flex;gap:10px;justify-content:center">
-        <button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-edit"></i>Edit Profile</button>
-        <button class="btn btn-danger" onclick="logout();closeModal()"><i class="fas fa-sign-out-alt"></i>Logout</button>
+      <div style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="openChangePasswordModal()"><i class="fas fa-key"></i> Change Password</button>
+        <button class="btn btn-danger" onclick="logout();closeModal()"><i class="fas fa-sign-out-alt"></i> Logout</button>
       </div>
     </div>`)
+}
+
+function openChangePasswordModal() {
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-key" style="color:var(--accent);margin-right:6px"></i>Change Password</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Current Password *</label>
+        <div style="position:relative">
+          <input id="cp-current" type="password" class="form-input" autocomplete="current-password" placeholder="••••••••"/>
+          <button type="button" onclick="togglePass('cp-current',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">New Password *</label>
+        <div style="position:relative">
+          <input id="cp-new" type="password" class="form-input" autocomplete="new-password" placeholder="At least 8 characters"/>
+          <button type="button" onclick="togglePass('cp-new',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Confirm New Password *</label>
+        <input id="cp-confirm" type="password" class="form-input" autocomplete="new-password" placeholder="Re-type the new password"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitChangePassword()"><i class="fas fa-check"></i> Update Password</button>
+    </div>
+  `, 'modal-md')
+}
+
+async function submitChangePassword() {
+  const cur = document.getElementById('cp-current')?.value || ''
+  const next = document.getElementById('cp-new')?.value || ''
+  const confirm = document.getElementById('cp-confirm')?.value || ''
+  if (!cur || !next || !confirm) { toast('All fields are required', 'error'); return }
+  if (next !== confirm) { toast('New passwords do not match', 'error'); return }
+  if (cur === next) { toast('New password must differ from current', 'error'); return }
+  try {
+    await API.post('/auth/change-password', { current_password: cur, new_password: next })
+    toast('Password updated', 'success')
+    closeModal()
+  } catch (e) { toast(e.message || 'Failed', 'error') }
 }
 
 // ── Notifications panel ───────────────────────────────────────
@@ -1069,9 +1169,11 @@ function _notifIcon(type) {
     bid_opened:            { icon: 'fa-gavel', color: '#FFB347' },
     bid_placed:            { icon: 'fa-coins', color: '#FFCB47' },
     bid_awarded:           { icon: 'fa-trophy', color: '#86E0A8' },
-    leave_request:         { icon: 'fa-umbrella-beach', color: '#FFB67A' },
-    leave_approved:        { icon: 'fa-check-circle', color: '#86E0A8' },
-    leave_rejected:        { icon: 'fa-times-circle', color: '#FF8866' },
+    leave_request:           { icon: 'fa-umbrella-beach', color: '#FFB67A' },
+    leave_approved:          { icon: 'fa-check-circle', color: '#86E0A8' },
+    leave_rejected:          { icon: 'fa-times-circle', color: '#FF8866' },
+    password_reset_request:  { icon: 'fa-key', color: '#FFCB47' },
+    password_reset_done:     { icon: 'fa-key', color: '#86E0A8' },
   }
   return map[type] || { icon: 'fa-bell', color: '#FFB347' }
 }

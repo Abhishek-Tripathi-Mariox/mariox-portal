@@ -51,6 +51,12 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
       const user = req.user as any
       const body = req.body || {}
       const role = String(user?.role || '').toLowerCase()
+      // External team accounts go through their own contracted process — they
+      // don't apply for company leave through this portal. Defence-in-depth so
+      // even if a stale frontend exposes the form, the API rejects.
+      if (role === 'team') {
+        return res.status(403).json({ error: 'Team accounts cannot apply for leave through this portal' })
+      }
       const leaveType = validateEnum(body.leave_type, LEAVE_TYPES, 'Leave type')
       const startDate = validateISODate(body.start_date, 'Start date')
       const endDate = validateISODate(body.end_date, 'End date')
@@ -67,7 +73,9 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
       // always trustworthy.
       const rawBodyUserId = typeof body.user_id === 'string' ? body.user_id.trim() : ''
       const safeBodyUserId = (rawBodyUserId && rawBodyUserId !== 'undefined' && rawBodyUserId !== 'null') ? rawBodyUserId : ''
-      const targetUserId = (role === 'developer' || role === 'team') ? user.sub : (safeBodyUserId || user.sub)
+      // Non-managers can only file leave for themselves; managers may file on behalf.
+      const isManagerRole = role === 'admin' || role === 'pm' || role === 'pc'
+      const targetUserId = isManagerRole ? (safeBodyUserId || user.sub) : user.sub
       // Make sure the user_id we're about to attach to the leave actually exists,
       // otherwise the leave list will show "Unknown employee" forever.
       const targetUser = await models.users.findById(targetUserId) as any

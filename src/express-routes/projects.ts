@@ -515,20 +515,6 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
-  // ── Bidding endpoints have moved to src/express-routes/bids.ts ──
-  // Old bidding-as-project endpoints removed in favour of a standalone
-  // bid-auctions module. Awarded bids now produce real projects via the
-  // new module (see /api/bids/:id/submissions/:subId/award).
-  // Stub so old `/bids/all` callers fail loudly instead of leaking projects.
-  router.get('/bids/all', async (_req, res) => {
-    return res.status(410).json({ error: 'Endpoint moved to /api/bids' })
-  })
-  router.post('/:id/bids', async (_req, res) => {
-    return res.status(410).json({ error: 'Endpoint moved to /api/bids' })
-  })
-  router.post('/:id/bids/:bidId/award', async (_req, res) => {
-    return res.status(410).json({ error: 'Endpoint moved to /api/bids' })
-  })
   router.post('/:id/notes', async (req, res) => {
     try {
       const projectId = req.params.id

@@ -2021,10 +2021,15 @@ function renderAuctionCard(a) {
           ${a.planned_start_date ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Start</div><div style="font-size:12px;color:#FFF1E6">${fmtDate(a.planned_start_date)}</div></div>` : ''}
           ${a.planned_end_date ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">End</div><div style="font-size:12px;color:#FFF1E6">${fmtDate(a.planned_end_date)}</div></div>` : ''}
         </div>
-        <div style="padding:10px;border-radius:10px;background:rgba(255,122,69,0.08);border:1px solid rgba(255,122,69,0.18)">
-          <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Time remaining</div>
-          <div data-bid-countdown="${a.id}" data-deadline="${deadlineMs || ''}" style="font-size:18px;font-weight:700;color:#FFB347;font-variant-numeric:tabular-nums">${_formatCountdown(deadlineMs ? deadlineMs - Date.now() : null)}</div>
-        </div>
+        ${a.status === 'open' && !isClosed ? `
+          <div style="padding:10px;border-radius:10px;background:rgba(255,122,69,0.08);border:1px solid rgba(255,122,69,0.18)">
+            <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Time remaining</div>
+            <div data-bid-countdown="${a.id}" data-deadline="${deadlineMs || ''}" style="font-size:18px;font-weight:700;color:#FFB347;font-variant-numeric:tabular-nums">${_formatCountdown(deadlineMs ? deadlineMs - Date.now() : null)}</div>
+          </div>` : `
+          <div style="padding:10px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">
+            <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Bidding</div>
+            <div style="font-size:15px;font-weight:700;color:#9F8678">${a.status === 'awarded' ? 'Awarded' : a.status === 'cancelled' ? 'Cancelled' : 'Closed'}</div>
+          </div>`}
         <div class="grid-2" style="gap:8px">
           <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Bids</div><div style="font-size:14px;font-weight:700;color:#FFF1E6">${a.submission_count || 0}</div></div>
           <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Lowest</div><div style="font-size:14px;font-weight:700;color:#FFF1E6">${lowestText}</div></div>
@@ -2047,11 +2052,40 @@ function renderAuctionCard(a) {
 }
 
 function updateBiddingCountdowns() {
-  document.querySelectorAll('[data-bid-countdown]').forEach(node => {
+  const nodes = document.querySelectorAll('[data-bid-countdown]')
+  // No live countdown nodes left (we don't render them for awarded/closed
+  // auctions any more) — stop the interval so we don't keep ticking forever.
+  if (nodes.length === 0 && _biddingTimer) {
+    clearInterval(_biddingTimer)
+    _biddingTimer = null
+    return
+  }
+  nodes.forEach(node => {
     const dl = Number(node.dataset.deadline)
     if (!dl) return
     node.textContent = _formatCountdown(dl - Date.now())
   })
+}
+
+// Refresh whichever bid surfaces are currently mounted: the dedicated bidding
+// page, the team dashboard's auction strip, and the auction detail modal if
+// it's open. Used after place-bid / award so the new amount shows up without
+// the user having to manually reload.
+async function refreshBidSurfaces(auctionId) {
+  const bid = document.getElementById('page-bidding-view')
+  if (bid?.classList.contains('active')) {
+    bid.dataset.loaded = ''
+    if (typeof renderBiddingView === 'function') renderBiddingView(bid)
+  }
+  const dash = document.getElementById('page-team-dashboard')
+  if (dash?.classList.contains('active')) {
+    dash.dataset.loaded = ''
+    if (typeof renderTeamDashboard === 'function') renderTeamDashboard(dash)
+  }
+  // If a detail modal for this auction is open, re-render it in place.
+  if (auctionId && document.querySelector(`[data-auction-modal="${auctionId}"]`)) {
+    if (typeof openAuctionDetailModal === 'function') openAuctionDetailModal(auctionId)
+  }
 }
 
 function _findAuction(id) {
@@ -2234,8 +2268,7 @@ async function submitPlaceBid(auctionId, maxBidAmount) {
     })
     toast('Bid submitted', 'success')
     closeModal()
-    const el = document.getElementById('page-bidding-view')
-    if (el) { el.dataset.loaded = ''; renderBiddingView(el) }
+    await refreshBidSurfaces(auctionId)
   } catch (e) { toast('Failed: ' + e.message, 'error') }
 }
 
@@ -2257,8 +2290,11 @@ async function openAuctionDetailModal(auctionId) {
     const reveal = !!a.visibility_open
     const winnerName = a.status === 'awarded' ? a.winner_name : null
     closeModal()
+    // data-auction-modal lets refreshBidSurfaces find this modal and re-render
+    // it after a bid is placed/awarded — without it the modal sits stale and
+    // the user has to close + reopen to see updates.
     showModal(`
-      <div class="modal-header">
+      <div data-auction-modal="${auctionId}" class="modal-header">
         <h3><i class="fas fa-list" style="color:var(--accent);margin-right:6px"></i>${escapeInbox(a.name)} <span style="font-size:12px;color:#9F8678;font-weight:400">· ${escapeInbox(a.code)}</span></h3>
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
@@ -2306,11 +2342,13 @@ async function awardBidAction(auctionId, submissionId) {
     const res = await API.post(`/bids/${auctionId}/submissions/${submissionId}/award`)
     toast(res.message || 'Bid awarded — project created', 'success')
     closeModal()
-    const el = document.getElementById('page-bidding-view')
-    if (el) { el.dataset.loaded = ''; renderBiddingView(el) }
-    // Also refresh Projects list if visible.
+    await refreshBidSurfaces(auctionId)
+    // Also refresh the Projects list if visible (a new project was created).
     const projEl = document.getElementById('page-projects-list')
-    if (projEl?.classList.contains('active')) { projEl.dataset.loaded = ''; if (typeof loadPage === 'function') loadPage('projects-list', projEl) }
+    if (projEl?.classList.contains('active')) {
+      projEl.dataset.loaded = ''
+      if (typeof loadPage === 'function') loadPage('projects-list', projEl)
+    }
   } catch (e) { toast('Failed: ' + e.message, 'error') }
 }
 

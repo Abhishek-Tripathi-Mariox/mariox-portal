@@ -395,10 +395,14 @@ async function renderPMDashboard(el) {
 async function renderDevDashboard(el) {
   el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
   try {
+    // Some login flows store the user id under `id`, JWT-issued ones under `sub`.
+    // Always resolve to a real id so server-side `user_id` filters don't get the
+    // literal string "undefined".
+    const myId = _user?.sub || _user?.id || ''
     const [myTasks, timesheets, allocations] = await Promise.all([
-      API.get('/tasks?assignee_id=' + _user.sub),
-      API.get('/timesheets?user_id=' + _user.sub),
-      API.get('/allocations?user_id=' + _user.sub)
+      API.get('/tasks?assignee_id=' + myId),
+      API.get('/timesheets?user_id=' + myId),
+      API.get('/allocations?user_id=' + myId)
     ])
     const tasks = myTasks.tasks || []
     const logs = timesheets.timesheets || timesheets || []
@@ -1392,7 +1396,7 @@ async function doCreateMilestone() {
 async function renderMyTasks(el) {
   el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
-    const assigneeId = _user.role==='developer' ? _user.sub : ''
+    const assigneeId = _user.role === 'developer' ? (_user.sub || _user.id || '') : ''
     const data = await API.get('/tasks' + (assigneeId?'?assignee_id='+assigneeId:''))
     const tasks = data.tasks||[]
     const pagination = paginateClient(tasks, _myTasksPage, _myTasksPageLimit)
@@ -2246,6 +2250,7 @@ async function renderTeamOverview(el) {
                 ${canEdit ? `<td>
                   <div style="display:flex;gap:4px">
                     <button class="btn btn-xs btn-outline" title="Edit" onclick="openEditTeamMember('${u.id}')"><i class="fas fa-edit"></i></button>
+                    ${isAdmin ? `<button class="btn btn-xs btn-outline" title="Reset password" onclick="openAdminResetPasswordModal('${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')"><i class="fas fa-key"></i></button>` : ''}
                     <button class="btn btn-xs ${u.is_active ? 'btn-outline' : 'btn-primary'}" title="${u.is_active ? 'Deactivate' : 'Activate'}" onclick="toggleTeamMemberStatus('${u.id}',${!u.is_active})"><i class="fas fa-${u.is_active ? 'ban' : 'check'}"></i></button>
                   </div>
                 </td>` : ''}
@@ -2289,6 +2294,50 @@ async function toggleTeamMemberStatus(id, active) {
     const el = document.getElementById('page-team-overview')
     if (el) { el.dataset.loaded = ''; loadPage('team-overview', el) }
   } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+// Admin-only password reset for any user. Used both manually from the Team
+// page and as the action an admin takes after a "password_reset_request"
+// notification. The user gets a notification telling them the password changed.
+function openAdminResetPasswordModal(userId, userName) {
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-key" style="color:var(--accent);margin-right:6px"></i>Reset password${userName ? ' · ' + userName : ''}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12.5px;color:var(--text-muted);line-height:1.5">
+        Set a new password for this user. Share it with them over a secure channel — they'll be able to sign in with it immediately and change it from their profile.
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">New Password *</label>
+        <div style="position:relative">
+          <input id="arp-new" type="password" class="form-input" autocomplete="new-password" placeholder="At least 8 characters"/>
+          <button type="button" onclick="togglePass('arp-new',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Confirm Password *</label>
+        <input id="arp-confirm" type="password" class="form-input" autocomplete="new-password" placeholder="Re-type the new password"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAdminResetPassword('${userId}')"><i class="fas fa-check"></i> Reset Password</button>
+    </div>
+  `, 'modal-md')
+}
+
+async function submitAdminResetPassword(userId) {
+  const next = document.getElementById('arp-new')?.value || ''
+  const confirm = document.getElementById('arp-confirm')?.value || ''
+  if (!next || !confirm) { toast('Both fields are required', 'error'); return }
+  if (next !== confirm) { toast('Passwords do not match', 'error'); return }
+  try {
+    const res = await API.post('/auth/admin-reset-password', { user_id: userId, new_password: next })
+    toast(res.message || 'Password reset', 'success')
+    closeModal()
+  } catch (e) { toast(e.message || 'Failed', 'error') }
 }
 
 /* ── BULK CSV IMPORT (users + clients) ────────────────────── */

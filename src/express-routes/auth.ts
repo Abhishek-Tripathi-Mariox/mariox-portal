@@ -2,13 +2,14 @@ import type { Router } from 'express'
 import { Router as createRouter } from 'express'
 import { SignJWT, jwtVerify } from 'jose'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware } from '../express-middleware/auth'
+import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
 import {
   validateLoginInput,
   validateNewPassword,
   validateRequired,
   respondWithError,
 } from '../validators'
+import { createUserNotification, createUserNotifications } from './notifications'
 
 const encoder = new TextEncoder()
 
@@ -125,6 +126,71 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
       const newHash = await hashPassword(newPassword, passwordSalt)
       await models.users.updatePassword(userCtx.sub, newHash)
       return res.json({ message: 'Password changed successfully' })
+    } catch (error) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Public: a user who forgot their password tells us their email. We don't
+  // expose whether the email exists (security), but if it does we drop a
+  // notification into every admin's bell so an admin can reset it from the
+  // Team page. No SMTP needed for this internal portal.
+  router.post('/forgot-password', async (req, res) => {
+    try {
+      const email = String(req.body?.email || '').toLowerCase().trim()
+      if (!email) return res.status(400).json({ error: 'Email is required' })
+      const user = await models.users.findByEmail(email) as any
+      if (user && Number(user.is_active) === 1) {
+        try {
+          const admins = await models.users.find({ role: 'admin', is_active: 1 }) as any[]
+          await createUserNotifications(models, admins.map((a: any) => a.id), {
+            type: 'password_reset_request',
+            title: `Password reset requested by ${user.full_name || user.email}`,
+            body: `Reset their password from Team → user actions.`,
+            link: `user:${user.id}`,
+            actor_id: user.id,
+            actor_name: user.full_name,
+            meta: { user_id: user.id, email: user.email },
+          })
+        } catch (e) {
+          console.warn('[auth/forgot-password] notify failed:', e)
+        }
+      }
+      // Generic response — never reveal which emails are registered.
+      return res.json({ message: 'If your account exists, the admin has been notified to reset your password.' })
+    } catch (error) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Admin-only: reset another user's password. Used by the Team page.
+  // The affected user gets a notification so they know the password changed.
+  router.post('/admin-reset-password', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+      const adminCtx = req.user as any
+      const userId = String(req.body?.user_id || '').trim()
+      const newPassword = validateNewPassword(req.body?.new_password, 'New password')
+      if (!userId) return res.status(400).json({ error: 'user_id is required' })
+      const target = await models.users.findById(userId) as any
+      if (!target) return res.status(404).json({ error: 'User not found' })
+      const newHash = await hashPassword(newPassword, passwordSalt)
+      await models.users.updatePassword(userId, newHash)
+      try {
+        const admin = await models.users.findById(adminCtx.sub) as any
+        await createUserNotification(models, {
+          user_id: userId,
+          type: 'password_reset_done',
+          title: 'Your password was reset',
+          body: `${admin?.full_name || 'An admin'} reset your password. Please sign in with the new one.`,
+          link: 'profile:me',
+          actor_id: adminCtx.sub,
+          actor_name: admin?.full_name || 'Admin',
+          meta: { user_id: userId },
+        })
+      } catch (e) {
+        console.warn('[auth/admin-reset] notify failed:', e)
+      }
+      return res.json({ message: 'Password reset for ' + (target.full_name || target.email) })
     } catch (error) {
       return respondWithError(res, error, 500)
     }

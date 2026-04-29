@@ -484,6 +484,10 @@ export function createBidsRouter(models: MongoModels, jwtSecret: string) {
         remarks: null,
         consumed_hours: 0,
         source_bid_id: auction.id,
+        // Stamp the winner on the project too — keeps every "is this mine?"
+        // filter (team dashboard, projects-list scope) working uniformly,
+        // including for in-house winners where external_team_id is null.
+        awarded_to_user_id: sub.user_id,
         created_at: nowIso,
         updated_at: nowIso,
       }
