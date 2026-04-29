@@ -91,15 +91,13 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
         updated_at: now,
       })
 
-      // Notify all approvers (admin/pm/pc) — actor excluded automatically by helper.
+      // Leave requests go ONLY to admins — PMs/PCs were getting noise on every leave.
+      // The helper auto-excludes the actor so an admin filing their own leave doesn't self-ping.
       const applicantName = targetUser?.full_name || targetUser?.email || 'Someone'
-      const approvers = await models.users.find({
-        role: { $in: ['admin', 'pm', 'pc'] },
-        is_active: 1,
-      }) as any[]
+      const admins = await models.users.find({ role: 'admin', is_active: 1 }) as any[]
       await createUserNotifications(
         models,
-        approvers.map((u) => u.id),
+        admins.map((u) => u.id),
         {
           type: 'leave_request',
           title: `Leave request from ${applicantName}`,

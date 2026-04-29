@@ -25,6 +25,7 @@ import { createSettingsRouter } from './express-routes/settings'
 import { createReportsRouter } from './express-routes/reports'
 import { createSupportRouter } from './express-routes/support'
 import { createNotificationsRouter } from './express-routes/notifications'
+import { createBidsRouter } from './express-routes/bids'
 import { createUploadsRouter } from './express-routes/uploads'
 import { bootstrapSeed } from './seeds/bootstrap'
 import { loadRuntimeEnv } from './utils/runtime-env'
@@ -143,6 +144,7 @@ server.use('/api/settings', createSettingsRouter(models, jwtSecret))
 server.use('/api/reports', createReportsRouter(models, jwtSecret))
 server.use('/api/support', createSupportRouter(models, jwtSecret))
 server.use('/api/notifications', createNotificationsRouter(models, jwtSecret))
+server.use('/api/bids', createBidsRouter(models, jwtSecret))
 server.use('/api/uploads', createUploadsRouter(jwtSecret, runtimeEnv as any))
 
 server.use('/static', express.static(path.resolve(process.cwd(), 'public/static')))

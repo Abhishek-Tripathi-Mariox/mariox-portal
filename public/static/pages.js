@@ -565,39 +565,10 @@ function openProjectModal(id = null) {
                   <div class="form-group"><label class="form-label">Status</label>
                     <select id="proj-status" class="form-select">${['active','on_hold','completed','archived','cancelled'].map(t=>`<option value="${t}" ${proj?.status===t?'selected':''}>${t.replace('_',' ').charAt(0).toUpperCase()+t.replace('_',' ').slice(1)}</option>`).join('')}</select></div>
                 </div>
-
-                <div style="margin-top:14px;padding:12px;border-radius:12px;background:rgba(255,122,69,0.06);border:1px solid rgba(255,122,69,0.18)">
-                  <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
-                    <input type="checkbox" id="proj-is-bidding" ${proj?.project_type==='bidding'?'checked':''} onchange="toggleProjectBiddingFields(this.checked)" style="accent-color:#FF7A45;width:16px;height:16px;margin-top:3px"/>
-                    <span>
-                      <span style="font-size:13px;font-weight:700;color:#FFF1E6"><i class="fas fa-gavel" style="color:#FF7A45;margin-right:6px"></i>Mark as Bidding Project</span>
-                      <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">No team will be assigned now. Teams will see this project on the Bidding page and place bids until the deadline.</div>
-                    </span>
-                  </label>
-                  <div id="proj-bid-fields" style="display:${proj?.project_type==='bidding'?'block':'none'};margin-top:12px">
-                    <div class="grid-2" style="gap:12px">
-                      <div class="form-group" style="margin-bottom:0">
-                        <label class="form-label"><i class="fas fa-stopwatch" style="color:#FF7A45;margin-right:6px"></i>Bid Deadline *</label>
-                        <input id="proj-bid-deadline" class="form-input" type="datetime-local" value="${proj?.bid_deadline ? new Date(proj.bid_deadline).toISOString().slice(0,16) : ''}"/>
-                        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Countdown timer runs until this time.</div>
-                      </div>
-                      <div class="form-group" style="margin-bottom:0">
-                        <label class="form-label"><i class="fas fa-rupee-sign" style="color:#FF7A45;margin-right:6px"></i>Reference Budget (₹)</label>
-                        <input id="proj-bid-budget" class="form-input" type="number" min="0" step="1" value="${proj?.revenue||''}" placeholder="optional"/>
-                        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Shown to bidders as a reference.</div>
-                      </div>
-                    </div>
-                    <div class="form-group" style="margin-bottom:0;margin-top:12px">
-                      <label class="form-label"><i class="fas fa-file-lines" style="color:#FF7A45;margin-right:6px"></i>Project Brief for Bidders *</label>
-                      <textarea id="proj-bid-brief" class="form-textarea" rows="4" placeholder="Describe the scope, deliverables, tech stack and any constraints so bidders know what they are signing up for.">${esc(proj?.description||'')}</textarea>
-                      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">This is shown on the bidding card so every team understands the project before placing a bid.</div>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
-            <div class="card" id="proj-team-assignment-card" style="display:${proj?.project_type==='bidding'?'none':'block'}">
+            <div class="card" id="proj-team-assignment-card">
               <div class="card-header"><h3>Team Assignment</h3></div>
               <div class="card-body">
                 <div class="grid-2" style="gap:12px;margin-bottom:16px">
@@ -725,8 +696,6 @@ function openProjectModal(id = null) {
       </div>
     `, 'modal-xl')
     renderSelectedDevs()
-    // If editing an existing bidding project, disable the type dropdown so the flow stays consistent.
-    if (proj?.project_type === 'bidding') toggleProjectBiddingFields(true)
   }
   fetchAndOpen()
 }
@@ -738,16 +707,6 @@ function filterDevDropdown(query) {
     const desig = row.querySelector('div div:last-child')?.textContent?.toLowerCase() || ''
     row.style.display = (name.includes(q) || desig.includes(q)) ? '' : 'none'
   })
-}
-
-function toggleProjectBiddingFields(checked) {
-  const isBidding = checked === true || checked === 'bidding'
-  const card = document.getElementById('proj-team-assignment-card')
-  if (card) card.style.display = isBidding ? 'none' : 'block'
-  const fields = document.getElementById('proj-bid-fields')
-  if (fields) fields.style.display = isBidding ? 'block' : 'none'
-  const typeSel = document.getElementById('proj-type')
-  if (typeSel) typeSel.disabled = isBidding
 }
 
 function setProjectAssignmentType(type) {
@@ -780,19 +739,12 @@ async function saveProject(id) {
     const externalAssigneeType = assignmentType === 'external'
       ? (externalOpt?.dataset?.kind || 'team')
       : null
-    const isBidding = !!document.getElementById('proj-is-bidding')?.checked
-    const projectType = isBidding ? 'bidding' : document.getElementById('proj-type').value
-    const bidDeadlineRaw = document.getElementById('proj-bid-deadline')?.value || ''
-    const bidBrief = (document.getElementById('proj-bid-brief')?.value || '').trim()
-    const bidBudget = parseFloat(document.getElementById('proj-bid-budget')?.value)
-    // For bidding projects the brief field doubles as the description shown to bidders.
-    const description = isBidding ? bidBrief : document.getElementById('proj-desc').value
     const payload = {
       name: document.getElementById('proj-name').value.trim(),
       code: document.getElementById('proj-code').value.trim(),
       client_id: clientSelect?.value || null,
       client_name: clientOpt?.dataset?.name || null,
-      project_type: projectType,
+      project_type: document.getElementById('proj-type').value,
       start_date: document.getElementById('proj-start').value,
       expected_end_date: document.getElementById('proj-end').value || null,
       status: document.getElementById('proj-status').value,
@@ -801,28 +753,18 @@ async function saveProject(id) {
       external_assignee_type: externalAssigneeType,
       total_allocated_hours: parseFloat(document.getElementById('proj-hours').value)||0,
       estimated_budget_hours: parseFloat(document.getElementById('proj-budget').value)||0,
-      pm_id: isBidding ? null : (document.getElementById('proj-pm').value||null),
-      pc_id: isBidding ? null : (document.getElementById('proj-pc').value||null),
+      pm_id: document.getElementById('proj-pm').value||null,
+      pc_id: document.getElementById('proj-pc').value||null,
       team_lead_id: null,
-      revenue: isBidding && Number.isFinite(bidBudget) ? bidBudget : (parseFloat(document.getElementById('proj-revenue').value)||0),
+      revenue: parseFloat(document.getElementById('proj-revenue').value)||0,
       billable: document.getElementById('proj-billable').value==='1',
-      description,
+      description: document.getElementById('proj-desc').value,
       remarks: document.getElementById('proj-remarks').value,
     }
-    if (isBidding) {
-      if (!bidDeadlineRaw) { utils.toast('Please set a bid deadline for bidding projects', 'error'); return }
-      if (!bidBrief) { utils.toast('Please add a project brief so bidders understand the project', 'error'); return }
-      // datetime-local has no timezone — convert to ISO via Date so the backend gets UTC.
-      payload.bid_deadline = new Date(bidDeadlineRaw).toISOString()
-      // Bidding projects don't need a start date or end date upfront.
-      payload.start_date = payload.start_date || null
-    } else if (!payload.start_date) {
+    if (!payload.name || !payload.code || !payload.start_date) {
       utils.toast('Please fill required fields (Name, Code, Start Date)', 'error'); return
     }
-    if (!payload.name || !payload.code) {
-      utils.toast('Please fill required fields (Name, Code)', 'error'); return
-    }
-    if (!isBidding && assignmentType === 'external' && !externalTeamId) {
+    if (assignmentType === 'external' && !externalTeamId) {
       utils.toast('Please select an external team or team member', 'error'); return
     }
     let projId = id
@@ -833,8 +775,7 @@ async function saveProject(id) {
       projId = res.data?.id || res.id
     }
 
-    // Save developer assignments only for in-house non-bidding; bidding projects wait for an awarded bid.
-    if (!isBidding && assignmentType === 'in_house') {
+    if (assignmentType === 'in_house') {
       if (projId && window._projSelectedDevs.length > 0) {
         const developers = window._projSelectedDevs.map(d => ({
           user_id: d.id,

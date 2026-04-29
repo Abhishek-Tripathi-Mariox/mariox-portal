@@ -259,7 +259,8 @@ export class MongoModels {
   readonly roles: MongoRepository
   readonly userNotifications: MongoRepository
   readonly projectUpdates: MongoRepository
-  readonly projectBids: MongoRepository
+  readonly bidAuctions: MongoRepository
+  readonly bidSubmissions: MongoRepository
 
   constructor(private readonly db: Db) {
     this.users = new UserModel(db.collection<UserRecord>('users'))
@@ -290,7 +291,8 @@ export class MongoModels {
     this.roles = new MongoRepository(db.collection('roles'))
     this.userNotifications = new MongoRepository(db.collection('user_notifications'))
     this.projectUpdates = new MongoRepository(db.collection('project_updates'))
-    this.projectBids = new MongoRepository(db.collection('project_bids'))
+    this.bidAuctions = new MongoRepository(db.collection('bid_auctions'))
+    this.bidSubmissions = new MongoRepository(db.collection('bid_submissions'))
   }
 
   get rawDb() {

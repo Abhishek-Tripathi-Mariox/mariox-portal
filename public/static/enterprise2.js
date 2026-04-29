@@ -1940,8 +1940,11 @@ async function deleteLeaveAction(id) {
 }
 
 // ── Bidding ──────────────────────────────────────────────────
+// Standalone module — talks to /api/bids (not /api/projects). The bid module
+// owns the auction lifecycle: create, invite teams, place bids, reveal at
+// the visibility window, award (which spawns a real project automatically).
 let _biddingTimer = null
-const _biddingState = { projects: [] }
+const _biddingState = { auctions: [] }
 
 function _formatCountdown(ms) {
   if (ms == null) return '—'
@@ -1958,34 +1961,23 @@ function _formatCountdown(ms) {
 async function renderBiddingView(el) {
   el.innerHTML = `<div style="padding:40px;text-align:center;color:#9F8678"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
   try {
-    const res = await API.get('/projects/bids/all')
-    const projects = res.data || res.projects || []
-    _biddingState.projects = projects
+    const res = await API.get('/bids')
+    const auctions = res.data || res.auctions || []
+    _biddingState.auctions = auctions
 
     const role = String(_user?.role || '').toLowerCase()
     const canCreate = ['admin', 'pm'].includes(role)
 
-    if (projects.length === 0) {
-      el.innerHTML = `
-        <div class="page-header">
-          <div><h1 class="page-title">Bidding</h1><p class="page-subtitle">Open projects available for bids</p></div>
-          ${canCreate ? `<div class="page-actions"><button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i> New Bidding Project</button></div>` : ''}
-        </div>
-        <div class="empty-state"><i class="fas fa-gavel"></i><p>No bidding projects yet.</p></div>`
-      return
-    }
-
     el.innerHTML = `
       <div class="page-header">
-        <div><h1 class="page-title">Bidding</h1><p class="page-subtitle">${projects.length} open ${projects.length === 1 ? 'auction' : 'auctions'}</p></div>
-        ${canCreate ? `<div class="page-actions"><button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i> New Bidding Project</button></div>` : ''}
+        <div><h1 class="page-title">Bidding</h1><p class="page-subtitle">${auctions.length} ${auctions.length === 1 ? 'auction' : 'auctions'}</p></div>
+        ${canCreate ? `<div class="page-actions"><button class="btn btn-primary" onclick="openAuctionModal()"><i class="fas fa-plus"></i> New Auction</button></div>` : ''}
       </div>
-      <div class="grid-3" style="gap:14px;align-items:stretch">
-        ${projects.map(p => renderBiddingCard(p)).join('')}
-      </div>
+      ${auctions.length === 0
+        ? `<div class="empty-state"><i class="fas fa-gavel"></i><p>${canCreate ? 'No auctions yet — start one to invite teams to bid.' : 'No auctions you are invited to yet.'}</p></div>`
+        : `<div class="grid-3" style="gap:14px;align-items:stretch">${auctions.map(a => renderAuctionCard(a)).join('')}</div>`}
     `
 
-    // Live countdown — re-tick once per second for every visible card.
     if (_biddingTimer) clearInterval(_biddingTimer)
     _biddingTimer = setInterval(updateBiddingCountdowns, 1000)
   } catch (e) {
@@ -1993,44 +1985,63 @@ async function renderBiddingView(el) {
   }
 }
 
-function renderBiddingCard(p) {
-  const deadlineMs = p.bid_deadline ? new Date(p.bid_deadline).getTime() : null
-  const myBid = (p.bids || []).find(b => b.user_id === (_user?.sub || _user?.id))
+function renderAuctionCard(a) {
+  const deadlineMs = a.bid_deadline ? new Date(a.bid_deadline).getTime() : null
+  const myId = _user?.sub || _user?.id
+  const myBid = a.my_submission || (a.submissions || []).find(s => s.user_id === myId) || null
   const isClosed = deadlineMs ? Date.now() > deadlineMs : false
   const role = String(_user?.role || '').toLowerCase()
-  const canAward = ['admin', 'pm'].includes(role) && p.bid_status === 'open' && (p.bids || []).length > 0
-  const canBid = !isClosed && p.bid_status === 'open'
-  const lowest = (p.bids || [])[0]
+  const isAdminOrPm = ['admin', 'pm'].includes(role)
+  const canAward = isAdminOrPm && a.status === 'open' && (a.submission_count || 0) > 0
+  const canBid = !isClosed && a.status === 'open' && !isAdminOrPm
+  const reveal = !!a.visibility_open
+  const lowestText = reveal && a.lowest_amount != null
+    ? `₹${Number(a.lowest_amount).toLocaleString()}${a.lowest_bidder_name ? ' · ' + escapeInbox(a.lowest_bidder_name) : ''}`
+    : (reveal ? '—' : 'Hidden')
+  const winnerName = a.status === 'awarded' ? a.winner_name : null
+  const winnerAmt = a.status === 'awarded' ? a.winner_amount : null
   return `
     <div class="card" style="display:flex;flex-direction:column">
       <div class="card-body" style="display:flex;flex-direction:column;gap:10px;flex:1">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div>
-            <div style="font-size:15px;font-weight:700;color:#FFF1E6">${escapeInbox(p.name || '')}</div>
-            <div style="font-size:11px;color:#9F8678;font-family:monospace">${escapeInbox(p.code || '')}</div>
+            <div style="font-size:15px;font-weight:700;color:#FFF1E6">${escapeInbox(a.name || '')}</div>
+            <div style="font-size:11px;color:#9F8678;font-family:monospace">${escapeInbox(a.code || '')}${a.client_name ? ' · ' + escapeInbox(a.client_name) : ''}</div>
           </div>
-          <span class="badge ${isClosed || p.bid_status !== 'open' ? 'badge-red' : 'badge-green'}">${p.bid_status === 'awarded' ? 'Awarded' : isClosed ? 'Closed' : 'Open'}</span>
+          <span class="badge ${a.status === 'awarded' ? 'badge-green' : (isClosed || a.status !== 'open') ? 'badge-red' : 'badge-blue'}">${a.status === 'awarded' ? 'Awarded' : isClosed ? 'Closed' : 'Open'}</span>
         </div>
-        ${p.description ? `
+        ${a.scope ? `
           <div style="padding:10px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
-            <div style="font-size:10px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px"><i class="fas fa-file-lines"></i> Project brief</div>
-            <div style="font-size:12.5px;color:#E8D2BD;line-height:1.55;white-space:pre-wrap">${escapeInbox(p.description.slice(0, 320))}${p.description.length > 320 ? '…' : ''}</div>
+            <div style="font-size:10px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px"><i class="fas fa-file-lines"></i> Scope</div>
+            <div style="font-size:12.5px;color:#E8D2BD;line-height:1.55;white-space:pre-wrap">${escapeInbox(a.scope.slice(0, 320))}${a.scope.length > 320 ? '…' : ''}</div>
           </div>` : ''}
-        ${Number(p.revenue) > 0 ? `<div style="font-size:11.5px;color:#9F8678"><i class="fas fa-rupee-sign"></i> Reference budget: <span style="color:#FFF1E6;font-weight:600">₹${Number(p.revenue).toLocaleString()}</span></div>` : ''}
+        <div class="grid-2" style="gap:8px">
+          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Max bid</div><div style="font-size:13px;font-weight:700;color:#FFF1E6">₹${Number(a.max_bid_amount || 0).toLocaleString()}</div></div>
+          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Reveal</div><div style="font-size:13px;font-weight:700;color:#FFF1E6">${a.visibility_hours ? `${a.visibility_hours}h before close` : 'After close'}</div></div>
+          ${a.planned_start_date ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Start</div><div style="font-size:12px;color:#FFF1E6">${fmtDate(a.planned_start_date)}</div></div>` : ''}
+          ${a.planned_end_date ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">End</div><div style="font-size:12px;color:#FFF1E6">${fmtDate(a.planned_end_date)}</div></div>` : ''}
+        </div>
         <div style="padding:10px;border-radius:10px;background:rgba(255,122,69,0.08);border:1px solid rgba(255,122,69,0.18)">
           <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Time remaining</div>
-          <div data-bid-countdown="${p.id}" data-deadline="${deadlineMs || ''}" style="font-size:18px;font-weight:700;color:#FFB347;font-variant-numeric:tabular-nums">${_formatCountdown(deadlineMs ? deadlineMs - Date.now() : null)}</div>
+          <div data-bid-countdown="${a.id}" data-deadline="${deadlineMs || ''}" style="font-size:18px;font-weight:700;color:#FFB347;font-variant-numeric:tabular-nums">${_formatCountdown(deadlineMs ? deadlineMs - Date.now() : null)}</div>
         </div>
         <div class="grid-2" style="gap:8px">
-          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Bids</div><div style="font-size:14px;font-weight:700;color:#FFF1E6">${p.bid_count || 0}</div></div>
-          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Lowest</div><div style="font-size:14px;font-weight:700;color:#FFF1E6">${lowest ? '₹' + Number(lowest.amount).toLocaleString() : '—'}</div></div>
+          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Bids</div><div style="font-size:14px;font-weight:700;color:#FFF1E6">${a.submission_count || 0}</div></div>
+          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Lowest</div><div style="font-size:14px;font-weight:700;color:#FFF1E6">${lowestText}</div></div>
         </div>
-        ${myBid ? `<div style="font-size:11px;color:#86E0A8"><i class="fas fa-check-circle"></i> Your bid: ₹${Number(myBid.amount).toLocaleString()}${myBid.delivery_days ? ' · ' + myBid.delivery_days + ' days' : ''}</div>` : ''}
+        ${!reveal && a.status === 'open' ? `<div style="font-size:11px;color:#9F8678"><i class="fas fa-eye-slash"></i> Other bids reveal ${a.visibility_hours ? a.visibility_hours + 'h before deadline' : 'after deadline'}</div>` : ''}
+        ${myBid ? `<div style="font-size:11.5px;color:#86E0A8"><i class="fas fa-check-circle"></i> Your bid: ₹${Number(myBid.amount).toLocaleString()}${myBid.delivery_days ? ' · ' + myBid.delivery_days + ' days' : ''}</div>` : ''}
+        ${winnerName ? `
+          <div style="padding:10px;border-radius:10px;background:rgba(88,198,138,0.08);border:1px solid rgba(88,198,138,0.25)">
+            <div style="font-size:10px;color:#86E0A8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px"><i class="fas fa-trophy"></i> Won by</div>
+            <div style="font-size:13px;color:#FFF1E6;font-weight:700">${escapeInbox(winnerName)}${winnerAmt ? ' · ₹' + Number(winnerAmt).toLocaleString() : ''}</div>
+            ${a.resulting_project_id ? `<div style="font-size:11px;color:#9F8678;margin-top:3px"><i class="fas fa-folder-open"></i> Project auto-created</div>` : ''}
+          </div>` : ''}
       </div>
       <div style="padding:12px;border-top:1px solid rgba(255,255,255,0.06);display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-outline btn-sm" onclick="openBidsListModal('${p.id}')" style="flex:1"><i class="fas fa-list"></i> View bids</button>
-        ${canBid ? `<button class="btn btn-primary btn-sm" onclick="openPlaceBidModal('${p.id}')" style="flex:1"><i class="fas fa-gavel"></i> ${myBid ? 'Update' : 'Place'} bid</button>` : ''}
-        ${canAward ? `<button class="btn btn-success btn-sm" onclick="openBidsListModal('${p.id}')" style="flex:1"><i class="fas fa-trophy"></i> Award</button>` : ''}
+        <button class="btn btn-outline btn-sm" onclick="openAuctionDetailModal('${a.id}')" style="flex:1"><i class="fas fa-list"></i> View bids</button>
+        ${canBid ? `<button class="btn btn-primary btn-sm" onclick="openPlaceBidModal('${a.id}')" style="flex:1"><i class="fas fa-gavel"></i> ${myBid ? 'Update' : 'Place'} bid</button>` : ''}
+        ${canAward ? `<button class="btn btn-success btn-sm" onclick="openAuctionDetailModal('${a.id}')" style="flex:1"><i class="fas fa-trophy"></i> Award</button>` : ''}
       </div>
     </div>`
 }
@@ -2043,23 +2054,151 @@ function updateBiddingCountdowns() {
   })
 }
 
-function _findBiddingProject(id) {
-  return (_biddingState.projects || []).find(p => p.id === id)
+function _findAuction(id) {
+  return (_biddingState.auctions || []).find(a => a.id === id)
 }
 
-function openPlaceBidModal(projectId) {
-  const p = _findBiddingProject(projectId)
-  if (!p) { toast('Project not found', 'error'); return }
-  const myBid = (p.bids || []).find(b => b.user_id === (_user?.sub || _user?.id))
+// ── New auction creation modal ───────────────────────────────
+async function openAuctionModal() {
+  let teamUsers = []
+  let clients = []
+  try {
+    const [teamsRes, clientsRes] = await Promise.all([
+      API.get('/users?role=team').catch(() => ({ users: [] })),
+      API.get('/clients').catch(() => ({ clients: [] })),
+    ])
+    teamUsers = (teamsRes.users || teamsRes.data || [])
+      .filter(u => String(u.role || '').toLowerCase() === 'team')
+    clients = clientsRes.clients || clientsRes.data || []
+  } catch {}
+  window._auctionInvitedIds = new Set()
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-gavel" style="color:var(--accent);margin-right:6px"></i>${myBid ? 'Update' : 'Place'} bid · ${escapeInbox(p.name)}</h3>
+      <h3><i class="fas fa-gavel" style="color:var(--accent);margin-right:6px"></i>New Bid Auction</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <div class="grid-2" style="gap:12px">
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Name *</label><input id="auc-name" class="form-input" placeholder="e.g. Mariox CRM Build"/></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Code *</label><input id="auc-code" class="form-input" placeholder="e.g. CRM-Q1"/></div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Client</label>
+          <select id="auc-client" class="form-select">
+            <option value="">— Internal / None —</option>
+            ${clients.map(c => `<option value="${escapeInbox(c.id)}" data-name="${escapeInbox(c.company_name || c.contact_name || '')}">${escapeInbox(c.company_name || c.contact_name || c.email)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Maximum bid amount (₹) *</label>
+          <input id="auc-max" class="form-input" type="number" min="1" step="1" placeholder="bidders can't bid higher than this"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Bid deadline *</label>
+          <input id="auc-deadline" class="form-input" type="datetime-local"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Reveal bids window (hours before deadline)</label>
+          <input id="auc-visibility" class="form-input" type="number" min="0" step="0.5" value="3" placeholder="e.g. 3"/>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Bidders see each other's amounts only in the last X hours.</div>
+        </div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Planned start date</label><input id="auc-start" class="form-input" type="date"/></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Planned end date</label><input id="auc-end" class="form-input" type="date"/></div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label"><i class="fas fa-file-lines" style="color:#FF7A45;margin-right:6px"></i>Project scope *</label>
+        <textarea id="auc-scope" class="form-textarea" rows="4" placeholder="Describe the deliverables, tech, constraints — bidders read this before bidding."></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label"><i class="fas fa-users" style="color:#FF7A45;margin-right:6px"></i>Invite teams (role=team) *</label>
+        <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
+          <div id="auc-team-list" style="max-height:220px;overflow-y:auto;padding:8px">
+            ${teamUsers.length === 0 ? '<div style="color:var(--text-muted);font-size:12px;padding:8px;text-align:center">No team users available</div>' :
+              teamUsers.map(u => `
+                <label data-team-row="${u.id}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;border:1px solid transparent">
+                  <input type="checkbox" data-team-cb="${u.id}" onchange="toggleAuctionInvite('${u.id}', this.checked)" style="accent-color:#FF7A45;width:15px;height:15px"/>
+                  <div style="width:28px;height:28px;border-radius:50%;background:${u.avatar_color || '#FF7A45'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${escapeInbox((u.full_name || '').split(' ').map(n => n[0]).join('').slice(0, 2))}</div>
+                  <div style="flex:1">
+                    <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${escapeInbox(u.full_name)}</div>
+                    <div style="font-size:11px;color:var(--text-muted)">${escapeInbox(u.designation || u.email || 'team')}</div>
+                  </div>
+                </label>`).join('')}
+          </div>
+        </div>
+        <div id="auc-invite-count" style="font-size:11px;color:#9F8678;margin-top:4px">0 selected</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAuction()"><i class="fas fa-paper-plane"></i> Create auction</button>
+    </div>
+  `, 'modal-xl')
+}
+
+function toggleAuctionInvite(id, checked) {
+  if (!window._auctionInvitedIds) window._auctionInvitedIds = new Set()
+  if (checked) window._auctionInvitedIds.add(id)
+  else window._auctionInvitedIds.delete(id)
+  const cnt = document.getElementById('auc-invite-count')
+  if (cnt) cnt.textContent = `${window._auctionInvitedIds.size} selected`
+}
+
+async function submitAuction() {
+  const name = (document.getElementById('auc-name').value || '').trim()
+  const code = (document.getElementById('auc-code').value || '').trim()
+  const clientSelect = document.getElementById('auc-client')
+  const clientOpt = clientSelect?.selectedOptions?.[0]
+  const scope = (document.getElementById('auc-scope').value || '').trim()
+  const maxBid = parseFloat(document.getElementById('auc-max').value)
+  const deadlineRaw = document.getElementById('auc-deadline').value
+  const visibility = parseFloat(document.getElementById('auc-visibility').value)
+  const start = document.getElementById('auc-start').value || null
+  const end = document.getElementById('auc-end').value || null
+  const invited = Array.from(window._auctionInvitedIds || [])
+
+  if (!name || !code) { toast('Name and Code required', 'error'); return }
+  if (!scope) { toast('Add the project scope', 'error'); return }
+  if (!maxBid || maxBid <= 0) { toast('Enter a valid maximum bid amount', 'error'); return }
+  if (!deadlineRaw) { toast('Set a bid deadline', 'error'); return }
+  if (invited.length === 0) { toast('Pick at least one team to invite', 'error'); return }
+
+  try {
+    await API.post('/bids', {
+      name, code,
+      client_id: clientSelect?.value || null,
+      client_name: clientOpt?.dataset?.name || null,
+      scope,
+      max_bid_amount: maxBid,
+      bid_deadline: new Date(deadlineRaw).toISOString(),
+      visibility_hours: Number.isFinite(visibility) && visibility >= 0 ? visibility : 0,
+      planned_start_date: start,
+      planned_end_date: end,
+      invited_user_ids: invited,
+    })
+    toast('Auction created', 'success')
+    closeModal()
+    const el = document.getElementById('page-bidding-view')
+    if (el) { el.dataset.loaded = ''; renderBiddingView(el) }
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+// ── Place / update bid modal ─────────────────────────────────
+function openPlaceBidModal(auctionId) {
+  const a = _findAuction(auctionId)
+  if (!a) { toast('Auction not found', 'error'); return }
+  const myId = _user?.sub || _user?.id
+  const myBid = a.my_submission || (a.submissions || []).find(s => s.user_id === myId) || null
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-gavel" style="color:var(--accent);margin-right:6px"></i>${myBid ? 'Update' : 'Place'} bid · ${escapeInbox(a.name)}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <div style="padding:10px;border-radius:10px;background:rgba(255,122,69,0.08);border:1px solid rgba(255,122,69,0.18);font-size:12px;color:#FFB347">
+        <i class="fas fa-circle-info"></i> Maximum allowed bid: <strong>₹${Number(a.max_bid_amount || 0).toLocaleString()}</strong>
+      </div>
       <div class="form-group">
         <label class="form-label">Your bid amount (₹) *</label>
-        <input id="bid-amount" class="form-input" type="number" min="1" step="1" value="${myBid?.amount || ''}" placeholder="e.g. 50000"/>
+        <input id="bid-amount" class="form-input" type="number" min="1" step="1" max="${a.max_bid_amount || ''}" value="${myBid?.amount || ''}" placeholder="Must be ≤ ₹${Number(a.max_bid_amount || 0).toLocaleString()}"/>
       </div>
       <div class="form-group">
         <label class="form-label">Delivery in (days)</label>
@@ -2072,68 +2211,240 @@ function openPlaceBidModal(projectId) {
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitPlaceBid('${projectId}')"><i class="fas fa-paper-plane"></i> ${myBid ? 'Update' : 'Submit'} bid</button>
+      <button class="btn btn-primary" onclick="submitPlaceBid('${auctionId}', ${Number(a.max_bid_amount) || 0})"><i class="fas fa-paper-plane"></i> ${myBid ? 'Update' : 'Submit'} bid</button>
     </div>
   `, 'modal-md')
 }
 
-async function submitPlaceBid(projectId) {
+async function submitPlaceBid(auctionId, maxBidAmount) {
   const amount = parseFloat(document.getElementById('bid-amount').value)
   const days = parseFloat(document.getElementById('bid-days').value)
   const note = (document.getElementById('bid-note').value || '').trim()
   if (!amount || amount <= 0) { toast('Enter a valid bid amount', 'error'); return }
+  // Frontend guard so the user gets the message before the round-trip.
+  if (Number(maxBidAmount) > 0 && amount > Number(maxBidAmount)) {
+    toast(`Bid amount cannot exceed the maximum of ₹${Number(maxBidAmount).toLocaleString()}`, 'error')
+    return
+  }
   try {
-    await API.post(`/projects/${projectId}/bids`, {
+    await API.post(`/bids/${auctionId}/submissions`, {
       amount,
       delivery_days: Number.isFinite(days) && days > 0 ? days : null,
       note: note || null,
     })
-    toast('Bid placed', 'success')
+    toast('Bid submitted', 'success')
     closeModal()
     const el = document.getElementById('page-bidding-view')
     if (el) { el.dataset.loaded = ''; renderBiddingView(el) }
   } catch (e) { toast('Failed: ' + e.message, 'error') }
 }
 
-function openBidsListModal(projectId) {
-  const p = _findBiddingProject(projectId)
-  if (!p) { toast('Project not found', 'error'); return }
-  const role = String(_user?.role || '').toLowerCase()
-  const canAward = ['admin', 'pm'].includes(role) && p.bid_status === 'open'
-  const bids = p.bids || []
+// ── Auction detail / award modal ─────────────────────────────
+async function openAuctionDetailModal(auctionId) {
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-list" style="color:var(--accent);margin-right:6px"></i>Bids · ${escapeInbox(p.name)}</h3>
+      <h3><i class="fas fa-list" style="color:var(--accent);margin-right:6px"></i>Auction details</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-body" style="padding:18px">
-      ${bids.length === 0 ? `<div class="empty-state"><i class="fas fa-inbox"></i><p>No bids yet.</p></div>` : `
-        <table class="data-table">
-          <thead><tr><th>Bidder</th><th>Amount</th><th>Delivery</th><th>Note</th>${canAward ? '<th></th>' : ''}</tr></thead>
-          <tbody>
-            ${bids.map((b, i) => `<tr ${i === 0 ? 'style="background:rgba(88,198,138,0.08)"' : ''}>
-              <td><div style="display:flex;align-items:center;gap:8px">${avatar(b.bidder_name || '—', b.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(b.bidder_name || '—')}</span>${i === 0 ? '<span class="badge badge-green" style="font-size:10px">Lowest</span>' : ''}</div></td>
-              <td style="font-weight:700;color:#FFF1E6">₹${Number(b.amount).toLocaleString()}</td>
-              <td style="font-size:12px;color:#9F8678">${b.delivery_days ? b.delivery_days + ' days' : '—'}</td>
-              <td style="font-size:12px;color:#E8D2BD;max-width:240px">${escapeInbox(b.note || '—')}</td>
-              ${canAward ? `<td><button class="btn btn-success btn-xs" onclick="awardBidAction('${projectId}','${b.id}')"><i class="fas fa-trophy"></i> Award</button></td>` : ''}
-            </tr>`).join('')}
-          </tbody>
-        </table>`}
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal()">Close</button>
-    </div>
+    <div class="modal-body" style="padding:18px;text-align:center;color:#9F8678"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
   `, 'modal-lg')
+  try {
+    const res = await API.get(`/bids/${auctionId}`)
+    const a = res.data || res.auction
+    const role = String(_user?.role || '').toLowerCase()
+    const canAward = ['admin', 'pm'].includes(role) && a.status === 'open'
+    const subs = a.submissions || []
+    const reveal = !!a.visibility_open
+    const winnerName = a.status === 'awarded' ? a.winner_name : null
+    closeModal()
+    showModal(`
+      <div class="modal-header">
+        <h3><i class="fas fa-list" style="color:var(--accent);margin-right:6px"></i>${escapeInbox(a.name)} <span style="font-size:12px;color:#9F8678;font-weight:400">· ${escapeInbox(a.code)}</span></h3>
+        <button class="close-btn" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+        ${winnerName ? `<div style="padding:10px;border-radius:10px;background:rgba(88,198,138,0.1);border:1px solid rgba(88,198,138,0.3);font-size:13px;color:#FFF1E6"><i class="fas fa-trophy" style="color:#86E0A8"></i> <strong>${escapeInbox(winnerName)}</strong> won at ₹${Number(a.winner_amount || 0).toLocaleString()}${a.resulting_project_id ? ' — project auto-created' : ''}</div>` : ''}
+        ${a.scope ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Scope</div><div style="font-size:13px;color:#E8D2BD;line-height:1.55;white-space:pre-wrap">${escapeInbox(a.scope)}</div></div>` : ''}
+        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#9F8678">
+          <span><i class="fas fa-rupee-sign"></i> Max ₹${Number(a.max_bid_amount || 0).toLocaleString()}</span>
+          <span><i class="fas fa-stopwatch"></i> Closes ${new Date(a.bid_deadline).toLocaleString()}</span>
+          <span><i class="fas fa-eye"></i> ${a.visibility_hours ? `Reveal ${a.visibility_hours}h before` : 'Reveal at close'}</span>
+        </div>
+        ${!reveal && a.status === 'open' && !['admin','pm','pc'].includes(role) ? `
+          <div style="padding:10px;border-radius:10px;background:rgba(255,255,255,0.04);font-size:12px;color:#9F8678">
+            <i class="fas fa-eye-slash"></i> Other bids stay hidden until the reveal window opens.
+          </div>` : ''}
+        <div>
+          <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Bids (${a.submission_count || 0})</div>
+          ${subs.length === 0 ? '<div class="empty-state"><i class="fas fa-inbox"></i><p>No bids yet.</p></div>' : `
+            <table class="data-table">
+              <thead><tr><th>Bidder</th><th>Amount</th><th>Delivery</th><th>Note</th>${canAward ? '<th></th>' : ''}</tr></thead>
+              <tbody>
+                ${subs.map((s, i) => `<tr ${(reveal && i === 0) ? 'style="background:rgba(88,198,138,0.08)"' : ''}>
+                  <td><div style="display:flex;align-items:center;gap:8px">${avatar(s.bidder_name || '—', s.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(s.bidder_name || '—')}</span>${(reveal && i === 0) ? '<span class="badge badge-green" style="font-size:10px">Lowest</span>' : ''}${s.status === 'awarded' ? '<span class="badge badge-green" style="font-size:10px">Won</span>' : ''}${s.status === 'lost' ? '<span class="badge" style="font-size:10px;background:rgba(255,255,255,0.06);color:#9F8678">Lost</span>' : ''}</div></td>
+                  <td style="font-weight:700;color:#FFF1E6">₹${Number(s.amount).toLocaleString()}</td>
+                  <td style="font-size:12px;color:#9F8678">${s.delivery_days ? s.delivery_days + ' days' : '—'}</td>
+                  <td style="font-size:12px;color:#E8D2BD;max-width:240px">${escapeInbox(s.note || '—')}</td>
+                  ${canAward && s.status === 'submitted' ? `<td><button class="btn btn-success btn-xs" onclick="awardBidAction('${auctionId}','${s.id}')"><i class="fas fa-trophy"></i> Award</button></td>` : (canAward ? '<td></td>' : '')}
+                </tr>`).join('')}
+              </tbody>
+            </table>`}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      </div>
+    `, 'modal-lg')
+  } catch (e) {
+    toast('Failed to load auction: ' + e.message, 'error')
+  }
 }
 
-async function awardBidAction(projectId, bidId) {
-  if (!confirm('Award this bid? This closes the project to further bidding.')) return
+async function awardBidAction(auctionId, submissionId) {
+  if (!confirm('Award this bid? It will close the auction and auto-create the project.')) return
   try {
-    await API.post(`/projects/${projectId}/bids/${bidId}/award`)
-    toast('Bid awarded', 'success')
+    const res = await API.post(`/bids/${auctionId}/submissions/${submissionId}/award`)
+    toast(res.message || 'Bid awarded — project created', 'success')
     closeModal()
     const el = document.getElementById('page-bidding-view')
     if (el) { el.dataset.loaded = ''; renderBiddingView(el) }
+    // Also refresh Projects list if visible.
+    const projEl = document.getElementById('page-projects-list')
+    if (projEl?.classList.contains('active')) { projEl.dataset.loaded = ''; if (typeof loadPage === 'function') loadPage('projects-list', projEl) }
   } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+// ── Team Dashboard ───────────────────────────────────────────
+// Shown to role=team accounts. The "team" account is a single head/lead
+// user — so this is essentially their personal landing page: their projects
+// (external assignments + bids they won) plus active auctions they are
+// invited to bid on.
+async function renderTeamDashboard(el) {
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:#9F8678"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
+  try {
+    const myId = _user?.sub || _user?.id || ''
+    const [projRes, bidsRes] = await Promise.all([
+      API.get('/projects').catch(() => ({ projects: [] })),
+      API.get('/bids').catch(() => ({ data: [] })),
+    ])
+    const allProjects = projRes.projects || projRes.data?.projects || []
+    const auctions = bidsRes.data || bidsRes.auctions || []
+    // A project is "mine" if it was assigned externally to me, or auto-created
+    // from a bid I won, or its source bid is one I won.
+    const myProjects = allProjects.filter((p) => {
+      if (p.external_team_id === myId) return true
+      if (p.awarded_to_user_id === myId) return true
+      return false
+    })
+    const activeProjects = myProjects.filter((p) => p.status === 'active')
+    const openAuctions = auctions.filter((a) => a.status === 'open')
+    const myWins = auctions.filter((a) => a.awarded_user_id === myId)
+    const totalRevenue = myWins.reduce((sum, a) => sum + (Number(a.awarded_amount) || 0), 0)
+
+    el.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Welcome${_user?.name ? ', ' + escapeInbox(_user.name.split(' ')[0]) : ''}</h1>
+          <p class="page-subtitle">Your projects and bid invitations at a glance</p>
+        </div>
+      </div>
+
+      <div class="grid-4" style="margin-bottom:16px">
+        ${miniStatCard('Active Projects', activeProjects.length, '#FF7A45', 'fa-layer-group')}
+        ${miniStatCard('Open Auctions',   openAuctions.length,   '#FFCB47', 'fa-gavel')}
+        ${miniStatCard('Wins',            myWins.length,         '#58C68A', 'fa-trophy')}
+        ${miniStatCard('Awarded Value',   '₹' + Number(totalRevenue).toLocaleString(), '#C56FE6', 'fa-rupee-sign')}
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start">
+        <div class="card">
+          <div class="card-header">
+            <h3>My Projects</h3>
+            <span style="font-size:12px;color:var(--text-muted)">${myProjects.length} total</span>
+          </div>
+          <div class="card-body" style="padding:0">
+            ${myProjects.length === 0
+              ? `<div class="empty-state" style="padding:24px"><i class="fas fa-folder-open"></i><p>No projects assigned yet — win a bid to see them here.</p></div>`
+              : `<table class="data-table">
+                  <thead><tr><th>Project</th><th>Status</th><th>Start</th><th>Due</th></tr></thead>
+                  <tbody>
+                    ${myProjects.map((p) => `
+                      <tr>
+                        <td>
+                          <div style="font-weight:600;color:#FFF1E6">${escapeInbox(p.name || '')}</div>
+                          <div style="font-size:11px;color:#9F8678;font-family:monospace">${escapeInbox(p.code || '')}</div>
+                        </td>
+                        <td>${typeof statusBadge === 'function' ? statusBadge(p.status) : `<span class="badge">${escapeInbox(p.status || '')}</span>`}</td>
+                        <td style="font-size:12px;color:#9F8678">${p.start_date ? fmtDate(p.start_date) : '—'}</td>
+                        <td style="font-size:12px;color:${new Date(p.expected_end_date) < new Date() && p.status === 'active' ? '#FF5E3A' : '#9F8678'}">${p.expected_end_date ? fmtDate(p.expected_end_date) : '—'}</td>
+                      </tr>`).join('')}
+                  </tbody>
+                </table>`}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Open Auctions</h3>
+            <span style="font-size:12px;color:var(--text-muted)">${openAuctions.length} live</span>
+          </div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+            ${openAuctions.length === 0
+              ? `<div class="empty-state"><i class="fas fa-gavel"></i><p>No open auctions for you right now.</p></div>`
+              : openAuctions.slice(0, 6).map((a) => {
+                  const myBid = a.my_submission || (a.submissions || []).find((s) => s.user_id === myId) || null
+                  const dl = a.bid_deadline ? new Date(a.bid_deadline).getTime() : null
+                  return `
+                    <div style="padding:12px;border-radius:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                        <div style="min-width:0">
+                          <div style="font-size:13.5px;font-weight:700;color:#FFF1E6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeInbox(a.name || '')}</div>
+                          <div style="font-size:11px;color:#9F8678">Max ₹${Number(a.max_bid_amount || 0).toLocaleString()}</div>
+                        </div>
+                        <span class="badge badge-blue" style="font-size:10px">Open</span>
+                      </div>
+                      <div style="margin-top:8px;font-size:13px;font-weight:700;color:#FFB347;font-variant-numeric:tabular-nums" data-bid-countdown="${a.id}" data-deadline="${dl || ''}">${_formatCountdown(dl ? dl - Date.now() : null)}</div>
+                      ${myBid ? `<div style="font-size:11px;color:#86E0A8;margin-top:4px"><i class="fas fa-check-circle"></i> Your bid: ₹${Number(myBid.amount).toLocaleString()}</div>` : ''}
+                      <div style="margin-top:8px;display:flex;gap:6px">
+                        <button class="btn btn-primary btn-xs" onclick="openPlaceBidModal('${a.id}')" style="flex:1"><i class="fas fa-gavel"></i> ${myBid ? 'Update' : 'Place'} bid</button>
+                        <button class="btn btn-outline btn-xs" onclick="openAuctionDetailModal('${a.id}')"><i class="fas fa-eye"></i></button>
+                      </div>
+                    </div>`
+                }).join('')}
+            ${openAuctions.length > 0 ? `<button class="btn btn-outline btn-sm" onclick="Router.navigate('bidding-view')" style="margin-top:6px">See all auctions <i class="fas fa-arrow-right"></i></button>` : ''}
+          </div>
+        </div>
+      </div>
+
+      ${myWins.length > 0 ? `
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><h3>My Wins</h3><span style="font-size:12px;color:var(--text-muted)">${myWins.length} awarded</span></div>
+          <div class="card-body" style="padding:0">
+            <table class="data-table">
+              <thead><tr><th>Auction</th><th>Amount</th><th>Awarded</th><th>Project</th></tr></thead>
+              <tbody>
+                ${myWins.map((a) => `
+                  <tr>
+                    <td>
+                      <div style="font-weight:600;color:#FFF1E6">${escapeInbox(a.name || '')}</div>
+                      <div style="font-size:11px;color:#9F8678;font-family:monospace">${escapeInbox(a.code || '')}</div>
+                    </td>
+                    <td style="font-weight:700;color:#FFF1E6">₹${Number(a.awarded_amount || 0).toLocaleString()}</td>
+                    <td style="font-size:12px;color:#9F8678">${a.awarded_at ? fmtDate(a.awarded_at) : '—'}</td>
+                    <td style="font-size:12px;color:#9F8678">${a.resulting_project_id ? '<i class="fas fa-folder-open" style="color:#86E0A8"></i> Created' : '—'}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
+    `
+
+    // Re-tick countdowns inside the dashboard cards (shared timer is OK).
+    if (_biddingTimer) clearInterval(_biddingTimer)
+    _biddingTimer = setInterval(updateBiddingCountdowns, 1000)
+    // Stash for the place-bid modal which reads from _biddingState.auctions.
+    _biddingState.auctions = auctions
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
 }

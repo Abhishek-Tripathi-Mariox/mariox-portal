@@ -47,6 +47,41 @@ const utils = {
 
 const BASE = '/api'
 let _token = null, _user = null
+
+// Role → page allow-list. Sidebar items, page dispatcher and the router all
+// consult this so a single source of truth controls who-sees-what. Pages not
+// listed here are open to every authenticated user.
+const PAGE_PERMISSIONS = {
+  'super-dashboard': ['admin'],
+  'clients-list':    ['admin'],
+  'billing-admin':   ['admin'],
+  'team-overview':   ['admin', 'pm'],
+  'pm-dashboard':    ['admin', 'pm'],
+  'projects-list':   ['admin', 'pm', 'pc', 'developer', 'team'],
+  'kanban-board':    ['admin', 'pm', 'pc', 'developer'],
+  'sprints-view':    ['admin', 'pm', 'pc'],
+  'milestones-view': ['admin', 'pm', 'pc'],
+  'documents-center':['admin', 'pm', 'pc', 'developer'],
+  'resources-view':  ['admin', 'pm'],
+  'dev-dashboard':   ['developer'],
+  'team-dashboard':  ['team'],
+  'my-tasks':        ['admin', 'pm', 'pc', 'developer'],
+  'timesheets-view': ['admin', 'pm', 'pc', 'developer'],
+  'leaves-view':     ['admin', 'pm', 'pc', 'developer'], // team excluded — they don't apply for leave here
+  'bidding-view':    ['admin', 'pm', 'team'],
+  'support-tickets': ['admin', 'pm', 'pc', 'developer', 'team'],
+  'approval-queue':  ['admin', 'pm', 'pc'],
+  'reports-view':    ['admin', 'pm'],
+  'alerts-view':     ['admin', 'pm'],
+  'settings-view':   ['admin', 'pm', 'pc', 'developer', 'team'],
+}
+
+function canSeePage(page) {
+  const allowed = PAGE_PERMISSIONS[page]
+  if (!allowed) return true
+  return allowed.includes(String(_user?.role || '').toLowerCase())
+}
+
 const SIDEBAR_GROUP_STORAGE_KEY = 'devportal_sidebar_groups'
 const SIDEBAR_PAGE_GROUPS = {
   'super-dashboard': 'admin',
@@ -66,7 +101,8 @@ const SIDEBAR_PAGE_GROUPS = {
   'support-tickets': 'dev',
   'approval-queue': 'dev',
   'leaves-view': 'dev',
-  'bidding-view': 'dev',
+  'team-dashboard': 'team',
+  'bidding-view': 'team',
   'reports-view': 'analytics',
   'alerts-view': 'analytics',
   'settings-view': 'settings',
@@ -75,6 +111,7 @@ const SIDEBAR_GROUP_DEFAULTS = {
   admin: true,
   pm: true,
   dev: true,
+  team: true,
   analytics: false,
   settings: true,
 }
@@ -245,6 +282,18 @@ const Router = {
   current: null,
   history: [],
   navigate(page, params={}) {
+    // Permission gate: if the user lacks access, silently bounce to their
+    // default landing page so deep-links / stale URLs can't reach forbidden
+    // pages. This mirrors what canSeePage hides in the sidebar.
+    if (_user && !canSeePage(page)) {
+      const fallback = defaultPage()
+      if (fallback && fallback !== page) {
+        if (typeof toast === 'function') toast('You don’t have access to that page', 'info')
+        page = fallback
+      } else {
+        return
+      }
+    }
     // Push current page to history before navigating
     if (this.current) {
       this.history.push(this.current)
@@ -325,76 +374,99 @@ function renderApp() {
 }
 
 function defaultPage() {
-  const map = { admin: 'super-dashboard', pm: 'pm-dashboard', developer: 'dev-dashboard' }
+  const map = {
+    admin: 'super-dashboard',
+    pm: 'pm-dashboard',
+    pc: 'pm-dashboard',
+    developer: 'dev-dashboard',
+    team: 'team-dashboard',
+  }
   return map[_user?.role] || 'pm-dashboard'
 }
 
 // ── Shell HTML ────────────────────────────────────────────────
+// Build a single nav <a> only if the current user has permission to see the
+// page. Sections that end up empty are dropped entirely so we don't render
+// hollow group headers.
+function navItem(page, iconClass, label, badgeHtml = '') {
+  if (!canSeePage(page)) return ''
+  return `<a class="nav-item" data-page="${page}"><span class="nav-icon"><i class="fas ${iconClass}"></i></span>${label}${badgeHtml}</a>`
+}
+function navSection({ key, heading, chip, expanded, items, icon }) {
+  const body = items.filter(Boolean).join('')
+  if (!body) return ''
+  return `
+    <div class="nav-section nav-group nav-group-${key}" data-nav-group="${key}">
+      <button class="nav-section-toggle" type="button" data-nav-toggle="${key}" aria-expanded="${expanded ? 'true' : 'false'}">
+        <span class="nav-section-heading"><i class="fas ${icon}"></i> ${heading}</span>
+        <span class="nav-section-chip">${chip}</span>
+        <i class="fas fa-chevron-down nav-section-caret"></i>
+      </button>
+      <div class="nav-section-body">${body}</div>
+    </div>`
+}
+
 function buildShell() {
-  const role = _user.role
-  const navAdmin = role === 'admin' ? `
-    <div class="nav-section nav-group nav-group-admin" data-nav-group="admin">
-      <button class="nav-section-toggle" type="button" data-nav-toggle="admin" aria-expanded="true">
-        <span class="nav-section-heading"><i class="fas fa-sparkles"></i> Admin</span>
-        <span class="nav-section-chip">Core</span>
-        <i class="fas fa-chevron-down nav-section-caret"></i>
-      </button>
-      <div class="nav-section-body">
-        <a class="nav-item" data-page="super-dashboard"><span class="nav-icon"><i class="fas fa-chart-pie"></i></span>Overview</a>
-        <a class="nav-item" data-page="clients-list"><span class="nav-icon"><i class="fas fa-building"></i></span>Clients</a>
-        <a class="nav-item" data-page="billing-admin"><span class="nav-icon"><i class="fas fa-file-invoice-dollar"></i></span>Billing <span class="nav-badge" id="nb-overdue">!</span></a>
-        <a class="nav-item" data-page="team-overview"><span class="nav-icon"><i class="fas fa-users"></i></span>Team</a>
-      </div>
-    </div>` : ''
+  const role = String(_user.role || '').toLowerCase()
 
-  const navPm = ['admin','pm'].includes(role) ? `
-    <div class="nav-section nav-group nav-group-pm" data-nav-group="pm">
-      <button class="nav-section-toggle" type="button" data-nav-toggle="pm" aria-expanded="true">
-        <span class="nav-section-heading"><i class="fas fa-layer-group"></i> Project Management</span>
-        <span class="nav-section-chip">Work</span>
-        <i class="fas fa-chevron-down nav-section-caret"></i>
-      </button>
-      <div class="nav-section-body">
-        <a class="nav-item" data-page="pm-dashboard"><span class="nav-icon"><i class="fas fa-gauge-high"></i></span>PM Dashboard</a>
-        <a class="nav-item" data-page="projects-list"><span class="nav-icon"><i class="fas fa-layer-group"></i></span>Projects</a>
-        <a class="nav-item" data-page="kanban-board"><span class="nav-icon"><i class="fas fa-columns"></i></span>Kanban Board</a>
-        <a class="nav-item" data-page="sprints-view"><span class="nav-icon"><i class="fas fa-bolt"></i></span>Sprints</a>
-        <a class="nav-item" data-page="milestones-view"><span class="nav-icon"><i class="fas fa-flag"></i></span>Milestones</a>
-        <a class="nav-item" data-page="documents-center"><span class="nav-icon"><i class="fas fa-folder-open"></i></span>Documents</a>
-        <a class="nav-item" data-page="resources-view"><span class="nav-icon"><i class="fas fa-users-gear"></i></span>Resources</a>
-      </div>
-    </div>` : ''
+  const navAdmin = navSection({
+    key: 'admin', heading: 'Admin', chip: 'Core', expanded: true, icon: 'fa-sparkles',
+    items: [
+      navItem('super-dashboard', 'fa-chart-pie', 'Overview'),
+      navItem('clients-list',    'fa-building',   'Clients'),
+      navItem('billing-admin',   'fa-file-invoice-dollar', 'Billing', ' <span class="nav-badge" id="nb-overdue">!</span>'),
+      navItem('team-overview',   'fa-users',      'Team'),
+    ],
+  })
 
-  const navDev = `
-    <div class="nav-section nav-group nav-group-dev" data-nav-group="dev">
-      <button class="nav-section-toggle" type="button" data-nav-toggle="dev" aria-expanded="true">
-        <span class="nav-section-heading"><i class="fas fa-code"></i> ${role === 'developer' ? 'My Work' : 'Developer View'}</span>
-        <span class="nav-section-chip">${role === 'developer' ? 'Me' : 'Dev'}</span>
-        <i class="fas fa-chevron-down nav-section-caret"></i>
-      </button>
-      <div class="nav-section-body">
-        ${role === 'developer' ? `<a class="nav-item" data-page="dev-dashboard"><span class="nav-icon"><i class="fas fa-gauge"></i></span>My Dashboard</a>` : ''}
-        <a class="nav-item" data-page="my-tasks"><span class="nav-icon"><i class="fas fa-list-check"></i></span>Tasks</a>
-        <a class="nav-item" data-page="timesheets-view"><span class="nav-icon"><i class="fas fa-clock"></i></span>Timesheets</a>
-        <a class="nav-item" data-page="leaves-view"><span class="nav-icon"><i class="fas fa-umbrella-beach"></i></span>Leaves <span class="nav-badge" id="nb-leaves">0</span></a>
-        <a class="nav-item" data-page="bidding-view"><span class="nav-icon"><i class="fas fa-gavel"></i></span>Bidding <span class="nav-badge" id="nb-bids" style="display:none">0</span></a>
-        <a class="nav-item" data-page="support-tickets"><span class="nav-icon"><i class="fas fa-life-ring"></i></span>Support Tickets</a>
-        ${role !== 'developer' ? `<a class="nav-item" data-page="approval-queue"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span>Approvals <span class="nav-badge" id="nb-approval">0</span></a>` : ''}
-      </div>
-    </div>`
+  const navPm = navSection({
+    key: 'pm', heading: 'Project Management', chip: 'Work', expanded: true, icon: 'fa-layer-group',
+    items: [
+      navItem('pm-dashboard',    'fa-gauge-high', 'PM Dashboard'),
+      navItem('projects-list',   'fa-layer-group', 'Projects'),
+      navItem('kanban-board',    'fa-columns',     'Kanban Board'),
+      navItem('sprints-view',    'fa-bolt',        'Sprints'),
+      navItem('milestones-view', 'fa-flag',        'Milestones'),
+      navItem('documents-center','fa-folder-open', 'Documents'),
+      navItem('resources-view',  'fa-users-gear',  'Resources'),
+    ],
+  })
 
-  const navReports = `
-    <div class="nav-section nav-group nav-group-analytics" data-nav-group="analytics">
-      <button class="nav-section-toggle" type="button" data-nav-toggle="analytics" aria-expanded="false">
-        <span class="nav-section-heading"><i class="fas fa-wand-magic-sparkles"></i> Analytics</span>
-        <span class="nav-section-chip">Insight</span>
-        <i class="fas fa-chevron-down nav-section-caret"></i>
-      </button>
-      <div class="nav-section-body">
-        <a class="nav-item" data-page="reports-view"><span class="nav-icon"><i class="fas fa-chart-bar"></i></span>Reports</a>
-        <a class="nav-item" data-page="alerts-view"><span class="nav-icon"><i class="fas fa-bell"></i></span>Alerts <span class="nav-badge" id="nb-alerts">0</span></a>
-      </div>
-    </div>`
+  const devHeading = role === 'developer' ? 'My Work' : 'Developer View'
+  const devChip    = role === 'developer' ? 'Me' : 'Dev'
+  const navDev = navSection({
+    key: 'dev', heading: devHeading, chip: devChip, expanded: true, icon: 'fa-code',
+    items: [
+      navItem('dev-dashboard',  'fa-gauge',       'My Dashboard'),
+      navItem('my-tasks',       'fa-list-check',  'Tasks'),
+      navItem('timesheets-view','fa-clock',       'Timesheets'),
+      navItem('leaves-view',    'fa-umbrella-beach', 'Leaves', ' <span class="nav-badge" id="nb-leaves">0</span>'),
+      // Bidding only renders for admin/pm here (per PAGE_PERMISSIONS); team accounts get it inside their own section.
+      role !== 'team' ? navItem('bidding-view', 'fa-gavel', 'Bidding', ' <span class="nav-badge" id="nb-bids" style="display:none">0</span>') : '',
+      navItem('support-tickets','fa-life-ring',   'Support Tickets'),
+      navItem('approval-queue', 'fa-clipboard-check', 'Approvals', ' <span class="nav-badge" id="nb-approval">0</span>'),
+    ],
+  })
+
+  // Dedicated section for external team accounts — minimal surface area, no
+  // leave/timesheet/task noise, just their dashboard, projects and bidding.
+  const navTeam = navSection({
+    key: 'team', heading: 'My Workspace', chip: 'Team', expanded: true, icon: 'fa-users',
+    items: [
+      navItem('team-dashboard', 'fa-gauge',       'Dashboard'),
+      navItem('projects-list',  'fa-layer-group', 'My Projects'),
+      navItem('bidding-view',   'fa-gavel',       'Bidding', ' <span class="nav-badge" id="nb-bids" style="display:none">0</span>'),
+      navItem('support-tickets','fa-life-ring',   'Support Tickets'),
+    ],
+  })
+
+  const navReports = navSection({
+    key: 'analytics', heading: 'Analytics', chip: 'Insight', expanded: false, icon: 'fa-wand-magic-sparkles',
+    items: [
+      navItem('reports-view', 'fa-chart-bar', 'Reports'),
+      navItem('alerts-view',  'fa-bell',      'Alerts', ' <span class="nav-badge" id="nb-alerts">0</span>'),
+    ],
+  })
 
   return `
   <div id="sidebar">
@@ -404,7 +476,7 @@ function buildShell() {
         <span>Mariox Software</span>
       </div>
     </div>
-    ${navAdmin}${navPm}${navDev}${navReports}
+    ${navAdmin}${navPm}${navDev}${navTeam}${navReports}
     <div class="nav-section nav-group nav-group-settings" data-nav-group="settings">
       <button class="nav-section-toggle" type="button" data-nav-toggle="settings" aria-expanded="true">
         <span class="nav-section-heading"><i class="fas fa-sliders"></i> Settings</span>
@@ -457,6 +529,7 @@ function buildShell() {
     <div id="page-approval-queue"   class="page"></div>
     <div id="page-leaves-view"      class="page"></div>
     <div id="page-bidding-view"     class="page"></div>
+    <div id="page-team-dashboard"   class="page"></div>
     <div id="page-reports-view"     class="page"></div>
     <div id="page-alerts-view"      class="page"></div>
     <div id="page-clients-list"     class="page"></div>
@@ -491,7 +564,7 @@ function updateNav(page) {
 }
 
 const breadcrumbMap = {
-  'super-dashboard':'Overview','pm-dashboard':'PM Dashboard','dev-dashboard':'My Dashboard',
+  'super-dashboard':'Overview','pm-dashboard':'PM Dashboard','dev-dashboard':'My Dashboard','team-dashboard':'Team Dashboard',
   'projects-list':'Projects','kanban-board':'Kanban Board','sprints-view':'Sprints',
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
@@ -699,6 +772,9 @@ async function pollNotifications(initial = false) {
         _notifPlayDing(pickedItem?.type)
         // Show up to 2 toasts so we don't spam
         fresh.slice(0, 2).forEach(_notifShowToast)
+        // Auto-refresh whichever data view the user is currently looking at —
+        // saves them a manual reload to see the latest leaves / bids.
+        _notifAutoRefreshActiveView(fresh)
       }
       _notifState.lastSeenId = latestId
       _notifState.lastSeenAt = res.latest_created_at || _notifState.lastSeenAt
@@ -709,11 +785,39 @@ async function pollNotifications(initial = false) {
   }
 }
 
+// When a fresh notification of a known type arrives, silently re-render the page
+// the user is on so the new leave / bid shows up without a manual refresh. We
+// only refresh the *currently visible* page to avoid wasted API hits.
+function _notifAutoRefreshActiveView(freshItems) {
+  if (!Array.isArray(freshItems) || freshItems.length === 0) return
+  const types = new Set(freshItems.map((n) => String(n.type || '').toLowerCase()))
+  // Map notification type → page id whose data should be reloaded.
+  const refreshMap = [
+    { match: (t) => t.startsWith('leave_'), page: 'leaves-view' },
+    { match: (t) => t.startsWith('bid_'),   page: 'bidding-view' },
+    { match: (t) => t.startsWith('ticket_'), page: 'support-tickets' },
+  ]
+  const pagesToRefresh = new Set()
+  for (const { match, page } of refreshMap) {
+    for (const t of types) if (match(t)) { pagesToRefresh.add(page); break }
+  }
+  pagesToRefresh.forEach((page) => {
+    const el = document.getElementById('page-' + page)
+    if (el && el.classList.contains('active')) {
+      el.dataset.loaded = ''
+      try { loadPage(page, el) } catch {}
+    }
+  })
+  // Sidebar badges (leave count etc.) should also reflect the fresh state.
+  if (typeof loadBadges === 'function') loadBadges()
+}
+
 function startNotificationPoller() {
   if (_notifState.timer) return
   // Notifications keep arriving until the user manually logs out — so we
   // poll regardless of tab visibility instead of pausing on hidden tabs.
-  _notifState.timer = setInterval(() => { pollNotifications() }, 20000)
+  // 10s feels real-time without hammering the API.
+  _notifState.timer = setInterval(() => { pollNotifications() }, 10000)
   // Refresh immediately when the tab becomes visible again, so the badge
   // catches up without waiting for the next interval tick.
   document.addEventListener('visibilitychange', () => {
@@ -1088,6 +1192,7 @@ function loadPage(page, el) {
     case 'approval-queue':   renderApprovalQueue(el); break
     case 'leaves-view':      renderLeavesView(el); break
     case 'bidding-view':     renderBiddingView(el); break
+    case 'team-dashboard':   renderTeamDashboard(el); break
     case 'reports-view':     renderReportsView(el); break
     case 'alerts-view':      renderAlertsView(el); break
     case 'clients-list':     renderClientsList(el); break
