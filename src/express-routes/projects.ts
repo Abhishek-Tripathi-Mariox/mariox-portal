@@ -103,13 +103,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
           developer_count: devs.length,
           ...computeProjectMetrics(p),
         }
-      }).sort((a, b) => {
-        const priorityOrder: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 }
-        const pa = priorityOrder[a.priority || 'medium'] || 2
-        const pb = priorityOrder[b.priority || 'medium'] || 2
-        if (pa !== pb) return pb - pa
-        return String(b.created_at || '').localeCompare(String(a.created_at || ''))
-      })
+      }).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
 
       return res.json({
         projects: enriched,

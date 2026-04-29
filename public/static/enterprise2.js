@@ -163,8 +163,9 @@ async function showUploadDocModal() {
     {v:'technical',l:'Technical Docs'}, {v:'test_report',l:'Test Reports'}, {v:'release',l:'Release Notes'},
     {v:'billing',l:'Billing'}, {v:'contract',l:'Contracts'}, {v:'other',l:'Other'}
   ]
+  window._udFiles = []
   showModal(`
-  <div class="modal-header"><h3>Upload Document</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+  <div class="modal-header"><h3><i class="fas fa-upload" style="color:#FF7A45"></i> Upload Documents</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
   <div class="modal-body">
     <div class="form-row">
       <div class="form-group"><label class="form-label">Project *</label>
@@ -172,53 +173,172 @@ async function showUploadDocModal() {
       <div class="form-group"><label class="form-label">Category *</label>
         <select class="form-select" id="ud-category">${catOpts.map(c=>`<option value="${c.v}">${c.l}</option>`).join('')}</select></div>
     </div>
-    <div class="form-group"><label class="form-label">Document Title *</label><input class="form-input" id="ud-title" placeholder="e.g., Sprint 2 - SRS Document"/></div>
-    <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="ud-desc" style="min-height:60px" placeholder="Brief description…"></textarea></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">File URL (Google Drive, S3, etc.) *</label><input class="form-input" id="ud-url" placeholder="https://drive.google.com/file/…"/></div>
-      <div class="form-group"><label class="form-label">File Name *</label><input class="form-input" id="ud-filename" placeholder="document.pdf"/></div>
+
+    <div class="form-group">
+      <label class="form-label">Files * <span style="font-weight:400;color:#64748b;font-size:11px">(pick one or many — max 25 MB each)</span></label>
+      <div id="ud-dropzone" style="border:2px dashed rgba(255,122,69,.35);border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:rgba(255,122,69,.04);transition:.2s" onclick="document.getElementById('ud-files').click()">
+        <i class="fas fa-cloud-upload-alt" style="font-size:32px;color:#FF7A45;display:block;margin-bottom:8px"></i>
+        <div style="font-size:13px;color:#e2e8f0;font-weight:600">Click to choose files from your computer</div>
+        <div style="font-size:11px;color:#64748b;margin-top:4px">or drop files here • PDF, images, docs, videos</div>
+      </div>
+      <input id="ud-files" type="file" multiple style="display:none" onchange="udOnFilesPicked(this.files)"/>
+      <div id="ud-files-list" style="display:flex;flex-direction:column;gap:6px;margin-top:10px"></div>
     </div>
+
+    <div class="form-group"><label class="form-label">Title prefix (optional)</label><input class="form-input" id="ud-title" placeholder="If blank, each file's name is used as its title"/></div>
+    <div class="form-group"><label class="form-label">Description (applied to all)</label><textarea class="form-textarea" id="ud-desc" style="min-height:50px" placeholder="Brief description…"></textarea></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">File Type</label><input class="form-input" id="ud-filetype" placeholder="application/pdf"/></div>
       <div class="form-group"><label class="form-label">Version</label><input class="form-input" id="ud-version" value="1.0" placeholder="1.0"/></div>
-    </div>
-    <div class="form-group"><label class="form-label">Visibility</label>
-      <select class="form-select" id="ud-visibility">
-        <option value="all">All (Internal + Client)</option>
-        <option value="client">Client Visible Only</option>
-        <option value="internal">Internal Only</option>
-      </select>
+      <div class="form-group"><label class="form-label">Visibility</label>
+        <select class="form-select" id="ud-visibility">
+          <option value="all">All (Internal + Client)</option>
+          <option value="client">Client Visible Only</option>
+          <option value="internal">Internal Only</option>
+        </select>
+      </div>
     </div>
     <div class="form-group"><label class="form-label">Tags (comma separated)</label><input class="form-input" id="ud-tags" placeholder="sow, phase1, delivery"/></div>
+
+    <div id="ud-progress" style="display:none;margin-top:10px">
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:6px"><span id="ud-progress-label">Uploading…</span></div>
+      <div class="progress-bar"><div id="ud-progress-bar" class="progress-fill amber" style="width:0%"></div></div>
+    </div>
   </div>
   <div class="modal-footer">
     <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="doUploadDoc()"><i class="fas fa-upload"></i>Upload Document</button>
+    <button class="btn btn-primary" id="ud-submit-btn" onclick="doUploadDoc()"><i class="fas fa-upload"></i>Upload</button>
   </div>`, 'modal-lg')
+
+  // Drag and drop on the dropzone
+  const dz = document.getElementById('ud-dropzone')
+  if (dz) {
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.background = 'rgba(255,122,69,.12)' })
+    dz.addEventListener('dragleave', () => { dz.style.background = 'rgba(255,122,69,.04)' })
+    dz.addEventListener('drop', e => { e.preventDefault(); dz.style.background = 'rgba(255,122,69,.04)'; if (e.dataTransfer?.files) udOnFilesPicked(e.dataTransfer.files) })
+  }
+}
+
+function udOnFilesPicked(fileList) {
+  const incoming = Array.from(fileList || [])
+  const existing = window._udFiles || []
+  // Append (don't replace) so users can pick across multiple choose-file rounds
+  for (const f of incoming) {
+    if (!existing.find(x => x.name === f.name && x.size === f.size)) existing.push(f)
+  }
+  window._udFiles = existing
+  udRenderFilesList()
+}
+
+function udRemoveFile(idx) {
+  const files = window._udFiles || []
+  files.splice(idx, 1)
+  window._udFiles = files
+  udRenderFilesList()
+}
+
+function udRenderFilesList() {
+  const list = document.getElementById('ud-files-list')
+  if (!list) return
+  const files = window._udFiles || []
+  if (!files.length) { list.innerHTML = ''; return }
+  list.innerHTML = files.map((f, i) => {
+    const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
+    const tooBig = f.size > 25 * 1024 * 1024
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+        <i class="fas ${docFTypeIcon(f.type)}" style="color:#FF7A45;font-size:16px"></i>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
+          <div style="font-size:11px;color:${tooBig?'#FF5E3A':'#64748b'}">${sizeMb} MB${tooBig?' — exceeds 25 MB limit':''} • ${f.type || 'unknown'}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="udRemoveFile(${i})"><i class="fas fa-times"></i></button>
+      </div>`
+  }).join('')
+}
+
+function udUploadFileToServer(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/uploads', true)
+    const token = (window._token || (typeof _token !== 'undefined' && _token) || localStorage.getItem('token'))
+    if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token)
+    xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)) }
+    xhr.onload = () => {
+      let data = {}
+      try { data = JSON.parse(xhr.responseText) } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+      else reject(new Error(data?.error || `HTTP ${xhr.status}`))
+    }
+    xhr.onerror = () => reject(new Error('Network error during upload'))
+    const fd = new FormData()
+    fd.append('file', file)
+    xhr.send(fd)
+  })
 }
 
 async function doUploadDoc() {
-  const body = {
-    project_id: document.getElementById('ud-project')?.value,
-    title: document.getElementById('ud-title')?.value.trim(),
-    description: document.getElementById('ud-desc')?.value.trim(),
-    category: document.getElementById('ud-category')?.value,
-    file_url: document.getElementById('ud-url')?.value.trim(),
-    file_name: document.getElementById('ud-filename')?.value.trim(),
-    file_type: document.getElementById('ud-filetype')?.value.trim(),
-    version: document.getElementById('ud-version')?.value.trim() || '1.0',
-    visibility: document.getElementById('ud-visibility')?.value,
-    is_client_visible: document.getElementById('ud-visibility')?.value !== 'internal' ? 1 : 0,
-    tags: document.getElementById('ud-tags')?.value.split(',').map(t=>t.trim()).filter(Boolean)
+  const project_id = document.getElementById('ud-project')?.value
+  const category = document.getElementById('ud-category')?.value
+  const titlePrefix = document.getElementById('ud-title')?.value.trim()
+  const description = document.getElementById('ud-desc')?.value.trim()
+  const version = document.getElementById('ud-version')?.value.trim() || '1.0'
+  const visibility = document.getElementById('ud-visibility')?.value
+  const tags = document.getElementById('ud-tags')?.value.split(',').map(t=>t.trim()).filter(Boolean)
+  const files = window._udFiles || []
+
+  if (!project_id) return toast('Select a project', 'error')
+  if (!files.length) return toast('Pick at least one file', 'error')
+  for (const f of files) {
+    if (f.size > 25 * 1024 * 1024) return toast(`"${f.name}" exceeds the 25 MB limit`, 'error')
   }
-  if (!body.project_id || !body.title || !body.file_url || !body.file_name)
-    return toast('Fill all required fields', 'error')
-  try {
-    await API.post('/documents', body)
-    toast('Document uploaded!', 'success')
+
+  const submitBtn = document.getElementById('ud-submit-btn')
+  const progress = document.getElementById('ud-progress')
+  const progressBar = document.getElementById('ud-progress-bar')
+  const progressLabel = document.getElementById('ud-progress-label')
+  if (submitBtn) submitBtn.disabled = true
+  if (progress) progress.style.display = ''
+
+  let okCount = 0, failCount = 0
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]
+    if (progressLabel) progressLabel.textContent = `Uploading ${i+1}/${files.length}: ${f.name}`
+    try {
+      const uploaded = await udUploadFileToServer(f, pct => {
+        if (progressBar) progressBar.style.width = (((i / files.length) * 100) + (pct / files.length)) + '%'
+      })
+      const baseName = f.name.replace(/\.[^.]+$/, '')
+      const docTitle = titlePrefix ? `${titlePrefix} — ${baseName}` : baseName
+      await API.post('/documents', {
+        project_id,
+        title: docTitle.slice(0, 200),
+        description: description || null,
+        category,
+        file_url: uploaded.url,
+        file_name: uploaded.file_name || f.name,
+        file_type: uploaded.file_type || f.type,
+        file_size: uploaded.file_size || f.size,
+        version,
+        visibility,
+        is_client_visible: visibility !== 'internal' ? 1 : 0,
+        tags,
+      })
+      okCount++
+    } catch (e) {
+      failCount++
+      toast(`"${f.name}" failed: ${e.message}`, 'error')
+    }
+  }
+
+  if (progressBar) progressBar.style.width = '100%'
+  if (okCount) toast(`${okCount} document${okCount===1?'':'s'} uploaded${failCount?` (${failCount} failed)`:''}`, failCount?'warning':'success')
+  if (okCount) {
     closeModal()
     const docEl = document.getElementById('page-documents-center'); if (docEl) { docEl.dataset.loaded=''; renderDocumentsCenter(docEl) }
-  } catch(e) { toast(e.message, 'error') }
+  } else {
+    if (submitBtn) submitBtn.disabled = false
+    if (progress) progress.style.display = 'none'
+  }
 }
 
 async function deleteDoc(id) {
@@ -465,9 +585,12 @@ async function submitTsEntry() {
 }
 
 async function approveTsEntry(id, action) {
+  if (action === 'rejected') {
+    if (typeof showRejectLogModal === 'function') return showRejectLogModal(id)
+  }
   try {
     await API.patch('/timesheets/' + id + '/approve', { action })
-    toast(action === 'approved' ? 'Entry approved!' : 'Entry rejected', action === 'approved' ? 'success' : 'info')
+    toast('Entry approved!', 'success')
     loadTimesheetData()
   } catch(e) { toast(e.message, 'error') }
 }
@@ -1919,13 +2042,35 @@ async function submitLeaveApply() {
 }
 
 async function approveLeaveAction(id, status) {
+  if (status === 'rejected') {
+    return showRejectLeaveModal(id)
+  }
   try {
     await API.patch(`/leaves/${id}/approve`, { status })
     toast(`Leave ${status}`, 'success')
-    const el = document.getElementById('page-leaves-view')
-    if (el) { el.dataset.loaded = ''; renderLeavesView(el) }
     if (typeof pollNotifications === 'function') pollNotifications()
-    if (typeof loadBadges === 'function') loadBadges()
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+function showRejectLeaveModal(id) {
+  showModal(`
+  <div class="modal-header"><h3><i class="fas fa-times-circle" style="color:#FF5E3A"></i> Reject Leave</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+  <div class="modal-body">
+    <div style="font-size:13px;color:#94a3b8;margin-bottom:12px">Provide a reason — the employee will see this in their notification.</div>
+    <div class="form-group"><label class="form-label">Rejection reason *</label><textarea id="rj-reason" class="form-textarea" rows="3" placeholder="Why is this leave being rejected?"></textarea></div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-danger" onclick="doRejectLeave('${id}')"><i class="fas fa-times"></i> Reject</button>
+  </div>`)
+}
+async function doRejectLeave(id) {
+  const reason = document.getElementById('rj-reason')?.value.trim() || ''
+  if (!reason) { toast('Please enter a rejection reason', 'error'); return }
+  try {
+    await API.patch(`/leaves/${id}/approve`, { status: 'rejected', decision_reason: reason })
+    toast('Leave rejected', 'info')
+    closeModal()
   } catch (e) { toast('Failed: ' + e.message, 'error') }
 }
 

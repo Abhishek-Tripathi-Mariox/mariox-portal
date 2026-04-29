@@ -46,6 +46,13 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
       const phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
       const website = body.website ? String(body.website).trim().slice(0, 200) : null
       const industry = validateOptional(body.industry, (v) => validateLength(String(v).trim(), 2, 80, 'Industry'))
+      const gstin = body.gstin ? String(body.gstin).trim().toUpperCase().slice(0, 20) : null
+      const address_line = body.address_line ? String(body.address_line).trim().slice(0, 300) : null
+      const city = body.city ? String(body.city).trim().slice(0, 80) : null
+      const state = body.state ? String(body.state).trim().slice(0, 80) : null
+      const state_code = body.state_code ? String(body.state_code).trim().toUpperCase().slice(0, 8) : null
+      const pincode = body.pincode ? String(body.pincode).trim().slice(0, 16) : null
+      const country = body.country ? String(body.country).trim().slice(0, 80) : null
       const avatar_color = body.avatar_color
         ? validateHexColor(body.avatar_color, 'Avatar color')
         : '#6366f1'
@@ -67,6 +74,13 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
         phone,
         website,
         industry,
+        gstin,
+        address_line,
+        city,
+        state,
+        state_code,
+        pincode,
+        country,
         avatar_color,
         is_active: 1,
         email_verified: 1,
@@ -94,6 +108,13 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
       if ('phone' in body) patch.phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
       if ('website' in body) patch.website = body.website ? String(body.website).trim().slice(0, 200) : null
       if ('industry' in body) patch.industry = validateOptional(body.industry, (v) => validateLength(String(v).trim(), 2, 80, 'Industry'))
+      if ('gstin' in body) patch.gstin = body.gstin ? String(body.gstin).trim().toUpperCase().slice(0, 20) : null
+      if ('address_line' in body) patch.address_line = body.address_line ? String(body.address_line).trim().slice(0, 300) : null
+      if ('city' in body) patch.city = body.city ? String(body.city).trim().slice(0, 80) : null
+      if ('state' in body) patch.state = body.state ? String(body.state).trim().slice(0, 80) : null
+      if ('state_code' in body) patch.state_code = body.state_code ? String(body.state_code).trim().toUpperCase().slice(0, 8) : null
+      if ('pincode' in body) patch.pincode = body.pincode ? String(body.pincode).trim().slice(0, 16) : null
+      if ('country' in body) patch.country = body.country ? String(body.country).trim().slice(0, 80) : null
       if ('avatar_color' in body && body.avatar_color) patch.avatar_color = validateHexColor(body.avatar_color, 'Avatar color')
       if ('is_active' in body) patch.is_active = body.is_active ? 1 : 0
 
@@ -220,9 +241,9 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
   // ── BULK IMPORT (CSV) ──────────────────────────────────────
   router.get('/import/template.csv', (_req, res) => {
     const sample = [
-      'company_name,contact_name,email,phone,website,industry,avatar_color,password',
-      'Acme Corp,Anita Joshi,anita@acme.com,+91-9876543210,https://acme.com,SaaS,#FF7A45,Welcome@123',
-      'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,#FFB347,Welcome@123',
+      'company_name,contact_name,email,phone,website,industry,gstin,address_line,city,state,state_code,pincode,country,avatar_color,password',
+      'Acme Corp,Anita Joshi,anita@acme.com,+91-9876543210,https://acme.com,SaaS,27AABCA1234F1Z5,12 MG Road,Mumbai,MAHARASHTRA,27,400001,India,#FF7A45,Welcome@123',
+      'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,29AABCG5678H1Z9,Plot 4 Sector 3,Bengaluru,KARNATAKA,29,560001,India,#FFB347,Welcome@123',
     ].join('\n')
     res.setHeader('Content-Type', 'text/csv')
     res.setHeader('Content-Disposition', 'attachment; filename="clients_import_template.csv"')
@@ -280,6 +301,16 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
           const passwordHash = Array.from(new Uint8Array(hashBuffer))
             .map((b) => b.toString(16).padStart(2, '0')).join('')
 
+          const gstin = record.gstin ? String(record.gstin).trim().toUpperCase().slice(0, 20) : null
+          if (gstin && !/^[0-9A-Z]{15}$/.test(gstin)) {
+            errors.push({ row: i + 1, email, error: 'GSTIN must be 15 alphanumeric characters' })
+            continue
+          }
+          const pincode = record.pincode ? String(record.pincode).trim().slice(0, 16) : null
+          if (pincode && !/^[0-9]{4,8}$/.test(pincode)) {
+            errors.push({ row: i + 1, email, error: 'PIN code must be numeric (4–8 digits)' })
+            continue
+          }
           const cl = await models.clients.createClient({
             email,
             password_hash: passwordHash,
@@ -288,6 +319,13 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
             phone: record.phone || null,
             website: record.website || null,
             industry: record.industry || null,
+            gstin,
+            address_line: record.address_line ? String(record.address_line).trim().slice(0, 300) : null,
+            city: record.city ? String(record.city).trim().slice(0, 80) : null,
+            state: record.state ? String(record.state).trim().slice(0, 80) : null,
+            state_code: record.state_code ? String(record.state_code).trim().toUpperCase().slice(0, 8) : null,
+            pincode,
+            country: record.country ? String(record.country).trim().slice(0, 80) : null,
             avatar_color: record.avatar_color && /^#[0-9a-fA-F]{6}$/.test(record.avatar_color)
               ? record.avatar_color
               : '#FF7A45',

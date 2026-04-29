@@ -710,9 +710,10 @@ function openProjectBoard(projectId, name) {
 async function renderKanbanBoard(el) {
   el.innerHTML = `<div style="padding:24px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Loading board…</div>`
   try {
-    const [proj, spData] = await Promise.all([API.get('/projects'), API.get('/sprints')])
+    const [proj, spData, msData] = await Promise.all([API.get('/projects'), API.get('/sprints'), API.get('/milestones').catch(() => ({ milestones: [] }))])
     const projects = proj.projects || proj.data || []
     const allSprints = spData.sprints || []
+    const allMilestones = msData.milestones || []
 
     // Determine which project to show
     let selProject = window._kanbanProjectId
@@ -735,14 +736,25 @@ async function renderKanbanBoard(el) {
     }
 
     const selSprint = window._kanbanSprintId || ''
+    const selMilestone = window._kanbanMilestoneId || ''
     const projectSprints = allSprints.filter(s => s.project_id === selProject)
+    const projectMilestones = allMilestones.filter(m => String(m.project_id) === String(selProject))
     const projName = window._kanbanProjectName || projects.find(p => p.id === selProject)?.name || ''
     window._kanbanProjectName = projName
 
-    // Load board data (includes column_defs from custom columns)
-    const boardData = await API.get(`/tasks/board/${selProject}${selSprint ? '?sprint_id=' + selSprint : ''}`)
-    const cols = boardData.columns || {}
+    // Always load all tasks for the project; apply sprint/milestone filters client-side
+    // so milestone-bound tasks remain visible by default.
+    const boardData = await API.get(`/tasks/board/${selProject}`)
     const colDefs = boardData.column_defs || []
+    const rawCols = boardData.columns || {}
+    const cols = {}
+    for (const key of Object.keys(rawCols)) {
+      cols[key] = (rawCols[key] || []).filter(t => {
+        if (selSprint && String(t.sprint_id || '') !== String(selSprint)) return false
+        if (selMilestone && String(t.milestone_id || '') !== String(selMilestone)) return false
+        return true
+      })
+    }
     const canManage = ['admin', 'pm'].includes(_user.role)
     // Task creation is broader: developers and team members can add tasks too,
     // both via the toolbar button and the per-column "Add task" tile.
@@ -773,14 +785,18 @@ async function renderKanbanBoard(el) {
             ${projects.map(p => `<option value="${p.id}" ${p.id === selProject ? 'selected' : ''}>${p.name}</option>`).join('')}
           </select>` : `<span style="font-size:14px;font-weight:600;color:var(--primary)">${projName}</span>`}
           <!-- Sprint Filter -->
-          <select class="form-select" style="min-width:160px" onchange="switchBoardSprint(this.value)">
+          <select class="form-select" style="min-width:140px" onchange="switchBoardSprint(this.value)">
             <option value="" ${!selSprint ? 'selected' : ''}>All Sprints</option>
             ${projectSprints.map(s => `<option value="${s.id}" ${s.id === selSprint ? 'selected' : ''}>${s.name}${s.status === 'active' ? ' ●' : ''}</option>`).join('')}
           </select>
+          <!-- Milestone Filter -->
+          <select class="form-select" style="min-width:140px" onchange="switchBoardMilestone(this.value)">
+            <option value="" ${!selMilestone ? 'selected' : ''}>All Milestones</option>
+            ${projectMilestones.map(m => `<option value="${m.id}" ${m.id === selMilestone ? 'selected' : ''}>${m.title}</option>`).join('')}
+          </select>
           ${canManage ? `
           <button class="btn btn-outline btn-sm" onclick="manageBoardColumns('${selProject}')" title="Configure board columns"><i class="fas fa-sliders-h"></i> Columns</button>
-          <button class="btn btn-outline btn-sm" onclick="openKanbanPermissionsModal('${selProject}','${projName.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i> Permissions</button>
-          <button class="btn btn-outline btn-sm" onclick="showProjectTeamsModal('${selProject}','${projName.replace(/'/g,"\\'")}')" title="Project teams"><i class="fas fa-users"></i> Teams</button>` : ''}
+          <button class="btn btn-outline btn-sm" onclick="openKanbanPermissionsModal('${selProject}','${projName.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i> Permissions</button>` : ''}
           ${canAddTask ? `<button class="btn btn-primary btn-sm" onclick="showCreateTaskModal('${selProject}','${selSprint}','backlog')"><i class="fas fa-plus"></i> Add Task</button>` : ''}
         </div>
       </div>
@@ -875,6 +891,7 @@ function buildTaskCard(t) {
       ${isOverdue ? `<span style="font-size:10px;color:#FF5E3A;background:#3A1A14;padding:1px 6px;border-radius:4px;font-weight:600"><i class="fas fa-exclamation-circle"></i> Overdue</span>` : ''}
       ${t.due_date ? `<span style="font-size:10px;color:${isOverdue ? '#FF5E3A' : 'var(--text-muted)'}"><i class="fas fa-calendar-alt"></i> ${fmtDate(t.due_date)}</span>` : ''}
       ${t.sprint_name ? `<span style="font-size:10px;color:#FF7A45"><i class="fas fa-bolt"></i> ${t.sprint_name}</span>` : ''}
+      ${t.milestone_id ? `<span style="font-size:10px;color:#C56FE6"><i class="fas fa-flag"></i> Milestone</span>` : ''}
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:6px">
@@ -964,12 +981,18 @@ function setupKanbanDragDrop() {
 function switchBoardProject(id) {
   window._kanbanProjectId = id
   window._kanbanSprintId = ''
+  window._kanbanMilestoneId = ''
   window._kanbanProjectName = ''
   const el = document.getElementById('page-kanban-board')
   if (el) { el.dataset.loaded = ''; loadPage('kanban-board', el) }
 }
 function switchBoardSprint(id) {
   window._kanbanSprintId = id
+  const el = document.getElementById('page-kanban-board')
+  if (el) { el.dataset.loaded = ''; loadPage('kanban-board', el) }
+}
+function switchBoardMilestone(id) {
+  window._kanbanMilestoneId = id
   const el = document.getElementById('page-kanban-board')
   if (el) { el.dataset.loaded = ''; loadPage('kanban-board', el) }
 }
@@ -1109,7 +1132,13 @@ async function openTaskDrawer(taskId) {
       <div style="font-size:17px;font-weight:600;color:#fff;line-height:1.4">${t.title}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 22px;border-bottom:1px solid var(--border)">
-      ${metaItem('Assignee', t.assignee_name ? `${avatar(t.assignee_name,t.assignee_color||'#FF7A45','sm')} ${t.assignee_name}` : '—')}
+      <div>
+        <div style="font-size:10px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Assignee</div>
+        <div id="task-assignee-cell-${t.id}" style="font-size:13px;color:#e2e8f0;display:flex;align-items:center;gap:6px">
+          ${t.assignee_name ? `${avatar(t.assignee_name,t.assignee_color||'#FF7A45','sm')} <span>${t.assignee_name}</span>` : '<span style="color:#64748b">Unassigned</span>'}
+          ${['admin','pm'].includes(_user.role) ? `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="showTaskAssigneeEditor('${t.id}','${t.project_id}','${(t.assignee_id||'')}')" title="Change assignee"><i class="fas fa-user-edit"></i></button>` : ''}
+        </div>
+      </div>
       ${metaItem('Reporter', t.reporter_name||'—')}
       ${metaItem('Project', t.project_name||'—')}
       ${metaItem('Sprint', t.sprint_name||'—')}
@@ -1190,6 +1219,52 @@ async function updateTaskStatus(taskId, newStatus) {
     toast('Status updated: ' + newStatus, 'success', 2000)
     // Refresh drawer
     openTaskDrawer(taskId)
+  } catch(e) { toast(e.message, 'error') }
+}
+
+async function showTaskAssigneeEditor(taskId, projectId, currentAssigneeId) {
+  const cell = document.getElementById('task-assignee-cell-' + taskId)
+  if (!cell) return
+  cell.innerHTML = `<i class="fas fa-spinner fa-spin" style="color:#64748b"></i>`
+  try {
+    const projRes = await API.get(`/projects/${projectId}`)
+    const proj = projRes.data || projRes.project || {}
+    if (proj.assignment_type === 'external') {
+      cell.innerHTML = `<span style="color:#64748b;font-size:12px"><i class="fas fa-users"></i> External project — assignee is fixed to the linked team.</span>`
+      return
+    }
+    const usersRes = await API.get('/users')
+    const allUsers = usersRes.users || usersRes.data || []
+    const usersById = new Map(allUsers.map(u => [String(u.id), u]))
+    let options = []
+    try {
+      const projDevs = await API.get(`/projects/${projectId}/developers`)
+      for (const d of (projDevs.developers || [])) {
+        const u = usersById.get(String(d.user_id))
+        if (u) options.push(u)
+      }
+    } catch {}
+    cell.innerHTML = `
+      <select class="form-select" id="task-assignee-select-${taskId}" style="flex:1">
+        <option value="">Unassigned</option>
+        ${options.map(u => `<option value="${u.id}" ${String(currentAssigneeId)===String(u.id)?'selected':''}>${escapeHtml(u.full_name||u.name)} (${escapeHtml(u.designation||u.role||'developer')})</option>`).join('')}
+      </select>
+      <button class="btn btn-xs btn-primary" onclick="saveTaskAssignee('${taskId}')"><i class="fas fa-check"></i></button>
+      <button class="btn btn-xs btn-outline" onclick="openTaskDrawer('${taskId}')"><i class="fas fa-times"></i></button>
+    `
+  } catch(e) { toast(e.message, 'error'); openTaskDrawer(taskId) }
+}
+
+async function saveTaskAssignee(taskId) {
+  const sel = document.getElementById('task-assignee-select-' + taskId)
+  if (!sel) return
+  const newId = sel.value || null
+  try {
+    await API.put('/tasks/' + taskId, { assignee_id: newId })
+    toast('Assignee updated', 'success', 1500)
+    openTaskDrawer(taskId)
+    const kb = document.getElementById('page-kanban-board')
+    if (kb?.classList.contains('active')) { kb.dataset.loaded=''; loadPage('kanban-board', kb) }
   } catch(e) { toast(e.message, 'error') }
 }
 
@@ -1410,7 +1485,9 @@ async function renderSprintsView(el) {
     </div>
     ${listSectionHeader(['Sprint', 'Project / Timeline', 'Stats', 'Status / Progress'], '2.1fr 1.2fr 1fr 1.1fr')}
     ${pagination.items.map(s => {
-      const pct = s.total_story_points>0 ? Math.round((s.completed_story_points/s.total_story_points)*100) : 0
+      const totalSP = Number(s.total_story_points)||0
+      const doneSP = Number(s.completed_story_points)||0
+      const pct = totalSP>0 ? Math.round((doneSP/totalSP)*100) : (s.task_count>0 ? Math.round(((s.done_count||0)/s.task_count)*100) : 0)
       return `
       <div class="card" style="margin-bottom:14px">
         <div class="card-header">
@@ -1429,7 +1506,7 @@ async function renderSprintsView(el) {
         <div class="card-body">
           ${s.goal?`<p style="font-size:13px;color:#94a3b8;margin-bottom:12px"><i class="fas fa-bullseye" style="color:#FF7A45;margin-right:6px"></i>${s.goal}</p>`:''}
           <div style="display:flex;gap:28px;margin-bottom:12px">
-            ${[['Total Tasks',s.task_count,'#94a3b8'],['Completed',s.done_count,'#58C68A'],['Blocked',s.blocked_count,'#FF5E3A'],['Story Points',`${s.completed_story_points}/${s.total_story_points}`,'#FF7A45']].map(([l,v,c])=>`<div><div style="font-size:18px;font-weight:700;color:${c}">${v}</div><div style="font-size:11px;color:#64748b">${l}</div></div>`).join('')}
+            ${[['Total Tasks',s.task_count||0,'#94a3b8'],['Completed',s.done_count||0,'#58C68A'],['Blocked',s.blocked_count||0,'#FF5E3A'],['Story Points',`${doneSP}/${totalSP}`,'#FF7A45']].map(([l,v,c])=>`<div><div style="font-size:18px;font-weight:700;color:${c}">${v}</div><div style="font-size:11px;color:#64748b">${l}</div></div>`).join('')}
           </div>
           <div class="progress-bar lg">
             <div class="progress-fill ${pct>=80?'green':pct>=50?'blue':'amber'}" style="width:${pct}%"></div>
@@ -1490,44 +1567,58 @@ async function renderMilestonesView(el) {
     const milestones = msData.milestones||[]
     const projects = proj.projects||proj||[]
     const projMap = {}; projects.forEach(p=>projMap[p.id]=p)
+    window._milestonesCache = milestones
+    window._projectsCache = projMap
     const pagination = paginateClient(milestones, _milestonesViewPage, _milestonesPageLimit)
     _milestonesViewPage = pagination.page
+    const canEdit = ['admin','pm'].includes(_user.role)
+    const tpl = '2.1fr 1.2fr 1fr 1.4fr 0.9fr'
 
     el.innerHTML = `
     <div class="page-header">
       <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">${pagination.total} deliverables and billing milestones</p></div>
       <div class="page-actions">
-        ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="showCreateMilestoneModal()"><i class="fas fa-plus"></i>New Milestone</button>`:''}
+        ${canEdit?`<button class="btn btn-primary" onclick="showCreateMilestoneModal()"><i class="fas fa-plus"></i>New Milestone</button>`:''}
       </div>
     </div>
-    ${listSectionHeader(['Milestone', 'Project', 'Due / Status', 'Billing / Progress'], '2fr 1.15fr 1fr 1fr')}
-    <div class="grid-2">
-      ${pagination.items.map(m=>`
-        <div class="card">
-          <div class="card-header">
+    ${listSectionHeader(['Milestone', 'Project', 'Due / Status', 'Billing / Progress', 'Actions'], tpl)}
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${pagination.items.map(m=>{
+        const overdue = new Date(m.due_date)<new Date() && m.status!=='completed'
+        const pct = Number(m.completion_pct)||0
+        const taskCount = Array.isArray(m.tasks) ? m.tasks.length : 0
+        const ratingOverall = m.rating?.overall || 0
+        return `
+        <div class="card" style="padding:14px 16px">
+          <div style="display:grid;grid-template-columns:${tpl};gap:12px;align-items:center">
+            <div style="min-width:0">
+              <div style="font-size:14px;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(m.title)}</div>
+              <div style="font-size:11px;color:#64748b;margin-top:2px">${taskCount} task${taskCount===1?'':'s'}${ratingOverall?` • ★ ${ratingOverall.toFixed(1)}/10`:''}</div>
+            </div>
+            <div style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(projMap[m.project_id]?.name||'—')}</div>
             <div>
-              <div style="font-size:14px;font-weight:600;color:#e2e8f0">${m.title}</div>
-              <div style="font-size:11px;color:#64748b;margin-top:2px">${projMap[m.project_id]?.name||'—'}</div>
+              <div style="font-size:12px;color:${overdue?'#FF5E3A':'#94a3b8'}"><i class="fas fa-calendar"></i> ${fmtDate(m.due_date)}</div>
+              <div style="margin-top:4px">${statusBadge(m.status)}</div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              ${statusBadge(m.status)}
-              ${m.is_billable?`<span style="font-size:11px;background:rgba(88,198,138,.15);color:#58C68A;padding:2px 7px;border-radius:10px">₹${fmtNum(m.invoice_amount)}</span>`:''}
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:4px">
+                <span>${m.is_billable?`₹${fmtNum(m.invoice_amount)}`:'Non-billable'}</span>
+                <span>${pct}%</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill ${pct>=100?'green':pct>=70?'blue':'amber'}" style="width:${pct}%"></div></div>
+              ${canEdit?`
+              <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+                <input type="number" min="0" max="100" step="1" value="${pct}" class="form-input" style="width:90px;padding:4px 8px;font-size:12px" onchange="updateMilestonePct('${m.id}',this.value)"/>
+                <span style="font-size:11px;color:#94a3b8">% complete</span>
+              </div>`:''}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <button class="btn btn-sm btn-outline" onclick="showMilestoneDetailsModal('${m.id}')" title="View details"><i class="fas fa-eye"></i> Details</button>
+              ${pct>=100 && canEdit ? `<button class="btn btn-sm" style="background:rgba(255,122,69,.15);color:#FF7A45;border:1px solid rgba(255,122,69,.3)" onclick="showMilestoneEmailModal('${m.id}')" title="Email client"><i class="fas fa-envelope"></i> ${m.email_sent_at?'Re-send':'Email'}</button>`:''}
             </div>
           </div>
-          <div class="card-body">
-            ${m.description?`<p style="font-size:13px;color:#94a3b8;margin-bottom:12px">${m.description}</p>`:''}
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:8px">
-              <span><i class="fas fa-calendar"></i> Due: <strong style="color:${new Date(m.due_date)<new Date()&&m.status!=='completed'?'#FF5E3A':'#94a3b8'}">${fmtDate(m.due_date)}</strong></span>
-              <span>${m.completion_pct}% complete</span>
-            </div>
-            <div class="progress-bar"><div class="progress-fill ${m.completion_pct>=100?'green':m.completion_pct>=70?'blue':'amber'}" style="width:${m.completion_pct}%"></div></div>
-            ${['admin','pm'].includes(_user.role)?`
-            <div style="display:flex;gap:8px;margin-top:12px">
-              <input type="range" min="0" max="100" value="${m.completion_pct}" style="flex:1;accent-color:#FF7A45" oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="updateMilestonePct('${m.id}',this.value)"/>
-              <span style="font-size:12px;color:#FF7A45;min-width:35px">${m.completion_pct}%</span>
-            </div>`:''}
-          </div>
-        </div>`).join('') || '<div class="empty-state"><i class="fas fa-flag"></i><p>No milestones defined</p></div>'}
+        </div>`
+      }).join('') || '<div class="empty-state"><i class="fas fa-flag"></i><p>No milestones defined</p></div>'}
     </div>
     ${renderPager(pagination, 'goMilestonesPage', 'goMilestonesPage', 'milestones', 'milestones-view')}
     `
@@ -1536,41 +1627,414 @@ async function renderMilestonesView(el) {
 
 async function updateMilestonePct(id, pct) {
   const status = pct>=100?'completed':pct>0?'in_progress':'pending'
-  try { await API.put('/milestones/'+id,{completion_pct:parseInt(pct),status}); toast('Milestone updated','success',2000) }
-  catch(e) { toast(e.message,'error') }
+  try {
+    await API.put('/milestones/'+id,{completion_pct:parseInt(pct),status})
+    toast('Milestone updated','success',2000)
+    if (parseInt(pct) >= 100) {
+      setTimeout(() => {
+        const el=document.getElementById('page-milestones-view');if(el){el.dataset.loaded='';loadPage('milestones-view',el)}
+      }, 400)
+    }
+  } catch(e) { toast(e.message,'error') }
 }
 
+/* ── CREATE MILESTONE (with embedded tasks) ──────────────── */
 async function showCreateMilestoneModal() {
-  const proj = await API.get('/projects')
-  const projects = proj.projects||proj||[]
-  showModal(`
-  <div class="modal-header"><h3>Create Milestone</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-  <div class="modal-body">
-    <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="cms-project">${projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select></div>
-    <div class="form-group"><label class="form-label">Milestone Title *</label><input class="form-input" id="cms-title" placeholder="Phase 1 – Delivery"/></div>
-    <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="cms-desc" placeholder="What is delivered in this milestone?"></textarea></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Due Date *</label><input class="form-input" type="date" id="cms-due"/></div>
-      <div class="form-group"><label class="form-label">Invoice Amount (₹)</label><input class="form-input" type="number" id="cms-amount" placeholder="0"/></div>
+  try {
+    const [proj, users] = await Promise.all([API.get('/projects'), API.get('/users')])
+    const projects = proj.projects||proj||[]
+    const allUsers = users.users || users.data || []
+    window._cmsProjects = projects
+    window._cmsAllUsers = allUsers
+    window._cmsTasks = []
+    window._cmsAssigneeOptions = []
+    showModal(`
+    <div class="modal-header"><h3><i class="fas fa-flag" style="color:#FF7A45"></i> Create Milestone</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="cms-project" onchange="cmsOnProjectChange(this.value)"><option value="">Select a project…</option>${projects.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select>
+        <div id="cms-assign-info" style="font-size:11px;color:#64748b;margin-top:6px"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Milestone Title *</label><input class="form-input" id="cms-title" placeholder="Phase 1 – Delivery"/></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="cms-desc" placeholder="What is delivered in this milestone?"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Due Date *</label><input class="form-input" type="date" id="cms-due"/></div>
+        <div class="form-group"><label class="form-label">Invoice Amount (₹)</label><input class="form-input" type="number" id="cms-amount" placeholder="0"/></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-billable" style="accent-color:#FF7A45"/> Billable Milestone</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-visible" checked style="accent-color:#FF7A45"/> Client Visible</label>
+      </div>
+      <div style="border-top:1px solid rgba(148,163,184,.15);padding-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:600;color:#e2e8f0"><i class="fas fa-tasks" style="color:#FF7A45;margin-right:6px"></i>Tasks under this Milestone</div>
+          <button class="btn btn-sm btn-outline" type="button" onclick="cmsAddTaskRow()"><i class="fas fa-plus"></i> Add Task</button>
+        </div>
+        <div id="cms-tasks-list" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div id="cms-tasks-empty" style="font-size:12px;color:#64748b;text-align:center;padding:14px;border:1px dashed rgba(148,163,184,.2);border-radius:8px">No tasks added yet — pick a project and click "Add Task".</div>
+      </div>
     </div>
-    <div style="display:flex;gap:16px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-billable" style="accent-color:#FF7A45"/> Billable Milestone</label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-visible" checked style="accent-color:#FF7A45"/> Client Visible</label>
-    </div>
-  </div>
-  <div class="modal-footer">
-    <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="doCreateMilestone()"><i class="fas fa-flag"></i>Create Milestone</button>
-  </div>`)
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doCreateMilestone()"><i class="fas fa-flag"></i>Create Milestone</button>
+    </div>`, 'modal-lg')
+  } catch(e) { toast(e.message, 'error') }
+}
+
+async function cmsOnProjectChange(projectId) {
+  const info = document.getElementById('cms-assign-info')
+  window._cmsAssigneeOptions = []
+  window._cmsIsExternal = false
+  if (!projectId) {
+    if (info) info.textContent = ''
+    cmsRenderTasks()
+    return
+  }
+  try {
+    const projRes = await API.get(`/projects/${projectId}`)
+    const proj = projRes.data || projRes.project || {}
+    const usersById = new Map((window._cmsAllUsers || []).map(u => [String(u.id), u]))
+    const opts = []
+    if (proj.assignment_type === 'external') {
+      window._cmsIsExternal = true
+      if (proj.external_team_id) {
+        const u = usersById.get(String(proj.external_team_id))
+        if (u) opts.push({ id: u.id, name: u.full_name || u.name, role: u.designation || u.role || 'team', kind: 'team' })
+      }
+      if (info) {
+        const teamLabel = opts[0] ? `${opts[0].name} (${opts[0].role})` : 'external team (none linked)'
+        info.innerHTML = `<i class="fas fa-users"></i> External project — tasks auto-assigned to <strong style="color:#cbd5e1">${escapeHtml(teamLabel)}</strong>.`
+      }
+    } else {
+      try {
+        const projDevs = await API.get(`/projects/${projectId}/developers`)
+        for (const d of (projDevs.developers || [])) {
+          const u = usersById.get(String(d.user_id))
+          if (u) opts.push({ id: u.id, name: u.full_name || u.name, role: u.designation || u.role || 'developer', kind: 'developer' })
+        }
+      } catch {}
+      if (info) info.innerHTML = `<i class="fas fa-laptop-code"></i> In-house project — pick a developer for each task.`
+    }
+    window._cmsAssigneeOptions = opts
+    // For external, auto-fill assignee on existing rows
+    if (window._cmsIsExternal && opts[0]) {
+      for (const t of (window._cmsTasks || [])) {
+        if (!t.assignee_id) t.assignee_id = opts[0].id
+      }
+    } else if (!window._cmsIsExternal) {
+      // Switching back to in-house clears any auto-assigned external user
+      for (const t of (window._cmsTasks || [])) {
+        if (t.assignee_id && !opts.find(o => o.id === t.assignee_id)) t.assignee_id = ''
+      }
+    }
+    cmsRenderTasks()
+  } catch(e) {
+    if (info) info.textContent = e.message
+  }
+}
+
+function cmsAddTaskRow() {
+  const projectId = document.getElementById('cms-project')?.value
+  if (!projectId) return toast('Select a project first', 'warning')
+  const tasks = window._cmsTasks || (window._cmsTasks = [])
+  const opts = window._cmsAssigneeOptions || []
+  const defaultAssignee = window._cmsIsExternal && opts[0] ? opts[0].id : ''
+  tasks.push({ id: 'mt_'+Date.now().toString(36)+'_'+tasks.length, title:'', assignee_id:defaultAssignee, due_date:'', status:'pending' })
+  cmsRenderTasks()
+}
+
+function cmsRemoveTaskRow(idx) {
+  const tasks = window._cmsTasks || []
+  tasks.splice(idx, 1)
+  cmsRenderTasks()
+}
+
+function cmsUpdateTask(idx, field, value) {
+  const tasks = window._cmsTasks || []
+  if (!tasks[idx]) return
+  tasks[idx][field] = value
+}
+
+function cmsRenderTasks() {
+  const list = document.getElementById('cms-tasks-list')
+  const empty = document.getElementById('cms-tasks-empty')
+  if (!list) return
+  const tasks = window._cmsTasks || []
+  const opts = window._cmsAssigneeOptions || []
+  const isExternal = !!window._cmsIsExternal
+  if (empty) empty.style.display = tasks.length ? 'none' : 'block'
+  list.innerHTML = tasks.map((t, i) => {
+    const externalAssignee = isExternal ? (opts[0] || null) : null
+    const assigneeCell = externalAssignee
+      ? `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;background:rgba(255,122,69,.08);border:1px solid rgba(255,122,69,.25);border-radius:6px;padding:8px"><i class="fas fa-users" style="color:#FF7A45"></i> ${escapeHtml(externalAssignee.name)} <span style="color:#64748b">(${escapeHtml(externalAssignee.role)})</span></div>`
+      : `<select class="form-select" onchange="cmsUpdateTask(${i},'assignee_id',this.value)">
+          <option value="">${opts.length ? 'Select developer' : 'No developers allocated'}</option>
+          ${opts.map(o => `<option value="${o.id}" ${t.assignee_id===o.id?'selected':''}>${escapeHtml(o.name)} (${escapeHtml(o.role)})</option>`).join('')}
+        </select>`
+    return `
+    <div style="display:grid;grid-template-columns:2.2fr 1.5fr 1fr auto;gap:8px;align-items:center;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;padding:10px">
+      <input class="form-input" placeholder="Task title…" value="${escapeHtml(t.title)}" oninput="cmsUpdateTask(${i},'title',this.value)"/>
+      ${assigneeCell}
+      <input class="form-input" type="date" value="${t.due_date||''}" onchange="cmsUpdateTask(${i},'due_date',this.value)"/>
+      <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsRemoveTaskRow(${i})" title="Remove"><i class="fas fa-trash"></i></button>
+    </div>`
+  }).join('')
 }
 
 async function doCreateMilestone() {
-  const body = { project_id:document.getElementById('cms-project').value, title:document.getElementById('cms-title').value.trim(), description:document.getElementById('cms-desc').value.trim(), due_date:document.getElementById('cms-due').value, invoice_amount:parseFloat(document.getElementById('cms-amount').value)||0, is_billable:document.getElementById('cms-billable').checked?1:0, client_visible:document.getElementById('cms-visible').checked?1:0 }
-  if (!body.project_id||!body.title||!body.due_date) return toast('Fill required fields','error')
+  const projectId = document.getElementById('cms-project').value
+  const title = document.getElementById('cms-title').value.trim()
+  const due = document.getElementById('cms-due').value
+  if (!projectId || !title || !due) return toast('Fill required fields (Project, Title, Due Date)','error')
+  const opts = window._cmsAssigneeOptions || []
+  const optsById = new Map(opts.map(o => [o.id, o]))
+  const tasks = (window._cmsTasks || []).filter(t => t.title && t.title.trim()).map(t => {
+    const a = t.assignee_id ? optsById.get(t.assignee_id) : null
+    return {
+      id: t.id,
+      title: t.title.trim(),
+      assignee_id: t.assignee_id || null,
+      assignee_name: a ? a.name : null,
+      assignee_kind: a ? a.kind : 'developer',
+      due_date: t.due_date || null,
+      status: t.status || 'pending',
+    }
+  })
+  const body = {
+    project_id: projectId,
+    title,
+    description: document.getElementById('cms-desc').value.trim(),
+    due_date: due,
+    invoice_amount: parseFloat(document.getElementById('cms-amount').value)||0,
+    is_billable: document.getElementById('cms-billable').checked?1:0,
+    client_visible: document.getElementById('cms-visible').checked?1:0,
+    tasks,
+  }
   try {
-    await API.post('/milestones',body); toast('Milestone created!','success'); closeModal()
-    const el=document.getElementById('page-milestones-view');if(el){el.dataset.loaded='';loadPage('milestones-view',el)}
-  } catch(e){toast(e.message,'error')}
+    await API.post('/milestones', body)
+    toast('Milestone created!','success')
+    closeModal()
+    const el = document.getElementById('page-milestones-view'); if(el){el.dataset.loaded='';loadPage('milestones-view',el)}
+  } catch(e) { toast(e.message,'error') }
+}
+
+/* ── MILESTONE DETAILS ───────────────────────────────────── */
+async function showMilestoneDetailsModal(id) {
+  try {
+    const [msData, projRes] = await Promise.all([API.get('/milestones'), API.get('/projects')])
+    const milestones = msData.milestones || []
+    const m = milestones.find(x => String(x.id) === String(id))
+    if (!m) return toast('Milestone not found', 'error')
+    const projects = projRes.projects || projRes || []
+    const project = projects.find(p => String(p.id) === String(m.project_id)) || {}
+    const pct = Number(m.completion_pct) || 0
+    const tasks = Array.isArray(m.tasks) ? m.tasks : []
+    const overdue = new Date(m.due_date) < new Date() && m.status !== 'completed'
+    const canEdit = ['admin','pm'].includes(_user.role)
+    const rating = m.rating || null
+
+    showModal(`
+    <div class="modal-header">
+      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-flag" style="color:#FF7A45"></i> ${escapeHtml(m.title)}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:12px;margin-bottom:14px">
+        <div style="padding:12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+          <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Project</div>
+          <div style="font-size:14px;color:#e2e8f0;font-weight:600">${escapeHtml(project.name || '—')}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:6px">Assignment: <strong style="color:#cbd5e1;text-transform:capitalize">${escapeHtml(project.assignment_type || '—')}</strong></div>
+        </div>
+        <div style="padding:12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+          <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Due Date</div>
+          <div style="font-size:14px;font-weight:600;color:${overdue?'#FF5E3A':'#e2e8f0'}">${fmtDate(m.due_date)}</div>
+          <div style="margin-top:6px">${statusBadge(m.status)}${m.is_billable?` <span style="font-size:11px;background:rgba(88,198,138,.15);color:#58C68A;padding:2px 7px;border-radius:10px;margin-left:6px">₹${fmtNum(m.invoice_amount)}</span>`:''}</div>
+        </div>
+      </div>
+
+      ${m.description ? `<div style="padding:12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;margin-bottom:14px"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Description</div><div style="font-size:13px;color:#cbd5e1;line-height:1.5">${escapeHtml(m.description)}</div></div>` : ''}
+
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;margin-bottom:6px">
+          <span>Progress</span><span>${pct}% complete</span>
+        </div>
+        <div class="progress-bar lg"><div class="progress-fill ${pct>=100?'green':pct>=70?'blue':'amber'}" style="width:${pct}%"></div></div>
+        ${canEdit?`
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+          <input type="number" min="0" max="100" step="1" value="${pct}" id="mdm-progress" class="form-input" style="width:120px" placeholder="0–100"/>
+          <span style="font-size:12px;color:#94a3b8">% complete</span>
+          <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="saveMilestoneProgress('${m.id}')"><i class="fas fa-save"></i> Save Progress</button>
+        </div>`:''}
+      </div>
+
+      <div style="margin-bottom:14px">
+        <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-tasks" style="color:#FF7A45;margin-right:6px"></i>Tasks (${tasks.length})</div>
+        ${tasks.length ? `<div style="display:flex;flex-direction:column;gap:6px">${tasks.map((t)=>`
+          <div style="display:grid;grid-template-columns:1.6fr 1.1fr 0.9fr 1fr;gap:8px;align-items:center;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;padding:10px">
+            <div style="font-size:13px;color:#e2e8f0">${escapeHtml(t.title)}</div>
+            <div style="font-size:12px;color:#94a3b8"><i class="fas fa-user"></i> ${escapeHtml(t.assignee_name || 'Unassigned')}</div>
+            <div style="font-size:12px;color:#94a3b8"><i class="fas fa-calendar"></i> ${t.due_date?fmtDate(t.due_date):'—'}</div>
+            ${canEdit?`<select class="form-select" style="font-size:12px;padding:4px 6px" onchange="updateMilestoneTaskStatus('${m.id}','${t.id}',this.value)">
+              ${['todo','in_progress','in_review','done','blocked'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
+            </select>`:`<div style="font-size:12px;color:#94a3b8;text-transform:capitalize">${escapeHtml(String(t.status||'').replace('_',' '))}</div>`}
+          </div>`).join('')}</div>` : '<div style="font-size:12px;color:#64748b;text-align:center;padding:14px;border:1px dashed rgba(148,163,184,.2);border-radius:8px">No tasks added under this milestone.</div>'}
+      </div>
+
+      ${rating ? `
+      <div style="padding:14px;background:rgba(255,122,69,.08);border:1px solid rgba(255,122,69,.3);border-radius:10px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:600;color:#FF7A45"><i class="fas fa-star"></i> Client Rating</div>
+          <div style="font-size:20px;font-weight:700;color:#FF7A45">${Number(rating.overall).toFixed(1)}<span style="font-size:12px;color:#94a3b8;font-weight:400">/10</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:12px">
+          ${[['Timing','timing'],['Team','team'],['Communication','communication'],['Quality','quality']].map(([l,k])=>`<div><div style="color:#64748b">${l}</div><div style="color:#e2e8f0;font-weight:600">${Number(rating[k]||0).toFixed(1)}/10</div></div>`).join('')}
+        </div>
+        ${rating.comment?`<div style="font-size:12px;color:#cbd5e1;margin-top:10px;font-style:italic">"${escapeHtml(rating.comment)}"</div>`:''}
+        <div style="font-size:11px;color:#64748b;margin-top:8px">${rating.rated_by?'By '+escapeHtml(rating.rated_by)+' • ':''}${fmtDate(rating.rated_at)}</div>
+      </div>` : ''}
+
+      ${m.email_sent_at ? `<div style="font-size:12px;color:#58C68A;margin-bottom:10px"><i class="fas fa-check-circle"></i> Completion email sent to ${escapeHtml(m.email_sent_to||'client')} on ${fmtDate(m.email_sent_at)}</div>` : ''}
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      ${pct>=100 && canEdit ? `<button class="btn" style="background:rgba(255,122,69,.15);color:#FF7A45;border:1px solid rgba(255,122,69,.4)" onclick="showMilestoneEmailModal('${m.id}')"><i class="fas fa-envelope"></i> ${m.email_sent_at?'Re-send Email':'Email Client'}</button>`:''}
+      ${pct>=100 ? `<button class="btn btn-primary" onclick="showMilestoneRatingModal('${m.id}')"><i class="fas fa-star"></i> ${rating?'Update Rating':'Add Rating'}</button>`:''}
+    </div>`, 'modal-lg')
+  } catch(e) { toast(e.message, 'error') }
+}
+
+async function saveMilestoneProgress(id) {
+  const pctEl = document.getElementById('mdm-progress')
+  if (!pctEl) return
+  let pct = parseInt(pctEl.value)
+  if (!Number.isFinite(pct)) pct = 0
+  pct = Math.max(0, Math.min(100, pct))
+  const status = pct>=100?'completed':pct>0?'in_progress':'pending'
+  try {
+    await API.put('/milestones/'+id, { completion_pct: pct, status })
+    toast('Progress updated', 'success', 1500)
+    closeModal()
+    setTimeout(() => showMilestoneDetailsModal(id), 250)
+    const el = document.getElementById('page-milestones-view'); if(el){el.dataset.loaded='';loadPage('milestones-view',el)}
+  } catch(e) { toast(e.message, 'error') }
+}
+
+async function updateMilestoneTaskStatus(milestoneId, taskId, status) {
+  try {
+    await API.put('/tasks/' + taskId, { status })
+    toast('Task updated', 'success', 1200)
+  } catch(e) { toast(e.message, 'error') }
+}
+
+/* ── MILESTONE EMAIL CLIENT (on 100% complete) ───────────── */
+async function showMilestoneEmailModal(id) {
+  try {
+    const [msData, projRes, clientsRes] = await Promise.all([API.get('/milestones'), API.get('/projects'), API.get('/clients').catch(()=>({clients:[]}))])
+    const m = (msData.milestones||[]).find(x => String(x.id) === String(id))
+    if (!m) return toast('Milestone not found','error')
+    if (Number(m.completion_pct) < 100) return toast('Milestone is not 100% complete','warning')
+    const project = (projRes.projects||projRes||[]).find(p => String(p.id) === String(m.project_id)) || {}
+    const clients = clientsRes.clients || clientsRes || []
+    const client = clients.find(c => String(c.id) === String(project.client_id)) || {}
+    const defaultEmail = client.email || ''
+
+    showModal(`
+    <div class="modal-header"><h3><i class="fas fa-envelope" style="color:#FF7A45"></i> Email Client — Milestone Complete</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:#94a3b8;margin-bottom:14px">Notify the client that <strong style="color:#e2e8f0">${escapeHtml(m.title)}</strong> is now 100% complete.</div>
+      <div class="form-group"><label class="form-label">To *</label><input class="form-input" id="mse-to" value="${escapeHtml(defaultEmail)}" placeholder="client@example.com"/></div>
+      <div class="form-group"><label class="form-label">CC</label><input class="form-input" id="mse-cc" placeholder="optional, comma-separated"/></div>
+      <div class="form-group"><label class="form-label">Subject</label><input class="form-input" id="mse-subject" value="Milestone Completed: ${escapeHtml(m.title)}"/></div>
+      <div style="font-size:11px;color:#64748b">A summary of the milestone (project, due date, tasks, billing) will be included automatically.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="mse-send-btn" onclick="doSendMilestoneEmail('${id}')"><i class="fas fa-paper-plane"></i> Send Email</button>
+    </div>`)
+  } catch(e) { toast(e.message,'error') }
+}
+
+async function doSendMilestoneEmail(id) {
+  const btn = document.getElementById('mse-send-btn')
+  const to = document.getElementById('mse-to').value.trim()
+  const cc = document.getElementById('mse-cc').value.trim()
+  const subject = document.getElementById('mse-subject').value.trim()
+  if (!to) return toast('Recipient email is required','error')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
+  try {
+    await API.post(`/milestones/${id}/send-email`, { to, cc, subject })
+    toast('Email sent to client','success')
+    closeModal()
+    const el = document.getElementById('page-milestones-view'); if(el){el.dataset.loaded='';loadPage('milestones-view',el)}
+  } catch(e) {
+    toast(e.message,'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Email' }
+  }
+}
+
+/* ── CLIENT RATING (post-completion) ─────────────────────── */
+async function showMilestoneRatingModal(id) {
+  try {
+    const msData = await API.get('/milestones')
+    const m = (msData.milestones||[]).find(x => String(x.id) === String(id))
+    if (!m) return toast('Milestone not found','error')
+    if (Number(m.completion_pct) < 100) return toast('Rating is available after milestone is 100% complete','warning')
+    const r = m.rating || { timing:0, team:0, communication:0, quality:0, comment:'' }
+
+    const slider = (key, label, value) => `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;margin-bottom:6px">
+          <span>${label}</span><span id="mr-${key}-val" style="color:#FF7A45;font-weight:700">${Number(value||0).toFixed(1)}/10</span>
+        </div>
+        <input type="range" min="0" max="10" step="0.5" value="${Number(value||0)}" id="mr-${key}" style="width:100%;accent-color:#FF7A45" oninput="document.getElementById('mr-${key}-val').textContent=parseFloat(this.value).toFixed(1)+'/10';mrUpdateOverall()"/>
+      </div>`
+
+    showModal(`
+    <div class="modal-header"><h3><i class="fas fa-star" style="color:#FF7A45"></i> Rate Milestone Delivery</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:#94a3b8;margin-bottom:14px">Rate the team's delivery on each criterion (1–10). The overall score is the average.</div>
+      ${slider('timing','Timing / On-time delivery', r.timing)}
+      ${slider('team','Team performance', r.team)}
+      ${slider('communication','Communication / Behaviour', r.communication ?? r.behavior ?? 0)}
+      ${slider('quality','Output quality', r.quality)}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:rgba(255,122,69,.08);border:1px solid rgba(255,122,69,.3);border-radius:8px;margin:14px 0">
+        <span style="font-size:13px;color:#e2e8f0;font-weight:600">Overall Rating</span>
+        <span id="mr-overall-val" style="font-size:22px;font-weight:700;color:#FF7A45">0.0<span style="font-size:12px;color:#94a3b8;font-weight:400">/10</span></span>
+      </div>
+      <div class="form-group"><label class="form-label">Comments (optional)</label><textarea class="form-textarea" id="mr-comment" placeholder="Any feedback or notes from the client…">${escapeHtml(r.comment||'')}</textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doSubmitMilestoneRating('${id}')"><i class="fas fa-star"></i> Save Rating</button>
+    </div>`)
+    setTimeout(mrUpdateOverall, 0)
+  } catch(e) { toast(e.message,'error') }
+}
+
+function mrUpdateOverall() {
+  const keys = ['timing','team','communication','quality']
+  const vals = keys.map(k => parseFloat(document.getElementById('mr-'+k)?.value || 0)).filter(n => n > 0)
+  const overall = vals.length ? (vals.reduce((a,b)=>a+b,0) / vals.length) : 0
+  const el = document.getElementById('mr-overall-val')
+  if (el) el.innerHTML = `${overall.toFixed(1)}<span style="font-size:12px;color:#94a3b8;font-weight:400">/10</span>`
+}
+
+async function doSubmitMilestoneRating(id) {
+  const body = {
+    timing: parseFloat(document.getElementById('mr-timing').value) || 0,
+    team: parseFloat(document.getElementById('mr-team').value) || 0,
+    communication: parseFloat(document.getElementById('mr-communication').value) || 0,
+    quality: parseFloat(document.getElementById('mr-quality').value) || 0,
+    comment: document.getElementById('mr-comment').value.trim(),
+  }
+  const total = body.timing + body.team + body.communication + body.quality
+  if (total <= 0) return toast('Set at least one rating above 0', 'error')
+  try {
+    await API.post(`/milestones/${id}/rate`, body)
+    toast('Rating saved', 'success')
+    closeModal()
+    setTimeout(() => showMilestoneDetailsModal(id), 250)
+    const el = document.getElementById('page-milestones-view'); if(el){el.dataset.loaded='';loadPage('milestones-view',el)}
+  } catch(e) { toast(e.message, 'error') }
 }
 
 /* ── MY TASKS ────────────────────────────────────────────── */
@@ -1652,10 +2116,16 @@ async function renderResourcesView(el) {
   el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const [usersData, proj, dash] = await Promise.all([API.get('/users?role=developer'), API.get('/projects'), API.get('/dashboard/pm')])
-    const devs = usersData.users||usersData||[]
+    const allUsers = usersData.users||usersData||[]
+    // The /users?role=developer endpoint also returns external "team" members.
+    // Resource Allocation is meant for in-house developers only — strict filter.
+    const devs = allUsers.filter(u => String(u.role||'').toLowerCase() === 'developer')
+    const devIds = new Set(devs.map(u => String(u.id)))
     const d = dash.data||{}
-    const pagination = paginateClient(d.utilization || [], _resourcesPage, _resourcesPageLimit)
+    const utilization = (d.utilization || []).filter(u => devIds.has(String(u.id || u.user_id)))
+    const pagination = paginateClient(utilization, _resourcesPage, _resourcesPageLimit)
     _resourcesPage = pagination.page
+    const canManage = ['admin','pm','pc'].includes(_user.role)
 
     el.innerHTML = `
     <div class="page-header">
@@ -1671,30 +2141,91 @@ async function renderResourcesView(el) {
       <div class="card-header"><span style="font-weight:600">Developer Utilization Matrix</span></div>
       <div class="card-body p-0 table-wrap">
         <table class="data-table">
-          <thead><tr><th>Developer</th><th>Designation</th><th>Monthly Cap</th><th>This Month</th><th>Utilization</th><th>Projects</th><th>Allocated Total</th><th>Status</th></tr></thead>
+          <thead><tr><th>Developer</th><th>Designation</th><th>Monthly Cap</th><th>This Month</th><th>Utilization</th><th>Projects</th><th>Allocated Total</th><th>Status</th>${canManage?'<th>Actions</th>':''}</tr></thead>
           <tbody>
-            ${pagination.items.map(u=>`
-            <tr>
-              <td><div style="display:flex;align-items:center;gap:8px">${avatar(u.full_name,u.avatar_color,'sm')}<span style="font-weight:500;color:#e2e8f0">${u.full_name}</span></div></td>
-              <td><span style="font-size:12px;color:#94a3b8">${u.designation}</span></td>
-              <td>${u.monthly_available_hours}h</td>
-              <td>${u.monthly_consumed}h</td>
-              <td style="min-width:160px">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div class="progress-bar" style="flex:1"><div class="progress-fill ${u.utilization_pct>=80?'rose':u.utilization_pct>=50?'green':'amber'}" style="width:${Math.min(u.utilization_pct,100)}%"></div></div>
-                  <span style="font-size:12px;font-weight:600;color:${pctColor(u.utilization_pct)}">${u.utilization_pct}%</span>
-                </div>
-              </td>
-              <td>${u.project_count}</td>
-              <td>${u.total_allocated}h</td>
-              <td>${u.utilization_pct>=90?'<span style="color:#FF5E3A;font-size:12px">⚡ Overloaded</span>':u.utilization_pct>=50?'<span style="color:#58C68A;font-size:12px">✓ Healthy</span>':'<span style="color:#FFCB47;font-size:12px">↓ Underutil.</span>'}</td>
-            </tr>`).join('')}
+            ${pagination.items.map(u=>{
+              const pct = Number(u.utilization_pct)||0
+              const allocated = Number(u.total_allocated)||0
+              const cap = Number(u.monthly_available_hours)||0
+              const status = pct>=90 ? {color:'#FF5E3A',label:'⚡ Overloaded'}
+                : pct>=50 ? {color:'#58C68A',label:'✓ Healthy'}
+                : allocated===0 && cap>0 ? {color:'#94a3b8',label:'• No allocation'}
+                : pct>0 ? {color:'#FFCB47',label:'↓ Underutil.'}
+                : {color:'#94a3b8',label:'• Idle'}
+              return `
+              <tr>
+                <td><div style="display:flex;align-items:center;gap:8px">${avatar(u.full_name,u.avatar_color,'sm')}<span style="font-weight:500;color:#e2e8f0">${u.full_name}</span></div></td>
+                <td><span style="font-size:12px;color:#94a3b8">${u.designation||'—'}</span></td>
+                <td>${cap}h</td>
+                <td>${Number(u.monthly_consumed)||0}h</td>
+                <td style="min-width:160px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div class="progress-bar" style="flex:1"><div class="progress-fill ${pct>=80?'rose':pct>=50?'green':'amber'}" style="width:${Math.min(pct,100)}%"></div></div>
+                    <span style="font-size:12px;font-weight:600;color:${pctColor(pct)}">${pct}%</span>
+                  </div>
+                </td>
+                <td>${u.project_count||0}</td>
+                <td>${allocated}h</td>
+                <td><span style="color:${status.color};font-size:12px">${status.label}</span></td>
+                ${canManage?`<td><button class="btn btn-xs btn-outline" onclick="showEditDeveloperCapacityModal('${u.id||u.user_id}')" title="Edit capacity"><i class="fas fa-edit"></i> Edit</button></td>`:''}
+              </tr>`
+            }).join('') || `<tr><td colspan="${canManage?9:8}" style="text-align:center;padding:30px;color:#64748b">No developers found.</td></tr>`}
           </tbody>
         </table>
         ${renderPager(pagination, 'goResourcesPage', 'goResourcesPage', 'developers', 'resources-view')}
       </div>
     </div>`
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
+}
+
+async function showEditDeveloperCapacityModal(userId) {
+  try {
+    const data = await API.get('/users/' + userId)
+    const u = data.user || data.data || data
+    if (!u || !u.id) return toast('Developer not found', 'error')
+    showModal(`
+    <div class="modal-header"><h3><i class="fas fa-user-edit" style="color:#FF7A45"></i> Edit ${escapeHtml(u.full_name||'Developer')}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="ed-name" value="${escapeHtml(u.full_name||'')}"/></div>
+        <div class="form-group"><label class="form-label">Designation</label><input class="form-input" id="ed-designation" value="${escapeHtml(u.designation||'')}" placeholder="Senior Developer"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Daily work hours</label><input class="form-input" type="number" min="0" max="24" step="0.5" id="ed-daily" value="${Number(u.daily_work_hours)||8}"/></div>
+        <div class="form-group"><label class="form-label">Monthly capacity (h)</label><input class="form-input" type="number" min="0" max="744" step="1" id="ed-monthly" value="${Number(u.monthly_available_hours)||160}"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Hourly cost (₹)</label><input class="form-input" type="number" min="0" step="1" id="ed-cost" value="${Number(u.hourly_cost)||0}"/></div>
+        <div class="form-group"><label class="form-label">Active</label>
+          <select class="form-select" id="ed-active">
+            <option value="1" ${Number(u.is_active||0)===1?'selected':''}>Active</option>
+            <option value="0" ${Number(u.is_active||0)===0?'selected':''}>Inactive</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDeveloperCapacity('${u.id}')"><i class="fas fa-save"></i> Save</button>
+    </div>`)
+  } catch(e) { toast(e.message, 'error') }
+}
+
+async function saveDeveloperCapacity(userId) {
+  const body = {
+    full_name: document.getElementById('ed-name').value.trim(),
+    designation: document.getElementById('ed-designation').value.trim(),
+    daily_work_hours: parseFloat(document.getElementById('ed-daily').value) || 0,
+    monthly_available_hours: parseFloat(document.getElementById('ed-monthly').value) || 0,
+    hourly_cost: parseFloat(document.getElementById('ed-cost').value) || 0,
+    is_active: Number(document.getElementById('ed-active').value) || 0,
+  }
+  if (!body.full_name) return toast('Full name is required', 'error')
+  try {
+    await API.put('/users/' + userId, body)
+    toast('Developer updated', 'success')
+    closeModal()
+  } catch(e) { toast(e.message, 'error') }
 }
 
 /* ── APPROVAL QUEUE ─────────────────────────────────────── */
@@ -1823,31 +2354,41 @@ function updateApprovalSelectionState() {
 }
 async function approveLog(id) {
   try {
-    await API.post(`/timesheets/${id}/approve`, {})
-    document.getElementById('log-row-'+id)?.remove()
+    await API.patch(`/timesheets/${id}/approve`, { action: 'approved' })
     toast('Timesheet approved','success',2000)
-    loadBadges()
-    updateApprovalSelectionState()
   } catch(e){toast(e.message,'error')}
 }
-async function rejectLog(id) {
-  const notes = prompt('Rejection reason (optional):')
+
+function showRejectLogModal(id) {
+  showModal(`
+  <div class="modal-header"><h3><i class="fas fa-times-circle" style="color:#FF5E3A"></i> Reject Timesheet</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+  <div class="modal-body">
+    <div style="font-size:13px;color:#94a3b8;margin-bottom:12px">Tell the developer why this entry is being rejected. They'll see this note when they re-open the entry.</div>
+    <div class="form-group"><label class="form-label">Rejection reason *</label><textarea id="rl-reason" class="form-textarea" rows="3" placeholder="e.g., Hours don't match the task progress; please re-log."></textarea></div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-danger" onclick="doRejectLog('${id}')"><i class="fas fa-times"></i> Reject</button>
+  </div>`)
+}
+async function doRejectLog(id) {
+  const reason = document.getElementById('rl-reason')?.value.trim() || ''
+  if (!reason) { toast('Please enter a rejection reason', 'error'); return }
   try {
-    await API.post(`/timesheets/${id}/reject`, {pm_notes: notes||''})
-    document.getElementById('log-row-'+id)?.remove()
+    await API.patch(`/timesheets/${id}/approve`, { action: 'rejected', pm_notes: reason })
     toast('Timesheet rejected','info',2000)
-    updateApprovalSelectionState()
+    closeModal()
   } catch(e){toast(e.message,'error')}
 }
+// Backward-compat: existing onclick="rejectLog('id')" still works.
+function rejectLog(id) { return showRejectLogModal(id) }
+
 async function bulkApprove() {
   const checked = [...document.querySelectorAll('.log-check:checked')].map(c=>c.value)
   if (!checked.length) { toast('Select timesheets first','error'); return }
   try {
-    await API.post('/timesheets/bulk-approve', {ids: checked})
-    checked.forEach(id => document.getElementById('log-row-'+id)?.remove())
+    await API.post('/timesheets/bulk-approve', { ids: checked, action: 'approved' })
     toast(`${checked.length} timesheets approved`,'success')
-    loadBadges()
-    updateApprovalSelectionState()
   } catch(e){toast(e.message,'error')}
 }
 
@@ -1891,10 +2432,23 @@ async function renderClientsList(el) {
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }
 
+const INDIAN_STATES = [
+  ['ANDHRA PRADESH','37'],['ARUNACHAL PRADESH','12'],['ASSAM','18'],['BIHAR','10'],['CHHATTISGARH','22'],
+  ['DELHI','07'],['GOA','30'],['GUJARAT','24'],['HARYANA','06'],['HIMACHAL PRADESH','02'],
+  ['JHARKHAND','20'],['KARNATAKA','29'],['KERALA','32'],['MADHYA PRADESH','23'],['MAHARASHTRA','27'],
+  ['MANIPUR','14'],['MEGHALAYA','17'],['MIZORAM','15'],['NAGALAND','13'],['ODISHA','21'],
+  ['PUNJAB','03'],['RAJASTHAN','08'],['SIKKIM','11'],['TAMIL NADU','33'],['TELANGANA','36'],
+  ['TRIPURA','16'],['UTTAR PRADESH','09'],['UTTARAKHAND','05'],['WEST BENGAL','19'],
+  ['JAMMU AND KASHMIR','01'],['LADAKH','38'],['CHANDIGARH','04'],['PUDUCHERRY','34'],
+  ['ANDAMAN AND NICOBAR ISLANDS','35'],['DADRA AND NAGAR HAVELI AND DAMAN AND DIU','26'],['LAKSHADWEEP','31']
+]
+
 function openCreateClientModal() {
+  const stateOpts = INDIAN_STATES.map(([n, c]) => `<option value="${n}" data-code="${c}">${n} (${c})</option>`).join('')
   showModal(`
-    <div class="modal-header"><h3>Create Client</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h3><i class="fas fa-building" style="color:#FF7A45"></i> Create Client</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
+      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Company &amp; Contact</div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Company Name *</label><input class="form-input" id="client-company" placeholder="Acme Corp"/></div>
         <div class="form-group"><label class="form-label">Contact Name *</label><input class="form-input" id="client-contact" placeholder="John Doe"/></div>
@@ -1911,12 +2465,40 @@ function openCreateClientModal() {
         <div class="form-group"><label class="form-label">Industry</label><input class="form-input" id="client-industry" placeholder="SaaS / Fintech"/></div>
         <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="client-color" type="color" value="#FF7A45" style="height:40px;padding:3px"/></div>
       </div>
+
+      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">GSTIN</label><input class="form-input" id="client-gstin" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase" maxlength="15"/></div>
+        <div class="form-group"><label class="form-label">Country</label><input class="form-input" id="client-country" placeholder="India" value="India"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Company Address</label><textarea class="form-textarea" id="client-address" placeholder="Building, Street, Locality" style="min-height:50px"></textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:10px">
+        <div class="form-group" style="margin:0"><label class="form-label">City</label><input class="form-input" id="client-city" placeholder="Mumbai"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">State</label>
+          <select class="form-select" id="client-state" onchange="onClientStateChange(this)">
+            <option value="">Select state…</option>
+            ${stateOpts}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="client-state-code" placeholder="27" maxlength="3" readonly style="background:rgba(15,23,42,.4)"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">PIN Code</label><input class="form-input" id="client-pincode" placeholder="400001" maxlength="10"/></div>
+        <div class="form-group"></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveClient()"><i class="fas fa-save"></i>Create Client</button>
     </div>
   `, 'modal-lg')
+}
+
+function onClientStateChange(sel) {
+  const opt = sel.selectedOptions[0]
+  const code = opt?.dataset?.code || ''
+  const codeEl = document.getElementById('client-state-code')
+  if (codeEl) codeEl.value = code
 }
 
 async function saveClient() {
@@ -1929,9 +2511,24 @@ async function saveClient() {
     website: document.getElementById('client-website').value.trim(),
     industry: document.getElementById('client-industry').value.trim(),
     avatar_color: document.getElementById('client-color').value,
+    gstin: document.getElementById('client-gstin').value.trim().toUpperCase(),
+    address_line: document.getElementById('client-address').value.trim(),
+    city: document.getElementById('client-city').value.trim(),
+    state: document.getElementById('client-state').value.trim(),
+    state_code: document.getElementById('client-state-code').value.trim(),
+    pincode: document.getElementById('client-pincode').value.trim(),
+    country: document.getElementById('client-country').value.trim(),
   }
   if (!payload.company_name || !payload.contact_name || !payload.email || !payload.password) {
     toast('Company name, contact name, email and password are required', 'error')
+    return
+  }
+  if (payload.gstin && !/^[0-9A-Z]{15}$/.test(payload.gstin)) {
+    toast('GSTIN must be 15 alphanumeric characters', 'error')
+    return
+  }
+  if (payload.pincode && !/^[0-9]{4,8}$/.test(payload.pincode)) {
+    toast('PIN code must be numeric (4–8 digits)', 'error')
     return
   }
   try {
@@ -2188,7 +2785,7 @@ async function showSendInvoiceModal(id) {
     const res = await API.get(`/invoices/${id}`)
     const inv = res.invoice || res.data || res
     const defaultTo = escapeHtml(inv.client_email || '')
-    const defaultSubject = escapeHtml(`Invoice ${inv.invoice_number} from ${inv.company_name || 'DevPortal'}`)
+    const defaultSubject = escapeHtml(`Invoice ${inv.invoice_number} for ${inv.company_name || inv.contact_name || 'Client'}`)
     const previewAmount = fmtCurrency(inv.total_amount || 0)
     const previewDue = fmtDate(inv.due_date)
     const previewProject = escapeHtml(inv.project_name || '—')
@@ -2534,10 +3131,10 @@ const IMPORT_TEMPLATES = {
   },
   clients: {
     filename: 'clients_import_template.csv',
-    headers: 'company_name,contact_name,email,phone,website,industry,avatar_color,password',
+    headers: 'company_name,contact_name,email,phone,website,industry,gstin,address_line,city,state,state_code,pincode,country,avatar_color,password',
     rows: [
-      'Acme Corp,Anita Joshi,anita@acme.com,+91-9876543210,https://acme.com,SaaS,#FF7A45,Welcome@123',
-      'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,#FFB347,Welcome@123',
+      'Acme Corp,Anita Joshi,anita@acme.com,+91-9876543210,https://acme.com,SaaS,27AABCA1234F1Z5,12 MG Road,Mumbai,MAHARASHTRA,27,400001,India,#FF7A45,Welcome@123',
+      'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,29AABCG5678H1Z9,Plot 4 Sector 3,Bengaluru,KARNATAKA,29,560001,India,#FFB347,Welcome@123',
     ],
   },
 }
@@ -2562,7 +3159,7 @@ function _importModalHtml(kind) {
   const title = isUsers ? 'Import Team Members' : 'Import Clients'
   const cols = isUsers
     ? 'full_name, email, role, designation, phone, daily_work_hours, monthly_available_hours, hourly_cost, joining_date, avatar_color, password'
-    : 'company_name, contact_name, email, phone, website, industry, avatar_color, password'
+    : 'company_name, contact_name, email, phone, website, industry, gstin, address_line, city, state, state_code, pincode, country, avatar_color, password'
   return `
     <div class="modal-header">
       <h3><i class="fas fa-file-csv" style="color:var(--accent);margin-right:6px"></i>${title}</h3>

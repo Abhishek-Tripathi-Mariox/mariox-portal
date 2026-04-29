@@ -57,7 +57,7 @@ export function createProjectTeamsRouter(models: MongoModels, jwtSecret: string)
   router.get('/', async (_req, res) => {
     try {
       const teams = await models.projectTeams.find({}) as any[]
-      teams.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+      teams.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
       const enriched = await enrichTeams(models, teams)
       return res.json({ data: enriched, teams: enriched })
     } catch {

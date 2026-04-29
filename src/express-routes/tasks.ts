@@ -248,10 +248,11 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
 
   router.get('/', async (req, res) => {
     try {
-      const { project_id, sprint_id, assignee_id, status, priority, type } = req.query as Record<string, string | undefined>
+      const { project_id, sprint_id, milestone_id, assignee_id, status, priority, type } = req.query as Record<string, string | undefined>
       const filter: any = {}
       if (project_id) filter.project_id = project_id
       if (sprint_id) filter.sprint_id = sprint_id
+      if (milestone_id) filter.milestone_id = milestone_id
       if (assignee_id) filter.assignee_id = assignee_id
       if (status) filter.status = status
       if (priority) filter.priority = priority
@@ -388,6 +389,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
         id,
         project_id,
         sprint_id: body.sprint_id || null,
+        milestone_id: body.milestone_id || null,
         parent_task_id: body.parent_task_id || null,
         title,
         description,
@@ -440,7 +442,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
 
       const body = req.body || {}
       const patch: any = { updated_at: new Date().toISOString() }
-      const allowed = ['title', 'description', 'task_type', 'status', 'priority', 'assignee_id', 'sprint_id', 'story_points', 'estimated_hours', 'logged_hours', 'due_date', 'labels', 'is_client_visible', 'is_billable', 'position']
+      const allowed = ['title', 'description', 'task_type', 'status', 'priority', 'assignee_id', 'sprint_id', 'milestone_id', 'story_points', 'estimated_hours', 'logged_hours', 'due_date', 'labels', 'is_client_visible', 'is_billable', 'position']
       for (const k of allowed) {
         if (k in body) patch[k] = k === 'labels' && Array.isArray(body[k]) ? JSON.stringify(body[k]) : body[k]
       }

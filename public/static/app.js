@@ -130,6 +130,7 @@ const API = {
     const r = await fetch(BASE + url, opts)
     const data = await r.json().catch(() => ({}))
     if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)
+    if (method !== 'GET' && method !== 'HEAD') scheduleActivePageReload()
     return data
   },
   get:    (u, opts = {}) => API.req('GET', buildUrl(u, opts?.params)),
@@ -138,6 +139,39 @@ const API = {
   patch:  (u, b) => API.req('PATCH', u, b),
   delete: (u) => API.req('DELETE', u),
 }
+
+// After any successful mutation we reload the visible page so listings reflect
+// the change without a full browser refresh. Coalesce multiple bursts (e.g.
+// import loops, parallel updates) into a single re-render via micro-debounce.
+let _reloadActivePageTimer = null
+function scheduleActivePageReload(delay = 120) {
+  if (_reloadActivePageTimer) clearTimeout(_reloadActivePageTimer)
+  _reloadActivePageTimer = setTimeout(() => {
+    _reloadActivePageTimer = null
+    reloadActivePage()
+  }, delay)
+}
+function reloadActivePage() {
+  // Refresh sidebar badges so approval/leave counters reflect the change.
+  if (typeof loadBadges === 'function') { try { loadBadges() } catch {} }
+  // Active page wins; otherwise fall back to the router's current route.
+  const active = document.querySelector('.page.active')
+  if (active && active.id?.startsWith('page-')) {
+    const page = active.id.replace(/^page-/, '')
+    active.dataset.loaded = ''
+    if (typeof loadPage === 'function') loadPage(page, active)
+    return
+  }
+  if (Router?.current?.page) {
+    const el = document.getElementById('page-' + Router.current.page)
+    if (el && typeof loadPage === 'function') {
+      el.dataset.loaded = ''
+      loadPage(Router.current.page, el)
+    }
+  }
+}
+window.reloadActivePage = reloadActivePage
+window.scheduleActivePageReload = scheduleActivePageReload
 
 function buildUrl(url, params = {}) {
   if (!params || typeof params !== 'object') return url
@@ -307,6 +341,18 @@ async function refreshAuthFromServer() {
 const Router = {
   current: null,
   history: [],
+  _persist() {
+    try {
+      if (this.current) sessionStorage.setItem('pmp_current_page', JSON.stringify(this.current))
+      else sessionStorage.removeItem('pmp_current_page')
+      if (this.current?.page) {
+        const targetHash = '#/' + this.current.page
+        if (location.hash !== targetHash) {
+          history.replaceState(null, '', targetHash)
+        }
+      }
+    } catch {}
+  },
   navigate(page, params={}) {
     // Permission gate: if the user lacks access, silently bounce to their
     // default landing page so deep-links / stale URLs can't reach forbidden
@@ -325,6 +371,7 @@ const Router = {
       this.history.push(this.current)
     }
     this.current = { page, params }
+    this._persist()
     renderApp()
     if (window.innerWidth <= 768) closeSidebar()
     updateBackButton()
@@ -332,11 +379,20 @@ const Router = {
   back() {
     if (this.history.length === 0) return
     this.current = this.history.pop()
+    this._persist()
     renderApp()
     if (window.innerWidth <= 768) closeSidebar()
     updateBackButton()
   }
 }
+
+window.addEventListener('hashchange', () => {
+  const m = (location.hash || '').match(/^#\/([\w-]+)/)
+  if (!m) return
+  const next = m[1]
+  if (Router.current?.page === next) return
+  if (_user) Router.navigate(next)
+})
 
 // ── Colour helpers ───────────────────────────────────────────
 function initials(name='') { return name.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase() }
@@ -440,7 +496,7 @@ function buildShell() {
     items: [
       navItem('super-dashboard', 'fa-chart-pie', 'Overview'),
       navItem('clients-list',    'fa-building',   'Clients'),
-      navItem('billing-admin',   'fa-file-invoice-dollar', 'Billing', ' <span class="nav-badge" id="nb-overdue">!</span>'),
+      navItem('billing-admin',   'fa-file-invoice-dollar', 'Billing'),
       navItem('team-overview',   'fa-users',      'Team'),
     ],
   })
@@ -636,6 +692,14 @@ function bindNav() {
   startNotificationPoller()
 }
 
+function _setNavBadge(id, count) {
+  const nb = document.getElementById(id)
+  if (!nb) return
+  const n = Number(count) || 0
+  nb.textContent = n ? String(n) : ''
+  nb.style.display = n ? '' : 'none'
+}
+
 async function loadBadges() {
   try {
     const [alertsData, notifData] = await Promise.all([
@@ -644,19 +708,28 @@ async function loadBadges() {
     ])
     const alertUnread = (alertsData.alerts||[]).filter(a=>!a.is_read&&!a.is_dismissed).length
     const notifUnread = notifData.unread_count || 0
-    const total = alertUnread + notifUnread
-    const nb = document.getElementById('nb-alerts')
-    if (nb) { nb.textContent = total||''; nb.style.display = total?'':'none' }
+    _setNavBadge('nb-alerts', alertUnread + notifUnread)
   } catch {}
-  try {
-    const data = await API.get('/timesheets?approval_status=pending')
-    const cnt = (data.timesheets||data||[]).length
-    const nb = document.getElementById('nb-approval')
-    if (nb) { nb.textContent = cnt||'0' }
-  } catch {}
+  // Approvals (pending timesheets) — only relevant for admin/pm/pc
+  if (['admin','pm','pc'].includes(_user?.role)) {
+    try {
+      const data = await API.get('/timesheets?approval_status=pending')
+      _setNavBadge('nb-approval', (data.timesheets||data||[]).length)
+    } catch { _setNavBadge('nb-approval', 0) }
+    // Pending leaves count
+    try {
+      const data = await API.get('/leaves')
+      const list = data.leaves || data.data || []
+      _setNavBadge('nb-leaves', list.filter(l => String(l.status||'').toLowerCase() === 'pending').length)
+    } catch { _setNavBadge('nb-leaves', 0) }
+  } else {
+    _setNavBadge('nb-approval', 0)
+    _setNavBadge('nb-leaves', 0)
+  }
   // Notifications badge + initial sync
   pollNotifications(true)
 }
+window.loadBadges = loadBadges
 
 // ── Notifications: poller + sound + toast ─────────────────────
 const _notifState = {
@@ -1340,6 +1413,15 @@ function loadPage(page, el) {
 
 // ── Init ──────────────────────────────────────────────────────
 function resolveInitialPage() {
+  // 1) Hash route wins (e.g. #/clients-list) — survives browser refresh
+  const hashMatch = (location.hash || '').match(/^#\/([\w-]+)/)
+  if (hashMatch) return hashMatch[1]
+  // 2) sessionStorage fallback — also survives refresh in same tab
+  try {
+    const cached = JSON.parse(sessionStorage.getItem('pmp_current_page') || 'null')
+    if (cached?.page) return cached.page
+  } catch {}
+  // 3) Legacy path-based aliases
   const path = (location.pathname || '/').replace(/\/+$/, '').toLowerCase()
   const legacyMap = {
     '/devportaloverview': 'super-dashboard',

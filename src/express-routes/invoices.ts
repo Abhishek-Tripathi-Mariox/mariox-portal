@@ -55,6 +55,14 @@ export function createInvoicesRouter(models: MongoModels, jwtSecret: string, run
             company_name: cli?.company_name,
             contact_name: cli?.contact_name,
             client_email: cli?.email,
+            client_phone: cli?.phone,
+            client_gstin: cli?.gstin,
+            client_address: cli?.address_line,
+            client_city: cli?.city,
+            client_state: cli?.state,
+            client_state_code: cli?.state_code,
+            client_pincode: cli?.pincode,
+            client_country: cli?.country,
             client_color: cli?.avatar_color,
           }
         })
@@ -98,6 +106,14 @@ export function createInvoicesRouter(models: MongoModels, jwtSecret: string, run
         company_name: client?.company_name,
         contact_name: client?.contact_name,
         client_email: client?.email,
+        client_phone: client?.phone,
+        client_gstin: client?.gstin,
+        client_address: client?.address_line,
+        client_city: client?.city,
+        client_state: client?.state,
+        client_state_code: client?.state_code,
+        client_pincode: client?.pincode,
+        client_country: client?.country,
         client_color: client?.avatar_color,
       }
       return res.json({ invoice: enriched, data: enriched })

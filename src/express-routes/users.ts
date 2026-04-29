@@ -99,7 +99,7 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string) {
           total_allocated: allocatedByUser.get(String(user.id)) || 0,
           monthly_consumed: monthlyConsumedByUser.get(String(user.id)) || 0,
         }))
-        .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
+        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
 
       return res.json({ users, data: users })
     } catch (error: any) {

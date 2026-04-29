@@ -137,6 +137,13 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
   const customerCompany = client?.company_name || inv.company_name || ''
   const customerPhone = client?.phone || inv.client_phone || ''
   const customerEmail = client?.email || inv.client_email || ''
+  const customerGstin = client?.gstin || inv.client_gstin || ''
+  const customerAddress = client?.address_line || inv.client_address || ''
+  const customerCity = client?.city || ''
+  const customerState = client?.state || ''
+  const customerPincode = client?.pincode || ''
+  const customerCountry = client?.country || ''
+  const customerLocation = [customerCity, customerState, customerPincode].filter(Boolean).join(', ')
 
   const itemTitle = inv.title || project?.name || 'Project services'
   const description = inv.description ? `<div style="font-size:11px;color:#374151;margin-top:4px">${escapeHtml(inv.description).replace(/\n/g, '<br/>')}</div>` : ''
@@ -180,9 +187,12 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-top:18px">
     <tr>
       <td style="vertical-align:top">
-        <div style="font-size:12px;font-weight:700;color:#111827">Customer Details:</div>
-        ${customerName ? `<div style="font-size:13px;font-weight:700;color:#111827;margin-top:6px">${escapeHtml(customerName)}</div>` : ''}
-        ${customerCompany ? `<div style="font-size:12px;color:#111827;margin-top:2px">${escapeHtml(customerCompany)}</div>` : ''}
+        <div style="font-size:12px;font-weight:700;color:#111827">Bill To:</div>
+        ${customerCompany ? `<div style="font-size:13px;font-weight:700;color:#111827;margin-top:6px">${escapeHtml(customerCompany)}</div>` : ''}
+        ${customerName ? `<div style="font-size:12px;color:#374151;margin-top:2px">Attn: ${escapeHtml(customerName)}</div>` : ''}
+        ${customerAddress ? `<div style="font-size:12px;color:#374151;margin-top:4px;line-height:1.5;max-width:340px">${escapeHtml(customerAddress)}</div>` : ''}
+        ${customerLocation ? `<div style="font-size:12px;color:#374151;margin-top:2px">${escapeHtml(customerLocation)}${customerCountry ? `, ${escapeHtml(customerCountry)}` : ''}</div>` : (customerCountry ? `<div style="font-size:12px;color:#374151;margin-top:2px">${escapeHtml(customerCountry)}</div>` : '')}
+        ${customerGstin ? `<div style="font-size:12px;color:#374151;margin-top:4px"><strong>GSTIN:</strong> ${escapeHtml(customerGstin)}</div>` : ''}
         ${customerPhone ? `<div style="font-size:12px;color:#374151;margin-top:2px">Ph: ${escapeHtml(customerPhone)}</div>` : ''}
         ${customerEmail ? `<div style="font-size:12px;color:#374151;margin-top:2px">${escapeHtml(customerEmail)}</div>` : ''}
       </td>
@@ -279,8 +289,11 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
     `Invoice Date: ${issueDate}`,
     `Due Date: ${dueDate}`,
     ``,
-    `Customer: ${customerName || customerCompany}`,
-    customerCompany && customerName ? `Company: ${customerCompany}` : '',
+    `Bill To: ${customerCompany || customerName}`,
+    customerCompany && customerName ? `Attn: ${customerName}` : '',
+    customerAddress ? `Address: ${customerAddress}` : '',
+    customerLocation ? `${customerLocation}${customerCountry ? `, ${customerCountry}` : ''}` : (customerCountry ? customerCountry : ''),
+    customerGstin ? `GSTIN: ${customerGstin}` : '',
     customerPhone ? `Phone: ${customerPhone}` : '',
     customerEmail ? `Email: ${customerEmail}` : '',
     `Place of Supply: ${placeOfSupply}`,

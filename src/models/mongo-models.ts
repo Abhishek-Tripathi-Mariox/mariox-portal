@@ -49,6 +49,13 @@ export interface ClientRecord extends BaseRecord {
   phone?: string | null
   website?: string | null
   industry?: string | null
+  gstin?: string | null
+  address_line?: string | null
+  city?: string | null
+  state?: string | null
+  state_code?: string | null
+  pincode?: string | null
+  country?: string | null
   avatar_color?: string
   is_active?: number
   email_verified?: number
@@ -209,6 +216,13 @@ export class ClientModel extends MongoRepository<ClientRecord> {
       phone: input.phone ?? null,
       website: input.website ?? null,
       industry: input.industry ?? null,
+      gstin: input.gstin ?? null,
+      address_line: input.address_line ?? null,
+      city: input.city ?? null,
+      state: input.state ?? null,
+      state_code: input.state_code ?? null,
+      pincode: input.pincode ?? null,
+      country: input.country ?? null,
       avatar_color: input.avatar_color || '#6366f1',
       is_active: input.is_active ?? 1,
       email_verified: input.email_verified ?? 1,

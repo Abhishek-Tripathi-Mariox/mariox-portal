@@ -133,7 +133,7 @@ server.use('/api/invoices', createInvoicesRouter(models, jwtSecret, runtimeEnv a
 server.use('/api/projects', createProjectsRouter(models, jwtSecret))
 server.use('/api/tasks', createTasksRouter(models, jwtSecret))
 server.use('/api/sprints', createSprintsRouter(models, jwtSecret))
-server.use('/api/milestones', createMilestonesRouter(models, jwtSecret))
+server.use('/api/milestones', createMilestonesRouter(models, jwtSecret, runtimeEnv as any))
 server.use('/api/allocations', createAllocationsRouter(models, jwtSecret))
 server.use('/api/project-teams', createProjectTeamsRouter(models, jwtSecret))
 server.use('/api/kanban-permissions', createKanbanPermissionsRouter(models, jwtSecret))

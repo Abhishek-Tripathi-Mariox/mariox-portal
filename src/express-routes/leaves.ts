@@ -39,7 +39,7 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
         designation: usersById.get(String(l.user_id))?.designation || null,
         avatar_color: usersById.get(String(l.user_id))?.avatar_color || null,
         approved_by_name: l.approved_by ? (usersById.get(String(l.approved_by))?.full_name || null) : null,
-      })).sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || ''))).slice(0, 100)
+      })).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, 100)
       return res.json({ data: enriched, leaves: enriched })
     } catch {
       return res.json({ data: [], leaves: [] })
