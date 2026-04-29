@@ -2380,12 +2380,15 @@ async function renderTeamDashboard(el) {
     const totalRevenue = myWins.reduce((sum, a) => sum + (Number(a.awarded_amount) || 0), 0)
 
     el.innerHTML = `
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">Welcome${_user?.name ? ', ' + escapeInbox(_user.name.split(' ')[0]) : ''}</h1>
-          <p class="page-subtitle">Your projects and bid invitations at a glance</p>
-        </div>
-      </div>
+      ${typeof helloBanner === 'function' ? helloBanner({
+        subtitle: 'Your projects and bid invitations at a glance',
+        metrics: [
+          { value: activeProjects.length, label: 'active' },
+          { value: openAuctions.length,   label: 'auctions' },
+          { value: myWins.length,         label: 'wins' },
+          { value: '₹' + Number(totalRevenue).toLocaleString(), label: 'awarded' },
+        ],
+      }) : `<div class="page-header"><div><h1 class="page-title">Welcome${_user?.name ? ', ' + escapeInbox(_user.name.split(' ')[0]) : ''}</h1></div></div>`}
 
       <div class="grid-4" style="margin-bottom:16px">
         ${miniStatCard('Active Projects', activeProjects.length, '#FF7A45', 'fa-layer-group')}
@@ -2404,7 +2407,7 @@ async function renderTeamDashboard(el) {
             ${myProjects.length === 0
               ? `<div class="empty-state" style="padding:24px"><i class="fas fa-folder-open"></i><p>No projects assigned yet — win a bid to see them here.</p></div>`
               : `<table class="data-table">
-                  <thead><tr><th>Project</th><th>Status</th><th>Start</th><th>Due</th></tr></thead>
+                  <thead><tr><th>Project</th><th>Status</th><th>Start</th><th>Due</th><th></th></tr></thead>
                   <tbody>
                     ${myProjects.map((p) => `
                       <tr>
@@ -2415,6 +2418,7 @@ async function renderTeamDashboard(el) {
                         <td>${typeof statusBadge === 'function' ? statusBadge(p.status) : `<span class="badge">${escapeInbox(p.status || '')}</span>`}</td>
                         <td style="font-size:12px;color:#9F8678">${p.start_date ? fmtDate(p.start_date) : '—'}</td>
                         <td style="font-size:12px;color:${new Date(p.expected_end_date) < new Date() && p.status === 'active' ? '#FF5E3A' : '#9F8678'}">${p.expected_end_date ? fmtDate(p.expected_end_date) : '—'}</td>
+                        <td><button class="btn btn-xs btn-outline" onclick="openProjectDetailModal('${p.id}')" title="View details"><i class="fas fa-eye"></i></button></td>
                       </tr>`).join('')}
                   </tbody>
                 </table>`}

@@ -131,8 +131,17 @@ async function renderSuperDashboard(el) {
     const activeClients = clients.filter(c=>c.project_count>0).length
 
     el.innerHTML = `
+    ${helloBanner({
+      subtitle: 'Platform health, billing, and team metrics',
+      metrics: [
+        { value: d.projects?.total || 0, label: 'projects' },
+        { value: activeClients, label: 'clients' },
+        { value: '₹' + fmtNum(inv.total_paid || 0), label: 'collected' },
+        { value: inv.overdue_count || 0, label: 'overdue' },
+      ],
+    })}
     <div class="page-header">
-      <div><h1 class="page-title">Super Admin Overview</h1><p class="page-subtitle">Platform health, billing, and team metrics</p></div>
+      <div><h1 class="page-title">Super Admin Overview</h1></div>
       <div class="page-actions">
         <button class="btn btn-outline" onclick="Router.navigate('clients-list')"><i class="fas fa-building"></i>Clients</button>
         <button class="btn btn-primary" onclick="Router.navigate('billing-admin')"><i class="fas fa-file-invoice-dollar"></i>Billing</button>
@@ -227,6 +236,28 @@ function statCard(label, value, icon, color, sub='') {
   </div>`
 }
 
+// Renders a personalised greeting + 4 inline pill metrics. Used on each
+// role's dashboard to add the warm "Hello, X" hero shown in the new theme.
+function helloBanner({ subtitle = '', metrics = [] } = {}) {
+  const firstName = (_user?.name || _user?.full_name || 'there').split(' ')[0]
+  const hour = new Date().getHours()
+  const tod = hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  return `
+    <div class="hello-banner">
+      <div style="display:flex;align-items:center;gap:14px;min-width:0">
+        ${avatar(_user?.name || _user?.full_name || 'User', _user?.avatar_color || '#FF7A45', 'lg')}
+        <div style="min-width:0">
+          <div class="hello-banner-greeting">${tod},</div>
+          <div class="hello-banner-name">${escapeHtml(firstName)}</div>
+          ${subtitle ? `<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px">${subtitle}</div>` : ''}
+        </div>
+      </div>
+      ${metrics.length ? `<div class="hello-banner-meta">
+        ${metrics.map(m => `<div class="pill"><strong>${m.value ?? '—'}</strong>${m.label ?? ''}</div>`).join('')}
+      </div>` : ''}
+    </div>`
+}
+
 function listSectionHeader(labels, templateColumns) {
   return `
     <div class="card" style="margin-bottom:12px;padding:14px 16px;background:rgba(15,23,42,.72);border:1px solid rgba(148,163,184,.22);box-shadow:none">
@@ -303,8 +334,17 @@ async function renderPMDashboard(el) {
     allTasks.forEach(t => { statusCounts[t.status] = (statusCounts[t.status]||0)+1 })
 
     el.innerHTML = `
+    ${helloBanner({
+      subtitle: 'Sprint progress, task health, and team allocation',
+      metrics: [
+        { value: d.projects?.active || 0, label: 'active' },
+        { value: allTasks.length, label: 'tasks' },
+        { value: activeSprint?.name || '—', label: 'sprint' },
+        { value: (d.developers?.active || 0) + ' devs', label: 'on duty' },
+      ],
+    })}
     <div class="page-header">
-      <div><h1 class="page-title">PM Dashboard</h1><p class="page-subtitle">Sprint progress, task health, and team allocation</p></div>
+      <div><h1 class="page-title">PM Dashboard</h1></div>
       <div class="page-actions">
         <button class="btn btn-outline" onclick="Router.navigate('kanban-board')"><i class="fas fa-columns"></i>Kanban</button>
         <button class="btn btn-primary" onclick="showCreateTaskModal()"><i class="fas fa-plus"></i>New Task</button>
@@ -413,8 +453,17 @@ async function renderDevDashboard(el) {
     const todayHours = todayLogs.reduce((s,l)=>s+(l.hours_consumed||0),0)
 
     el.innerHTML = `
+    ${helloBanner({
+      subtitle: 'Your tasks, timesheets, and project assignments',
+      metrics: [
+        { value: tasks.filter(t => t.status !== 'done').length, label: 'open tasks' },
+        { value: todayHours + 'h', label: 'today' },
+        { value: totalLogged + 'h', label: 'this month' },
+        { value: allocs.length, label: 'projects' },
+      ],
+    })}
     <div class="page-header">
-      <div><h1 class="page-title">My Dashboard</h1><p class="page-subtitle">Your tasks, timesheets, and project assignments</p></div>
+      <div><h1 class="page-title">My Dashboard</h1></div>
       <div class="page-actions">
         <button class="btn btn-primary" onclick="Router.navigate('timesheets-view')"><i class="fas fa-plus"></i>Log Hours</button>
       </div>
@@ -527,6 +576,7 @@ async function renderProjectsList(el) {
                 <td style="font-size:12px;color:${new Date(p.expected_end_date)<new Date()&&p.status==='active'?'#FF5E3A':'#94a3b8'}">${fmtDate(p.expected_end_date)}</td>
                 <td>
                   <div style="display:flex;gap:4px">
+                    <button class="btn btn-xs btn-outline" onclick="openProjectDetailModal('${p.id}')" title="View project details"><i class="fas fa-eye"></i></button>
                     <button class="btn btn-xs btn-outline" onclick="openProjectBoard('${p.id}','${p.name}')" title="Open Kanban board"><i class="fas fa-columns"></i></button>
                     ${['admin','pm'].includes(_user.role)?`<button class="btn btn-xs btn-outline" onclick="openKanbanPermissionsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i></button>`:''}
                     ${['admin','pm'].includes(_user.role)?`<button class="btn btn-xs btn-outline" onclick="showEditProjectModal('${p.id}')" title="Edit project"><i class="fas fa-edit"></i></button>`:''}
@@ -540,6 +590,105 @@ async function renderProjectsList(el) {
       </div>
     </div>`
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
+}
+
+// Read-only project detail modal — used from the Projects list (esp. by team
+// accounts who can't open the full editor). Hours/timesheet bits are gated
+// for the team role since those numbers don't apply to external delivery.
+async function openProjectDetailModal(projectId) {
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-folder-open" style="color:var(--accent);margin-right:6px"></i>Project details</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:24px;text-align:center;color:#9F8678"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
+  `, 'modal-lg')
+  try {
+    const res = await API.get(`/projects/${projectId}`)
+    const p = res.data || res.project || {}
+    const role = String(_user?.role || '').toLowerCase()
+    const isTeam = role === 'team'
+    const hideHours = isTeam
+    const burnPct = !hideHours && p.total_allocated_hours > 0
+      ? Math.round((p.consumed_hours / p.total_allocated_hours) * 100) : 0
+    const tlPct = Math.min(100, Math.max(0, parseFloat(p.timeline_progress || 0)))
+    const assignments = (p.assignments || [])
+    const myId = _user?.sub || _user?.id || ''
+    const visibleAssignments = isTeam
+      ? assignments.filter(a => a.user_id === myId)
+      : assignments
+    closeModal()
+    showModal(`
+      <div class="modal-header">
+        <h3><i class="fas fa-folder-open" style="color:var(--accent);margin-right:6px"></i>${escapeHtml(p.name || '')} <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:6px">${escapeHtml(p.code || '')}</span></h3>
+        <button class="close-btn" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          ${statusBadge(p.status)}${priorityBadge(p.priority)}
+          ${p.client_name ? `<span class="badge badge-blue">${escapeHtml(p.client_name)}</span>` : ''}
+          ${p.project_type ? `<span class="badge badge-violet">${escapeHtml(p.project_type)}</span>` : ''}
+        </div>
+
+        ${p.description ? `
+          <div>
+            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Project brief</div>
+            <div style="font-size:13px;color:var(--text-primary);line-height:1.55;white-space:pre-wrap;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeHtml(p.description)}</div>
+          </div>` : ''}
+
+        <div class="grid-2" style="gap:10px">
+          <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Start date</div><div style="font-size:13px;color:var(--text-primary);font-weight:600">${p.start_date ? fmtDate(p.start_date) : '—'}</div></div>
+          <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Due date</div><div style="font-size:13px;color:${p.expected_end_date && new Date(p.expected_end_date) < new Date() && p.status === 'active' ? '#FF8866' : 'var(--text-primary)'};font-weight:600">${p.expected_end_date ? fmtDate(p.expected_end_date) : '—'}</div></div>
+          ${!isTeam ? `<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Project Manager</div><div style="font-size:13px;color:var(--text-primary)">${escapeHtml(p.pm_name || '—')}</div></div>` : ''}
+          ${!isTeam ? `<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Coordinator</div><div style="font-size:13px;color:var(--text-primary)">${escapeHtml(p.pc_name || '—')}</div></div>` : ''}
+          <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Assignment</div><div style="font-size:13px;color:var(--text-primary);text-transform:capitalize">${escapeHtml(p.assignment_type || '—')}</div></div>
+          <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Billable</div><div style="font-size:13px;color:var(--text-primary)">${p.billable ? 'Yes' : 'No'}</div></div>
+          ${Number(p.revenue) > 0 ? `<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Budget / Revenue</div><div style="font-size:13px;color:var(--text-primary);font-weight:700">₹${Number(p.revenue).toLocaleString()}</div></div>` : ''}
+        </div>
+
+        ${!hideHours ? `
+          <div style="padding:12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <div>
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Hours</div>
+                <div style="font-size:14px;color:var(--text-primary);font-weight:700">${p.consumed_hours || 0}h / ${p.total_allocated_hours || 0}h</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Burn</div>
+                <div style="font-size:14px;color:${burnPct >= 100 ? '#FF8866' : burnPct >= 80 ? '#FDE68A' : '#86EFAC'};font-weight:700">${burnPct}%</div>
+              </div>
+            </div>
+            <div class="progress-bar"><div class="progress-fill ${burnPct >= 100 ? 'rose' : burnPct >= 80 ? 'amber' : 'green'}" style="width:${Math.min(burnPct, 100)}%"></div></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Timeline progress ${tlPct}%</div>
+          </div>` : ''}
+
+        ${visibleAssignments.length > 0 ? `
+          <div>
+            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">${isTeam ? 'My assignment' : 'Team'} (${visibleAssignments.length})</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${visibleAssignments.map(a => `
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05)">
+                  ${avatar(a.full_name || '—', a.avatar_color, 'sm')}
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;color:var(--text-primary);font-weight:600">${escapeHtml(a.full_name || '—')}</div>
+                    <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(a.designation || a.role || '')}</div>
+                  </div>
+                  ${!hideHours ? `<div style="font-size:11.5px;color:var(--text-muted)">${a.allocated_hours || 0}h alloc · ${a.logged_hours || 0}h logged</div>` : ''}
+                </div>`).join('')}
+            </div>
+          </div>` : ''}
+
+        ${p.remarks ? `<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Remarks</div><div style="font-size:12.5px;color:var(--text-secondary);line-height:1.5">${escapeHtml(p.remarks)}</div></div>` : ''}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Close</button>
+        <button class="btn btn-primary" onclick="closeModal();openProjectBoard('${p.id}','${(p.name || '').replace(/'/g, "\\'")}')"><i class="fas fa-columns"></i> Open Kanban</button>
+      </div>
+    `, 'modal-lg')
+  } catch (e) {
+    closeModal()
+    toast('Could not load project: ' + (e.message || 'unknown'), 'error')
+  }
 }
 
 function openProjectBoard(projectId, name) {
