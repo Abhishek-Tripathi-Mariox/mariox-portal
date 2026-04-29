@@ -1692,12 +1692,16 @@ function renderLeaveRow(l, currentRole, isManager) {
     : l.status === 'rejected'
       ? '<span class="badge badge-red">Rejected</span>'
       : '<span class="badge badge-yellow">Pending</span>'
-  const isOwner = l.user_id === _user?.sub
-  const canApprove = isManager && l.status === 'pending'
+  const myId = _user?.sub || _user?.id
+  const isOwner = l.user_id === myId
   const canDelete = isOwner || _user?.role === 'admin'
+  // Stash the leave row so the detail modal can render rich info without re-fetching.
+  if (!window._leavesById) window._leavesById = {}
+  window._leavesById[l.id] = l
+  const employeeName = l.full_name || l.email || 'Unknown employee'
 
   return `<tr>
-    ${isManager ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(l.full_name || '—', l.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(l.full_name || '—')}</span></div></td>` : ''}
+    ${isManager ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(employeeName, l.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(employeeName)}</span></div></td>` : ''}
     <td><span class="badge badge-blue">${LEAVE_TYPE_LABEL[l.leave_type] || l.leave_type}</span></td>
     <td style="font-size:12px;color:#9F8678">${fmtDate(l.start_date)}</td>
     <td style="font-size:12px;color:#9F8678">${fmtDate(l.end_date)}</td>
@@ -1706,13 +1710,87 @@ function renderLeaveRow(l, currentRole, isManager) {
     <td>${statusBadge}</td>
     <td>
       <div style="display:flex;gap:4px;flex-wrap:wrap">
-        ${canApprove ? `
-          <button class="btn btn-success btn-xs" onclick="approveLeaveAction('${l.id}','approved')" title="Approve"><i class="fas fa-check"></i></button>
-          <button class="btn btn-danger btn-xs"  onclick="approveLeaveAction('${l.id}','rejected')" title="Reject"><i class="fas fa-times"></i></button>` : ''}
+        <button class="btn btn-icon btn-xs" onclick="openLeaveDetailModal('${l.id}')" title="View / decide"><i class="fas fa-eye"></i></button>
         ${canDelete ? `<button class="btn btn-icon btn-xs" onclick="deleteLeaveAction('${l.id}')" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
       </div>
     </td>
   </tr>`
+}
+
+function openLeaveDetailModal(id) {
+  const l = (window._leavesById || {})[id]
+  if (!l) { toast('Leave not found', 'error'); return }
+  const role = String(_user?.role || '').toLowerCase()
+  const isManager = ['admin', 'pm', 'pc'].includes(role)
+  const canApprove = isManager && l.status === 'pending'
+  const employeeName = l.full_name || l.email || 'Unknown employee'
+  const statusBadge = l.status === 'approved'
+    ? '<span class="badge badge-green">Approved</span>'
+    : l.status === 'rejected'
+      ? '<span class="badge badge-red">Rejected</span>'
+      : '<span class="badge badge-yellow">Pending</span>'
+
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-umbrella-beach" style="color:var(--accent);margin-right:6px"></i>Leave Request</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(255,122,69,0.06);border:1px solid rgba(255,122,69,0.2)">
+        ${avatar(employeeName, l.avatar_color, 'md')}
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#FFF1E6">${escapeInbox(employeeName)}</div>
+          <div style="font-size:12px;color:#9F8678">${escapeInbox(l.designation || l.email || '')}</div>
+        </div>
+        <div style="margin-left:auto">${statusBadge}</div>
+      </div>
+      <div class="grid-2" style="gap:10px">
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Type</div><div style="font-size:13px;color:#FFF1E6;font-weight:600">${LEAVE_TYPE_LABEL[l.leave_type] || l.leave_type}</div></div>
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Days</div><div style="font-size:13px;color:#FFF1E6;font-weight:600">${l.days_count}</div></div>
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">From</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(l.start_date)}</div></div>
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">To</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(l.end_date)}</div></div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Reason from employee</div>
+        <div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);min-height:42px">${escapeInbox(l.reason || '— No reason given —')}</div>
+      </div>
+      ${l.decision_reason ? `
+        <div>
+          <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Manager note${l.approved_by_name ? ' · ' + escapeInbox(l.approved_by_name) : ''}</div>
+          <div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,122,69,0.05);border:1px solid rgba(255,122,69,0.18)">${escapeInbox(l.decision_reason)}</div>
+        </div>` : ''}
+      ${canApprove ? `
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Decision reason <span style="color:#9F8678;font-weight:400">(required when rejecting)</span></label>
+          <textarea id="lv-decision-reason" class="form-textarea" rows="3" placeholder="Why are you approving / rejecting this leave?"></textarea>
+        </div>` : ''}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      ${canApprove ? `
+        <button class="btn btn-danger" onclick="submitLeaveDecision('${l.id}','rejected')"><i class="fas fa-times"></i> Disapprove</button>
+        <button class="btn btn-success" onclick="submitLeaveDecision('${l.id}','approved')"><i class="fas fa-check"></i> Approve</button>` : ''}
+    </div>
+  `, 'modal-lg')
+}
+
+async function submitLeaveDecision(id, status) {
+  const reasonEl = document.getElementById('lv-decision-reason')
+  const reason = reasonEl ? reasonEl.value.trim() : ''
+  if (status === 'rejected' && !reason) {
+    toast('Please enter a reason before disapproving', 'error')
+    if (reasonEl) reasonEl.focus()
+    return
+  }
+  try {
+    await API.patch(`/leaves/${id}/approve`, { status, decision_reason: reason || null })
+    toast(`Leave ${status}`, 'success')
+    closeModal()
+    const el = document.getElementById('page-leaves-view')
+    if (el) { el.dataset.loaded = ''; renderLeavesView(el) }
+    if (typeof pollNotifications === 'function') pollNotifications()
+    if (typeof loadBadges === 'function') loadBadges()
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
 }
 
 function filterLeaves(status) {
@@ -1732,6 +1810,10 @@ function openLeaveApplyModal() {
   const isManager = !!window._isLeaveManager
   const assignees = Array.isArray(window._leaveAssignees) ? window._leaveAssignees : []
   const selfName = _user?.name || _user?.full_name || 'Me'
+  // JWT login stores `id`; client/legacy flows store `sub`. Always resolve to a real value
+  // — otherwise the dropdown defaults to the literal string "undefined" and leaves get saved
+  // against a non-existent user, causing "Unknown employee" in the list.
+  const myId = _user?.sub || _user?.id || ''
 
   showModal(`
     <div class="modal-header">
@@ -1743,11 +1825,11 @@ function openLeaveApplyModal() {
         <div class="form-group">
           <label class="form-label">Employee *</label>
           <select id="lv-user" class="form-select">
-            <option value="${_user.sub}" selected>${escapeInbox(selfName)} (me)</option>
+            <option value="${myId}" selected>${escapeInbox(selfName)} (me)</option>
             ${assignees.map(u => `<option value="${u.id}">${escapeInbox(u.full_name)} (${u.role})</option>`).join('')}
           </select>
         </div>
-      ` : `<input type="hidden" id="lv-user" value="${_user.sub}"/>`}
+      ` : `<input type="hidden" id="lv-user" value="${myId}"/>`}
       <div class="grid-2">
         <div class="form-group">
           <label class="form-label">Leave Type *</label>
@@ -1804,7 +1886,12 @@ function recalcLeaveDays() {
 }
 
 async function submitLeaveApply() {
-  const userId = document.getElementById('lv-user')?.value || _user.sub
+  const myId = _user?.sub || _user?.id || ''
+  const rawUserId = document.getElementById('lv-user')?.value || ''
+  // Guard against the literal string "undefined" sneaking in if the dropdown
+  // was rendered before _user was hydrated.
+  const userId = (rawUserId && rawUserId !== 'undefined') ? rawUserId : myId
+  if (!userId) { toast('Could not identify your user account — please log in again', 'error'); return }
   const type = document.getElementById('lv-type').value
   const from = document.getElementById('lv-from').value
   const to   = document.getElementById('lv-to').value
@@ -1849,5 +1936,204 @@ async function deleteLeaveAction(id) {
     toast('Deleted', 'success')
     const el = document.getElementById('page-leaves-view')
     if (el) { el.dataset.loaded = ''; renderLeavesView(el) }
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+// ── Bidding ──────────────────────────────────────────────────
+let _biddingTimer = null
+const _biddingState = { projects: [] }
+
+function _formatCountdown(ms) {
+  if (ms == null) return '—'
+  if (ms <= 0) return 'Closed'
+  const total = Math.floor(ms / 1000)
+  const d = Math.floor(total / 86400)
+  const h = Math.floor((total % 86400) / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  if (d > 0) return `${d}d ${h}h ${m}m ${String(s).padStart(2,'0')}s`
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+}
+
+async function renderBiddingView(el) {
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:#9F8678"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
+  try {
+    const res = await API.get('/projects/bids/all')
+    const projects = res.data || res.projects || []
+    _biddingState.projects = projects
+
+    const role = String(_user?.role || '').toLowerCase()
+    const canCreate = ['admin', 'pm'].includes(role)
+
+    if (projects.length === 0) {
+      el.innerHTML = `
+        <div class="page-header">
+          <div><h1 class="page-title">Bidding</h1><p class="page-subtitle">Open projects available for bids</p></div>
+          ${canCreate ? `<div class="page-actions"><button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i> New Bidding Project</button></div>` : ''}
+        </div>
+        <div class="empty-state"><i class="fas fa-gavel"></i><p>No bidding projects yet.</p></div>`
+      return
+    }
+
+    el.innerHTML = `
+      <div class="page-header">
+        <div><h1 class="page-title">Bidding</h1><p class="page-subtitle">${projects.length} open ${projects.length === 1 ? 'auction' : 'auctions'}</p></div>
+        ${canCreate ? `<div class="page-actions"><button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i> New Bidding Project</button></div>` : ''}
+      </div>
+      <div class="grid-3" style="gap:14px;align-items:stretch">
+        ${projects.map(p => renderBiddingCard(p)).join('')}
+      </div>
+    `
+
+    // Live countdown — re-tick once per second for every visible card.
+    if (_biddingTimer) clearInterval(_biddingTimer)
+    _biddingTimer = setInterval(updateBiddingCountdowns, 1000)
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
+}
+
+function renderBiddingCard(p) {
+  const deadlineMs = p.bid_deadline ? new Date(p.bid_deadline).getTime() : null
+  const myBid = (p.bids || []).find(b => b.user_id === (_user?.sub || _user?.id))
+  const isClosed = deadlineMs ? Date.now() > deadlineMs : false
+  const role = String(_user?.role || '').toLowerCase()
+  const canAward = ['admin', 'pm'].includes(role) && p.bid_status === 'open' && (p.bids || []).length > 0
+  const canBid = !isClosed && p.bid_status === 'open'
+  const lowest = (p.bids || [])[0]
+  return `
+    <div class="card" style="display:flex;flex-direction:column">
+      <div class="card-body" style="display:flex;flex-direction:column;gap:10px;flex:1">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:#FFF1E6">${escapeInbox(p.name || '')}</div>
+            <div style="font-size:11px;color:#9F8678;font-family:monospace">${escapeInbox(p.code || '')}</div>
+          </div>
+          <span class="badge ${isClosed || p.bid_status !== 'open' ? 'badge-red' : 'badge-green'}">${p.bid_status === 'awarded' ? 'Awarded' : isClosed ? 'Closed' : 'Open'}</span>
+        </div>
+        ${p.description ? `
+          <div style="padding:10px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+            <div style="font-size:10px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px"><i class="fas fa-file-lines"></i> Project brief</div>
+            <div style="font-size:12.5px;color:#E8D2BD;line-height:1.55;white-space:pre-wrap">${escapeInbox(p.description.slice(0, 320))}${p.description.length > 320 ? '…' : ''}</div>
+          </div>` : ''}
+        ${Number(p.revenue) > 0 ? `<div style="font-size:11.5px;color:#9F8678"><i class="fas fa-rupee-sign"></i> Reference budget: <span style="color:#FFF1E6;font-weight:600">₹${Number(p.revenue).toLocaleString()}</span></div>` : ''}
+        <div style="padding:10px;border-radius:10px;background:rgba(255,122,69,0.08);border:1px solid rgba(255,122,69,0.18)">
+          <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Time remaining</div>
+          <div data-bid-countdown="${p.id}" data-deadline="${deadlineMs || ''}" style="font-size:18px;font-weight:700;color:#FFB347;font-variant-numeric:tabular-nums">${_formatCountdown(deadlineMs ? deadlineMs - Date.now() : null)}</div>
+        </div>
+        <div class="grid-2" style="gap:8px">
+          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Bids</div><div style="font-size:14px;font-weight:700;color:#FFF1E6">${p.bid_count || 0}</div></div>
+          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Lowest</div><div style="font-size:14px;font-weight:700;color:#FFF1E6">${lowest ? '₹' + Number(lowest.amount).toLocaleString() : '—'}</div></div>
+        </div>
+        ${myBid ? `<div style="font-size:11px;color:#86E0A8"><i class="fas fa-check-circle"></i> Your bid: ₹${Number(myBid.amount).toLocaleString()}${myBid.delivery_days ? ' · ' + myBid.delivery_days + ' days' : ''}</div>` : ''}
+      </div>
+      <div style="padding:12px;border-top:1px solid rgba(255,255,255,0.06);display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="openBidsListModal('${p.id}')" style="flex:1"><i class="fas fa-list"></i> View bids</button>
+        ${canBid ? `<button class="btn btn-primary btn-sm" onclick="openPlaceBidModal('${p.id}')" style="flex:1"><i class="fas fa-gavel"></i> ${myBid ? 'Update' : 'Place'} bid</button>` : ''}
+        ${canAward ? `<button class="btn btn-success btn-sm" onclick="openBidsListModal('${p.id}')" style="flex:1"><i class="fas fa-trophy"></i> Award</button>` : ''}
+      </div>
+    </div>`
+}
+
+function updateBiddingCountdowns() {
+  document.querySelectorAll('[data-bid-countdown]').forEach(node => {
+    const dl = Number(node.dataset.deadline)
+    if (!dl) return
+    node.textContent = _formatCountdown(dl - Date.now())
+  })
+}
+
+function _findBiddingProject(id) {
+  return (_biddingState.projects || []).find(p => p.id === id)
+}
+
+function openPlaceBidModal(projectId) {
+  const p = _findBiddingProject(projectId)
+  if (!p) { toast('Project not found', 'error'); return }
+  const myBid = (p.bids || []).find(b => b.user_id === (_user?.sub || _user?.id))
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-gavel" style="color:var(--accent);margin-right:6px"></i>${myBid ? 'Update' : 'Place'} bid · ${escapeInbox(p.name)}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <div class="form-group">
+        <label class="form-label">Your bid amount (₹) *</label>
+        <input id="bid-amount" class="form-input" type="number" min="1" step="1" value="${myBid?.amount || ''}" placeholder="e.g. 50000"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Delivery in (days)</label>
+        <input id="bid-days" class="form-input" type="number" min="1" step="1" value="${myBid?.delivery_days || ''}" placeholder="e.g. 14"/>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Note for the client</label>
+        <textarea id="bid-note" class="form-textarea" rows="3" placeholder="Why should you win this bid?">${escapeInbox(myBid?.note || '')}</textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitPlaceBid('${projectId}')"><i class="fas fa-paper-plane"></i> ${myBid ? 'Update' : 'Submit'} bid</button>
+    </div>
+  `, 'modal-md')
+}
+
+async function submitPlaceBid(projectId) {
+  const amount = parseFloat(document.getElementById('bid-amount').value)
+  const days = parseFloat(document.getElementById('bid-days').value)
+  const note = (document.getElementById('bid-note').value || '').trim()
+  if (!amount || amount <= 0) { toast('Enter a valid bid amount', 'error'); return }
+  try {
+    await API.post(`/projects/${projectId}/bids`, {
+      amount,
+      delivery_days: Number.isFinite(days) && days > 0 ? days : null,
+      note: note || null,
+    })
+    toast('Bid placed', 'success')
+    closeModal()
+    const el = document.getElementById('page-bidding-view')
+    if (el) { el.dataset.loaded = ''; renderBiddingView(el) }
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+function openBidsListModal(projectId) {
+  const p = _findBiddingProject(projectId)
+  if (!p) { toast('Project not found', 'error'); return }
+  const role = String(_user?.role || '').toLowerCase()
+  const canAward = ['admin', 'pm'].includes(role) && p.bid_status === 'open'
+  const bids = p.bids || []
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-list" style="color:var(--accent);margin-right:6px"></i>Bids · ${escapeInbox(p.name)}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px">
+      ${bids.length === 0 ? `<div class="empty-state"><i class="fas fa-inbox"></i><p>No bids yet.</p></div>` : `
+        <table class="data-table">
+          <thead><tr><th>Bidder</th><th>Amount</th><th>Delivery</th><th>Note</th>${canAward ? '<th></th>' : ''}</tr></thead>
+          <tbody>
+            ${bids.map((b, i) => `<tr ${i === 0 ? 'style="background:rgba(88,198,138,0.08)"' : ''}>
+              <td><div style="display:flex;align-items:center;gap:8px">${avatar(b.bidder_name || '—', b.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(b.bidder_name || '—')}</span>${i === 0 ? '<span class="badge badge-green" style="font-size:10px">Lowest</span>' : ''}</div></td>
+              <td style="font-weight:700;color:#FFF1E6">₹${Number(b.amount).toLocaleString()}</td>
+              <td style="font-size:12px;color:#9F8678">${b.delivery_days ? b.delivery_days + ' days' : '—'}</td>
+              <td style="font-size:12px;color:#E8D2BD;max-width:240px">${escapeInbox(b.note || '—')}</td>
+              ${canAward ? `<td><button class="btn btn-success btn-xs" onclick="awardBidAction('${projectId}','${b.id}')"><i class="fas fa-trophy"></i> Award</button></td>` : ''}
+            </tr>`).join('')}
+          </tbody>
+        </table>`}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+    </div>
+  `, 'modal-lg')
+}
+
+async function awardBidAction(projectId, bidId) {
+  if (!confirm('Award this bid? This closes the project to further bidding.')) return
+  try {
+    await API.post(`/projects/${projectId}/bids/${bidId}/award`)
+    toast('Bid awarded', 'success')
+    closeModal()
+    const el = document.getElementById('page-bidding-view')
+    if (el) { el.dataset.loaded = ''; renderBiddingView(el) }
   } catch (e) { toast('Failed: ' + e.message, 'error') }
 }

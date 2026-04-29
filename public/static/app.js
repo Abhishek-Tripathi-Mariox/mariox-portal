@@ -66,6 +66,7 @@ const SIDEBAR_PAGE_GROUPS = {
   'support-tickets': 'dev',
   'approval-queue': 'dev',
   'leaves-view': 'dev',
+  'bidding-view': 'dev',
   'reports-view': 'analytics',
   'alerts-view': 'analytics',
   'settings-view': 'settings',
@@ -376,6 +377,7 @@ function buildShell() {
         <a class="nav-item" data-page="my-tasks"><span class="nav-icon"><i class="fas fa-list-check"></i></span>Tasks</a>
         <a class="nav-item" data-page="timesheets-view"><span class="nav-icon"><i class="fas fa-clock"></i></span>Timesheets</a>
         <a class="nav-item" data-page="leaves-view"><span class="nav-icon"><i class="fas fa-umbrella-beach"></i></span>Leaves <span class="nav-badge" id="nb-leaves">0</span></a>
+        <a class="nav-item" data-page="bidding-view"><span class="nav-icon"><i class="fas fa-gavel"></i></span>Bidding <span class="nav-badge" id="nb-bids" style="display:none">0</span></a>
         <a class="nav-item" data-page="support-tickets"><span class="nav-icon"><i class="fas fa-life-ring"></i></span>Support Tickets</a>
         ${role !== 'developer' ? `<a class="nav-item" data-page="approval-queue"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span>Approvals <span class="nav-badge" id="nb-approval">0</span></a>` : ''}
       </div>
@@ -454,6 +456,7 @@ function buildShell() {
     <div id="page-timesheets-view"  class="page"></div>
     <div id="page-approval-queue"   class="page"></div>
     <div id="page-leaves-view"      class="page"></div>
+    <div id="page-bidding-view"     class="page"></div>
     <div id="page-reports-view"     class="page"></div>
     <div id="page-alerts-view"      class="page"></div>
     <div id="page-clients-list"     class="page"></div>
@@ -491,7 +494,7 @@ const breadcrumbMap = {
   'super-dashboard':'Overview','pm-dashboard':'PM Dashboard','dev-dashboard':'My Dashboard',
   'projects-list':'Projects','kanban-board':'Kanban Board','sprints-view':'Sprints',
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
-  'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves',
+  'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
   'billing-admin':'Billing & Invoices','team-overview':'Team','support-tickets':'Support Tickets','settings-view':'Settings'
 }
@@ -708,10 +711,11 @@ async function pollNotifications(initial = false) {
 
 function startNotificationPoller() {
   if (_notifState.timer) return
-  _notifState.timer = setInterval(() => {
-    if (document.visibilityState === 'visible') pollNotifications()
-  }, 20000)
-  // Resume immediately when tab becomes visible
+  // Notifications keep arriving until the user manually logs out — so we
+  // poll regardless of tab visibility instead of pausing on hidden tabs.
+  _notifState.timer = setInterval(() => { pollNotifications() }, 20000)
+  // Refresh immediately when the tab becomes visible again, so the badge
+  // catches up without waiting for the next interval tick.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') pollNotifications()
   })
@@ -926,6 +930,12 @@ function _notifIcon(type) {
     ticket_priority:       { icon: 'fa-flag', color: '#FFCB47' },
     ticket_comment:        { icon: 'fa-message', color: '#FFB67A' },
     ticket_internal_note:  { icon: 'fa-lock', color: '#FFCB47' },
+    bid_opened:            { icon: 'fa-gavel', color: '#FFB347' },
+    bid_placed:            { icon: 'fa-coins', color: '#FFCB47' },
+    bid_awarded:           { icon: 'fa-trophy', color: '#86E0A8' },
+    leave_request:         { icon: 'fa-umbrella-beach', color: '#FFB67A' },
+    leave_approved:        { icon: 'fa-check-circle', color: '#86E0A8' },
+    leave_rejected:        { icon: 'fa-times-circle', color: '#FF8866' },
   }
   return map[type] || { icon: 'fa-bell', color: '#FFB347' }
 }
@@ -1077,6 +1087,7 @@ function loadPage(page, el) {
     case 'timesheets-view':  renderTimesheetsView(el); break
     case 'approval-queue':   renderApprovalQueue(el); break
     case 'leaves-view':      renderLeavesView(el); break
+    case 'bidding-view':     renderBiddingView(el); break
     case 'reports-view':     renderReportsView(el); break
     case 'alerts-view':      renderAlertsView(el); break
     case 'clients-list':     renderClientsList(el); break

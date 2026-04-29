@@ -35,7 +35,10 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
       const enriched = leaves.map((l) => ({
         ...l,
         full_name: usersById.get(String(l.user_id))?.full_name || null,
+        email: usersById.get(String(l.user_id))?.email || null,
+        designation: usersById.get(String(l.user_id))?.designation || null,
         avatar_color: usersById.get(String(l.user_id))?.avatar_color || null,
+        approved_by_name: l.approved_by ? (usersById.get(String(l.approved_by))?.full_name || null) : null,
       })).sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || ''))).slice(0, 100)
       return res.json({ data: enriched, leaves: enriched })
     } catch {
@@ -59,7 +62,18 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
         : 0
       const reason = validateOptional(body.reason, (v) => validateLength(String(v).trim(), 1, 1000, 'Reason'))
       // Manager applying on someone else's behalf is allowed; otherwise self only.
-      const targetUserId = (role === 'developer' || role === 'team') ? user.sub : (body.user_id || user.sub)
+      // Guard: if the client sent the literal string "undefined" (caused by a stale
+      // _user object on the frontend), fall back to the JWT's user.sub which is
+      // always trustworthy.
+      const rawBodyUserId = typeof body.user_id === 'string' ? body.user_id.trim() : ''
+      const safeBodyUserId = (rawBodyUserId && rawBodyUserId !== 'undefined' && rawBodyUserId !== 'null') ? rawBodyUserId : ''
+      const targetUserId = (role === 'developer' || role === 'team') ? user.sub : (safeBodyUserId || user.sub)
+      // Make sure the user_id we're about to attach to the leave actually exists,
+      // otherwise the leave list will show "Unknown employee" forever.
+      const targetUser = await models.users.findById(targetUserId) as any
+      if (!targetUser) {
+        return res.status(400).json({ error: 'Could not resolve the employee for this leave' })
+      }
       const id = generateId('lv')
       const now = new Date().toISOString()
       // Every leave starts as pending — managers can review/approve their own.
@@ -78,8 +92,7 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
       })
 
       // Notify all approvers (admin/pm/pc) — actor excluded automatically by helper.
-      const applicant = await models.users.findById(targetUserId) as any
-      const applicantName = applicant?.full_name || applicant?.email || 'Someone'
+      const applicantName = targetUser?.full_name || targetUser?.email || 'Someone'
       const approvers = await models.users.find({
         role: { $in: ['admin', 'pm', 'pc'] },
         is_active: 1,
@@ -121,25 +134,40 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
     try {
       const user = req.user as any
       const status = validateEnum(req.body?.status, LEAVE_APPROVAL_STATUSES, 'Status')
+      const rawReason = typeof req.body?.decision_reason === 'string' ? req.body.decision_reason.trim() : ''
+      // A reason is mandatory when rejecting so the employee knows why.
+      if (status === 'rejected' && !rawReason) {
+        return res.status(400).json({ error: 'Please provide a reason for rejecting the leave' })
+      }
+      const decisionReason = rawReason
+        ? validateLength(rawReason, 1, 1000, 'Decision reason')
+        : null
       const leave = await models.leaves.findById(String(req.params.id)) as any
       if (!leave) return res.status(404).json({ error: 'Leave not found' })
       await models.leaves.updateById(leave.id, {
-        $set: { status, approved_by: user?.sub || null, updated_at: new Date().toISOString() },
+        $set: {
+          status,
+          approved_by: user?.sub || null,
+          decision_reason: decisionReason,
+          decided_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
       })
 
       // Notify the applicant about the decision
       const approver = await models.users.findById(user.sub) as any
       const approverName = approver?.full_name || approver?.email || 'Manager'
       if (leave.user_id && leave.user_id !== user.sub) {
+        const reasonSuffix = decisionReason ? ` — Reason: ${decisionReason}` : ''
         await createUserNotification(models, {
           user_id: leave.user_id,
           type: status === 'approved' ? 'leave_approved' : 'leave_rejected',
           title: status === 'approved' ? 'Leave approved' : 'Leave rejected',
-          body: `${approverName} ${status} your ${leave.leave_type} leave (${leave.start_date} → ${leave.end_date})`,
+          body: `${approverName} ${status} your ${leave.leave_type} leave (${leave.start_date} → ${leave.end_date})${reasonSuffix}`,
           link: `leave:${leave.id}`,
           actor_id: user.sub,
           actor_name: approverName,
-          meta: { leave_id: leave.id, status },
+          meta: { leave_id: leave.id, status, decision_reason: decisionReason },
         })
       }
       return res.json({ message: `Leave ${status}` })

@@ -12,13 +12,15 @@ import {
   validatePositiveNumber,
   respondWithError,
 } from '../validators'
+import { createUserNotification, createUserNotifications } from './notifications'
 
-const PROJECT_TYPES = ['development', 'maintenance', 'support', 'consulting'] as const
+const PROJECT_TYPES = ['development', 'maintenance', 'support', 'consulting', 'bidding'] as const
 const PROJECT_STATUSES = ['active', 'on_hold', 'completed', 'archived', 'cancelled'] as const
 const PROJECT_PRIORITIES = ['critical', 'high', 'medium', 'low'] as const
 const ASSIGNMENT_TYPES = ['in_house', 'external'] as const
 const ASSIGNEE_TYPES = ['team', 'user'] as const
 const PROJECT_CODE_PATTERN = /^[A-Za-z0-9_-]{2,40}$/
+const BID_AWARD_STATUSES = ['open', 'awarded', 'cancelled'] as const
 
 function sum(items: any[], pick: (item: any) => number) {
   return items.reduce((acc, item) => acc + pick(item), 0)
@@ -201,26 +203,53 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
 
   router.post('/', requireRole('admin', 'pm', 'pc'), async (req, res) => {
     try {
+      const user = req.user as any
       const body = req.body || {}
       const name = validateName(body.name, 'Project name', 2, 120)
       const code = validateLength(String(body.code || '').trim(), 2, 40, 'Project code')
       if (!PROJECT_CODE_PATTERN.test(code)) {
         return res.status(400).json({ error: 'Project code may only contain letters, numbers, underscore or hyphen' })
       }
-      const startDate = validateISODate(body.start_date, 'Start date')
-      const endDate = validateOptional(body.expected_end_date, (v) => validateISODate(v, 'End date'))
-      if (endDate && startDate > endDate) {
-        return res.status(400).json({ error: 'End date must be after start date' })
-      }
       const projectType = validateEnum(body.project_type || 'development', PROJECT_TYPES, 'Project type')
       const status = validateEnum(body.status || 'active', PROJECT_STATUSES, 'Status')
       const priority = validateEnum(body.priority || 'medium', PROJECT_PRIORITIES, 'Priority')
-      const assignmentType = validateEnum(body.assignment_type || 'in_house', ASSIGNMENT_TYPES, 'Assignment type')
-      const externalAssigneeType = assignmentType === 'external'
+      const isBidding = projectType === 'bidding'
+      // Bidding projects don't have a fixed start date — the awarded bidder sets it later.
+      const startDate = isBidding
+        ? (body.start_date ? validateISODate(body.start_date, 'Start date') : null)
+        : validateISODate(body.start_date, 'Start date')
+      const endDate = validateOptional(body.expected_end_date, (v) => validateISODate(v, 'End date'))
+      if (startDate && endDate && startDate > endDate) {
+        return res.status(400).json({ error: 'End date must be after start date' })
+      }
+      const assignmentType = isBidding
+        ? 'in_house'
+        : validateEnum(body.assignment_type || 'in_house', ASSIGNMENT_TYPES, 'Assignment type')
+      const externalAssigneeType = (!isBidding && assignmentType === 'external')
         ? validateEnum(body.external_assignee_type || 'team', ASSIGNEE_TYPES, 'External assignee type')
         : null
-      if (assignmentType === 'external' && !body.external_team_id) {
+      if (!isBidding && assignmentType === 'external' && !body.external_team_id) {
         return res.status(400).json({ error: 'External team is required when assignment type is external' })
+      }
+      // Bidding projects must declare a deadline so the countdown timer can run.
+      let bidDeadline: string | null = null
+      if (isBidding) {
+        if (!body.bid_deadline) {
+          return res.status(400).json({ error: 'Bid deadline is required for bidding projects' })
+        }
+        const parsed = new Date(String(body.bid_deadline))
+        if (isNaN(parsed.getTime())) {
+          return res.status(400).json({ error: 'Invalid bid deadline' })
+        }
+        if (parsed.getTime() <= Date.now()) {
+          return res.status(400).json({ error: 'Bid deadline must be in the future' })
+        }
+        bidDeadline = parsed.toISOString()
+        // A brief is mandatory so bidders understand what they're signing up for —
+        // but no length cap, the brief can be as long as the PM needs.
+        if (!body.description || !String(body.description).trim()) {
+          return res.status(400).json({ error: 'Project brief is required for bidding projects' })
+        }
       }
       const totalAllocatedHours = body.total_allocated_hours !== undefined
         ? validatePositiveNumber(body.total_allocated_hours, 'Total allocated hours')
@@ -238,7 +267,10 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         code,
         client_name: body.client_name || null,
         client_id: body.client_id || null,
-        description: body.description ? validateLength(String(body.description), 0, 5000, 'Description') : null,
+        // Bidding briefs can be arbitrarily long; other projects keep the 5000-char cap.
+        description: body.description
+          ? (isBidding ? String(body.description) : validateLength(String(body.description), 0, 5000, 'Description'))
+          : null,
         project_type: projectType,
         start_date: startDate,
         expected_end_date: endDate,
@@ -246,20 +278,62 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         status,
         total_allocated_hours: totalAllocatedHours,
         estimated_budget_hours: estimatedBudgetHours,
-        team_lead_id: body.team_lead_id || null,
-        pm_id: body.pm_id || null,
-        pc_id: body.pc_id || null,
-        assignment_type: assignmentType,
-        external_team_id: assignmentType === 'external' ? (body.external_team_id || null) : null,
-        external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,
+        team_lead_id: isBidding ? null : (body.team_lead_id || null),
+        pm_id: isBidding ? null : (body.pm_id || null),
+        pc_id: isBidding ? null : (body.pc_id || null),
+        assignment_type: isBidding ? null : assignmentType,
+        external_team_id: (!isBidding && assignmentType === 'external') ? (body.external_team_id || null) : null,
+        external_assignee_type: (!isBidding && assignmentType === 'external') ? externalAssigneeType : null,
         billable: body.billable !== undefined ? (body.billable ? 1 : 0) : 1,
         revenue,
         remarks: body.remarks ? validateLength(String(body.remarks), 0, 2000, 'Remarks') : null,
         consumed_hours: 0,
+        bid_deadline: bidDeadline,
+        bid_status: isBidding ? 'open' : null,
+        awarded_bid_id: null,
+        awarded_to_user_id: null,
         created_at: now,
         updated_at: now,
       }
       await models.projects.insertOne(project)
+
+      // Notify every active staff member as soon as a bidding project opens —
+      // teams, developers, PMs, PCs, and admins. The creator is excluded via actor_id.
+      if (isBidding) {
+        try {
+          const recipients = await models.users.find({
+            role: { $in: ['admin', 'pm', 'pc', 'developer', 'team'] },
+            is_active: 1,
+          }) as any[]
+          const creator = await models.users.findById(user?.sub) as any
+          const creatorName = creator?.full_name || creator?.email || 'Admin'
+          const briefPreview = project.description
+            ? String(project.description).replace(/\s+/g, ' ').slice(0, 200)
+            : ''
+          const deadlineLocal = new Date(bidDeadline as string).toLocaleString()
+          const bodyParts = [
+            `Bids open until ${deadlineLocal}`,
+            project.revenue ? `Reference budget ₹${Number(project.revenue).toLocaleString()}` : '',
+            briefPreview ? `Brief: ${briefPreview}${project.description && project.description.length > 200 ? '…' : ''}` : '',
+          ].filter(Boolean)
+          await createUserNotifications(
+            models,
+            recipients.map((u) => u.id),
+            {
+              type: 'bid_opened',
+              title: `New bidding project: ${name} (${code})`,
+              body: bodyParts.join(' · '),
+              link: `bid:${id}`,
+              actor_id: user?.sub || null,
+              actor_name: creatorName,
+              meta: { project_id: id, bid_deadline: bidDeadline, project_code: code },
+            },
+          )
+          console.log(`[projects] bid_opened notifications sent to ${recipients.length} users for project ${id}`)
+        } catch (e) {
+          console.warn('[projects] failed to notify bidders:', e)
+        }
+      }
 
       await models.kanbanPermissions.insertMany([
         { id: generateId('kp'), project_id: id, role: 'admin', can_view: 1, can_create_task: 1, can_edit_any_task: 1, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 1, can_manage_columns: 1, can_comment: 1 },
@@ -292,19 +366,24 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
       const id = String(req.params.id)
       const body = req.body || {}
       const name = validateName(body.name, 'Project name', 2, 120)
-      const startDate = validateISODate(body.start_date, 'Start date')
-      const endDate = validateOptional(body.expected_end_date, (v) => validateISODate(v, 'End date'))
-      if (endDate && startDate > endDate) {
-        return res.status(400).json({ error: 'End date must be after start date' })
-      }
       const projectType = validateEnum(body.project_type || 'development', PROJECT_TYPES, 'Project type')
       const status = validateEnum(body.status || 'active', PROJECT_STATUSES, 'Status')
       const priority = validateEnum(body.priority || 'medium', PROJECT_PRIORITIES, 'Priority')
-      const assignmentType = validateEnum(body.assignment_type || 'in_house', ASSIGNMENT_TYPES, 'Assignment type')
-      const externalAssigneeType = assignmentType === 'external'
+      const isBidding = projectType === 'bidding'
+      const startDate = isBidding
+        ? (body.start_date ? validateISODate(body.start_date, 'Start date') : null)
+        : validateISODate(body.start_date, 'Start date')
+      const endDate = validateOptional(body.expected_end_date, (v) => validateISODate(v, 'End date'))
+      if (startDate && endDate && startDate > endDate) {
+        return res.status(400).json({ error: 'End date must be after start date' })
+      }
+      const assignmentType = isBidding
+        ? null
+        : validateEnum(body.assignment_type || 'in_house', ASSIGNMENT_TYPES, 'Assignment type')
+      const externalAssigneeType = (!isBidding && assignmentType === 'external')
         ? validateEnum(body.external_assignee_type || 'team', ASSIGNEE_TYPES, 'External assignee type')
         : null
-      if (assignmentType === 'external' && !body.external_team_id) {
+      if (!isBidding && assignmentType === 'external' && !body.external_team_id) {
         return res.status(400).json({ error: 'External team is required when assignment type is external' })
       }
       const totalAllocatedHours = body.total_allocated_hours !== undefined
@@ -315,31 +394,36 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         : 0
       const revenue = body.revenue !== undefined ? validatePositiveNumber(body.revenue, 'Revenue') : 0
 
-      await models.projects.updateById(id, {
-        $set: {
-          name,
-          client_name: body.client_name || null,
-          client_id: body.client_id || null,
-          description: body.description ? validateLength(String(body.description), 0, 5000, 'Description') : null,
-          project_type: projectType,
-          start_date: startDate,
-          expected_end_date: endDate,
-          priority,
-          status,
-          total_allocated_hours: totalAllocatedHours,
-          estimated_budget_hours: estimatedBudgetHours,
-          team_lead_id: body.team_lead_id || null,
-          pm_id: body.pm_id || null,
-          pc_id: body.pc_id || null,
-          assignment_type: assignmentType,
-          external_team_id: assignmentType === 'external' ? (body.external_team_id || null) : null,
-          external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,
-          billable: body.billable ? 1 : 0,
-          revenue,
-          remarks: body.remarks ? validateLength(String(body.remarks), 0, 2000, 'Remarks') : null,
-          updated_at: new Date().toISOString(),
-        },
-      })
+      const $set: any = {
+        name,
+        client_name: body.client_name || null,
+        client_id: body.client_id || null,
+        description: body.description
+          ? (isBidding ? String(body.description) : validateLength(String(body.description), 0, 5000, 'Description'))
+          : null,
+        project_type: projectType,
+        start_date: startDate,
+        expected_end_date: endDate,
+        priority,
+        status,
+        total_allocated_hours: totalAllocatedHours,
+        estimated_budget_hours: estimatedBudgetHours,
+        team_lead_id: isBidding ? null : (body.team_lead_id || null),
+        pm_id: isBidding ? null : (body.pm_id || null),
+        pc_id: isBidding ? null : (body.pc_id || null),
+        assignment_type: assignmentType,
+        external_team_id: (!isBidding && assignmentType === 'external') ? (body.external_team_id || null) : null,
+        external_assignee_type: (!isBidding && assignmentType === 'external') ? externalAssigneeType : null,
+        billable: body.billable ? 1 : 0,
+        revenue,
+        remarks: body.remarks ? validateLength(String(body.remarks), 0, 2000, 'Remarks') : null,
+        updated_at: new Date().toISOString(),
+      }
+      if (isBidding && body.bid_deadline) {
+        const parsed = new Date(String(body.bid_deadline))
+        if (!isNaN(parsed.getTime())) $set.bid_deadline = parsed.toISOString()
+      }
+      await models.projects.updateById(id, { $set })
       return res.json({ message: 'Project updated successfully' })
     } catch (error: any) {
       return respondWithError(res, error, 500)
@@ -470,6 +554,175 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
       return res.json({ message: 'Developers updated successfully' })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to update assignments' })
+    }
+  })
+
+  // ── Bidding endpoints ────────────────────────────────────────
+  // Aggregated view of all bidding projects + their bids — drives the
+  // "Bidding" page and its countdown timers on the frontend.
+  router.get('/bids/all', async (req, res) => {
+    try {
+      const [projects, bids, users] = await Promise.all([
+        models.projects.find({ project_type: 'bidding' }) as Promise<any[]>,
+        models.projectBids.find({}) as Promise<any[]>,
+        models.users.find({}) as Promise<any[]>,
+      ])
+      const usersById = new Map(users.map((u) => [String(u.id), u]))
+      const bidsByProject = new Map<string, any[]>()
+      for (const b of bids) {
+        const key = String(b.project_id)
+        const list = bidsByProject.get(key) || []
+        list.push({
+          ...b,
+          bidder_name: usersById.get(String(b.user_id))?.full_name || null,
+          bidder_role: usersById.get(String(b.user_id))?.role || null,
+          avatar_color: usersById.get(String(b.user_id))?.avatar_color || null,
+        })
+        bidsByProject.set(key, list)
+      }
+      const enriched = projects.map((p) => {
+        const projectBids = (bidsByProject.get(String(p.id)) || [])
+          .sort((a, b) => Number(a.amount || 0) - Number(b.amount || 0))
+        const lowest = projectBids[0] || null
+        const deadlineMs = p.bid_deadline ? new Date(p.bid_deadline).getTime() : null
+        return {
+          ...p,
+          bids: projectBids,
+          bid_count: projectBids.length,
+          lowest_bid: lowest ? lowest.amount : null,
+          lowest_bidder_name: lowest ? lowest.bidder_name : null,
+          time_left_ms: deadlineMs ? Math.max(0, deadlineMs - Date.now()) : null,
+          is_closed: deadlineMs ? Date.now() > deadlineMs : false,
+        }
+      }).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+      return res.json({ data: enriched, projects: enriched })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to load bids' })
+    }
+  })
+
+  router.post('/:id/bids', async (req, res) => {
+    try {
+      const user = req.user as any
+      if (!user?.sub) return res.status(401).json({ error: 'Unauthenticated' })
+      const projectId = String(req.params.id)
+      const project = await models.projects.findById(projectId) as any
+      if (!project) return res.status(404).json({ error: 'Project not found' })
+      if (project.project_type !== 'bidding') return res.status(400).json({ error: 'Project is not open for bidding' })
+      if (project.bid_status && project.bid_status !== 'open') {
+        return res.status(400).json({ error: 'Bidding is closed for this project' })
+      }
+      if (project.bid_deadline && new Date(project.bid_deadline).getTime() < Date.now()) {
+        return res.status(400).json({ error: 'Bid deadline has passed' })
+      }
+      const amount = validatePositiveNumber(req.body?.amount, 'Bid amount')
+      const deliveryDays = req.body?.delivery_days !== undefined
+        ? validatePositiveNumber(req.body.delivery_days, 'Delivery days')
+        : null
+      const note = req.body?.note ? validateLength(String(req.body.note), 0, 1000, 'Note') : null
+
+      // One open bid per user per project — newest replaces older one.
+      const existing = await models.projectBids.findOne({ project_id: projectId, user_id: user.sub }) as any
+      const now = new Date().toISOString()
+      const bidId = existing?.id || generateId('bid')
+      const bidder = await models.users.findById(user.sub) as any
+      const bidderName = bidder?.full_name || bidder?.email || 'Bidder'
+      if (existing) {
+        await models.projectBids.updateById(existing.id, {
+          $set: { amount, delivery_days: deliveryDays, note, updated_at: now },
+        })
+      } else {
+        await models.projectBids.insertOne({
+          id: bidId,
+          project_id: projectId,
+          user_id: user.sub,
+          amount,
+          delivery_days: deliveryDays,
+          note,
+          status: 'submitted',
+          created_at: now,
+          updated_at: now,
+        })
+      }
+
+      // Notify all other eligible bidders + the admins/PMs.
+      try {
+        const subscribers = await models.users.find({
+          role: { $in: ['admin', 'developer', 'team', 'pm', 'pc'] },
+          is_active: 1,
+        }) as any[]
+        await createUserNotifications(
+          models,
+          subscribers.map((u) => u.id),
+          {
+            type: 'bid_placed',
+            title: `${bidderName} bid ₹${amount} on ${project.name}`,
+            body: deliveryDays
+              ? `Delivery in ${deliveryDays} day${deliveryDays === 1 ? '' : 's'}${note ? ' — ' + note : ''}`
+              : (note || 'New bid placed'),
+            link: `bid:${projectId}`,
+            actor_id: user.sub,
+            actor_name: bidderName,
+            meta: { project_id: projectId, bid_id: bidId, amount },
+          },
+        )
+      } catch (e) {
+        console.warn('[projects] failed to notify on bid:', e)
+      }
+
+      return res.status(201).json({ message: 'Bid placed', data: { id: bidId } })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  router.post('/:id/bids/:bidId/award', requireRole('admin', 'pm'), async (req, res) => {
+    try {
+      const user = req.user as any
+      const projectId = String(req.params.id)
+      const bidId = String(req.params.bidId)
+      const project = await models.projects.findById(projectId) as any
+      if (!project) return res.status(404).json({ error: 'Project not found' })
+      const bid = await models.projectBids.findById(bidId) as any
+      if (!bid || bid.project_id !== projectId) return res.status(404).json({ error: 'Bid not found' })
+      const now = new Date().toISOString()
+      await models.projects.updateById(projectId, {
+        $set: {
+          bid_status: 'awarded',
+          awarded_bid_id: bidId,
+          awarded_to_user_id: bid.user_id,
+          updated_at: now,
+        },
+      })
+      await models.projectBids.updateById(bidId, { $set: { status: 'awarded', updated_at: now } })
+
+      const winner = await models.users.findById(bid.user_id) as any
+      const winnerName = winner?.full_name || 'Winner'
+      // Notify the winner + all other bidders.
+      const otherBids = await models.projectBids.find({ project_id: projectId }) as any[]
+      const notifyIds = Array.from(new Set(otherBids.map((b) => b.user_id)))
+      await createUserNotifications(models, notifyIds, {
+        type: 'bid_awarded',
+        title: `Bid awarded for ${project.name}`,
+        body: `${winnerName} won the bid at ₹${bid.amount}`,
+        link: `bid:${projectId}`,
+        actor_id: user?.sub || null,
+        meta: { project_id: projectId, bid_id: bidId, winner_id: bid.user_id },
+      })
+      if (bid.user_id) {
+        await createUserNotification(models, {
+          user_id: bid.user_id,
+          type: 'bid_awarded',
+          title: `You won the bid on ${project.name}`,
+          body: `Awarded at ₹${bid.amount}`,
+          link: `bid:${projectId}`,
+          actor_id: user?.sub || null,
+          meta: { project_id: projectId, bid_id: bidId },
+        })
+      }
+      return res.json({ message: 'Bid awarded' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
     }
   })
 
