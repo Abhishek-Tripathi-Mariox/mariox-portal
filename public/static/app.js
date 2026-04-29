@@ -277,6 +277,32 @@ function loadAuth() {
   return false
 }
 
+// Re-fetch the current user from the server so role/designation changes the
+// admin makes elsewhere take effect on the next page load — without forcing
+// the affected user to log out. Best-effort: a network failure or 401 just
+// keeps the cached _user, with 401 also clearing it (the token is dead).
+async function refreshAuthFromServer() {
+  if (!_token) return
+  try {
+    const r = await fetch(BASE + '/auth/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: _token }),
+    })
+    if (r.status === 401) {
+      clearAuth()
+      return
+    }
+    const data = await r.json().catch(() => ({}))
+    if (data?.valid && data?.user) {
+      _user = { ..._user, ...data.user, role: String(data.user.role || '').toLowerCase() }
+      localStorage.setItem('devportal_user', JSON.stringify(_user))
+    }
+  } catch {
+    // offline or transient — keep the cached user
+  }
+}
+
 // ── Routing ──────────────────────────────────────────────────
 const Router = {
   current: null,
@@ -1232,8 +1258,21 @@ function init() {
     if (_user.role === 'client') {
       if (typeof renderClientPortal === 'function') renderClientPortal()
     } else {
+      // Render immediately with cached _user so the UI doesn't flash, then
+      // re-sync from the server. If role/designation changed in the DB, the
+      // sidebar re-renders with the new permissions on the next navigation.
       const initialPage = resolveInitialPage() || defaultPage()
       Router.navigate(initialPage)
+      refreshAuthFromServer().then(() => {
+        // If the server-side role no longer allows the current page, bounce to
+        // the new default. Otherwise just refresh the shell (sidebar permissions).
+        if (_user && Router.current && !canSeePage(Router.current.page)) {
+          Router.current = null
+          Router.navigate(defaultPage())
+        } else if (_user) {
+          renderApp()
+        }
+      })
     }
   } else {
     renderLogin()
