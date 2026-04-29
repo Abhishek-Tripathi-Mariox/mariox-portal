@@ -46,6 +46,8 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
 
   router.get('/', async (req, res) => {
     try {
+      const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
       const status = typeof req.query.status === 'string' ? req.query.status : undefined
       const pmId = typeof req.query.pm_id === 'string' ? req.query.pm_id : undefined
       const filter: any = {}
@@ -67,7 +69,28 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         assignmentsByProject.set(key, list)
       }
 
-      const enriched = projects.map((p) => {
+      // Role-scope: team accounts only see projects directly assigned to them
+      // (external assignment) or projects auto-created from a bid they won.
+      // Without this scope, every team head saw the whole company's project
+      // list — fix for "kyu dusre team ke project mere par dikh rahe hain".
+      // Developers see projects they're allocated to; admin/pm/pc see everything.
+      const myAssignmentProjectIds = new Set(
+        assignments.filter((a) => String(a.user_id) === String(user?.sub)).map((a) => String(a.project_id)),
+      )
+      const visibleProjects = projects.filter((p) => {
+        if (role === 'team') {
+          return p.external_team_id === user?.sub || p.awarded_to_user_id === user?.sub
+        }
+        if (role === 'developer') {
+          // Developers see projects they're assigned to + ones they're PM/PC/lead on (rare).
+          if (myAssignmentProjectIds.has(String(p.id))) return true
+          if (p.pm_id === user?.sub || p.pc_id === user?.sub || p.team_lead_id === user?.sub) return true
+          return false
+        }
+        return true
+      })
+
+      const enriched = visibleProjects.map((p) => {
         const tl = usersById.get(String(p.team_lead_id)) as any
         const pm = usersById.get(String(p.pm_id)) as any
         const pc = usersById.get(String(p.pc_id)) as any
@@ -99,6 +122,8 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
 
   router.get('/:id', async (req, res) => {
     try {
+      const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
       const id = req.params.id
       const project = await models.projects.findById(id) as any
       if (!project) return res.status(404).json({ error: 'Project not found' })
@@ -108,6 +133,22 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         models.projectAssignments.find({ project_id: id, is_active: 1 }) as Promise<any[]>,
         models.timesheets.find({ project_id: id }) as Promise<any[]>,
       ])
+
+      // Same scope as the list endpoint: a team account must be linked to the
+      // project (external assignee or bid winner). Otherwise 403 — keeps the
+      // detail URL from leaking siblings' projects.
+      if (role === 'team' &&
+          project.external_team_id !== user?.sub &&
+          project.awarded_to_user_id !== user?.sub) {
+        return res.status(403).json({ error: 'You do not have access to this project' })
+      }
+      if (role === 'developer') {
+        const isAllocated = assignments.some((a: any) => String(a.user_id) === String(user?.sub))
+        const isLead = project.pm_id === user?.sub || project.pc_id === user?.sub || project.team_lead_id === user?.sub
+        if (!isAllocated && !isLead) {
+          return res.status(403).json({ error: 'You do not have access to this project' })
+        }
+      }
       const usersById = new Map(users.map((u) => [String(u.id), u]))
       const loggedByUser = new Map<string, number>()
       for (const t of timesheets) {

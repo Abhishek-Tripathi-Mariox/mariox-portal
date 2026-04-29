@@ -58,14 +58,14 @@ const PAGE_PERMISSIONS = {
   'team-overview':   ['admin', 'pm'],
   'pm-dashboard':    ['admin', 'pm'],
   'projects-list':   ['admin', 'pm', 'pc', 'developer', 'team'],
-  'kanban-board':    ['admin', 'pm', 'pc', 'developer'],
+  'kanban-board':    ['admin', 'pm', 'pc', 'developer', 'team'],
   'sprints-view':    ['admin', 'pm', 'pc'],
   'milestones-view': ['admin', 'pm', 'pc'],
   'documents-center':['admin', 'pm', 'pc', 'developer'],
   'resources-view':  ['admin', 'pm'],
   'dev-dashboard':   ['developer'],
   'team-dashboard':  ['team'],
-  'my-tasks':        ['admin', 'pm', 'pc', 'developer'],
+  'my-tasks':        ['admin', 'pm', 'pc', 'developer', 'team'],
   'timesheets-view': ['admin', 'pm', 'pc', 'developer'],
   'leaves-view':     ['admin', 'pm', 'pc', 'developer'], // team excluded — they don't apply for leave here
   'bidding-view':    ['admin', 'pm', 'team'],
@@ -424,6 +424,7 @@ function buildShell() {
     items: [
       navItem('pm-dashboard',    'fa-gauge-high', 'PM Dashboard'),
       navItem('projects-list',   'fa-layer-group', 'Projects'),
+      navItem('bidding-view',    'fa-gavel',       'Bidding', ' <span class="nav-badge" id="nb-bids" style="display:none">0</span>'),
       navItem('kanban-board',    'fa-columns',     'Kanban Board'),
       navItem('sprints-view',    'fa-bolt',        'Sprints'),
       navItem('milestones-view', 'fa-flag',        'Milestones'),
@@ -434,31 +435,36 @@ function buildShell() {
 
   const devHeading = role === 'developer' ? 'My Work' : 'Developer View'
   const devChip    = role === 'developer' ? 'Me' : 'Dev'
-  const navDev = navSection({
+  // Hard-gate the entire dev section away from team accounts. Team gets its
+  // own "My Workspace" section below; without this gate Tasks/Support items
+  // (which are shared) keep this section non-empty and timesheet/leave links
+  // render even though the items themselves are role-gated.
+  const navDev = role !== 'team' ? navSection({
     key: 'dev', heading: devHeading, chip: devChip, expanded: true, icon: 'fa-code',
     items: [
       navItem('dev-dashboard',  'fa-gauge',       'My Dashboard'),
       navItem('my-tasks',       'fa-list-check',  'Tasks'),
       navItem('timesheets-view','fa-clock',       'Timesheets'),
       navItem('leaves-view',    'fa-umbrella-beach', 'Leaves', ' <span class="nav-badge" id="nb-leaves">0</span>'),
-      // Bidding only renders for admin/pm here (per PAGE_PERMISSIONS); team accounts get it inside their own section.
-      role !== 'team' ? navItem('bidding-view', 'fa-gavel', 'Bidding', ' <span class="nav-badge" id="nb-bids" style="display:none">0</span>') : '',
       navItem('support-tickets','fa-life-ring',   'Support Tickets'),
       navItem('approval-queue', 'fa-clipboard-check', 'Approvals', ' <span class="nav-badge" id="nb-approval">0</span>'),
     ],
-  })
+  }) : ''
 
-  // Dedicated section for external team accounts — minimal surface area, no
-  // leave/timesheet/task noise, just their dashboard, projects and bidding.
-  const navTeam = navSection({
+  // Dedicated section ONLY for external team accounts. Without the role gate
+  // shared pages (Projects/Kanban/Tasks) leak this section into other roles'
+  // sidebars, causing duplicate "My Projects" entries.
+  const navTeam = role === 'team' ? navSection({
     key: 'team', heading: 'My Workspace', chip: 'Team', expanded: true, icon: 'fa-users',
     items: [
       navItem('team-dashboard', 'fa-gauge',       'Dashboard'),
       navItem('projects-list',  'fa-layer-group', 'My Projects'),
+      navItem('kanban-board',   'fa-columns',     'Kanban Board'),
+      navItem('my-tasks',       'fa-list-check',  'My Tasks'),
       navItem('bidding-view',   'fa-gavel',       'Bidding', ' <span class="nav-badge" id="nb-bids" style="display:none">0</span>'),
       navItem('support-tickets','fa-life-ring',   'Support Tickets'),
     ],
-  })
+  }) : ''
 
   const navReports = navSection({
     key: 'analytics', heading: 'Analytics', chip: 'Insight', expanded: false, icon: 'fa-wand-magic-sparkles',

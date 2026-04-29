@@ -498,7 +498,7 @@ async function renderProjectsList(el) {
     <div class="card">
       <div class="card-body p-0 table-wrap">
         <table class="data-table" id="proj-table">
-          <thead><tr><th>Project</th><th>Client</th><th>PM</th><th>Status</th><th>Priority</th><th>Progress</th><th>Hours</th><th>Due Date</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Project</th><th>Client</th><th>PM</th><th>Status</th><th>Priority</th>${_user.role !== 'team' ? '<th>Progress</th><th>Hours</th>' : ''}<th>Due Date</th><th>Actions</th></tr></thead>
           <tbody>
             ${visibleProjects.map(p=>{
               const cl = p.client_id ? clientMap[p.client_id] : null
@@ -512,13 +512,14 @@ async function renderProjectsList(el) {
                 <td><span style="font-size:12px;color:#94a3b8">${p.pm_name||'—'}</span></td>
                 <td>${statusBadge(p.status)}</td>
                 <td>${priorityBadge(p.priority)}</td>
+                ${_user.role !== 'team' ? `
                 <td style="min-width:120px">
                   <div style="display:flex;align-items:center;gap:8px">
                     <div class="progress-bar" style="flex:1"><div class="progress-fill ${burnPct>=90?'rose':burnPct>=70?'amber':'green'}" style="width:${Math.min(burnPct,100)}%"></div></div>
                     <span style="font-size:11px;color:${pctColor(burnPct)};min-width:30px">${burnPct}%</span>
                   </div>
                 </td>
-                <td><span style="font-size:12px">${p.consumed_hours}h / ${p.total_allocated_hours}h</span></td>
+                <td><span style="font-size:12px">${p.consumed_hours}h / ${p.total_allocated_hours}h</span></td>` : ''}
                 <td style="font-size:12px;color:${new Date(p.expected_end_date)<new Date()&&p.status==='active'?'#FF5E3A':'#94a3b8'}">${fmtDate(p.expected_end_date)}</td>
                 <td>
                   <div style="display:flex;gap:4px">
@@ -723,7 +724,7 @@ function buildTaskCard(t) {
       <div style="display:flex;align-items:center;gap:6px">
         <span style="font-size:11px" title="${t.priority||'medium'} priority">${prioIcon[t.priority]||'🟡'}</span>
         ${t.story_points ? `<span style="font-size:10px;background:var(--bg-hover);color:var(--text-muted);padding:1px 5px;border-radius:4px">${t.story_points}sp</span>` : ''}
-        ${t.estimated_hours ? `<span style="font-size:10px;color:var(--text-muted)"><i class="fas fa-clock"></i> ${t.logged_hours||0}/${t.estimated_hours}h</span>` : ''}
+        ${t.estimated_hours && _user.role !== 'team' ? `<span style="font-size:10px;color:var(--text-muted)"><i class="fas fa-clock"></i> ${t.logged_hours||0}/${t.estimated_hours}h</span>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:4px">
         ${t.subtask_count > 0 ? `<span style="font-size:10px;color:var(--text-muted)"><i class="fas fa-code-branch"></i>${t.subtask_count}</span>` : ''}
@@ -957,7 +958,7 @@ async function openTaskDrawer(taskId) {
       ${metaItem('Project', t.project_name||'—')}
       ${metaItem('Sprint', t.sprint_name||'—')}
       ${metaItem('Due Date', `<span style="color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#94a3b8'}">${fmtDate(t.due_date)}</span>`)}
-      ${metaItem('Hours', `${t.logged_hours||0}h logged / ${t.estimated_hours||0}h est`)}
+      ${_user.role !== 'team' ? metaItem('Hours', `${t.logged_hours||0}h logged / ${t.estimated_hours||0}h est`) : ''}
     </div>
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
       <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Move to</div>
@@ -1415,7 +1416,7 @@ async function renderMyTasks(el) {
     <div class="card">
       <div class="card-body p-0 table-wrap">
         <table class="data-table" id="my-tasks-table">
-          <thead><tr><th>Task</th><th>Project</th><th>Type</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Due</th><th>Hours</th><th></th></tr></thead>
+          <thead><tr><th>Task</th><th>Project</th><th>Type</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Due</th>${_user.role !== 'team' ? '<th>Hours</th>' : ''}<th></th></tr></thead>
           <tbody>
             ${pagination.items.map(t=>`
             <tr data-status="${t.status}" data-priority="${t.priority}">
@@ -1429,7 +1430,7 @@ async function renderMyTasks(el) {
               <td>${statusBadge(t.status)}</td>
               <td>${t.assignee_name?`<div style="display:flex;align-items:center;gap:5px">${avatar(t.assignee_name,t.assignee_color,'sm')}<span style="font-size:12px">${t.assignee_name}</span></div>`:'<span style="color:#475569;font-size:12px">—</span>'}</td>
               <td style="font-size:12px;color:${t.due_date&&new Date(t.due_date)<new Date()&&t.status!=='done'?'#FF5E3A':'#94a3b8'}">${fmtDate(t.due_date)}</td>
-              <td style="font-size:12px">${t.logged_hours||0}/${t.estimated_hours||0}h</td>
+              ${_user.role !== 'team' ? `<td style="font-size:12px">${t.logged_hours||0}/${t.estimated_hours||0}h</td>` : ''}
               <td><button class="btn btn-xs btn-outline" onclick="openTaskDrawer('${t.id}')"><i class="fas fa-eye"></i></button></td>
             </tr>`).join('')}
           </tbody>
