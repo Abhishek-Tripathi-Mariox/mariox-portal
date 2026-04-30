@@ -138,6 +138,35 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
     }
   })
 
+  // Admin-only: reset a client's password. The chosen plaintext is returned
+  // ONCE in the response so the admin can share it manually — there's no
+  // way to recover it later (we only persist a SHA-256 hash). Setting
+  // `must_change_password=1` would be ideal but the client schema doesn't
+  // carry that flag yet, so the client can keep using the temp password
+  // until they change it from their profile.
+  router.post('/:id/reset-password', async (req, res) => {
+    try {
+      const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
+      if (role !== 'admin') return res.status(403).json({ error: 'Forbidden' })
+      const id = String(req.params.id)
+      const newPassword = validateNewPassword(req.body?.new_password, 'New password')
+      const target = await models.clients.findById(id) as any
+      if (!target) return res.status(404).json({ error: 'Client not found' })
+      const password_hash = await hashPassword(newPassword, passwordSalt)
+      await models.clients.updateById(id, {
+        $set: { password_hash, updated_at: new Date().toISOString() },
+      })
+      return res.json({
+        message: 'Client password reset',
+        client_id: id,
+        email: target.email,
+      })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
   router.get('/', async (req, res) => {
     try {
       const user = req.user as any

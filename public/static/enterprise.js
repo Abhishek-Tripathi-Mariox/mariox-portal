@@ -3157,6 +3157,9 @@ async function showClientDetail(clientId) {
     const completedMs = milestones.filter(m => m.status === 'completed' || Number(m.completion_pct) >= 100).length
     const openTickets = tickets.filter(t => !['resolved', 'closed'].includes(t.status)).length
 
+    const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
+    const fullAddress = [cl.address_line, cl.city, cl.state, cl.pincode, cl.country].filter(Boolean).map(escapeHtml).join(', ')
+
     showModal(`
       <div class="modal-header">
         ${avatar(cl.company_name, cl.avatar_color)}
@@ -3165,6 +3168,7 @@ async function showClientDetail(clientId) {
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body">
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Contact</div>
         <div class="grid-2" style="margin-bottom:14px">
           ${metaItem('Contact', escapeHtml(cl.contact_name || '—'))}
           ${metaItem('Email', escapeHtml(cl.email || '—'))}
@@ -3173,6 +3177,18 @@ async function showClientDetail(clientId) {
           ${metaItem('Website', cl.website ? `<a href="${escapeHtml(cl.website)}" target="_blank" style="color:#FF7A45">${escapeHtml(cl.website)}</a>` : '—')}
           ${metaItem('Status', cl.is_active ? '<span class="status-chip status-active">Active</span>' : '<span class="status-chip status-cancelled">Inactive</span>')}
         </div>
+
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Tax &amp; Address</div>
+        <div class="grid-2" style="margin-bottom:14px">
+          ${metaItem('GSTIN', cl.gstin ? `<span style="font-family:monospace">${escapeHtml(cl.gstin)}</span>` : '—')}
+          ${metaItem('Country', escapeHtml(cl.country || '—'))}
+          ${metaItem('State', escapeHtml(cl.state || '—'))}
+          ${metaItem('State Code', cl.state_code ? `<span style="font-family:monospace">${escapeHtml(cl.state_code)}</span>` : '—')}
+          ${metaItem('City', escapeHtml(cl.city || '—'))}
+          ${metaItem('PIN Code', escapeHtml(cl.pincode || '—'))}
+        </div>
+        ${fullAddress ? `<div style="padding:10px 12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;margin-bottom:14px;font-size:12.5px;color:#cbd5e1;line-height:1.55"><i class="fas fa-location-dot" style="color:#FF7A45;margin-right:6px"></i>${fullAddress}</div>` : ''}
+
 
         <div class="grid-4" style="margin-bottom:16px;gap:8px">
           <div style="padding:10px;background:rgba(255,122,69,.08);border:1px solid rgba(255,122,69,.25);border-radius:8px">
@@ -3775,7 +3791,7 @@ async function renderTeamOverview(el) {
                 ${canEdit ? `<td>
                   <div style="display:flex;gap:4px">
                     <button class="btn btn-xs btn-outline" title="Edit" onclick="openEditTeamMember('${u.id}')"><i class="fas fa-edit"></i></button>
-                    ${isAdmin ? `<button class="btn btn-xs btn-outline" title="Reset password" onclick="openAdminResetPasswordModal('${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')"><i class="fas fa-key"></i></button>` : ''}
+                    ${isAdmin ? `<button class="btn btn-xs btn-outline" title="Reset password" onclick="openResetCredsModal('user','${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')"><i class="fas fa-key"></i></button>` : ''}
                     <button class="btn btn-xs ${u.is_active ? 'btn-outline' : 'btn-primary'}" title="${u.is_active ? 'Deactivate' : 'Activate'}" onclick="toggleTeamMemberStatus('${u.id}',${!u.is_active})"><i class="fas fa-${u.is_active ? 'ban' : 'check'}"></i></button>
                   </div>
                 </td>` : ''}
@@ -3863,6 +3879,110 @@ async function submitAdminResetPassword(userId) {
     toast(res.message || 'Password reset', 'success')
     closeModal()
   } catch (e) { toast(e.message || 'Failed', 'error') }
+}
+
+// Unified password-reset modal for admin. Works for both staff users and
+// clients. Lets the admin auto-generate a strong temporary password,
+// preview/copy it, and submit. After submit we show the password again
+// in a "share with the user" panel — this is the only time it's visible
+// in plaintext, since the backend only stores a SHA-256 hash.
+function openResetCredsModal(kind, entityId, displayName) {
+  const isClient = kind === 'client'
+  const url = isClient ? `/clients/${entityId}/reset-password` : '/auth/admin-reset-password'
+  const payloadKey = isClient ? 'new_password' : 'new_password'
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-key" style="color:#FFCB47;margin-right:6px"></i>Reset password · ${escapeHtml(displayName || '')}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <div style="padding:10px 12px;border-radius:10px;background:rgba(255,203,71,.08);border:1px solid rgba(255,203,71,.25);font-size:12.5px;line-height:1.5;color:#FFD9A0">
+        <i class="fas fa-shield-halved" style="margin-right:6px"></i>
+        Existing passwords can't be displayed — they're stored as a SHA-256 hash. Set a new temporary one below; you'll see the plaintext once after saving so you can share it.
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">New Password *</label>
+        <div style="display:flex;gap:6px">
+          <div style="position:relative;flex:1">
+            <input id="rcr-new" type="text" class="form-input" autocomplete="new-password" placeholder="Auto-generate or type your own"/>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="rcrAutoGen()" title="Generate a strong password"><i class="fas fa-wand-magic-sparkles"></i> Generate</button>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:6px">Minimum 8 characters. The user can change it from their profile after signing in.</div>
+      </div>
+      <div id="rcr-result" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" id="rcr-submit-btn" onclick="rcrSubmit('${kind}','${entityId}')"><i class="fas fa-check"></i> Set Password</button>
+    </div>`, 'modal-md')
+}
+
+function rcrAutoGen() {
+  // Pick from a curated alphabet (no l/1, no O/0) so admins reading it aloud
+  // don't get tripped up. 12 chars + 1 digit + 1 symbol = strong enough.
+  const alpha = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz'
+  const digits = '23456789'
+  const symbols = '@#$%&'
+  const all = alpha + digits + symbols
+  const pick = (s) => s.charAt(Math.floor(Math.random() * s.length))
+  let pwd = ''
+  for (let i = 0; i < 10; i++) pwd += pick(all)
+  pwd += pick(digits) + pick(symbols)
+  // Shuffle so the digit/symbol aren't always at the end.
+  pwd = pwd.split('').sort(() => Math.random() - 0.5).join('')
+  const el = document.getElementById('rcr-new')
+  if (el) el.value = pwd
+}
+
+async function rcrSubmit(kind, entityId) {
+  const newPwd = document.getElementById('rcr-new')?.value || ''
+  if (!newPwd || newPwd.length < 8) { toast('Password must be at least 8 characters', 'error'); return }
+  const btn = document.getElementById('rcr-submit-btn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
+  try {
+    if (kind === 'client') {
+      await API.post(`/clients/${entityId}/reset-password`, { new_password: newPwd })
+    } else {
+      await API.post('/auth/admin-reset-password', { user_id: entityId, new_password: newPwd })
+    }
+    const result = document.getElementById('rcr-result')
+    if (result) {
+      result.style.display = ''
+      result.innerHTML = `
+        <div style="padding:14px;border-radius:10px;background:rgba(88,198,138,.10);border:1px solid rgba(88,198,138,.30);color:#86E0A8">
+          <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="fas fa-check-circle"></i> Password updated. Share this with the user securely:</div>
+          <div style="display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.30);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px 10px">
+            <code id="rcr-shown-pwd" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#FFF1E6;word-break:break-all">${escapeHtml(newPwd)}</code>
+            <button type="button" class="btn btn-sm btn-outline" onclick="rcrCopyShown()"><i class="fas fa-copy"></i> Copy</button>
+          </div>
+          <div style="font-size:11px;color:#9F8678;margin-top:6px">This is shown once — close the modal and it's gone forever.</div>
+        </div>`
+    }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Set Password' }
+    toast('Password updated', 'success')
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Set Password' }
+    toast('Failed: ' + e.message, 'error')
+  }
+}
+
+function rcrCopyShown() {
+  const el = document.getElementById('rcr-shown-pwd')
+  if (!el) return
+  const text = el.textContent || ''
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => toast('Password copied', 'success', 1200),
+      () => toast('Copy failed — select and copy manually', 'error')
+    )
+  } else {
+    const sel = window.getSelection?.()
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    sel?.removeAllRanges?.()
+    sel?.addRange?.(range)
+  }
 }
 
 /* ── BULK CSV IMPORT (users + clients) ────────────────────── */
