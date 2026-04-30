@@ -631,41 +631,124 @@ async function deleteSupportTicket(ticketId) {
 }
 
 // ─── Client portal entry ────────────────────────────────────
+const _cpSupportState = {
+  filterStatus: '',
+  filterPriority: '',
+  filterProject: '',
+  search: '',
+  list: [],
+  projects: [],
+}
+
 async function renderCpSupport(container) {
   container.innerHTML = `<div style="color:#64748b;padding:40px 0;text-align:center"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
+  await Promise.all([cpLoadSupportList(), cpLoadSupportProjects()])
+  cpPaintSupportList(container)
+}
+
+async function cpLoadSupportProjects() {
   try {
-    const res = await ClientAPI.get('/support/tickets')
-    const list = res.tickets || res.data || []
-    container.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <h3 style="margin:0;color:#e2e8f0">My Support Tickets</h3>
-        <button class="btn btn-primary" onclick="openCpSupportCreate()"><i class="fas fa-plus"></i> New Ticket</button>
-      </div>
-      ${list.length === 0 ? `
-        <div style="padding:48px;text-align:center;color:#64748b;border:1px dashed #2A1812;border-radius:12px">
-          <i class="fas fa-life-ring" style="font-size:32px;opacity:.5"></i>
-          <p style="margin-top:12px">You haven't raised any tickets yet.</p>
-        </div>
-      ` : `
-        <div style="display:grid;gap:10px">
-          ${list.map(t => {
-            const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#94a3b8'
-            const sColor = SUPPORT_STATUS_COLORS[t.status] || '#64748b'
-            return `
-              <div onclick="openCpSupportDetail('${_supEsc(t.id)}')" style="padding:14px;border-radius:10px;background:#1F0F08;border:1px solid #2A1812;border-left:3px solid ${pColor};cursor:pointer">
-                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                  <div style="font-size:14px;font-weight:600;color:#e2e8f0">${_supEsc(t.subject)}</div>
-                  <div style="display:flex;gap:6px;flex-wrap:wrap">${_supBadge(_supStatusLabel(t.status), sColor)}${_supBadge(t.priority||'medium', pColor)}</div>
-                </div>
-                <div style="font-size:11px;color:#64748b;margin-top:4px">#${_supEsc(String(t.id).slice(-6))} · ${_supEsc(new Date(t.created_at).toLocaleDateString())} · ${_supEsc(t.assigned_to_name||'Unassigned')}</div>
-              </div>`
-          }).join('')}
-        </div>
-      `}
-    `
-  } catch (e) {
-    container.innerHTML = `<div style="color:#FF5E3A;padding:24px;text-align:center">Failed to load tickets: ${_supEsc(e.message)}</div>`
+    const clientId = _user?.sub || _user?.id
+    if (!clientId) { _cpSupportState.projects = []; return }
+    const res = await ClientAPI.get('/clients/' + clientId)
+    _cpSupportState.projects = res.projects || []
+  } catch {
+    _cpSupportState.projects = []
   }
+}
+
+async function cpLoadSupportList() {
+  try {
+    const params = {}
+    if (_cpSupportState.filterStatus) params.status = _cpSupportState.filterStatus
+    if (_cpSupportState.filterPriority) params.priority = _cpSupportState.filterPriority
+    if (_cpSupportState.filterProject) params.project_id = _cpSupportState.filterProject
+    const res = await ClientAPI.get('/support/tickets', { params })
+    _cpSupportState.list = res.tickets || res.data || []
+  } catch (e) {
+    _cpSupportState.list = []
+    if (typeof toast === 'function') toast('Failed to load tickets: ' + e.message, 'error')
+  }
+}
+
+function cpPaintSupportList(container) {
+  const search = (_cpSupportState.search || '').toLowerCase()
+  const list = _cpSupportState.list.filter((t) => {
+    if (!search) return true
+    const blob = [t.subject, t.description, t.assigned_to_name, t.project_name]
+      .filter(Boolean).join(' ').toLowerCase()
+    return blob.includes(search)
+  })
+
+  container.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <h3 style="margin:0;color:#e2e8f0">My Support Tickets</h3>
+      <button class="btn btn-primary" onclick="openCpSupportCreate()"><i class="fas fa-plus"></i> New Ticket</button>
+    </div>
+
+    <div class="card" style="padding:14px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input class="form-input" id="cp-sup-search" placeholder="Search tickets…" value="${_supEsc(_cpSupportState.search)}" oninput="onCpSupportSearch(this.value)" style="max-width:280px"/>
+      <select class="form-select" id="cp-sup-filter-project" onchange="onCpSupportFilter('project', this.value)" style="max-width:220px">
+        <option value="">All projects</option>
+        ${(_cpSupportState.projects||[]).map(p => `<option value="${_supEsc(p.id)}" ${_cpSupportState.filterProject===p.id?'selected':''}>${_supEsc(p.name||p.code||p.id)}</option>`).join('')}
+      </select>
+      <select class="form-select" id="cp-sup-filter-status" onchange="onCpSupportFilter('status', this.value)" style="max-width:180px">
+        <option value="">All statuses</option>
+        ${SUPPORT_STATUSES.map(s => `<option value="${s}" ${_cpSupportState.filterStatus===s?'selected':''}>${_supStatusLabel(s)}</option>`).join('')}
+      </select>
+      <select class="form-select" id="cp-sup-filter-priority" onchange="onCpSupportFilter('priority', this.value)" style="max-width:180px">
+        <option value="">All priorities</option>
+        ${SUPPORT_PRIORITIES.map(p => `<option value="${p}" ${_cpSupportState.filterPriority===p?'selected':''}>${p}</option>`).join('')}
+      </select>
+      <button class="btn btn-secondary btn-sm" onclick="reloadCpSupportList()"><i class="fas fa-rotate"></i> Refresh</button>
+    </div>
+
+    ${list.length === 0 ? `
+      <div style="padding:48px;text-align:center;color:#64748b;border:1px dashed #2A1812;border-radius:12px">
+        <i class="fas fa-life-ring" style="font-size:32px;opacity:.5"></i>
+        <p style="margin-top:12px">${_cpSupportState.list.length === 0 ? "You haven't raised any tickets yet." : 'No tickets match your filters.'}</p>
+      </div>
+    ` : `
+      <div style="display:grid;gap:10px">
+        ${list.map(t => {
+          const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#94a3b8'
+          const sColor = SUPPORT_STATUS_COLORS[t.status] || '#64748b'
+          const subTitle = [t.project_name].filter(Boolean).join(' · ')
+          return `
+            <div onclick="openCpSupportDetail('${_supEsc(t.id)}')" style="padding:14px;border-radius:10px;background:#1F0F08;border:1px solid #2A1812;border-left:3px solid ${pColor};cursor:pointer">
+              <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:14px;font-weight:600;color:#e2e8f0">${_supEsc(t.subject)}</div>
+                  <div style="font-size:11px;color:#64748b;margin-top:4px">#${_supEsc(String(t.id).slice(-6))}${subTitle ? ` · ${_supEsc(subTitle)}` : ''} · ${_supEsc(new Date(t.created_at).toLocaleDateString())} · ${_supEsc(t.assigned_to_name||'Unassigned')}</div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start">${_supBadge(_supStatusLabel(t.status), sColor)}${_supBadge(t.priority||'medium', pColor)}</div>
+              </div>
+            </div>`
+        }).join('')}
+      </div>
+    `}
+  `
+}
+
+function onCpSupportSearch(value) {
+  _cpSupportState.search = value
+  const main = document.getElementById('cp-main')
+  if (main) cpPaintSupportList(main)
+}
+
+async function onCpSupportFilter(kind, value) {
+  if (kind === 'status') _cpSupportState.filterStatus = value
+  if (kind === 'priority') _cpSupportState.filterPriority = value
+  if (kind === 'project') _cpSupportState.filterProject = value
+  await cpLoadSupportList()
+  const main = document.getElementById('cp-main')
+  if (main) cpPaintSupportList(main)
+}
+
+async function reloadCpSupportList() {
+  await cpLoadSupportList()
+  const main = document.getElementById('cp-main')
+  if (main) cpPaintSupportList(main)
 }
 
 async function openCpSupportCreate() {
