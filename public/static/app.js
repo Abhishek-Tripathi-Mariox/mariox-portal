@@ -56,7 +56,9 @@ const PAGE_PERMISSIONS = {
   'clients-list':    ['admin'],
   'billing-admin':   ['admin'],
   'team-overview':   ['admin', 'pm'],
-  'pm-dashboard':    ['admin', 'pm'],
+  // PM Dashboard is the operational view for PM/PC only — admins land on
+  // their own Super Admin Overview, so we hide pm-dashboard from them.
+  'pm-dashboard':    ['pm', 'pc'],
   'projects-list':   ['admin', 'pm', 'pc', 'developer', 'team'],
   'kanban-board':    ['admin', 'pm', 'pc', 'developer', 'team'],
   'sprints-view':    ['admin', 'pm', 'pc'],
@@ -331,6 +333,15 @@ async function refreshAuthFromServer() {
     if (data?.valid && data?.user) {
       _user = { ..._user, ...data.user, role: String(data.user.role || '').toLowerCase() }
       localStorage.setItem('devportal_user', JSON.stringify(_user))
+      // Catch the case where a session is already open when admin resets the
+      // password — verify will return must_change_password=1 even though we
+      // didn't just log in.
+      if (Number(data.user.must_change_password) === 1 && !window._forcePwdShown) {
+        window._forcePwdShown = true
+        if (typeof showForcePasswordChangeModal === 'function') {
+          setTimeout(() => showForcePasswordChangeModal(), 250)
+        }
+      }
     }
   } catch {
     // offline or transient — keep the cached user
@@ -1065,6 +1076,11 @@ async function doLogin() {
       saveAuth(data.token, { ...data.user, role: data.user.role })
       toast('Welcome back, ' + (data.user.full_name||data.user.name) + '!', 'success')
       Router.navigate(defaultPage())
+      // Server flag: this account is on a system-issued password (just
+      // created, or admin-reset). Force a change before they keep working.
+      if (Number(data.user.must_change_password) === 1) {
+        setTimeout(() => showForcePasswordChangeModal(password), 250)
+      }
       return
     } catch (staffErr) {
       try {
@@ -1078,6 +1094,53 @@ async function doLogin() {
       }
     }
   } catch(e) { toast(e.message, 'error') }
+}
+
+function showForcePasswordChangeModal(currentPasswordHint) {
+  showModal(`
+    <div class="modal-header">
+      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-key" style="color:#FFCB47"></i> Set a new password</h3>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <div style="padding:10px 12px;border-radius:10px;background:rgba(255,203,71,.10);border:1px solid rgba(255,203,71,.35);font-size:12.5px;color:#FFD9A0;line-height:1.5">
+        <i class="fas fa-circle-info"></i> This is your first login (or your admin reset your password). Please choose a new password before you continue.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Current (temporary) password</label>
+        <input id="fpc-current" class="form-input" type="password" autocomplete="current-password" value="${currentPasswordHint ? String(currentPasswordHint).replace(/"/g, '&quot;') : ''}" placeholder="Password you just signed in with"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">New password</label>
+        <input id="fpc-new" class="form-input" type="password" autocomplete="new-password" placeholder="Minimum 8 characters"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm new password</label>
+        <input id="fpc-confirm" class="form-input" type="password" autocomplete="new-password" placeholder="Repeat new password"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" style="width:100%" onclick="submitForcePasswordChange()"><i class="fas fa-lock"></i> Update password</button>
+    </div>`, 'modal-md')
+}
+
+async function submitForcePasswordChange() {
+  const cur = document.getElementById('fpc-current')?.value
+  const next = document.getElementById('fpc-new')?.value
+  const conf = document.getElementById('fpc-confirm')?.value
+  if (!cur) return toast('Enter your current password', 'error')
+  if (!next || next.length < 8) return toast('New password must be at least 8 characters', 'error')
+  if (next !== conf) return toast('New passwords do not match', 'error')
+  if (cur === next) return toast('New password must differ from current', 'error')
+  try {
+    await API.post('/auth/change-password', { current_password: cur, new_password: next })
+    toast('Password updated. Please continue.', 'success')
+    closeModal()
+    if (_user) {
+      _user.must_change_password = 0
+      localStorage.setItem('devportal_user', JSON.stringify(_user))
+    }
+    window._forcePwdShown = false
+  } catch (e) { toast(e.message, 'error') }
 }
 
 async function doClientLogin() {

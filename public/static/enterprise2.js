@@ -871,7 +871,7 @@ async function loadReport2(tab) {
           <div class="card-header"><span style="font-weight:600">In-house Developer Report</span></div>
           <div class="card-body" style="padding:0">
             <table class="data-table">
-              <thead><tr><th>Developer</th><th>Designation</th><th>Capacity</th><th>Logged</th><th>Billable</th><th>Utilization</th><th>Active Projects</th><th>Hourly Cost</th><th>Cost</th></tr></thead>
+              <thead><tr><th>Developer</th><th>Designation</th><th>Capacity</th><th>Logged</th><th>Billable</th><th>Utilization</th><th>Active Projects</th><th>Hourly Cost</th><th>Cost</th><th></th></tr></thead>
               <tbody>${rows.map(r => `<tr>
                 <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.dev.full_name, r.dev.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.dev.full_name}</div><div style="font-size:10px;color:#64748b">${r.dev.email}</div></div></div></td>
                 <td style="font-size:12px;color:#94a3b8">${r.dev.designation || '—'}</td>
@@ -882,7 +882,8 @@ async function loadReport2(tab) {
                 <td>${r.projects}</td>
                 <td style="color:#94a3b8">${r.dev.hourly_cost ? '₹' + fmtNum(r.dev.hourly_cost) : '—'}</td>
                 <td style="color:#58C68A">${r.dev.hourly_cost && r.totalH ? '₹' + fmtNum(r.dev.hourly_cost * r.totalH) : '—'}</td>
-              </tr>`).join('') || '<tr><td colspan="9" style="text-align:center;color:#64748b;padding:24px">No in-house developers</td></tr>'}</tbody>
+                <td><button class="btn btn-xs btn-outline" title="View summary" onclick="openReportSummary('inhouse','${r.dev.id}')"><i class="fas fa-eye"></i></button></td>
+              </tr>`).join('') || '<tr><td colspan="10" style="text-align:center;color:#64748b;padding:24px">No in-house developers</td></tr>'}</tbody>
             </table>
           </div>
         </div>`
@@ -939,8 +940,9 @@ async function loadReport2(tab) {
           <div class="card-header"><span style="font-weight:600">External Teams</span></div>
           <div class="card-body" style="padding:0">
             <table class="data-table">
-              <thead><tr><th>Team</th><th>Lead</th><th>Members</th><th>Projects</th><th>Allocated</th><th>Consumed</th><th>Burn %</th></tr></thead>
-              <tbody>${teamRows.map(r => {
+              <thead><tr><th>Team</th><th>Lead</th><th>Members</th><th>Projects</th><th>Allocated</th><th>Consumed</th><th>Burn %</th><th></th></tr></thead>
+              <tbody>${teamRows.map((r, idx) => {
+                const team = teams[idx]
                 const burn = r.allocated > 0 ? Math.round((r.consumed / r.allocated) * 100) : 0
                 return `<tr>
                   <td style="font-weight:500;color:#e2e8f0">${r.name}</td>
@@ -950,8 +952,9 @@ async function loadReport2(tab) {
                   <td>${fmtNum(r.allocated)}h</td>
                   <td>${fmtNum(r.consumed)}h</td>
                   <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:70px"><div class="progress-fill ${burn>=90?'rose':burn>=70?'amber':'green'}" style="width:${Math.min(burn,100)}%"></div></div><span style="font-size:11px;color:${pctColor(burn)}">${burn}%</span></div></td>
+                  <td><button class="btn btn-xs btn-outline" title="View summary" onclick="openReportSummary('external-team','${team?.id || ''}')"><i class="fas fa-eye"></i></button></td>
                 </tr>`
-              }).join('') || '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:24px">No external teams</td></tr>'}</tbody>
+              }).join('') || '<tr><td colspan="8" style="text-align:center;color:#64748b;padding:24px">No external teams</td></tr>'}</tbody>
             </table>
           </div>
         </div>
@@ -959,14 +962,15 @@ async function loadReport2(tab) {
           <div class="card-header"><span style="font-weight:600">Individual External Members</span></div>
           <div class="card-body" style="padding:0">
             <table class="data-table">
-              <thead><tr><th>Member</th><th>Designation</th><th>Projects</th><th>Allocated</th><th>Logged This Month</th></tr></thead>
+              <thead><tr><th>Member</th><th>Designation</th><th>Projects</th><th>Allocated</th><th>Logged This Month</th><th></th></tr></thead>
               <tbody>${userRows.map(r => `<tr>
                 <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.dev.full_name, r.dev.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.dev.full_name}</div><div style="font-size:10px;color:#64748b">${r.dev.email}</div></div></div></td>
                 <td style="font-size:12px;color:#94a3b8">${r.dev.designation || '—'}</td>
                 <td>${r.projects}</td>
                 <td>${fmtNum(r.allocated)}h</td>
                 <td style="color:#58C68A">${r.totalH.toFixed(1)}h</td>
-              </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:24px">No external members</td></tr>'}</tbody>
+                <td><button class="btn btn-xs btn-outline" title="View summary" onclick="openReportSummary('external-user','${r.dev.id}')"><i class="fas fa-eye"></i></button></td>
+              </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#64748b;padding:24px">No external members</td></tr>'}</tbody>
             </table>
           </div>
         </div>`
@@ -1005,7 +1009,7 @@ async function loadReport2(tab) {
           <div class="card-header"><span style="font-weight:600">${labelTitle}-wise Report</span></div>
           <div class="card-body" style="padding:0">
             <table class="data-table">
-              <thead><tr><th>${labelTitle}</th><th>Projects</th><th>Active</th><th>Allocated Hours</th><th>Consumed</th><th>Burn %</th><th>Hours This Month</th><th>Billable</th><th>Revenue</th></tr></thead>
+              <thead><tr><th>${labelTitle}</th><th>Projects</th><th>Active</th><th>Allocated Hours</th><th>Consumed</th><th>Burn %</th><th>Hours This Month</th><th>Billable</th><th>Revenue</th><th></th></tr></thead>
               <tbody>${rows.map(r => {
                 const active = r.owned.filter(p => p.status === 'active').length
                 const burn = r.totalAlloc > 0 ? Math.round((r.totalConsumed / r.totalAlloc) * 100) : 0
@@ -1019,8 +1023,9 @@ async function loadReport2(tab) {
                   <td>${r.monthlyH.toFixed(1)}h</td>
                   <td style="color:#58C68A">${r.billable.toFixed(1)}h</td>
                   <td style="color:#FFB347;font-weight:600">₹${fmtNum(r.revenue)}</td>
+                  <td><button class="btn btn-xs btn-outline" title="View summary" onclick="openReportSummary('${role}','${r.owner.id}')"><i class="fas fa-eye"></i></button></td>
                 </tr>`
-              }).join('') || `<tr><td colspan="9" style="text-align:center;color:#64748b;padding:24px">No ${labelTitle.toLowerCase()}s</td></tr>`}</tbody>
+              }).join('') || `<tr><td colspan="10" style="text-align:center;color:#64748b;padding:24px">No ${labelTitle.toLowerCase()}s</td></tr>`}</tbody>
             </table>
           </div>
         </div>`
@@ -1028,6 +1033,154 @@ async function loadReport2(tab) {
   } catch(e) {
     panel.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
   }
+}
+
+// ── Report row summary (eye button) ─────────────────────────
+// Pulls people-scoped data from /projects, /timesheets, /users, /project-teams
+// and renders a quick-glance modal so admins don't have to leave the report
+// to see what a particular dev/team/PM/PC is actually working on.
+async function openReportSummary(kind, entityId) {
+  if (!entityId) { toast('No entity to summarize', 'error'); return }
+  showModal(`
+    <div class="modal-header"><h3><i class="fas fa-chart-line" style="color:#FF7A45"></i> Loading summary…</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body" style="padding:30px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`, 'modal-lg')
+
+  try {
+    const monthStart = dayjs().startOf('month').format('YYYY-MM-DD')
+    const today = dayjs().format('YYYY-MM-DD')
+    const [projectsRes, tsRes, usersRes, teamsRes, allocsRes] = await Promise.all([
+      API.get('/projects'),
+      API.get('/timesheets?from=' + monthStart + '&to=' + today),
+      API.get('/users').catch(() => ({ users: [] })),
+      API.get('/project-teams').catch(() => ({ teams: [] })),
+      API.get('/allocations').catch(() => ({ allocations: [] })),
+    ])
+    const projects = projectsRes.projects || projectsRes.data || []
+    const logs = tsRes.timesheets || tsRes.data || []
+    const users = usersRes.users || usersRes.data || []
+    const teams = teamsRes.teams || teamsRes.data || []
+    const allocs = allocsRes.allocations || allocsRes.data || []
+
+    let title = ''
+    let subtitle = ''
+    let avatarColor = '#FF7A45'
+    let avatarName = '?'
+    let ownedProjects = []
+    let myLogs = []
+
+    if (kind === 'inhouse' || kind === 'external-user' || kind === 'pm' || kind === 'pc') {
+      const u = users.find(x => String(x.id) === String(entityId))
+      if (!u) { toast('User not found', 'error'); closeModal(); return }
+      title = u.full_name
+      subtitle = `${u.designation || u.role} · ${u.email}`
+      avatarColor = u.avatar_color || '#FF7A45'
+      avatarName = u.full_name
+      if (kind === 'pm') ownedProjects = projects.filter(p => p.pm_id === u.id)
+      else if (kind === 'pc') ownedProjects = projects.filter(p => p.pc_id === u.id)
+      else if (kind === 'inhouse') {
+        const myAllocProjectIds = new Set(allocs.filter(a => a.user_id === u.id).map(a => String(a.project_id)))
+        ownedProjects = projects.filter(p => myAllocProjectIds.has(String(p.id)))
+      } else if (kind === 'external-user') {
+        ownedProjects = projects.filter(p => p.assignment_type === 'external' && p.external_team_id === u.id)
+      }
+      myLogs = logs.filter(l => l.user_id === u.id)
+    } else if (kind === 'external-team') {
+      const team = teams.find(t => String(t.id) === String(entityId))
+      if (!team) { toast('Team not found', 'error'); closeModal(); return }
+      title = team.name
+      subtitle = `External team · Lead: ${team.lead_name || '—'} · ${team.member_count || 0} members`
+      avatarColor = '#FF7A45'
+      avatarName = team.name
+      ownedProjects = projects.filter(p => p.assignment_type === 'external' && p.external_team_id === team.id && p.external_assignee_type === 'team')
+      const memberIds = new Set((team.members || []).map(m => String(m.user_id || m.id)))
+      myLogs = logs.filter(l => memberIds.has(String(l.user_id)))
+    }
+
+    const totalAlloc = ownedProjects.reduce((s, p) => s + (Number(p.total_allocated_hours) || 0), 0)
+    const totalConsumed = ownedProjects.reduce((s, p) => s + (Number(p.consumed_hours) || 0), 0)
+    const monthlyH = myLogs.reduce((s, l) => s + parseFloat(l.hours_consumed || 0), 0)
+    const billableH = myLogs.filter(l => l.is_billable).reduce((s, l) => s + parseFloat(l.hours_consumed || 0), 0)
+    const revenue = ownedProjects.reduce((s, p) => s + (Number(p.revenue) || 0), 0)
+    const activeProjects = ownedProjects.filter(p => p.status === 'active').length
+    const completedProjects = ownedProjects.filter(p => p.status === 'completed').length
+    const burn = totalAlloc > 0 ? Math.round((totalConsumed / totalAlloc) * 100) : 0
+
+    const kindLabel = {
+      'inhouse': 'In-house Developer',
+      'external-team': 'External Team',
+      'external-user': 'External Member',
+      'pm': 'Project Manager',
+      'pc': 'Product Coordinator',
+    }[kind] || 'Summary'
+
+    const statCard = (label, value, color) => `
+      <div style="padding:12px;background:rgba(${hexToRgb(color)},.08);border:1px solid rgba(${hexToRgb(color)},.25);border-radius:8px">
+        <div style="font-size:10px;color:${color};text-transform:uppercase;letter-spacing:.05em">${label}</div>
+        <div style="font-size:18px;font-weight:700;color:#e2e8f0;margin-top:4px">${value}</div>
+      </div>`
+
+    closeModal()
+    showModal(`
+      <div class="modal-header" style="display:flex;align-items:center;gap:10px">
+        ${avatar(avatarName, avatarColor, 'lg')}
+        <div style="flex:1;min-width:0">
+          <h3 style="margin:0;font-size:16px;color:#e2e8f0">${escapeHtml(title)}</h3>
+          <div style="font-size:11.5px;color:#64748b;margin-top:2px">${escapeHtml(kindLabel)} · ${escapeHtml(subtitle)}</div>
+        </div>
+        <button class="close-btn" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:18px">
+        <div class="grid-4" style="gap:8px;margin-bottom:16px">
+          ${statCard('Projects', ownedProjects.length, '#FF7A45')}
+          ${statCard('Active', activeProjects, '#58C68A')}
+          ${statCard('Completed', completedProjects, '#C56FE6')}
+          ${statCard('Burn %', burn + '%', burn >= 90 ? '#FF5E3A' : burn >= 70 ? '#FFCB47' : '#58C68A')}
+        </div>
+        <div class="grid-4" style="gap:8px;margin-bottom:16px">
+          ${statCard('Allocated', fmtNum(totalAlloc) + 'h', '#FFB347')}
+          ${statCard('Consumed', fmtNum(totalConsumed) + 'h', '#FFCB47')}
+          ${statCard('This Month', monthlyH.toFixed(1) + 'h', '#58C68A')}
+          ${statCard('Billable', billableH.toFixed(1) + 'h', '#86E0A8')}
+        </div>
+        ${revenue > 0 ? `<div style="padding:12px;background:rgba(255,180,71,.08);border:1px solid rgba(255,180,71,.25);border-radius:8px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:11px;color:#FFB347;text-transform:uppercase;letter-spacing:.05em">Linked Revenue</div>
+          <div style="font-size:18px;font-weight:700;color:#FFB347">₹${fmtNum(revenue)}</div>
+        </div>` : ''}
+
+        <div style="font-size:12px;font-weight:600;color:#e2e8f0;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Projects (${ownedProjects.length})</div>
+        ${ownedProjects.length === 0 ? '<div style="padding:14px;text-align:center;color:#64748b;border:1px dashed #2A1812;border-radius:8px;font-size:12px">No projects linked.</div>' : `
+          <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto">
+            ${ownedProjects.map(p => {
+              const pBurn = (Number(p.total_allocated_hours) || 0) > 0 ? Math.round((Number(p.consumed_hours || 0) / Number(p.total_allocated_hours)) * 100) : 0
+              return `<div style="padding:10px 12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;display:flex;align-items:center;gap:10px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13px;color:#e2e8f0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.name)}</div>
+                  <div style="font-size:11px;color:#64748b">${escapeHtml(p.code || '')}${p.client_name ? ' · ' + escapeHtml(p.client_name) : ''} · ${escapeHtml(p.status || '')}</div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                  <div style="font-size:11px;color:#94a3b8">${fmtNum(p.consumed_hours || 0)}/${fmtNum(p.total_allocated_hours || 0)}h</div>
+                  <div style="font-size:11px;color:${pBurn >= 90 ? '#FF5E3A' : pBurn >= 70 ? '#FFCB47' : '#58C68A'};font-weight:600">${pBurn}%</div>
+                </div>
+              </div>`
+            }).join('')}
+          </div>`}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      </div>
+    `, 'modal-lg')
+  } catch (e) {
+    closeModal()
+    toast('Failed to load summary: ' + e.message, 'error')
+  }
+}
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '')
+  const r = parseInt(h.substring(0, 2), 16)
+  const g = parseInt(h.substring(2, 4), 16)
+  const b = parseInt(h.substring(4, 6), 16)
+  return `${r},${g},${b}`
 }
 
 function exportReportCSV() {

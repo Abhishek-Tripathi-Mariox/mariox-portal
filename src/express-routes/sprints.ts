@@ -135,6 +135,14 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
         assignee_kind: t?.assignee_kind === 'team' ? 'team' : 'developer',
         pct_of_milestone: Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : 0,
         status: ['pending', 'in_progress', 'done', 'blocked'].includes(t?.status) ? t.status : 'pending',
+        // Per-task references uploaded with the milestone — kept on the
+        // milestone tasks snapshot so detail views can surface them without
+        // an extra documents query.
+        reference_url: t?.reference_url ? String(t.reference_url).trim().slice(0, 500) : null,
+        attachment_url: t?.attachment_url ? String(t.attachment_url).slice(0, 1000) : null,
+        attachment_name: t?.attachment_name ? String(t.attachment_name).slice(0, 255) : null,
+        attachment_type: t?.attachment_type ? String(t.attachment_type).slice(0, 120) : null,
+        attachment_size: Number(t?.attachment_size) || 0,
         created_at: t?.created_at || now,
       }
     }).filter((t) => t.title.length >= 1)
@@ -205,14 +213,22 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
         if (Array.isArray(m.tasks)) {
           for (const ref of m.tasks) refsByTaskId.set(String(ref.id), ref)
         }
-        const liveSnap = liveTasks.map((t) => ({
-          id: t.id,
-          title: t.title,
-          assignee_id: t.assignee_id || null,
-          assignee_name: usersById.get(String(t.assignee_id))?.full_name || null,
-          pct_of_milestone: Number(t.pct_of_milestone ?? refsByTaskId.get(String(t.id))?.pct_of_milestone) || 0,
-          status: t.status || 'todo',
-        }))
+        const liveSnap = liveTasks.map((t) => {
+          const ref = refsByTaskId.get(String(t.id)) || {}
+          return {
+            id: t.id,
+            title: t.title,
+            assignee_id: t.assignee_id || null,
+            assignee_name: usersById.get(String(t.assignee_id))?.full_name || null,
+            pct_of_milestone: Number(t.pct_of_milestone ?? ref.pct_of_milestone) || 0,
+            status: t.status || 'todo',
+            reference_url: t.reference_url || ref.reference_url || null,
+            attachment_url: t.attachment_url || ref.attachment_url || null,
+            attachment_name: t.attachment_name || ref.attachment_name || null,
+            attachment_type: t.attachment_type || ref.attachment_type || null,
+            attachment_size: Number(t.attachment_size ?? ref.attachment_size) || 0,
+          }
+        })
         return {
           ...m,
           tasks: liveSnap.length ? liveSnap : (Array.isArray(m.tasks) ? m.tasks : []),
@@ -260,6 +276,11 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
           logged_hours: 0,
           due_date: null,
           pct_of_milestone: Number(t.pct_of_milestone) || 0,
+          reference_url: t.reference_url || null,
+          attachment_url: t.attachment_url || null,
+          attachment_name: t.attachment_name || null,
+          attachment_type: t.attachment_type || null,
+          attachment_size: Number(t.attachment_size) || 0,
           labels: null,
           is_client_visible: 1,
           is_billable: Number(is_billable ? 1 : 0),
@@ -277,8 +298,44 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
             assignee_kind: t.assignee_kind || 'developer',
             pct_of_milestone: Number(t.pct_of_milestone) || 0,
             status: 'todo',
+            reference_url: t.reference_url || null,
+            attachment_url: t.attachment_url || null,
+            attachment_name: t.attachment_name || null,
+            attachment_type: t.attachment_type || null,
+            attachment_size: Number(t.attachment_size) || 0,
             created_at: now,
           })
+          // Surface per-task uploaded files in Documents Center, scoped to
+          // the project. Reference URLs (Figma/Drive/etc) stay on the task.
+          if (t.attachment_url) {
+            try {
+              await models.documents.insertOne({
+                id: generateId('doc'),
+                project_id,
+                client_id: null,
+                title: `${title} — ${String(t.attachment_name || t.title).slice(0, 180)}`,
+                description: `Attached to milestone task "${t.title}"`,
+                category: 'other',
+                file_name: String(t.attachment_name || 'file').slice(0, 255),
+                file_url: String(t.attachment_url),
+                file_size: Number(t.attachment_size) || 0,
+                file_type: t.attachment_type || null,
+                version: '1.0',
+                uploaded_by: user?.sub || null,
+                uploaded_by_role: 'staff',
+                visibility: Number(client_visible) ? 'all' : 'internal',
+                is_client_visible: Number(client_visible) ? 1 : 0,
+                tags: null,
+                download_count: 0,
+                source_milestone_id: id,
+                source_task_id: taskId,
+                created_at: now,
+                updated_at: now,
+              })
+            } catch (e) {
+              console.warn('[milestones] task attachment doc failed:', e)
+            }
+          }
         } catch {}
       }
 
@@ -387,8 +444,30 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
 
       const companyName = String(runtimeEnv.COMPANY_NAME || 'Mariox Software')
       const subject = String(body.subject || `Milestone Completed: ${milestone.title}`).trim()
-      const taskRows = (Array.isArray(milestone.tasks) ? milestone.tasks : [])
-        .map((t: any) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${esc(t.title)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-transform:capitalize">${esc(String(t.status || '').replace('_', ' '))}</td><td style="padding:6px 10px;border-bottom:1px solid #eee">${esc(t.assignee_name || '—')}</td></tr>`).join('')
+      // The milestone.tasks snapshot is frozen at creation. For the
+      // completion email we always want the LIVE status from the tasks
+      // collection so a "completed" task doesn't get rendered as "todo".
+      const liveTasks = await models.tasks.find({ milestone_id: id }) as any[]
+      const usersForEmail = await models.users.find({}) as any[]
+      const usersByIdEmail = new Map(usersForEmail.map((u) => [String(u.id), u]))
+      const refsByIdEmail = new Map<string, any>()
+      if (Array.isArray(milestone.tasks)) {
+        for (const ref of milestone.tasks) refsByIdEmail.set(String(ref.id), ref)
+      }
+      const tasksForEmail = liveTasks.length ? liveTasks : (Array.isArray(milestone.tasks) ? milestone.tasks : [])
+      const taskRows = tasksForEmail
+        .map((t: any) => {
+          const ref = refsByIdEmail.get(String(t.id)) || {}
+          const assigneeName = t.assignee_name
+            || usersByIdEmail.get(String(t.assignee_id))?.full_name
+            || ref.assignee_name
+            || '—'
+          return `<tr>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee">${esc(t.title)}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;text-transform:capitalize">${esc(String(t.status || '').replace('_', ' '))}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee">${esc(assigneeName)}</td>
+          </tr>`
+        }).join('')
       const tasksTable = taskRows
         ? `<table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:13px"><thead><tr><th align="left" style="padding:6px 10px;background:#f1f5f9">Task</th><th align="left" style="padding:6px 10px;background:#f1f5f9">Status</th><th align="left" style="padding:6px 10px;background:#f1f5f9">Assignee</th></tr></thead><tbody>${taskRows}</tbody></table>`
         : ''
@@ -443,9 +522,21 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
   router.post('/:id/rate', async (req, res) => {
     try {
       const user = req.user as any
+      // Only the client owning the milestone's project can rate it. Staff
+      // can read but not author the rating.
+      if (String(user?.role || '').toLowerCase() !== 'client') {
+        return res.status(403).json({ error: 'Only the client can rate a milestone' })
+      }
       const id = req.params.id
       const milestone = await models.milestones.findById(id) as any
       if (!milestone) return res.status(404).json({ error: 'Milestone not found' })
+      // Verify the rating client actually owns the project this milestone is on.
+      if (milestone.project_id) {
+        const project = await models.projects.findById(String(milestone.project_id)) as any
+        if (!project || String(project.client_id) !== String(user.sub)) {
+          return res.status(403).json({ error: 'This milestone is not on your project' })
+        }
+      }
       const isComplete = Number(milestone.completion_pct) >= 100 || milestone.status === 'completed'
       if (!isComplete) {
         return res.status(400).json({ error: 'Rating is available only after milestone is 100% complete' })

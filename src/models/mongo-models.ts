@@ -39,6 +39,9 @@ export interface UserRecord extends BaseRecord {
   avatar_color?: string
   remarks?: string | null
   is_active?: number
+  // 1 = the user is on a system-issued password (just created or admin reset)
+  // and must change it on next login. Cleared once they pick their own.
+  must_change_password?: number
 }
 
 export interface ClientRecord extends BaseRecord {
@@ -172,6 +175,9 @@ export class UserModel extends MongoRepository<UserRecord> {
       avatar_color: input.avatar_color || '#6366f1',
       remarks: input.remarks ?? null,
       is_active: input.is_active ?? 1,
+      // New staff accounts always start with a forced password change so
+      // admin-issued temporary passwords can't linger as the real one.
+      must_change_password: input.must_change_password ?? 1,
       created_at: input.created_at || now,
       updated_at: input.updated_at || now,
     }
@@ -180,10 +186,11 @@ export class UserModel extends MongoRepository<UserRecord> {
     return record
   }
 
-  async updatePassword(id: string, passwordHash: string) {
+  async updatePassword(id: string, passwordHash: string, mustChange = false) {
     return this.updateById(id, {
       $set: {
         password_hash: passwordHash,
+        must_change_password: mustChange ? 1 : 0,
         updated_at: new Date().toISOString(),
       },
     })

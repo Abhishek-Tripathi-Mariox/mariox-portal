@@ -74,6 +74,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
           role: normalizeRole(user.role),
           designation: user.designation,
           avatar_color: user.avatar_color,
+          must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
         },
       })
     } catch (error) {
@@ -88,7 +89,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
       if (!token) return res.status(400).json({ valid: false })
       const payload = (await jwtVerify(token, encoder.encode(jwtSecret))).payload as any
       const user = await models.users.findActiveById(payload.sub, {
-        projection: { id: 1, email: 1, full_name: 1, role: 1, designation: 1, avatar_color: 1 },
+        projection: { id: 1, email: 1, full_name: 1, role: 1, designation: 1, avatar_color: 1, must_change_password: 1 },
       }) as any
       if (!user) return res.status(401).json({ valid: false })
       // Cache-busting so a stale 200 can't sit in any proxy/browser cache —
@@ -104,6 +105,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
           role: normalizeRole(user.role),
           designation: user.designation,
           avatar_color: user.avatar_color,
+          must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
         },
       })
     } catch {
@@ -124,7 +126,8 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
       const valid = await verifyPassword(currentPassword, user.password_hash, passwordSalt)
       if (!valid) return res.status(400).json({ error: 'Current password is incorrect' })
       const newHash = await hashPassword(newPassword, passwordSalt)
-      await models.users.updatePassword(userCtx.sub, newHash)
+      // User chose this password themselves — clear the forced-change flag.
+      await models.users.updatePassword(userCtx.sub, newHash, false)
       return res.json({ message: 'Password changed successfully' })
     } catch (error) {
       return respondWithError(res, error, 500)
@@ -174,7 +177,8 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
       const target = await models.users.findById(userId) as any
       if (!target) return res.status(404).json({ error: 'User not found' })
       const newHash = await hashPassword(newPassword, passwordSalt)
-      await models.users.updatePassword(userId, newHash)
+      // Admin-issued password — force a change on next login.
+      await models.users.updatePassword(userId, newHash, true)
       try {
         const admin = await models.users.findById(adminCtx.sub) as any
         await createUserNotification(models, {

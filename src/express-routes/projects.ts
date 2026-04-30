@@ -18,6 +18,7 @@ const PROJECT_STATUSES = ['active', 'on_hold', 'completed', 'archived', 'cancell
 const PROJECT_PRIORITIES = ['critical', 'high', 'medium', 'low'] as const
 const ASSIGNMENT_TYPES = ['in_house', 'external'] as const
 const ASSIGNEE_TYPES = ['team', 'user'] as const
+const DELIVERY_KINDS = ['app', 'web', 'both'] as const
 const PROJECT_CODE_PATTERN = /^[A-Za-z0-9_-]{2,40}$/
 
 function sum(items: any[], pick: (item: any) => number) {
@@ -111,6 +112,35 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
       })
     } catch {
       return res.json({ projects: [], data: { projects: [], data: [] } })
+    }
+  })
+
+  // Suggest the next sequential project code for a given delivery kind so
+  // the frontend can prefill the code field. Examples:
+  //   app  → APP001 (or APP004 if APP001/2/3 already exist)
+  //   web  → WB001
+  //   both → BTH001
+  // IMPORTANT: must be registered BEFORE `/:id` so Express doesn't match
+  // "next-code" as a project id and 404 with "Project not found".
+  router.get('/next-code', async (req, res) => {
+    try {
+      const kind = String(req.query.kind || '').toLowerCase()
+      const prefix = kind === 'app' ? 'APP' : kind === 'web' ? 'WB' : kind === 'both' ? 'BTH' : null
+      if (!prefix) return res.status(400).json({ error: 'kind must be one of: app, web, both' })
+      const projects = await models.projects.find({}) as any[]
+      let max = 0
+      const re = new RegExp('^' + prefix + '(\\d{1,6})$', 'i')
+      for (const p of projects) {
+        const m = re.exec(String(p.code || ''))
+        if (m) {
+          const n = parseInt(m[1], 10)
+          if (Number.isFinite(n) && n > max) max = n
+        }
+      }
+      const next = String(max + 1).padStart(3, '0')
+      return res.json({ code: prefix + next, prefix })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
     }
   })
 
@@ -243,6 +273,9 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         return res.status(400).json({ error: 'Project code may only contain letters, numbers, underscore or hyphen' })
       }
       const projectType = validateEnum(body.project_type || 'development', PROJECT_TYPES, 'Project type')
+      const deliveryKind = body.delivery_kind
+        ? validateEnum(body.delivery_kind, DELIVERY_KINDS, 'Delivery kind')
+        : null
       const status = validateEnum(body.status || 'active', PROJECT_STATUSES, 'Status')
       const priority = validateEnum(body.priority || 'medium', PROJECT_PRIORITIES, 'Priority')
       const startDate = validateISODate(body.start_date, 'Start date')
@@ -275,6 +308,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         client_id: body.client_id || null,
         description: body.description ? validateLength(String(body.description), 0, 5000, 'Description') : null,
         project_type: projectType,
+        delivery_kind: deliveryKind,
         start_date: startDate,
         expected_end_date: endDate,
         priority,
@@ -297,6 +331,40 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         updated_at: now,
       }
       await models.projects.insertOne(project)
+
+      // Persist any attachments uploaded with the project as project documents
+      // so they appear in Documents Center filtered by this project.
+      const attachments = Array.isArray(body.attachments) ? body.attachments : []
+      if (attachments.length) {
+        try {
+          await models.documents.insertMany(attachments
+            .filter((a: any) => a && a.file_url)
+            .slice(0, 20)
+            .map((a: any) => ({
+              id: generateId('doc'),
+              project_id: id,
+              client_id: body.client_id || null,
+              title: `${name} — ${String(a.file_name || 'attachment').slice(0, 180)}`,
+              description: 'Attached on project creation',
+              category: 'other',
+              file_name: String(a.file_name || 'file').slice(0, 255),
+              file_url: String(a.file_url),
+              file_size: Number(a.file_size) || 0,
+              file_type: a.file_type ? String(a.file_type).slice(0, 120) : null,
+              version: '1.0',
+              uploaded_by: (req.user as any)?.sub || null,
+              uploaded_by_role: 'staff',
+              visibility: 'all',
+              is_client_visible: 1,
+              tags: null,
+              download_count: 0,
+              created_at: now,
+              updated_at: now,
+            })))
+        } catch (e) {
+          console.warn('[projects] failed to persist attachments:', e)
+        }
+      }
 
       await models.kanbanPermissions.insertMany([
         { id: generateId('kp'), project_id: id, role: 'admin', can_view: 1, can_create_task: 1, can_edit_any_task: 1, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 1, can_manage_columns: 1, can_comment: 1 },
@@ -324,12 +392,184 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
+  // Bulk import projects from CSV.
+  // Required columns: name, code, start_date.
+  // Optional columns: client_email (resolves to client_id), description,
+  // project_type, status, priority, expected_end_date, total_allocated_hours,
+  // estimated_budget_hours, revenue, billable, assignment_type,
+  // pm_email, pc_email, team_lead_email, external_team_email, external_assignee_type,
+  // remarks.
+  router.get('/import/template.csv', (_req, res) => {
+    const sample = [
+      'name,code,client_email,description,project_type,priority,status,start_date,expected_end_date,total_allocated_hours,estimated_budget_hours,revenue,billable,assignment_type,external_team_email,external_assignee_type,pm_email,pc_email,team_lead_email,remarks',
+      'Acme Website Rebuild,ACME-WEB,anita@acme.com,Full marketing-site redesign,development,high,active,2026-05-01,2026-08-30,400,420,500000,1,in_house,,,priya@example.com,,rahul@example.com,Phase 1 only',
+      'Globex Mobile App,GLOBEX-APP,karthik@globex.com,iOS + Android client app,development,medium,active,2026-06-15,2026-12-31,800,820,1200000,1,external,vendor-team@example.com,user,priya@example.com,,,Vendor delivery',
+    ].join('\n')
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', 'attachment; filename="projects_import_template.csv"')
+    return res.send(sample)
+  })
+
+  router.post('/import', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+    try {
+      const csvText = String(req.body?.csv || '').trim()
+      if (!csvText) return res.status(400).json({ error: 'csv is required' })
+      const rows = parseCsv(csvText)
+      if (rows.length < 2) return res.status(400).json({ error: 'CSV must contain header + data rows' })
+
+      const headers = rows[0].map((h) => String(h || '').trim().toLowerCase())
+      for (const required of ['name', 'code', 'start_date']) {
+        if (!headers.includes(required)) {
+          return res.status(400).json({ error: `Missing required column: ${required}` })
+        }
+      }
+
+      const [allClients, allUsers] = await Promise.all([
+        models.clients.find({}) as Promise<any[]>,
+        models.users.find({}) as Promise<any[]>,
+      ])
+      const clientByEmail = new Map(allClients.map((c) => [String(c.email || '').toLowerCase(), c]))
+      const userByEmail = new Map(allUsers.map((u) => [String(u.email || '').toLowerCase(), u]))
+
+      const created: any[] = []
+      const errors: { row: number; code?: string; error: string }[] = []
+      const now = new Date().toISOString()
+
+      for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i]
+        if (!cells || cells.every((c) => !c?.trim())) continue
+        const record: Record<string, string> = {}
+        headers.forEach((h, idx) => { record[h] = String(cells[idx] || '').trim() })
+
+        try {
+          const name = validateName(record.name, 'Project name', 2, 120)
+          const code = validateLength(record.code, 2, 40, 'Project code')
+          if (!PROJECT_CODE_PATTERN.test(code)) {
+            errors.push({ row: i + 1, code, error: 'Code may only contain letters, numbers, _ or -' })
+            continue
+          }
+          const dup = await models.projects.findOne({ code }) as any
+          if (dup) {
+            errors.push({ row: i + 1, code, error: 'Project code already exists' })
+            continue
+          }
+
+          const projectType = validateEnum(record.project_type || 'development', PROJECT_TYPES, 'Project type')
+          const status = validateEnum(record.status || 'active', PROJECT_STATUSES, 'Status')
+          const priority = validateEnum(record.priority || 'medium', PROJECT_PRIORITIES, 'Priority')
+          const startDate = validateISODate(record.start_date, 'Start date')
+          const endDate = record.expected_end_date
+            ? validateISODate(record.expected_end_date, 'End date')
+            : null
+          if (endDate && startDate > endDate) {
+            errors.push({ row: i + 1, code, error: 'End date must be after start date' })
+            continue
+          }
+
+          const assignmentType = validateEnum(record.assignment_type || 'in_house', ASSIGNMENT_TYPES, 'Assignment type')
+          let externalTeamId: string | null = null
+          let externalAssigneeType: string | null = null
+          if (assignmentType === 'external') {
+            const extEmail = (record.external_team_email || '').toLowerCase()
+            const extUser = extEmail ? userByEmail.get(extEmail) : null
+            if (!extUser) {
+              errors.push({ row: i + 1, code, error: 'external_team_email did not resolve to a user' })
+              continue
+            }
+            externalTeamId = String(extUser.id)
+            externalAssigneeType = validateEnum(record.external_assignee_type || 'team', ASSIGNEE_TYPES, 'External assignee type')
+          }
+
+          const totalAllocated = record.total_allocated_hours
+            ? validatePositiveNumber(record.total_allocated_hours, 'Total allocated hours')
+            : 0
+          const estimatedBudget = record.estimated_budget_hours
+            ? validatePositiveNumber(record.estimated_budget_hours, 'Estimated budget hours')
+            : 0
+          const revenue = record.revenue ? validatePositiveNumber(record.revenue, 'Revenue') : 0
+
+          const clientEmail = (record.client_email || '').toLowerCase()
+          const client = clientEmail ? clientByEmail.get(clientEmail) : null
+          const pm = record.pm_email ? userByEmail.get(record.pm_email.toLowerCase()) : null
+          const pc = record.pc_email ? userByEmail.get(record.pc_email.toLowerCase()) : null
+          const teamLead = record.team_lead_email ? userByEmail.get(record.team_lead_email.toLowerCase()) : null
+
+          const id = generateId('proj')
+          const project = {
+            id,
+            name,
+            code,
+            client_id: client?.id || null,
+            client_name: client?.company_name || null,
+            description: record.description ? String(record.description).slice(0, 5000) : null,
+            project_type: projectType,
+            start_date: startDate,
+            expected_end_date: endDate,
+            priority,
+            status,
+            total_allocated_hours: totalAllocated,
+            estimated_budget_hours: estimatedBudget,
+            team_lead_id: teamLead?.id || null,
+            pm_id: pm?.id || null,
+            pc_id: pc?.id || null,
+            assignment_type: assignmentType,
+            external_team_id: externalTeamId,
+            external_assignee_type: externalAssigneeType,
+            billable: record.billable === '0' || record.billable?.toLowerCase() === 'false' ? 0 : 1,
+            revenue,
+            remarks: record.remarks ? String(record.remarks).slice(0, 2000) : null,
+            consumed_hours: 0,
+            source_bid_id: null,
+            created_at: now,
+            updated_at: now,
+          }
+          await models.projects.insertOne(project)
+
+          await models.kanbanPermissions.insertMany([
+            { id: generateId('kp'), project_id: id, role: 'admin', can_view: 1, can_create_task: 1, can_edit_any_task: 1, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 1, can_manage_columns: 1, can_comment: 1 },
+            { id: generateId('kp'), project_id: id, role: 'pm', can_view: 1, can_create_task: 1, can_edit_any_task: 1, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 1, can_manage_columns: 1, can_comment: 1 },
+            { id: generateId('kp'), project_id: id, role: 'pc', can_view: 1, can_create_task: 1, can_edit_any_task: 1, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 0, can_manage_columns: 0, can_comment: 1 },
+            { id: generateId('kp'), project_id: id, role: 'developer', can_view: 1, can_create_task: 1, can_edit_any_task: 0, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 0, can_manage_columns: 0, can_comment: 1 },
+            { id: generateId('kp'), project_id: id, role: 'team', can_view: 1, can_create_task: 1, can_edit_any_task: 0, can_edit_own_task: 1, can_move_task: 1, can_delete_task: 0, can_manage_columns: 0, can_comment: 1 },
+            { id: generateId('kp'), project_id: id, role: 'client', can_view: 1, can_create_task: 0, can_edit_any_task: 0, can_edit_own_task: 0, can_move_task: 0, can_delete_task: 0, can_manage_columns: 0, can_comment: 1 },
+          ])
+          await models.kanbanColumns.insertMany(DEFAULT_KANBAN_COLUMNS.map((col) => ({
+            id: generateId('kc'),
+            project_id: id,
+            name: col.name,
+            status_key: col.status_key,
+            color: col.color,
+            position: col.position,
+            wip_limit: col.wip_limit,
+            is_done_column: col.is_done_column,
+          })))
+
+          created.push({ id, name, code })
+        } catch (e: any) {
+          errors.push({ row: i + 1, code: record.code, error: e?.message || 'Failed' })
+        }
+      }
+
+      return res.json({
+        created_count: created.length,
+        error_count: errors.length,
+        created,
+        errors,
+      })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
   router.put('/:id', requireRole('admin', 'pm', 'pc'), async (req, res) => {
     try {
       const id = String(req.params.id)
       const body = req.body || {}
       const name = validateName(body.name, 'Project name', 2, 120)
       const projectType = validateEnum(body.project_type || 'development', PROJECT_TYPES, 'Project type')
+      const deliveryKind = body.delivery_kind
+        ? validateEnum(body.delivery_kind, DELIVERY_KINDS, 'Delivery kind')
+        : null
       const status = validateEnum(body.status || 'active', PROJECT_STATUSES, 'Status')
       const priority = validateEnum(body.priority || 'medium', PROJECT_PRIORITIES, 'Priority')
       const startDate = validateISODate(body.start_date, 'Start date')
@@ -358,6 +598,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         client_id: body.client_id || null,
         description: body.description ? validateLength(String(body.description), 0, 5000, 'Description') : null,
         project_type: projectType,
+        delivery_kind: deliveryKind,
         start_date: startDate,
         expected_end_date: endDate,
         priority,
@@ -534,4 +775,28 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
   })
 
   return router
+}
+
+// Tiny CSV parser (handles quoted fields with commas / escaped quotes).
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let cur: string[] = []
+  let field = ''
+  let inQuotes = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') { field += '"'; i++ }
+      else if (ch === '"') { inQuotes = false }
+      else field += ch
+    } else {
+      if (ch === '"') inQuotes = true
+      else if (ch === ',') { cur.push(field); field = '' }
+      else if (ch === '\n') { cur.push(field); rows.push(cur); cur = []; field = '' }
+      else if (ch === '\r') { /* skip */ }
+      else field += ch
+    }
+  }
+  if (field || cur.length) { cur.push(field); rows.push(cur) }
+  return rows
 }

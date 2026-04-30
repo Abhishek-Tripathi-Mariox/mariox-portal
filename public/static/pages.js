@@ -498,11 +498,14 @@ function openProjectModal(id = null) {
     ])
     // Backend aliases /users?role=developer to {developer,team} so we strictly filter
     // here: in-house picker = pure role=developer, external picker = pure role=team
-    // (any designation allowed).
+    // (any designation allowed). Same defensive filter for PM/PC so a stale
+    // alias never lets a non-PM into the PM dropdown.
     const devs = (devsRes.users || devsRes.data || [])
       .filter(u => String(u.role || '').toLowerCase() === 'developer')
-    const pms = pmsRes.users || pmsRes.data || []
-    const pcs = pcsRes.users || pcsRes.data || []
+    const pms = (pmsRes.users || pmsRes.data || [])
+      .filter(u => String(u.role || '').toLowerCase() === 'pm' && Number(u.is_active ?? 1) === 1)
+    const pcs = (pcsRes.users || pcsRes.data || [])
+      .filter(u => String(u.role || '').toLowerCase() === 'pc' && Number(u.is_active ?? 1) === 1)
     const clients = clientsRes.clients || clientsRes.data || []
     const teams = teamsRes.teams || teamsRes.data || []
     const teamUsers = (teamUsersRes.users || teamUsersRes.data || [])
@@ -520,6 +523,11 @@ function openProjectModal(id = null) {
       designation: d.designation || d.user_role || 'Developer',
       hours: d.allocated_hours || 0
     }))
+    window._projFiles = []
+    window._projLinks = []
+    window._projDeliveryKind = proj?.delivery_kind || ''
+    // Stash so saveProject can preserve hours/revenue (form no longer exposes them).
+    window._projEditingRecord = proj || null
     showModal(`
       <div class="modal-header">
         <div style="display:flex;align-items:center;gap:12px">
@@ -552,7 +560,21 @@ function openProjectModal(id = null) {
               <div class="card-body">
                 <div class="grid-2" style="gap:12px">
                   <div class="form-group"><label class="form-label">Project Name *</label><input id="proj-name" class="form-input" value="${esc(proj?.name||'')}" placeholder="e.g. DevTrack Pro"/></div>
-                  <div class="form-group"><label class="form-label">Project Code *</label><input id="proj-code" class="form-input" value="${esc(proj?.code||'')}" placeholder="e.g. DTP-001"/></div>
+                  <div class="form-group">
+                    <label class="form-label">Delivery Kind *</label>
+                    <select id="proj-delivery-kind" class="form-select" onchange="onProjDeliveryKindChange(this.value, ${proj ? 'true' : 'false'})">
+                      <option value="" ${!proj?.delivery_kind ? 'selected' : ''}>— Select —</option>
+                      <option value="app" ${proj?.delivery_kind === 'app' ? 'selected' : ''}>App (APP-prefixed code)</option>
+                      <option value="web" ${proj?.delivery_kind === 'web' ? 'selected' : ''}>Web (WB-prefixed code)</option>
+                      <option value="both" ${proj?.delivery_kind === 'both' ? 'selected' : ''}>Both (BTH-prefixed code)</option>
+                    </select>
+                  </div>
+                  <div class="form-group"><label class="form-label">Project Code *</label>
+                    <div style="display:flex;gap:6px">
+                      <input id="proj-code" class="form-input" value="${esc(proj?.code||'')}" placeholder="Pick a delivery kind to auto-fill" style="flex:1"/>
+                      <button type="button" class="btn btn-outline btn-sm" onclick="autoFillProjectCode()" title="Suggest next code"><i class="fas fa-wand-magic-sparkles"></i></button>
+                    </div>
+                  </div>
                   <div class="form-group"><label class="form-label">Client</label>
                     <select id="proj-client-id" class="form-select">
                       <option value="">— Internal / None —</option>
@@ -638,17 +660,32 @@ function openProjectModal(id = null) {
             </div>
 
             <div class="card">
-              <div class="card-header"><h3>Budget & Notes</h3></div>
+              <div class="card-header"><h3>Description</h3></div>
               <div class="card-body">
-                <div class="grid-4" style="gap:12px;margin-bottom:16px">
-                  <div class="form-group"><label class="form-label">Total Hours</label><input id="proj-hours" class="form-input" type="number" value="${proj?.total_allocated_hours||0}"/></div>
-                  <div class="form-group"><label class="form-label">Budget Hours</label><input id="proj-budget" class="form-input" type="number" value="${proj?.estimated_budget_hours||0}"/></div>
-                  <div class="form-group"><label class="form-label">Revenue (₹)</label><input id="proj-revenue" class="form-input" type="number" value="${proj?.revenue||0}"/></div>
-                  <div class="form-group"><label class="form-label">Billable</label>
-                    <select id="proj-billable" class="form-select"><option value="1" ${proj?.billable?'selected':''}>Yes</option><option value="0" ${!proj?.billable?'selected':''}>No</option></select></div>
+                <div class="form-group">
+                  <label class="form-label">Billable</label>
+                  <select id="proj-billable" class="form-select" style="max-width:200px"><option value="1" ${proj?.billable?'selected':''}>Yes</option><option value="0" ${!proj?.billable?'selected':''}>No</option></select>
                 </div>
                 <div class="form-group"><label class="form-label">Description</label><textarea id="proj-desc" class="form-textarea" rows="2">${esc(proj?.description||'')}</textarea></div>
                 <div class="form-group" style="margin-bottom:0"><label class="form-label">Remarks</label><textarea id="proj-remarks" class="form-textarea" rows="2">${esc(proj?.remarks||'')}</textarea></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header"><h3>Attachments</h3><span style="font-size:12px;color:var(--text-muted)">Files and pasted links appear under this project in Documents (25 MB / file)</span></div>
+              <div class="card-body">
+                <div style="border:1px dashed rgba(255,180,120,.32);border-radius:10px;padding:12px;background:rgba(0,0,0,.18)">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <input id="proj-files-input" type="file" multiple style="display:none" onchange="projAddFiles(this.files);this.value=''"/>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('proj-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
+                    <span style="color:#475569;font-size:11px">— or —</span>
+                    <input id="proj-link-url" class="form-input" type="url" placeholder="Paste a document URL (Drive, Figma, Notion…)" style="flex:1;min-width:220px;padding:6px 10px;font-size:12.5px"/>
+                    <input id="proj-link-name" class="form-input" type="text" placeholder="Label (optional)" style="width:160px;padding:6px 10px;font-size:12.5px"/>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="projAddLink()"><i class="fas fa-link"></i> Add link</button>
+                  </div>
+                  <div style="font-size:11px;color:#64748b;margin-top:6px">Attach SOW, contracts, mockups, or paste shared-doc URLs.</div>
+                  <div id="proj-files-list" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -728,6 +765,101 @@ function setProjectAssignmentType(type) {
   }
 }
 
+// ── Project create modal helpers (delivery kind, code prefix, files) ────
+async function onProjDeliveryKindChange(kind, isEdit) {
+  window._projDeliveryKind = kind || ''
+  if (isEdit) return // don't auto-overwrite an existing code on edit
+  const codeInput = document.getElementById('proj-code')
+  if (!codeInput) return
+  // Only auto-fill when code is empty or still matches a previous prefix —
+  // we don't want to clobber a manually-typed code.
+  const cur = (codeInput.value || '').trim().toUpperCase()
+  const knownPrefixes = ['APP', 'WB', 'BTH']
+  const looksAuto = !cur || knownPrefixes.some(p => cur.startsWith(p))
+  if (!kind || !looksAuto) return
+  await fetchAndFillNextCode(kind)
+}
+
+async function autoFillProjectCode() {
+  const kind = document.getElementById('proj-delivery-kind')?.value
+  if (!kind) return utils.toast('Pick a delivery kind first', 'error')
+  await fetchAndFillNextCode(kind)
+}
+
+async function fetchAndFillNextCode(kind) {
+  const codeInput = document.getElementById('proj-code')
+  if (!codeInput) return
+  try {
+    const res = await API.get('/projects/next-code?kind=' + encodeURIComponent(kind))
+    if (res.code) codeInput.value = res.code
+  } catch (e) {
+    utils.toast('Could not suggest a code: ' + e.message, 'error')
+  }
+}
+
+function projAddFiles(fileList) {
+  if (!window._projFiles) window._projFiles = []
+  for (const f of fileList) window._projFiles.push(f)
+  projRenderFilesList()
+}
+function projRemoveFile(idx) {
+  if (!window._projFiles) return
+  window._projFiles.splice(idx, 1)
+  projRenderFilesList()
+}
+function projAddLink() {
+  const urlEl = document.getElementById('proj-link-url')
+  const nameEl = document.getElementById('proj-link-name')
+  const url = (urlEl?.value || '').trim()
+  if (!url) return utils.toast('Paste a URL first', 'error')
+  if (!/^https?:\/\//i.test(url)) return utils.toast('URL must start with http:// or https://', 'error')
+  if (!window._projLinks) window._projLinks = []
+  let display = (nameEl?.value || '').trim()
+  if (!display) {
+    try { const u = new URL(url); display = u.hostname + (u.pathname && u.pathname !== '/' ? u.pathname : '') }
+    catch { display = url }
+  }
+  window._projLinks.push({ url, name: display })
+  if (urlEl) urlEl.value = ''
+  if (nameEl) nameEl.value = ''
+  projRenderFilesList()
+}
+function projRemoveLink(idx) {
+  if (!window._projLinks) return
+  window._projLinks.splice(idx, 1)
+  projRenderFilesList()
+}
+function projRenderFilesList() {
+  const wrap = document.getElementById('proj-files-list')
+  if (!wrap) return
+  const files = window._projFiles || []
+  const links = window._projLinks || []
+  if (!files.length && !links.length) { wrap.innerHTML = ''; return }
+  const fileRows = files.map((f, i) => {
+    const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
+    const tooBig = f.size > 25 * 1024 * 1024
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+        <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(f.name)}</div>
+          <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#64748b'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="projRemoveFile(${i})"><i class="fas fa-times"></i></button>
+      </div>`
+  })
+  const linkRows = links.map((l, i) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+      <i class="fas fa-link" style="color:#86E0A8;font-size:14px"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(l.name)}</div>
+        <div style="font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:#9F8678">${escapeHtml(l.url)}</a></div>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="projRemoveLink(${i})"><i class="fas fa-times"></i></button>
+    </div>`)
+  wrap.innerHTML = [...fileRows, ...linkRows].join('')
+}
+
 async function saveProject(id) {
   try {
     const clientSelect = document.getElementById('proj-client-id')
@@ -739,24 +871,29 @@ async function saveProject(id) {
     const externalAssigneeType = assignmentType === 'external'
       ? (externalOpt?.dataset?.kind || 'team')
       : null
+    const deliveryKind = document.getElementById('proj-delivery-kind')?.value || null
+    // Total Hours / Revenue were removed from the form — preserve existing
+    // values on edit (from the loaded project record), default to 0 on create.
+    const existing = window._projEditingRecord || null
     const payload = {
       name: document.getElementById('proj-name').value.trim(),
       code: document.getElementById('proj-code').value.trim(),
       client_id: clientSelect?.value || null,
       client_name: clientOpt?.dataset?.name || null,
       project_type: document.getElementById('proj-type').value,
+      delivery_kind: deliveryKind || null,
       start_date: document.getElementById('proj-start').value,
       expected_end_date: document.getElementById('proj-end').value || null,
       status: document.getElementById('proj-status').value,
       assignment_type: assignmentType,
       external_team_id: externalTeamId || null,
       external_assignee_type: externalAssigneeType,
-      total_allocated_hours: parseFloat(document.getElementById('proj-hours').value)||0,
-      estimated_budget_hours: parseFloat(document.getElementById('proj-budget').value)||0,
+      total_allocated_hours: Number(existing?.total_allocated_hours) || 0,
+      estimated_budget_hours: Number(existing?.estimated_budget_hours) || 0,
       pm_id: document.getElementById('proj-pm').value||null,
       pc_id: document.getElementById('proj-pc').value||null,
       team_lead_id: null,
-      revenue: parseFloat(document.getElementById('proj-revenue').value)||0,
+      revenue: Number(existing?.revenue) || 0,
       billable: document.getElementById('proj-billable').value==='1',
       description: document.getElementById('proj-desc').value,
       remarks: document.getElementById('proj-remarks').value,
@@ -767,6 +904,40 @@ async function saveProject(id) {
     if (assignmentType === 'external' && !externalTeamId) {
       utils.toast('Please select an external team or team member', 'error'); return
     }
+
+    // Upload any attached files first so we can pass them along with the
+    // create/update payload. On create the backend persists them as
+    // project documents tied to the new project_id.
+    const pendingFiles = window._projFiles || []
+    for (const f of pendingFiles) {
+      if (f.size > 25 * 1024 * 1024) { utils.toast(`"${f.name}" exceeds the 25 MB limit`, 'error'); return }
+    }
+    const attachments = []
+    for (const f of pendingFiles) {
+      try {
+        const uploaded = await udUploadFileToServer(f)
+        attachments.push({
+          file_name: uploaded.file_name || f.name,
+          file_url: uploaded.url,
+          file_type: uploaded.file_type || f.type || null,
+          file_size: uploaded.file_size || f.size || 0,
+        })
+      } catch (e) {
+        utils.toast(`"${f.name}" upload failed: ${e.message}`, 'error')
+        return
+      }
+    }
+    // Pasted URLs ride along as link-only attachments.
+    for (const l of (window._projLinks || [])) {
+      attachments.push({
+        file_name: l.name,
+        file_url: l.url,
+        file_type: 'link',
+        file_size: 0,
+      })
+    }
+    if (attachments.length) payload.attachments = attachments
+
     let projId = id
     if (id) {
       await API.put(`/projects/${id}`, payload)
@@ -774,6 +945,8 @@ async function saveProject(id) {
       const res = await API.post('/projects', payload)
       projId = res.data?.id || res.id
     }
+    window._projFiles = []
+    window._projLinks = []
 
     if (assignmentType === 'in_house') {
       if (projId && window._projSelectedDevs.length > 0) {

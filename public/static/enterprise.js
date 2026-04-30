@@ -545,7 +545,7 @@ async function renderProjectsList(el) {
       <div><h1 class="page-title">Projects</h1><p class="page-subtitle">${pagination.total} total projects</p></div>
       <div class="page-actions">
         <div class="search-wrap"><i class="fas fa-search"></i><input class="search-bar" placeholder="Search projects…" oninput="filterTable(this.value,'proj-table')"/></div>
-        ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i>New Project</button>`:''}
+        ${['admin','pm'].includes(_user.role)?`<button class="btn btn-secondary" onclick="openImportProjectsModal()"><i class="fas fa-file-csv"></i>Import CSV</button><button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i>New Project</button>`:''}
       </div>
     </div>
     <div class="card">
@@ -1717,9 +1717,9 @@ async function renderMilestonesView(el) {
       API.get('/projects'),
       API.get('/documents').catch(() => ({ documents: [] })),
     ])
-    const milestones = msData.milestones||[]
-    const projects = proj.projects||proj||[]
-    const projMap = {}; projects.forEach(p=>projMap[p.id]=p)
+    const milestones = msData.milestones || []
+    const projects = projects0(proj)
+    const projMap = {}; projects.forEach(p => projMap[p.id] = p)
     const allDocs = docsData.documents || docsData.data || []
     const docsByMilestone = new Map()
     for (const d of allDocs) {
@@ -1730,64 +1730,107 @@ async function renderMilestonesView(el) {
     }
     window._milestonesCache = milestones
     window._projectsCache = projMap
-    const pagination = paginateClient(milestones, _milestonesViewPage, _milestonesPageLimit)
-    _milestonesViewPage = pagination.page
-    const canEdit = ['admin','pm'].includes(_user.role)
+    const canEdit = ['admin', 'pm'].includes(_user.role)
+
+    // Group milestones by project. Project columns are sorted by latest
+    // activity so the busiest projects bubble up first; empty projects still
+    // appear so the user can drop a fresh milestone in.
+    const byProject = new Map()
+    for (const p of projects) byProject.set(String(p.id), [])
+    for (const m of milestones) {
+      const k = String(m.project_id || '__unassigned__')
+      if (!byProject.has(k)) byProject.set(k, [])
+      byProject.get(k).push(m)
+    }
+    const projectColumns = projects.map(p => ({
+      project: p,
+      milestones: (byProject.get(String(p.id)) || []).slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))),
+    })).sort((a, b) => {
+      const aLast = a.milestones[0]?.created_at || a.project.created_at || ''
+      const bLast = b.milestones[0]?.created_at || b.project.created_at || ''
+      return String(bLast).localeCompare(String(aLast))
+    })
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">${pagination.total} deliverables and billing milestones</p></div>
+      <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">${milestones.length} deliverables across ${projects.length} project${projects.length === 1 ? '' : 's'}</p></div>
       <div class="page-actions">
-        ${canEdit?`<button class="btn btn-primary" onclick="showCreateMilestoneModal()"><i class="fas fa-plus"></i>New Milestone</button>`:''}
+        ${canEdit ? `<button class="btn btn-primary" onclick="showCreateMilestoneModal()"><i class="fas fa-plus"></i>New Milestone</button>` : ''}
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:12px">
-      ${pagination.items.map(m=>{
-        const overdue = new Date(m.due_date)<new Date() && m.status!=='completed'
-        const tasks = Array.isArray(m.tasks) ? m.tasks : []
-        const doneCount = tasks.filter(t => t.status === 'done').length
-        // Show 100% on completed milestones even when older data still has 0,
-        // and always derive from tasks+pct when present so the bar matches reality.
-        const derivedPct = tasks.length
-          ? tasks.filter(t => t.status === 'done').reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
-          : Number(m.completion_pct) || 0
-        const pct = m.status === 'completed' ? 100 : Math.min(100, Math.round(derivedPct || 0))
-        const ratingOverall = m.rating?.overall || 0
-        const fileCount = (docsByMilestone.get(String(m.id)) || []).length
-        return `
-        <div class="card" style="padding:16px 18px;cursor:pointer" onclick="showMilestoneDetailsModal('${m.id}')">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:10px">
-            <div style="flex:1;min-width:0">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-                <span style="font-size:15px;font-weight:600;color:#e2e8f0">${escapeHtml(m.title)}</span>
-                ${statusBadge(m.status)}
-                ${overdue?'<span class="badge badge-blocked"><i class="fas fa-exclamation-triangle"></i> Overdue</span>':''}
-                ${ratingOverall?`<span style="font-size:11px;background:rgba(255,203,71,.15);color:#FFCB47;padding:2px 8px;border-radius:10px;font-weight:600"><i class="fas fa-star"></i> ${ratingOverall.toFixed(1)}/10</span>`:''}
+
+    ${projectColumns.length === 0 ? '<div class="empty-state"><i class="fas fa-flag"></i><p>No projects available</p></div>' : `
+    <div style="overflow-x:auto;padding-bottom:16px;-webkit-overflow-scrolling:touch">
+      <div style="display:flex;gap:14px;min-width:max-content;align-items:flex-start">
+        ${projectColumns.map(col => {
+          const p = col.project
+          const ms = col.milestones
+          const totalBillable = ms.filter(m => m.is_billable).reduce((s, m) => s + (Number(m.invoice_amount) || 0), 0)
+          const completedCount = ms.filter(m => m.status === 'completed' || Number(m.completion_pct) >= 100).length
+          return `
+          <div style="width:320px;flex-shrink:0;background:rgba(15,23,42,.4);border:1px solid rgba(148,163,184,.15);border-radius:10px;padding:12px">
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(148,163,184,.15)">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.name)}</div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px">${escapeHtml(p.code || '')}${p.client_name ? ' · ' + escapeHtml(p.client_name) : ''}</div>
+                <div style="font-size:10px;color:#94a3b8;margin-top:6px">${ms.length} milestone${ms.length === 1 ? '' : 's'}${completedCount ? ` · ${completedCount} done` : ''}${totalBillable ? ` · ₹${fmtNum(totalBillable)}` : ''}</div>
               </div>
-              <div style="font-size:12px;color:#94a3b8">${escapeHtml(projMap[m.project_id]?.name||'—')} • Due: <span style="color:${overdue?'#FF5E3A':'#cbd5e1'}">${fmtDate(m.due_date)}</span></div>
-              ${m.description?`<div style="font-size:12px;color:#cbd5e1;margin-top:8px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHtml(m.description)}</div>`:''}
+              <span class="badge ${p.status === 'active' ? 'badge-inprogress' : p.status === 'completed' ? 'badge-done' : 'badge-todo'}" style="font-size:9px;flex-shrink:0">${escapeHtml(p.status || '')}</span>
             </div>
-            <div style="text-align:right;flex-shrink:0">
-              <div style="font-size:24px;font-weight:700;color:${pct>=100?'#58C68A':pct>=60?'#FFCB47':'#FFB347'};line-height:1">${pct}<span style="font-size:14px">%</span></div>
-              <div style="font-size:10px;color:#64748b;letter-spacing:.5px">complete</div>
+
+            <div style="display:flex;flex-direction:column;gap:8px;max-height:560px;overflow-y:auto">
+              ${ms.length === 0 ? '<div style="padding:14px;text-align:center;color:#475569;font-size:12px;border:1px dashed rgba(148,163,184,.18);border-radius:8px">No milestones yet</div>' :
+              ms.map(m => {
+                const overdue = new Date(m.due_date) < new Date() && m.status !== 'completed'
+                const tasks = Array.isArray(m.tasks) ? m.tasks : []
+                const doneCount = tasks.filter(t => t.status === 'done').length
+                const derivedPct = tasks.length
+                  ? tasks.filter(t => t.status === 'done').reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
+                  : Number(m.completion_pct) || 0
+                const pct = m.status === 'completed' ? 100 : Math.min(100, Math.round(derivedPct || 0))
+                const ratingOverall = m.rating?.overall || 0
+                const fileCount = (docsByMilestone.get(String(m.id)) || []).length
+                return `
+                <div class="card" style="padding:12px 14px;cursor:pointer" onclick="showMilestoneDetailsModal('${m.id}')">
+                  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:13px;font-weight:600;color:#e2e8f0;line-height:1.3">${escapeHtml(m.title)}</div>
+                      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
+                        ${statusBadge(m.status)}
+                        ${overdue ? '<span class="badge badge-blocked" style="font-size:9px"><i class="fas fa-exclamation-triangle"></i> Overdue</span>' : ''}
+                        ${ratingOverall ? `<span style="font-size:9px;background:rgba(255,203,71,.15);color:#FFCB47;padding:1px 6px;border-radius:8px;font-weight:600"><i class="fas fa-star"></i> ${ratingOverall.toFixed(1)}</span>` : ''}
+                      </div>
+                    </div>
+                    <div style="text-align:right;flex-shrink:0">
+                      <div style="font-size:18px;font-weight:700;color:${pct >= 100 ? '#58C68A' : pct >= 60 ? '#FFCB47' : '#FFB347'};line-height:1">${pct}<span style="font-size:10px">%</span></div>
+                    </div>
+                  </div>
+                  ${m.description ? `<div style="font-size:11px;color:#94a3b8;line-height:1.4;margin:6px 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHtml(m.description)}</div>` : ''}
+                  <div class="progress-bar" style="margin-top:6px"><div class="progress-fill ${pct >= 100 ? 'green' : pct >= 70 ? 'blue' : 'amber'}" style="width:${pct}%"></div></div>
+                  <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:center;font-size:10.5px;color:#94a3b8">
+                    <span><i class="fas fa-calendar" style="color:${overdue ? '#FF5E3A' : '#FFB347'};margin-right:3px"></i>${fmtDate(m.due_date)}</span>
+                    <span><i class="fas fa-tasks" style="color:#FF7A45;margin-right:3px"></i>${doneCount}/${tasks.length}</span>
+                    ${fileCount ? `<span><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:3px"></i>${fileCount}</span>` : ''}
+                    ${m.is_billable ? `<span style="color:#58C68A;font-weight:600;margin-left:auto"><i class="fas fa-indian-rupee-sign" style="margin-right:2px"></i>${fmtNum(m.invoice_amount)}</span>` : ''}
+                  </div>
+                </div>`
+              }).join('')}
             </div>
-          </div>
-          <div class="progress-bar"><div class="progress-fill ${pct>=100?'green':pct>=70?'blue':'amber'}" style="width:${pct}%"></div></div>
-          <div style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap;align-items:center">
-            <span style="font-size:11px;color:#94a3b8"><i class="fas fa-tasks" style="color:#FF7A45;margin-right:4px"></i>${doneCount}/${tasks.length} task${tasks.length===1?'':'s'}</span>
-            ${fileCount?`<span style="font-size:11px;color:#94a3b8"><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:4px"></i>${fileCount} file${fileCount===1?'':'s'}</span>`:''}
-            ${m.is_billable?`<span style="font-size:11px;color:#58C68A;font-weight:600"><i class="fas fa-indian-rupee-sign" style="margin-right:2px"></i>${fmtNum(m.invoice_amount)}</span>`:'<span style="font-size:11px;color:#64748b">Non-billable</span>'}
-            <div style="margin-left:auto;display:flex;gap:6px" onclick="event.stopPropagation()">
-              <button class="btn btn-sm btn-outline" onclick="showMilestoneDetailsModal('${m.id}')"><i class="fas fa-eye"></i> View All</button>
-              ${pct>=100 && canEdit ? `<button class="btn btn-sm" style="background:rgba(255,122,69,.15);color:#FF7A45;border:1px solid rgba(255,122,69,.3)" onclick="showMilestoneEmailModal('${m.id}')"><i class="fas fa-envelope"></i> ${m.email_sent_at?'Re-send':'Email Client'}</button>`:''}
-            </div>
-          </div>
-        </div>`
-      }).join('') || '<div class="empty-state"><i class="fas fa-flag"></i><p>No milestones defined</p></div>'}
-    </div>
-    ${renderPager(pagination, 'goMilestonesPage', 'goMilestonesPage', 'milestones', 'milestones-view')}
+
+            ${canEdit ? `
+            <button class="btn btn-sm btn-outline" style="width:100%;margin-top:10px;border-style:dashed" onclick="showCreateMilestoneModal('${p.id}')">
+              <i class="fas fa-plus"></i> New milestone for this project
+            </button>` : ''}
+          </div>`
+        }).join('')}
+      </div>
+    </div>`}
     `
-  } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
+  } catch (e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
+}
+
+function projects0(resp) {
+  return resp.projects || resp.data || resp || []
 }
 
 async function updateMilestonePct(id, pct) {
@@ -1804,7 +1847,7 @@ async function updateMilestonePct(id, pct) {
 }
 
 /* ── CREATE MILESTONE (with embedded tasks) ──────────────── */
-async function showCreateMilestoneModal() {
+async function showCreateMilestoneModal(prefilledProjectId) {
   try {
     const [proj, users] = await Promise.all([API.get('/projects'), API.get('/users')])
     const projects = proj.projects||proj||[]
@@ -1814,10 +1857,12 @@ async function showCreateMilestoneModal() {
     window._cmsTasks = []
     window._cmsAssigneeOptions = []
     window._cmsFiles = []
+    window._cmsLinks = []
+    const initialProject = prefilledProjectId && projects.find(p => String(p.id) === String(prefilledProjectId)) ? String(prefilledProjectId) : ''
     showModal(`
     <div class="modal-header"><h3><i class="fas fa-flag" style="color:#FF7A45"></i> Create Milestone</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
-      <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="cms-project" onchange="cmsOnProjectChange(this.value)"><option value="">Select a project…</option>${projects.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select>
+      <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="cms-project" onchange="cmsOnProjectChange(this.value)"><option value="">Select a project…</option>${projects.map(p=>`<option value="${p.id}" ${p.id===initialProject?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}</select>
         <div id="cms-assign-info" style="font-size:11px;color:#64748b;margin-top:6px"></div>
       </div>
       <div class="form-group"><label class="form-label">Milestone Title *</label><input class="form-input" id="cms-title" placeholder="Phase 1 – Delivery"/></div>
@@ -1833,9 +1878,15 @@ async function showCreateMilestoneModal() {
       <div style="border-top:1px solid rgba(148,163,184,.15);padding-top:14px;margin-bottom:14px">
         <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:6px"></i>Attachments (optional)</div>
         <div style="border:1px dashed rgba(255,180,120,.32);border-radius:10px;padding:10px;background:rgba(0,0,0,.18)">
-          <input id="cms-files-input" type="file" multiple style="display:none" onchange="cmsAddFiles(this.files);this.value=''"/>
-          <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('cms-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
-          <span style="font-size:11px;color:#64748b;margin-left:8px">Files will appear under this project in the Documents section. 25 MB / file.</span>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <input id="cms-files-input" type="file" multiple style="display:none" onchange="cmsAddFiles(this.files);this.value=''"/>
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('cms-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
+            <span style="color:#475569;font-size:11px">— or —</span>
+            <input id="cms-link-url" class="form-input" type="url" placeholder="Paste a document URL (Drive, Figma, Notion…)" style="flex:1;min-width:220px;padding:6px 10px;font-size:12.5px"/>
+            <input id="cms-link-name" class="form-input" type="text" placeholder="Label (optional)" style="width:160px;padding:6px 10px;font-size:12.5px"/>
+            <button type="button" class="btn btn-outline btn-sm" onclick="cmsAddLink()"><i class="fas fa-link"></i> Add link</button>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:6px">Both files and pasted links will appear under this project in the Documents section. 25 MB / file.</div>
           <div id="cms-files-list" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
         </div>
       </div>
@@ -1853,6 +1904,7 @@ async function showCreateMilestoneModal() {
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="doCreateMilestone()"><i class="fas fa-flag"></i>Create Milestone</button>
     </div>`, 'modal-lg')
+    if (initialProject) cmsOnProjectChange(initialProject)
   } catch(e) { toast(e.message, 'error') }
 }
 
@@ -1914,7 +1966,21 @@ function cmsAddTaskRow() {
   const tasks = window._cmsTasks || (window._cmsTasks = [])
   const opts = window._cmsAssigneeOptions || []
   const defaultAssignee = window._cmsIsExternal && opts[0] ? opts[0].id : ''
-  tasks.push({ id: 'mt_'+Date.now().toString(36)+'_'+tasks.length, title:'', assignee_id:defaultAssignee, pct_of_milestone:0, status:'pending' })
+  tasks.push({
+    id: 'mt_'+Date.now().toString(36)+'_'+tasks.length,
+    title: '',
+    assignee_id: defaultAssignee,
+    pct_of_milestone: 0,
+    status: 'pending',
+    // Per-task references — separate from the milestone-level attachments.
+    // file_url is set after upload completes.
+    file: null,        // pending File object before upload
+    file_url: null,    // populated post-upload
+    file_name: null,
+    file_type: null,
+    file_size: 0,
+    reference_url: '', // free-form URL the user can paste
+  })
   cmsRenderTasks()
 }
 
@@ -1946,12 +2012,32 @@ function cmsRenderTasks() {
           <option value="">${opts.length ? 'Select developer' : 'No developers allocated'}</option>
           ${opts.map(o => `<option value="${o.id}" ${t.assignee_id===o.id?'selected':''}>${escapeHtml(o.name)} (${escapeHtml(o.role)})</option>`).join('')}
         </select>`
+    const fileLabel = t.file
+      ? `${escapeHtml(t.file.name)} (${(t.file.size/(1024*1024)).toFixed(2)} MB)`
+      : (t.file_name ? escapeHtml(t.file_name) : 'No file attached')
     return `
-    <div style="display:grid;grid-template-columns:2.2fr 1.5fr 1fr auto;gap:8px;align-items:center;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;padding:10px">
-      <input class="form-input" placeholder="Task title…" value="${escapeHtml(t.title)}" oninput="cmsUpdateTask(${i},'title',this.value)"/>
-      ${assigneeCell}
-      <div style="display:flex;align-items:center;gap:4px"><input class="form-input" type="number" min="0" max="100" step="1" value="${t.pct_of_milestone||0}" onchange="cmsUpdatePct(${i},this.value)" placeholder="0" title="% of milestone this task represents"/><span style="font-size:12px;color:#94a3b8">%</span></div>
-      <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsRemoveTaskRow(${i})" title="Remove"><i class="fas fa-trash"></i></button>
+    <div style="background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:grid;grid-template-columns:2.2fr 1.5fr 1fr auto;gap:8px;align-items:center">
+        <input class="form-input" placeholder="Task title…" value="${escapeHtml(t.title)}" oninput="cmsUpdateTask(${i},'title',this.value)"/>
+        ${assigneeCell}
+        <div style="display:flex;align-items:center;gap:4px"><input class="form-input" type="number" min="0" max="100" step="1" value="${t.pct_of_milestone||0}" onchange="cmsUpdatePct(${i},this.value)" placeholder="0" title="% of milestone this task represents"/><span style="font-size:12px;color:#94a3b8">%</span></div>
+        <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsRemoveTaskRow(${i})" title="Remove"><i class="fas fa-trash"></i></button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center">
+        <div>
+          <label style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Reference URL</label>
+          <input class="form-input" type="url" placeholder="https://figma.com/file/…" value="${escapeHtml(t.reference_url || '')}" oninput="cmsUpdateTask(${i},'reference_url',this.value)" style="margin-top:3px"/>
+        </div>
+        <div>
+          <label style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Attach file</label>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+            <input id="cms-task-file-${i}" type="file" style="display:none" onchange="cmsTaskAttachFile(${i}, this.files && this.files[0]);this.value=''"/>
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('cms-task-file-${i}').click()"><i class="fas fa-paperclip"></i> ${t.file || t.file_name ? 'Change' : 'Choose'}</button>
+            <span style="font-size:11px;color:${t.file || t.file_name ? '#cbd5e1' : '#64748b'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${fileLabel}</span>
+            ${t.file || t.file_name ? `<button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsTaskClearFile(${i})" title="Remove file"><i class="fas fa-times"></i></button>` : ''}
+          </div>
+        </div>
+      </div>
     </div>`
   }).join('')
   const total = tasks.reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
@@ -1970,7 +2056,33 @@ function cmsUpdatePct(idx, value) {
   cmsRenderTasks()
 }
 
+function cmsTaskAttachFile(idx, file) {
+  const tasks = window._cmsTasks || []
+  if (!tasks[idx] || !file) return
+  if (file.size > 25 * 1024 * 1024) { toast(`"${file.name}" exceeds the 25 MB limit`, 'error'); return }
+  tasks[idx].file = file
+  tasks[idx].file_name = file.name
+  tasks[idx].file_type = file.type || null
+  tasks[idx].file_size = file.size
+  // Reset previously-uploaded URL — it'll be re-issued at submit time.
+  tasks[idx].file_url = null
+  cmsRenderTasks()
+}
+
+function cmsTaskClearFile(idx) {
+  const tasks = window._cmsTasks || []
+  if (!tasks[idx]) return
+  tasks[idx].file = null
+  tasks[idx].file_url = null
+  tasks[idx].file_name = null
+  tasks[idx].file_type = null
+  tasks[idx].file_size = 0
+  cmsRenderTasks()
+}
+
 // ── Milestone attachment file picker ──────────────────────
+// `_cmsFiles` holds raw File objects; `_cmsLinks` holds pasted URLs as
+// { url, name }. Both are merged into `attachments[]` at submit time.
 function cmsAddFiles(fileList) {
   if (!window._cmsFiles) window._cmsFiles = []
   for (const f of fileList) window._cmsFiles.push(f)
@@ -1981,12 +2093,36 @@ function cmsRemoveFile(idx) {
   window._cmsFiles.splice(idx, 1)
   cmsRenderFilesList()
 }
+function cmsAddLink() {
+  const urlEl = document.getElementById('cms-link-url')
+  const nameEl = document.getElementById('cms-link-name')
+  const url = (urlEl?.value || '').trim()
+  if (!url) return toast('Paste a URL first', 'error')
+  if (!/^https?:\/\//i.test(url)) return toast('URL must start with http:// or https://', 'error')
+  if (!window._cmsLinks) window._cmsLinks = []
+  window._cmsLinks.push({ url, name: (nameEl?.value || '').trim() || urlForDisplayName(url) })
+  if (urlEl) urlEl.value = ''
+  if (nameEl) nameEl.value = ''
+  cmsRenderFilesList()
+}
+function cmsRemoveLink(idx) {
+  if (!window._cmsLinks) return
+  window._cmsLinks.splice(idx, 1)
+  cmsRenderFilesList()
+}
+function urlForDisplayName(url) {
+  try {
+    const u = new URL(url)
+    return u.hostname + (u.pathname && u.pathname !== '/' ? u.pathname : '')
+  } catch { return url }
+}
 function cmsRenderFilesList() {
   const wrap = document.getElementById('cms-files-list')
   if (!wrap) return
   const files = window._cmsFiles || []
-  if (!files.length) { wrap.innerHTML = ''; return }
-  wrap.innerHTML = files.map((f, i) => {
+  const links = window._cmsLinks || []
+  if (!files.length && !links.length) { wrap.innerHTML = ''; return }
+  const fileRows = files.map((f, i) => {
     const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
     const tooBig = f.size > 25 * 1024 * 1024
     return `
@@ -1998,7 +2134,17 @@ function cmsRenderFilesList() {
         </div>
         <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsRemoveFile(${i})"><i class="fas fa-times"></i></button>
       </div>`
-  }).join('')
+  })
+  const linkRows = links.map((l, i) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+      <i class="fas fa-link" style="color:#86E0A8;font-size:14px"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(l.name)}</div>
+        <div style="font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:#9F8678">${escapeHtml(l.url)}</a></div>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsRemoveLink(${i})"><i class="fas fa-times"></i></button>
+    </div>`)
+  wrap.innerHTML = [...fileRows, ...linkRows].join('')
 }
 
 async function doCreateMilestone() {
@@ -2008,20 +2154,9 @@ async function doCreateMilestone() {
   if (!projectId || !title || !due) return toast('Fill required fields (Project, Title, Due Date)','error')
   const opts = window._cmsAssigneeOptions || []
   const optsById = new Map(opts.map(o => [o.id, o]))
-  const tasks = (window._cmsTasks || []).filter(t => t.title && t.title.trim()).map(t => {
-    const a = t.assignee_id ? optsById.get(t.assignee_id) : null
-    return {
-      id: t.id,
-      title: t.title.trim(),
-      assignee_id: t.assignee_id || null,
-      assignee_name: a ? a.name : null,
-      assignee_kind: a ? a.kind : 'developer',
-      pct_of_milestone: Math.max(0, Math.min(100, Math.round(Number(t.pct_of_milestone) || 0))),
-      status: t.status || 'pending',
-    }
-  })
-  if (tasks.length) {
-    const totalPct = tasks.reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
+  const taskInputs = (window._cmsTasks || []).filter(t => t.title && t.title.trim())
+  if (taskInputs.length) {
+    const totalPct = taskInputs.reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
     if (totalPct !== 100) {
       return toast(`Task percentages must total 100% (currently ${totalPct}%)`, 'error')
     }
@@ -2029,6 +2164,50 @@ async function doCreateMilestone() {
   const pendingFiles = window._cmsFiles || []
   for (const f of pendingFiles) {
     if (f.size > 25 * 1024 * 1024) return toast(`"${f.name}" exceeds the 25 MB limit`, 'error')
+  }
+
+  // Upload any per-task file BEFORE we materialize the task array — every
+  // attached file becomes a project document linked back to the task via
+  // task_id, plus a `task_attachment_url` we stash on the task itself.
+  const tasks = []
+  for (const t of taskInputs) {
+    const a = t.assignee_id ? optsById.get(t.assignee_id) : null
+    let fileUrl = t.file_url || null
+    let fileName = t.file_name || null
+    let fileType = t.file_type || null
+    let fileSize = Number(t.file_size) || 0
+    if (t.file && !fileUrl) {
+      try {
+        const uploaded = await udUploadFileToServer(t.file)
+        fileUrl = uploaded.url
+        fileName = uploaded.file_name || t.file.name
+        fileType = uploaded.file_type || t.file.type || null
+        fileSize = uploaded.file_size || t.file.size || 0
+        // Cache so re-render doesn't re-upload.
+        t.file_url = fileUrl
+        t.file_name = fileName
+        t.file_type = fileType
+        t.file_size = fileSize
+        t.file = null
+      } catch (e) {
+        toast(`Task "${t.title}" file upload failed: ${e.message}`, 'error')
+        return
+      }
+    }
+    tasks.push({
+      id: t.id,
+      title: t.title.trim(),
+      assignee_id: t.assignee_id || null,
+      assignee_name: a ? a.name : null,
+      assignee_kind: a ? a.kind : 'developer',
+      pct_of_milestone: Math.max(0, Math.min(100, Math.round(Number(t.pct_of_milestone) || 0))),
+      status: t.status || 'pending',
+      reference_url: t.reference_url ? String(t.reference_url).trim() : null,
+      attachment_url: fileUrl,
+      attachment_name: fileName,
+      attachment_type: fileType,
+      attachment_size: fileSize,
+    })
   }
 
   const body = {
@@ -2057,12 +2236,23 @@ async function doCreateMilestone() {
         return
       }
     }
+    // Pasted URLs ride along as link-only attachments — file_size=0 and a
+    // `link` flag so the backend can keep them out of S3 quota math.
+    for (const l of (window._cmsLinks || [])) {
+      attachments.push({
+        file_name: l.name,
+        file_url: l.url,
+        file_type: 'link',
+        file_size: 0,
+      })
+    }
     body.attachments = attachments
     await API.post('/milestones', body)
     toast(attachments.length
-      ? `Milestone created — ${attachments.length} file${attachments.length === 1 ? '' : 's'} added to Documents`
+      ? `Milestone created — ${attachments.length} attachment${attachments.length === 1 ? '' : 's'} added to Documents`
       : 'Milestone created!', 'success')
     window._cmsFiles = []
+    window._cmsLinks = []
     closeModal()
     const el = document.getElementById('page-milestones-view'); if(el){el.dataset.loaded='';loadPage('milestones-view',el)}
     const docEl = document.getElementById('page-documents-center'); if (docEl) { docEl.dataset.loaded = '' }
@@ -2124,15 +2314,25 @@ async function showMilestoneDetailsModal(id) {
 
       <div style="margin-bottom:14px">
         <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-tasks" style="color:#FF7A45;margin-right:6px"></i>Tasks (${tasks.length})</div>
-        ${tasks.length ? `<div style="display:flex;flex-direction:column;gap:6px">${tasks.map((t)=>`
-          <div style="display:grid;grid-template-columns:1.6fr 1.1fr 0.9fr 1fr;gap:8px;align-items:center;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;padding:10px">
-            <div style="font-size:13px;color:#e2e8f0">${escapeHtml(t.title)}</div>
-            <div style="font-size:12px;color:#94a3b8"><i class="fas fa-user"></i> ${escapeHtml(t.assignee_name || 'Unassigned')}</div>
-            <div style="font-size:12px;color:#C56FE6;font-weight:600"><i class="fas fa-percentage"></i> ${Number(t.pct_of_milestone)||0}% of milestone</div>
-            ${canEdit?`<select class="form-select" style="font-size:12px;padding:4px 6px" onchange="updateMilestoneTaskStatus('${m.id}','${t.id}',this.value)">
-              ${['todo','in_progress','in_review','done','blocked'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
-            </select>`:`<div style="font-size:12px;color:#94a3b8;text-transform:capitalize">${escapeHtml(String(t.status||'').replace('_',' '))}</div>`}
-          </div>`).join('')}</div>` : '<div style="font-size:12px;color:#64748b;text-align:center;padding:14px;border:1px dashed rgba(148,163,184,.2);border-radius:8px">No tasks added under this milestone.</div>'}
+        ${tasks.length ? `<div style="display:flex;flex-direction:column;gap:6px">${tasks.map((t)=>{
+          const hasRefs = t.reference_url || t.attachment_url
+          return `
+          <div style="background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:grid;grid-template-columns:1.6fr 1.1fr 0.9fr 1fr;gap:8px;align-items:center">
+              <div style="font-size:13px;color:#e2e8f0">${escapeHtml(t.title)}</div>
+              <div style="font-size:12px;color:#94a3b8"><i class="fas fa-user"></i> ${escapeHtml(t.assignee_name || 'Unassigned')}</div>
+              <div style="font-size:12px;color:#C56FE6;font-weight:600"><i class="fas fa-percentage"></i> ${Number(t.pct_of_milestone)||0}% of milestone</div>
+              ${canEdit?`<select class="form-select" style="font-size:12px;padding:4px 6px" onchange="updateMilestoneTaskStatus('${m.id}','${t.id}',this.value)">
+                ${['todo','in_progress','in_review','done','blocked'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
+              </select>`:`<div style="font-size:12px;color:#94a3b8;text-transform:capitalize">${escapeHtml(String(t.status||'').replace('_',' '))}</div>`}
+            </div>
+            ${hasRefs ? `
+            <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:6px;border-top:1px dashed rgba(148,163,184,.18)">
+              ${t.reference_url ? `<a href="${escapeHtml(t.reference_url)}" target="_blank" rel="noopener" style="font-size:11px;color:#FFB347;text-decoration:none;padding:3px 8px;background:rgba(255,180,71,.1);border:1px solid rgba(255,180,71,.25);border-radius:6px"><i class="fas fa-link"></i> Reference</a>` : ''}
+              ${t.attachment_url ? `<a href="${escapeHtml(t.attachment_url)}" target="_blank" rel="noopener" style="font-size:11px;color:#86E0A8;text-decoration:none;padding:3px 8px;background:rgba(88,198,138,.1);border:1px solid rgba(88,198,138,.25);border-radius:6px"><i class="fas fa-paperclip"></i> ${escapeHtml(t.attachment_name || 'File')}</a>` : ''}
+            </div>` : ''}
+          </div>`
+        }).join('')}</div>` : '<div style="font-size:12px;color:#64748b;text-align:center;padding:14px;border:1px dashed rgba(148,163,184,.2);border-radius:8px">No tasks added under this milestone.</div>'}
       </div>
 
       ${attachments.length ? `
@@ -2169,60 +2369,8 @@ async function showMilestoneDetailsModal(id) {
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn btn-outline" onclick="closeModal()">Close</button>
       ${pct>=100 && canEdit ? `<button class="btn" style="background:rgba(255,122,69,.15);color:#FF7A45;border:1px solid rgba(255,122,69,.4)" onclick="showMilestoneEmailModal('${m.id}')"><i class="fas fa-envelope"></i> ${m.email_sent_at?'Re-send Email':'Email Client'}</button>`:''}
-      ${pct>=100 ? `<button class="btn btn-primary" onclick="showMilestoneRatingModal('${m.id}')"><i class="fas fa-star"></i> ${rating?'Update Rating':'Add Rating'}</button>`:''}
     </div>`, 'modal-lg')
   } catch(e) { toast(e.message, 'error') }
-}
-
-function showMilestoneRatingModal(id) {
-  const m = (window._milestonesCache || []).find(x => String(x.id) === String(id)) || {}
-  const r = m.rating || {}
-  const dims = [
-    ['timing', 'Timing & Delivery'],
-    ['team', 'Team Performance'],
-    ['communication', 'Communication'],
-    ['quality', 'Quality of Work'],
-  ]
-  showModal(`
-    <div class="modal-header"><h3><i class="fas fa-star" style="color:#FFCB47"></i> Rate Milestone</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-    <div class="modal-body">
-      <div style="font-size:13px;color:#94a3b8;margin-bottom:14px">Rate <strong style="color:#e2e8f0">${escapeHtml(m.title || '')}</strong> on a scale of 1–10.</div>
-      ${dims.map(([k, label]) => `
-        <div class="form-group">
-          <label class="form-label">${label}</label>
-          <input class="form-input" type="number" min="1" max="10" step="0.5" id="rate-${k}" value="${r[k] || ''}" placeholder="1 – 10"/>
-        </div>`).join('')}
-      <div class="form-group">
-        <label class="form-label">Comments (optional)</label>
-        <textarea class="form-textarea" id="rate-comment" rows="3" placeholder="Anything else to share?">${escapeHtml(r.comment || '')}</textarea>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitMilestoneRating('${id}')"><i class="fas fa-paper-plane"></i> Save Rating</button>
-    </div>`, 'modal-md')
-}
-
-async function submitMilestoneRating(id) {
-  const get = (k) => parseFloat(document.getElementById('rate-' + k).value) || 0
-  const payload = {
-    timing: get('timing'),
-    team: get('team'),
-    communication: get('communication'),
-    quality: get('quality'),
-    comment: document.getElementById('rate-comment').value.trim() || null,
-  }
-  if (!payload.timing && !payload.team && !payload.communication && !payload.quality) {
-    return toast('Provide at least one rating between 1 and 10', 'error')
-  }
-  try {
-    await API.post('/milestones/' + id + '/rate', payload)
-    toast('Rating saved', 'success')
-    closeModal()
-    setTimeout(() => showMilestoneDetailsModal(id), 250)
-    const el = document.getElementById('page-milestones-view')
-    if (el) { el.dataset.loaded = '' }
-  } catch (e) { toast(e.message, 'error') }
 }
 
 async function saveMilestoneProgress(id) {
@@ -2978,31 +3126,164 @@ async function saveEditClient(id) {
 
 async function showClientDetail(clientId) {
   try {
-    const data = await API.get('/clients/'+clientId)
+    const data = await API.get('/clients/' + clientId)
     const cl = data.client
-    const projects = data.projects||[]
-    const invoices = data.invoices||[]
-    const canEdit = ['admin','pm','pc'].includes(String(_user?.role||'').toLowerCase())
+    const projects = data.projects || []
+    const invoices = data.invoices || []
+    const projectIds = projects.map(p => String(p.id))
+    const canEdit = ['admin', 'pm', 'pc'].includes(String(_user?.role || '').toLowerCase())
+
+    // Pull related entities scoped to this client's projects so admin can see
+    // every touchpoint (milestones, docs, tickets) without leaving the modal.
+    const [milestonesRes, docsRes, ticketsRes] = await Promise.all([
+      projectIds.length
+        ? API.get('/milestones?project_ids=' + projectIds.join(',')).catch(() => ({ milestones: [] }))
+        : Promise.resolve({ milestones: [] }),
+      API.get('/documents').catch(() => ({ documents: [] })),
+      API.get('/support/tickets').catch(() => ({ tickets: [] })),
+    ])
+    const milestones = (milestonesRes.milestones || milestonesRes.data || [])
+      .filter(m => projectIds.includes(String(m.project_id)))
+    const docs = (docsRes.documents || docsRes.data || [])
+      .filter(d => projectIds.includes(String(d.project_id)) || String(d.client_id || '') === String(clientId))
+    const tickets = (ticketsRes.tickets || ticketsRes.data || [])
+      .filter(t => String(t.client_id || '') === String(clientId) || projectIds.includes(String(t.project_id)))
+
+    const totalBilled = invoices.reduce((s, i) => s + Number(i.total_amount || 0), 0)
+    const totalPaid = invoices.reduce((s, i) => s + Number(i.paid_amount || 0), 0)
+    const totalDue = totalBilled - totalPaid
+    const overdueCount = invoices.filter(i => i.status === 'overdue').length
+    const activeProjects = projects.filter(p => p.status === 'active').length
+    const completedMs = milestones.filter(m => m.status === 'completed' || Number(m.completion_pct) >= 100).length
+    const openTickets = tickets.filter(t => !['resolved', 'closed'].includes(t.status)).length
+
     showModal(`
-      <div class="modal-header">${avatar(cl.company_name,cl.avatar_color)} <h3 style="margin-left:8px;flex:1">${cl.company_name}</h3>${canEdit ? `<button class="btn btn-outline btn-sm" style="margin-right:8px" onclick="openEditClientModal('${cl.id}')"><i class="fas fa-pen"></i> Edit</button>` : ''}<button class="close-btn" onclick="closeModal()">✕</button></div>
+      <div class="modal-header">
+        ${avatar(cl.company_name, cl.avatar_color)}
+        <h3 style="margin-left:8px;flex:1">${escapeHtml(cl.company_name)}</h3>
+        ${canEdit ? `<button class="btn btn-outline btn-sm" style="margin-right:8px" onclick="openEditClientModal('${cl.id}')"><i class="fas fa-pen"></i> Edit</button>` : ''}
+        <button class="close-btn" onclick="closeModal()">✕</button>
+      </div>
       <div class="modal-body">
-        <div class="grid-2" style="margin-bottom:16px">
-          ${metaItem('Contact', cl.contact_name)} ${metaItem('Email', cl.email)}
-          ${metaItem('Phone', cl.phone||'—')} ${metaItem('Industry', cl.industry||'—')}
-          ${metaItem('Website', cl.website||'—')} ${metaItem('Total Billed', fmtCurrency(invoices.reduce((s,i)=>s+i.total_amount,0)))}
+        <div class="grid-2" style="margin-bottom:14px">
+          ${metaItem('Contact', escapeHtml(cl.contact_name || '—'))}
+          ${metaItem('Email', escapeHtml(cl.email || '—'))}
+          ${metaItem('Phone', escapeHtml(cl.phone || '—'))}
+          ${metaItem('Industry', escapeHtml(cl.industry || '—'))}
+          ${metaItem('Website', cl.website ? `<a href="${escapeHtml(cl.website)}" target="_blank" style="color:#FF7A45">${escapeHtml(cl.website)}</a>` : '—')}
+          ${metaItem('Status', cl.is_active ? '<span class="status-chip status-active">Active</span>' : '<span class="status-chip status-cancelled">Inactive</span>')}
         </div>
+
+        <div class="grid-4" style="margin-bottom:16px;gap:8px">
+          <div style="padding:10px;background:rgba(255,122,69,.08);border:1px solid rgba(255,122,69,.25);border-radius:8px">
+            <div style="font-size:10px;color:#FFB347;text-transform:uppercase;letter-spacing:.05em">Billed</div>
+            <div style="font-size:16px;font-weight:700;color:#e2e8f0;margin-top:4px">${fmtCurrency(totalBilled)}</div>
+          </div>
+          <div style="padding:10px;background:rgba(88,198,138,.08);border:1px solid rgba(88,198,138,.25);border-radius:8px">
+            <div style="font-size:10px;color:#58C68A;text-transform:uppercase;letter-spacing:.05em">Paid</div>
+            <div style="font-size:16px;font-weight:700;color:#e2e8f0;margin-top:4px">${fmtCurrency(totalPaid)}</div>
+          </div>
+          <div style="padding:10px;background:rgba(255,203,71,.08);border:1px solid rgba(255,203,71,.25);border-radius:8px">
+            <div style="font-size:10px;color:#FFCB47;text-transform:uppercase;letter-spacing:.05em">Outstanding</div>
+            <div style="font-size:16px;font-weight:700;color:${totalDue > 0 ? '#FFCB47' : '#e2e8f0'};margin-top:4px">${fmtCurrency(totalDue)}</div>
+          </div>
+          <div style="padding:10px;background:rgba(255,94,58,.08);border:1px solid rgba(255,94,58,.25);border-radius:8px">
+            <div style="font-size:10px;color:#FF8866;text-transform:uppercase;letter-spacing:.05em">Open Tickets</div>
+            <div style="font-size:16px;font-weight:700;color:${openTickets > 0 ? '#FF8866' : '#e2e8f0'};margin-top:4px">${openTickets}</div>
+          </div>
+        </div>
+
         <div class="tab-bar">
-          <button class="tab-btn active" onclick="switchTab(this,'ct-projects')">Projects (${projects.length})</button>
-          <button class="tab-btn" onclick="switchTab(this,'ct-invoices')">Invoices (${invoices.length})</button>
+          <button class="tab-btn active" onclick="switchTab(this,'ct-projects')">Projects (${projects.length}${activeProjects ? ` · ${activeProjects} active` : ''})</button>
+          <button class="tab-btn" onclick="switchTab(this,'ct-milestones')">Milestones (${milestones.length}${completedMs ? ` · ${completedMs} done` : ''})</button>
+          <button class="tab-btn" onclick="switchTab(this,'ct-invoices')">Invoices (${invoices.length}${overdueCount ? ` · ${overdueCount} overdue` : ''})</button>
+          <button class="tab-btn" onclick="switchTab(this,'ct-documents')">Documents (${docs.length})</button>
+          <button class="tab-btn" onclick="switchTab(this,'ct-tickets')">Tickets (${tickets.length})</button>
         </div>
+
         <div id="ct-projects" class="tab-content active">
-          ${projects.map(p=>`<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div style="font-weight:500;color:#e2e8f0">${p.name}</div><div style="display:flex;gap:8px;margin-top:4px">${statusBadge(p.status)}${priorityBadge(p.priority)}<span style="font-size:12px;color:#64748b">PM: ${p.pm_name||'—'}</span></div></div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No projects</p>'}
+          ${projects.map(p => `
+            <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:500;color:#e2e8f0">${escapeHtml(p.name)}</div>
+                  <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+                    ${statusBadge(p.status)}${priorityBadge(p.priority)}
+                    <span style="font-size:12px;color:#64748b">PM: ${escapeHtml(p.pm_name || '—')}</span>
+                    ${p.expected_end_date ? `<span style="font-size:12px;color:#64748b"><i class="fas fa-calendar"></i> ${fmtDate(p.expected_end_date)}</span>` : ''}
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="closeModal();showProjectDetail('${p.id}')" title="Open project"><i class="fas fa-arrow-right"></i></button>
+              </div>
+            </div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No projects</p>'}
         </div>
+
+        <div id="ct-milestones" class="tab-content">
+          ${milestones.map(m => {
+            const ms = Array.isArray(m.tasks) ? m.tasks : []
+            const derived = ms.length ? ms.filter(t => t.status === 'done').reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0) : Number(m.completion_pct) || 0
+            const pct = m.status === 'completed' ? 100 : Math.min(100, Math.round(derived))
+            return `
+            <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+                <div style="font-weight:500;color:#e2e8f0">${escapeHtml(m.title)}</div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  ${statusBadge(m.status)}
+                  <span style="font-size:12px;color:${pct >= 100 ? '#58C68A' : '#FFCB47'};font-weight:600">${pct}%</span>
+                </div>
+              </div>
+              <div style="font-size:12px;color:#64748b">${escapeHtml(m.project_name || projects.find(p => p.id === m.project_id)?.name || '—')} · Due ${fmtDate(m.due_date)}${m.is_billable ? ` · ₹${fmtNum(m.invoice_amount)}` : ''}</div>
+              <div class="progress-bar" style="margin-top:6px"><div class="progress-fill ${pct >= 100 ? 'green' : pct >= 70 ? 'blue' : 'amber'}" style="width:${pct}%"></div></div>
+            </div>`
+          }).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No milestones</p>'}
+        </div>
+
         <div id="ct-invoices" class="tab-content">
-          ${invoices.map(i=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between"><div><div style="font-weight:500;color:#e2e8f0">${i.invoice_number}</div><div style="font-size:12px;color:#64748b">${fmtDate(i.due_date)}</div></div><div style="display:flex;align-items:center;gap:10px"><strong style="color:#58C68A">${fmtCurrency(i.total_amount)}</strong><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></div></div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No invoices</p>'}
+          ${invoices.map(i => `
+            <div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:500;color:#e2e8f0">${escapeHtml(i.invoice_number || '—')}</div>
+                <div style="font-size:12px;color:#64748b">${escapeHtml(i.title || '')} · Due ${fmtDate(i.due_date)}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="text-align:right">
+                  <div style="font-size:13px;color:#e2e8f0;font-weight:600">${fmtCurrency(i.total_amount)}</div>
+                  <div style="font-size:11px;color:#58C68A">Paid ${fmtCurrency(i.paid_amount || 0)}</div>
+                </div>
+                <span class="badge ${invoiceStatusClass(i.status)}">${escapeHtml(i.status)}</span>
+              </div>
+            </div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No invoices</p>'}
+        </div>
+
+        <div id="ct-documents" class="tab-content">
+          ${docs.map(d => `
+            <div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+              <i class="fas fa-file" style="color:#FF7A45;width:24px;text-align:center"></i>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(d.title || d.file_name || 'Document')}</div>
+                <div style="font-size:11px;color:#64748b">${escapeHtml(d.project_name || '—')}${d.category ? ' · ' + escapeHtml(d.category) : ''}${d.uploaded_by_name ? ' · by ' + escapeHtml(d.uploaded_by_name) : ''}</div>
+              </div>
+              ${d.file_url ? `<a href="${escapeHtml(d.file_url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline"><i class="fas fa-external-link-alt"></i></a>` : ''}
+            </div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No documents</p>'}
+        </div>
+
+        <div id="ct-tickets" class="tab-content">
+          ${tickets.map(t => {
+            const pColor = { urgent: '#FF5E3A', high: '#FF7A45', medium: '#FFCB47', low: '#94a3b8' }[t.priority] || '#94a3b8'
+            return `
+            <div style="padding:10px 0;border-bottom:1px solid var(--border);border-left:3px solid ${pColor};padding-left:10px;cursor:pointer" onclick="closeModal();openSupportDetail && openSupportDetail('${t.id}')">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13px;color:#e2e8f0;font-weight:500">${escapeHtml(t.subject)}</div>
+                  <div style="font-size:11px;color:#64748b">#${String(t.id).slice(-6)} · ${escapeHtml(t.project_name || '—')} · ${fmtDate(t.created_at)}</div>
+                </div>
+                <span class="badge" style="background:${pColor}22;color:${pColor};border:1px solid ${pColor}44;font-size:10px">${escapeHtml(t.status)}</span>
+              </div>
+            </div>`
+          }).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No tickets</p>'}
         </div>
       </div>`, 'modal-lg')
-  } catch(e) { toast(e.message,'error') }
+  } catch (e) { toast(e.message, 'error') }
 }
 
 function switchTab(btn, targetId) {
@@ -3106,7 +3387,11 @@ async function showCreateInvoiceModal() {
       <div class="form-group"><label class="form-label">Client *</label><select class="form-select" id="ci-client" onchange="onCreateInvoiceClientChanged(this.value)"><option value="">— Select a client —</option>${allClients.map(c=>`<option value="${c.id}">${c.company_name}</option>`).join('')}</select></div>
       <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="ci-project" disabled onchange="onCreateInvoiceProjectChanged(this.value)"><option value="">— Select a client first —</option></select></div>
     </div>
-    <div class="form-group"><label class="form-label">Milestone (optional)</label><select class="form-select" id="ci-milestone" disabled><option value="">No milestone</option></select></div>
+    <div class="form-group">
+      <label class="form-label">Milestone (optional)</label>
+      <select class="form-select" id="ci-milestone" disabled onchange="onCreateInvoiceMilestoneChanged(this.value)"><option value="">No milestone</option></select>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">Selecting a billable milestone will prefill the invoice title and amount — both stay editable.</div>
+    </div>
     <div class="form-group"><label class="form-label">Invoice Title *</label><input class="form-input" id="ci-title" placeholder="Phase 1 – Delivery Invoice"/></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="ci-desc" placeholder="Invoice details…" style="min-height:60px"></textarea></div>
     <div class="form-row-3">
@@ -3165,7 +3450,33 @@ function onCreateInvoiceProjectChanged(projectId) {
   }
   const filtered = milestones.filter(m => String(m.project_id) === String(projectId))
   milestoneSelect.disabled = false
-  milestoneSelect.innerHTML = `<option value="">No milestone</option>${filtered.map(m=>`<option value="${m.id}">${m.title}</option>`).join('')}`
+  milestoneSelect.innerHTML = `<option value="">No milestone</option>${filtered.map(m => {
+    const amt = Number(m.invoice_amount) || 0
+    const label = `${m.title}${m.is_billable && amt ? ` — ₹${fmtNum(amt)}` : ''}`
+    return `<option value="${m.id}" data-amount="${amt}" data-billable="${m.is_billable ? 1 : 0}" data-title="${escapeHtml(m.title || '')}">${escapeHtml(label)}</option>`
+  }).join('')}`
+}
+
+// Prefill the invoice title + amount from the picked milestone. Both fields
+// remain editable so the PM can override either side before sending.
+function onCreateInvoiceMilestoneChanged(milestoneId) {
+  const select = document.getElementById('ci-milestone')
+  const opt = select?.selectedOptions?.[0]
+  if (!opt || !milestoneId) return
+  const amount = parseFloat(opt.dataset.amount || '0') || 0
+  const isBillable = String(opt.dataset.billable || '0') === '1'
+  const title = opt.dataset.title || ''
+  const titleInput = document.getElementById('ci-title')
+  const amountInput = document.getElementById('ci-amount')
+  // Only overwrite the title if it's blank — never clobber a user edit.
+  if (titleInput && !titleInput.value.trim() && title) {
+    titleInput.value = `${title} — Invoice`
+  }
+  if (isBillable && amount > 0 && amountInput) {
+    amountInput.value = amount
+    if (typeof calcTax === 'function') calcTax()
+    toast(`Amount prefilled from milestone (₹${fmtNum(amount)}) — edit if needed`, 'info', 2200)
+  }
 }
 
 async function showEditInvoiceModal(id) {
@@ -3573,6 +3884,14 @@ const IMPORT_TEMPLATES = {
       'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,29AABCG5678H1Z9,Plot 4 Sector 3,Bengaluru,KARNATAKA,29,560001,India,#FFB347,Welcome@123',
     ],
   },
+  projects: {
+    filename: 'projects_import_template.csv',
+    headers: 'name,code,client_email,description,project_type,priority,status,start_date,expected_end_date,total_allocated_hours,estimated_budget_hours,revenue,billable,assignment_type,external_team_email,external_assignee_type,pm_email,pc_email,team_lead_email,remarks',
+    rows: [
+      'Acme Website Rebuild,ACME-WEB,anita@acme.com,Full marketing-site redesign,development,high,active,2026-05-01,2026-08-30,400,420,500000,1,in_house,,,priya@example.com,,rahul@example.com,Phase 1 only',
+      'Globex Mobile App,GLOBEX-APP,karthik@globex.com,iOS + Android client app,development,medium,active,2026-06-15,2026-12-31,800,820,1200000,1,external,vendor@example.com,user,priya@example.com,,,Vendor delivery',
+    ],
+  },
 }
 
 function downloadImportTemplate(kind) {
@@ -3591,11 +3910,20 @@ function downloadImportTemplate(kind) {
 }
 
 function _importModalHtml(kind) {
-  const isUsers = kind === 'users'
-  const title = isUsers ? 'Import Team Members' : 'Import Clients'
-  const cols = isUsers
-    ? 'full_name, email, role, designation, phone, daily_work_hours, monthly_available_hours, hourly_cost, joining_date, avatar_color, password'
-    : 'company_name, contact_name, email, phone, website, industry, gstin, address_line, city, state, state_code, pincode, country, avatar_color, password'
+  const titles = { users: 'Import Team Members', clients: 'Import Clients', projects: 'Import Projects' }
+  const requiredCols = {
+    users: 'full_name, email',
+    clients: 'company_name, contact_name, email',
+    projects: 'name, code, start_date',
+  }
+  const allCols = {
+    users: 'full_name, email, role, designation, phone, daily_work_hours, monthly_available_hours, hourly_cost, joining_date, avatar_color, password',
+    clients: 'company_name, contact_name, email, phone, website, industry, gstin, address_line, city, state, state_code, pincode, country, avatar_color, password',
+    projects: 'name, code, client_email, description, project_type, priority, status, start_date, expected_end_date, total_allocated_hours, estimated_budget_hours, revenue, billable, assignment_type, external_team_email, external_assignee_type, pm_email, pc_email, team_lead_email, remarks',
+  }
+  const title = titles[kind] || 'Import'
+  const cols = allCols[kind] || ''
+  const requires = requiredCols[kind] || ''
   return `
     <div class="modal-header">
       <h3><i class="fas fa-file-csv" style="color:var(--accent);margin-right:6px"></i>${title}</h3>
@@ -3605,9 +3933,9 @@ function _importModalHtml(kind) {
       <div style="padding:12px 14px;border-radius:10px;background:rgba(255,180,120,0.10);border:1px solid rgba(255,180,120,0.25);font-size:12.5px;line-height:1.55;color:var(--text-secondary)">
         <i class="fas fa-circle-info" style="color:var(--accent);margin-right:6px"></i>
         Upload a <strong>CSV file</strong> with a header row. Excel users: <em>File → Save As → CSV (UTF-8)</em>.<br/>
-        <strong>Required columns:</strong> ${isUsers ? 'full_name, email' : 'company_name, contact_name, email'}<br/>
+        <strong>Required columns:</strong> ${requires}<br/>
         <strong>All columns:</strong> <span style="color:var(--text-muted);font-family:'IBM Plex Mono',monospace;font-size:11px">${cols}</span><br/>
-        <strong>Default password</strong> if blank: <code>Welcome@123</code> — users should change on first login.
+        ${kind === 'projects' ? '<strong>Email columns</strong> (client_email, pm_email, etc.) must match existing clients/users — unmatched rows are skipped.' : '<strong>Default password</strong> if blank: <code>Welcome@123</code> — users should change on first login.'}
       </div>
 
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -3629,8 +3957,9 @@ function _importModalHtml(kind) {
   `
 }
 
-function openImportUsersModal()   { showModal(_importModalHtml('users'), 'modal-lg') }
-function openImportClientsModal() { showModal(_importModalHtml('clients'), 'modal-lg') }
+function openImportUsersModal()    { showModal(_importModalHtml('users'), 'modal-lg') }
+function openImportClientsModal()  { showModal(_importModalHtml('clients'), 'modal-lg') }
+function openImportProjectsModal() { showModal(_importModalHtml('projects'), 'modal-lg') }
 
 async function submitImportCsv(kind) {
   const fileInput = document.getElementById('import-csv-file')
@@ -3640,7 +3969,7 @@ async function submitImportCsv(kind) {
   const csv = (await file.text()).trim()
   if (!csv) { toast('CSV file is empty', 'error'); return }
 
-  const url = kind === 'users' ? '/users/import' : '/clients/import'
+  const url = kind === 'users' ? '/users/import' : kind === 'projects' ? '/projects/import' : '/clients/import'
   if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing…' }
   try {
     const res = await API.post(url, { csv })
@@ -3650,15 +3979,16 @@ async function submitImportCsv(kind) {
     const result = document.getElementById('import-result')
     if (result) {
       result.style.display = ''
+      const kindLabel = kind === 'users' ? 'team members' : kind === 'projects' ? 'projects' : 'clients'
       result.innerHTML = `
         <div style="padding:12px 14px;border-radius:10px;background:rgba(88,198,138,0.10);border:1px solid rgba(88,198,138,0.30);color:#86E0A8;font-size:13px;margin-bottom:8px">
-          <i class="fas fa-check-circle"></i> <strong>${created}</strong> ${kind === 'users' ? 'team members' : 'clients'} imported successfully.
+          <i class="fas fa-check-circle"></i> <strong>${created}</strong> ${kindLabel} imported successfully.
         </div>
         ${errCount > 0 ? `
           <div style="padding:12px 14px;border-radius:10px;background:rgba(255,94,58,0.10);border:1px solid rgba(255,94,58,0.30);color:#FF8866;font-size:12.5px;line-height:1.5">
             <i class="fas fa-triangle-exclamation"></i> <strong>${errCount}</strong> rows skipped:
             <ul style="margin:6px 0 0 18px;padding:0">
-              ${errors.slice(0, 25).map(e => `<li>Row ${e.row}${e.email ? ' (' + _supEsc(e.email) + ')' : ''}: ${_supEsc(e.error)}</li>`).join('')}
+              ${errors.slice(0, 25).map(e => `<li>Row ${e.row}${e.email ? ' (' + _supEsc(e.email) + ')' : e.code ? ' (' + _supEsc(e.code) + ')' : ''}: ${_supEsc(e.error)}</li>`).join('')}
               ${errors.length > 25 ? `<li>…and ${errors.length - 25} more</li>` : ''}
             </ul>
           </div>
@@ -3668,9 +3998,10 @@ async function submitImportCsv(kind) {
     toast(`${created} imported${errCount ? `, ${errCount} skipped` : ''}`, errCount ? 'warning' : 'success')
 
     // Refresh the list page
-    const pageId = kind === 'users' ? 'page-team-overview' : 'page-clients-list'
-    const el = document.getElementById(pageId)
-    if (el) { el.dataset.loaded = ''; loadPage(kind === 'users' ? 'team-overview' : 'clients-list', el) }
+    const pageMap = { users: 'team-overview', clients: 'clients-list', projects: 'projects-list' }
+    const pageKey = pageMap[kind] || 'clients-list'
+    const el = document.getElementById('page-' + pageKey)
+    if (el) { el.dataset.loaded = ''; loadPage(pageKey, el) }
   } catch (e) {
     toast('Import failed: ' + (e.message || 'unknown'), 'error')
   } finally {
