@@ -715,45 +715,64 @@ async function renderKanbanBoard(el) {
     const allSprints = spData.sprints || []
     const allMilestones = msData.milestones || []
 
-    // Determine which project to show
+    // Default to "All Projects" — aggregate tasks across every project the
+    // user can see. Picking a specific project narrows the board to that one.
+    if (window._kanbanProjectId === undefined) window._kanbanProjectId = ''
     let selProject = window._kanbanProjectId
+    const isAllProjects = !selProject
 
-    // For developers, auto-select their first assigned project
-    if (!selProject && _user.role === 'developer') {
-      // Find first project where this developer is assigned
-      for (const p of projects) {
-        try {
-          const devsRes = await API.get(`/projects/${p.id}/developers`)
-          const myDev = (devsRes.developers || []).find(d => d.user_id === _user.id || d.user_id === _user.sub)
-          if (myDev) { selProject = p.id; break }
-        } catch(e) {}
-      }
-    }
-    if (!selProject) selProject = projects[0]?.id
-    if (!selProject) {
-      el.innerHTML = '<div class="empty-state"><i class="fas fa-columns fa-3x" style="color:#FF7A45;margin-bottom:16px"></i><h3>No Projects Found</h3><p>There are no projects available to view.</p></div>'
-      return
+    if (!isAllProjects && !projects.find(p => p.id === selProject)) {
+      // Stale stored id — fall back to the all-projects view.
+      window._kanbanProjectId = ''
+      selProject = ''
     }
 
     const selSprint = window._kanbanSprintId || ''
     const selMilestone = window._kanbanMilestoneId || ''
-    const projectSprints = allSprints.filter(s => s.project_id === selProject)
-    const projectMilestones = allMilestones.filter(m => String(m.project_id) === String(selProject))
-    const projName = window._kanbanProjectName || projects.find(p => p.id === selProject)?.name || ''
+    const projectSprints = isAllProjects ? allSprints : allSprints.filter(s => s.project_id === selProject)
+    const projectMilestones = isAllProjects ? allMilestones : allMilestones.filter(m => String(m.project_id) === String(selProject))
+    const projName = isAllProjects ? 'All Projects' : (projects.find(p => p.id === selProject)?.name || '')
     window._kanbanProjectName = projName
 
-    // Always load all tasks for the project; apply sprint/milestone filters client-side
-    // so milestone-bound tasks remain visible by default.
-    const boardData = await API.get(`/tasks/board/${selProject}`)
-    const colDefs = boardData.column_defs || []
-    const rawCols = boardData.columns || {}
-    const cols = {}
-    for (const key of Object.keys(rawCols)) {
-      cols[key] = (rawCols[key] || []).filter(t => {
+    // Standard column layout used for the aggregated view. When a specific
+    // project is chosen we honour that project's custom kanban columns.
+    const FALLBACK_COLS = [
+      { name: 'Backlog', status_key: 'backlog', color: '#64748b', is_done_column: 0 },
+      { name: 'To-Do', status_key: 'todo', color: '#94a3b8', is_done_column: 0 },
+      { name: 'In Progress', status_key: 'in_progress', color: '#3b82f6', is_done_column: 0 },
+      { name: 'In Review', status_key: 'in_review', color: '#a78bfa', is_done_column: 0 },
+      { name: 'QA', status_key: 'qa', color: '#f59e0b', is_done_column: 0 },
+      { name: 'Done', status_key: 'done', color: '#10b981', is_done_column: 1 },
+      { name: 'Blocked', status_key: 'blocked', color: '#ef4444', is_done_column: 0 },
+    ]
+
+    let colDefs = []
+    let cols = {}
+    if (isAllProjects) {
+      const tasksRes = await API.get('/tasks').catch(() => ({ tasks: [] }))
+      const tasksList = (tasksRes.tasks || tasksRes.data || []).filter(t => {
         if (selSprint && String(t.sprint_id || '') !== String(selSprint)) return false
         if (selMilestone && String(t.milestone_id || '') !== String(selMilestone)) return false
         return true
       })
+      colDefs = FALLBACK_COLS
+      cols = Object.fromEntries(colDefs.map(c => [c.status_key, []]))
+      for (const t of tasksList) {
+        const key = cols[t.status] ? t.status : 'backlog'
+        cols[key].push(t)
+      }
+    } else {
+      const boardData = await API.get(`/tasks/board/${selProject}`)
+      colDefs = boardData.column_defs || []
+      const rawCols = boardData.columns || {}
+      cols = {}
+      for (const key of Object.keys(rawCols)) {
+        cols[key] = (rawCols[key] || []).filter(t => {
+          if (selSprint && String(t.sprint_id || '') !== String(selSprint)) return false
+          if (selMilestone && String(t.milestone_id || '') !== String(selMilestone)) return false
+          return true
+        })
+      }
     }
     const canManage = ['admin', 'pm'].includes(_user.role)
     // Task creation is broader: developers and team members can add tasks too,
@@ -779,11 +798,11 @@ async function renderKanbanBoard(el) {
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <!-- Project Switcher (visible to PM/Admin) -->
-          ${canManage || _user.role === 'developer' ? `
+          <!-- Project Switcher -->
           <select class="form-select" style="min-width:180px;max-width:220px" onchange="switchBoardProject(this.value)">
+            <option value="" ${isAllProjects ? 'selected' : ''}>All Projects</option>
             ${projects.map(p => `<option value="${p.id}" ${p.id === selProject ? 'selected' : ''}>${p.name}</option>`).join('')}
-          </select>` : `<span style="font-size:14px;font-weight:600;color:var(--primary)">${projName}</span>`}
+          </select>
           <!-- Sprint Filter -->
           <select class="form-select" style="min-width:140px" onchange="switchBoardSprint(this.value)">
             <option value="" ${!selSprint ? 'selected' : ''}>All Sprints</option>
@@ -794,10 +813,10 @@ async function renderKanbanBoard(el) {
             <option value="" ${!selMilestone ? 'selected' : ''}>All Milestones</option>
             ${projectMilestones.map(m => `<option value="${m.id}" ${m.id === selMilestone ? 'selected' : ''}>${m.title}</option>`).join('')}
           </select>
-          ${canManage ? `
+          ${canManage && !isAllProjects ? `
           <button class="btn btn-outline btn-sm" onclick="manageBoardColumns('${selProject}')" title="Configure board columns"><i class="fas fa-sliders-h"></i> Columns</button>
           <button class="btn btn-outline btn-sm" onclick="openKanbanPermissionsModal('${selProject}','${projName.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i> Permissions</button>` : ''}
-          ${canAddTask ? `<button class="btn btn-primary btn-sm" onclick="showCreateTaskModal('${selProject}','${selSprint}','backlog')"><i class="fas fa-plus"></i> Add Task</button>` : ''}
+          ${canAddTask && !isAllProjects ? `<button class="btn btn-primary btn-sm" onclick="showCreateTaskModal('${selProject}','${selSprint}','backlog')"><i class="fas fa-plus"></i> Add Task</button>` : ''}
         </div>
       </div>
 
@@ -886,6 +905,7 @@ function buildTaskCard(t) {
       <span style="font-size:10px;color:var(--text-muted);margin-left:auto;font-family:monospace">#${String(t.id).split('-').pop()}</span>
     </div>
     <div style="font-size:13px;font-weight:500;color:var(--text-primary);line-height:1.4;margin-bottom:8px">${t.title}</div>
+    ${(!window._kanbanProjectId && t.project_name) ? `<div style="font-size:10px;color:#FF7A45;background:rgba(255,122,69,.1);padding:2px 7px;border-radius:4px;display:inline-block;margin-bottom:6px"><i class="fas fa-folder"></i> ${t.project_name}</div>` : ''}
     ${t.description ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${t.description}</div>` : ''}
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">
       ${isOverdue ? `<span style="font-size:10px;color:#FF5E3A;background:#3A1A14;padding:1px 6px;border-radius:4px;font-weight:600"><i class="fas fa-exclamation-circle"></i> Overdue</span>` : ''}
@@ -1122,6 +1142,9 @@ async function openTaskDrawer(taskId) {
     const comments = data.comments||[]
     const activity = data.activity||[]
 
+    // Prime the mention pool so existing comments render @Name highlights.
+    if (t.project_id) await loadCommentMentionPool(t.project_id).catch(() => {})
+
     const drawerHTML = `
     <div class="detail-header" style="padding:18px 22px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -1142,7 +1165,9 @@ async function openTaskDrawer(taskId) {
       ${metaItem('Reporter', t.reporter_name||'—')}
       ${metaItem('Project', t.project_name||'—')}
       ${metaItem('Sprint', t.sprint_name||'—')}
-      ${metaItem('Due Date', `<span style="color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#94a3b8'}">${fmtDate(t.due_date)}</span>`)}
+      ${metaItem('Due Date', ['admin','pm','pc','developer','team'].includes(_user.role)
+        ? `<input type="date" class="form-input" id="task-due-${t.id}" value="${t.due_date ? String(t.due_date).slice(0,10) : ''}" onchange="saveTaskDueDate('${t.id}', this.value)" style="font-size:12.5px;padding:4px 6px;color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#e2e8f0'}"/>`
+        : `<span style="color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#94a3b8'}">${fmtDate(t.due_date)}</span>`)}
       ${_user.role !== 'team' ? metaItem('Hours', `${t.logged_hours||0}h logged / ${t.estimated_hours||0}h est`) : ''}
     </div>
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
@@ -1176,12 +1201,13 @@ async function openTaskDrawer(taskId) {
                 ${cm.is_internal?'<span style="font-size:10px;background:rgba(255,122,69,.15);color:#FFB347;padding:1px 6px;border-radius:4px">Internal</span>':''}
                 <span style="font-size:11px;color:#475569;margin-left:auto">${timeAgo(cm.created_at)}</span>
               </div>
-              <p style="font-size:13px;color:#94a3b8;line-height:1.5">${cm.content}</p>
+              <p style="font-size:13px;color:#94a3b8;line-height:1.5">${formatCommentMentions(cm.content)}</p>
             </div>
           </div>`).join('') || '<div style="color:#475569;font-size:13px;padding:8px 0">No comments yet.</div>'}
       </div>
-      <div class="comment-box" style="margin-top:12px">
-        <textarea id="new-comment-${t.id}" placeholder="Add a comment…"></textarea>
+      <div class="comment-box" style="margin-top:12px;position:relative">
+        <textarea id="new-comment-${t.id}" placeholder="Add a comment… (type @ to mention)" oninput="onCommentInput(event,'${t.id}','${t.project_id}')" onkeydown="onCommentKeydown(event,'${t.id}')"></textarea>
+        <div id="mention-suggest-${t.id}" style="display:none;position:absolute;bottom:100%;left:0;right:0;max-height:180px;overflow-y:auto;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.4);z-index:5;margin-bottom:6px"></div>
         <div class="comment-box-footer">
           ${['admin','pm'].includes(_user.role)?`<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#64748b;margin-right:auto;cursor:pointer"><input type="checkbox" id="comment-internal-${t.id}" style="accent-color:#FF7A45"/> Internal only</label>`:''}
           <button class="btn btn-sm btn-primary" onclick="submitComment('${t.id}')"><i class="fas fa-paper-plane"></i>Comment</button>
@@ -1268,15 +1294,138 @@ async function saveTaskAssignee(taskId) {
   } catch(e) { toast(e.message, 'error') }
 }
 
+async function saveTaskDueDate(taskId, value) {
+  try {
+    await API.put('/tasks/' + taskId, { due_date: value || null })
+    toast(value ? 'Due date updated' : 'Due date cleared', 'success', 1500)
+    const kb = document.getElementById('page-kanban-board')
+    if (kb?.classList.contains('active')) { kb.dataset.loaded = '' }
+  } catch (e) { toast(e.message, 'error') }
+}
+
 async function submitComment(taskId) {
-  const content = document.getElementById('new-comment-'+taskId)?.value?.trim()
+  const ta = document.getElementById('new-comment-'+taskId)
+  const content = ta?.value?.trim()
   if (!content) return toast('Write a comment first', 'error')
   const is_internal = document.getElementById('comment-internal-'+taskId)?.checked ? 1 : 0
+  const mention_user_ids = extractMentionedUserIds(content)
   try {
-    await API.post(`/tasks/${taskId}/comment`, { content, is_internal })
-    toast('Comment added', 'success', 2000)
+    await API.post(`/tasks/${taskId}/comment`, { content, is_internal, mention_user_ids })
+    toast(mention_user_ids.length ? `Comment added — ${mention_user_ids.length} mentioned` : 'Comment added', 'success', 2000)
     openTaskDrawer(taskId)
   } catch(e) { toast(e.message, 'error') }
+}
+
+// ── @mention support for task comments ─────────────────────
+// Cache of {project_id -> [{id, full_name, role}]} so we don't refetch on every keystroke.
+window._commentMentionCache = window._commentMentionCache || {}
+// Holds the candidate set for the currently-open suggester (also used by submit
+// to translate "@Name Surname" back to user IDs when the user picks via click).
+window._commentMentionUsers = window._commentMentionUsers || []
+
+async function loadCommentMentionPool(projectId) {
+  if (!projectId) return []
+  if (window._commentMentionCache[projectId]) return window._commentMentionCache[projectId]
+  try {
+    const res = await API.get('/users')
+    const all = res.users || res.data || []
+    const pool = all
+      .filter(u => ['admin','pm','pc','developer','team'].includes(String(u.role||'').toLowerCase()))
+      .map(u => ({ id: u.id, full_name: u.full_name || u.name || u.email, role: u.role, avatar_color: u.avatar_color }))
+    window._commentMentionCache[projectId] = pool
+    return pool
+  } catch { return [] }
+}
+
+async function onCommentInput(ev, taskId, projectId) {
+  const ta = ev.target
+  const box = document.getElementById('mention-suggest-' + taskId)
+  if (!ta || !box) return
+  const pos = ta.selectionStart || 0
+  const before = ta.value.slice(0, pos)
+  const m = before.match(/(?:^|\s)@([A-Za-z][A-Za-z0-9 ._-]{0,30})$/)
+  if (!m) { box.style.display = 'none'; box.innerHTML = ''; return }
+  const query = m[1].toLowerCase()
+  const pool = await loadCommentMentionPool(projectId)
+  const matches = pool.filter(u => (u.full_name || '').toLowerCase().includes(query)).slice(0, 6)
+  window._commentMentionUsers = pool
+  if (!matches.length) { box.style.display = 'none'; box.innerHTML = ''; return }
+  box.innerHTML = matches.map(u => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border)" onmousedown="insertMention(event,'${taskId}','${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')" onmouseover="this.style.background='rgba(255,122,69,0.1)'" onmouseout="this.style.background='transparent'">
+      ${avatar(u.full_name||'?', u.avatar_color||'#FF7A45','sm')}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;color:#e2e8f0">${escapeHtml(u.full_name||'')}</div>
+        <div style="font-size:10.5px;color:#64748b;text-transform:capitalize">${escapeHtml(u.role||'')}</div>
+      </div>
+    </div>`).join('')
+  box.style.display = 'block'
+}
+
+function onCommentKeydown(ev, taskId) {
+  if (ev.key === 'Escape') {
+    const box = document.getElementById('mention-suggest-' + taskId)
+    if (box) { box.style.display = 'none'; box.innerHTML = '' }
+  }
+}
+
+function insertMention(ev, taskId, userId, name) {
+  if (ev) ev.preventDefault()
+  const ta = document.getElementById('new-comment-' + taskId)
+  const box = document.getElementById('mention-suggest-' + taskId)
+  if (!ta) return
+  const pos = ta.selectionStart || 0
+  const before = ta.value.slice(0, pos)
+  const after = ta.value.slice(pos)
+  const replaced = before.replace(/(^|\s)@([A-Za-z][A-Za-z0-9 ._-]{0,30})$/, `$1@${name} `)
+  ta.value = replaced + after
+  ta.dispatchEvent(new Event('input'))
+  ta.focus()
+  if (box) { box.style.display = 'none'; box.innerHTML = '' }
+}
+
+function extractMentionedUserIds(content) {
+  const pool = window._commentMentionUsers || []
+  if (!pool.length) return []
+  const ids = []
+  // Match @Name (greedy with up to two trailing words). For each candidate,
+  // pick the longest known name that prefixes the candidate text.
+  const re = /@([A-Za-z][A-Za-z0-9._-]*(?:\s[A-Za-z][A-Za-z0-9._-]*){0,3})/g
+  let m
+  while ((m = re.exec(content)) !== null) {
+    const candidate = m[1].trim()
+    let best = null
+    for (const u of pool) {
+      const name = (u.full_name || '').trim()
+      if (!name) continue
+      if (candidate.toLowerCase().startsWith(name.toLowerCase())) {
+        if (!best || name.length > best.full_name.length) best = u
+      }
+    }
+    if (best && !ids.includes(best.id)) ids.push(best.id)
+  }
+  return ids
+}
+
+function formatCommentMentions(content) {
+  if (!content) return ''
+  const pool = []
+  for (const k of Object.keys(window._commentMentionCache || {})) {
+    for (const u of window._commentMentionCache[k]) pool.push(u)
+  }
+  let html = escapeHtml(content)
+  // Replace "@Name Surname" with a styled span if the name matches a known user.
+  // We sort by name length desc so longer names win over a shorter prefix.
+  const seen = new Set()
+  const uniq = pool.filter(u => { if (seen.has(u.id)) return false; seen.add(u.id); return true })
+  uniq.sort((a, b) => (b.full_name || '').length - (a.full_name || '').length)
+  for (const u of uniq) {
+    const name = (u.full_name || '').trim()
+    if (!name) continue
+    const safe = escapeHtml(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp(`@${safe}\\b`, 'g')
+    html = html.replace(re, `<span style="background:rgba(255,122,69,.15);color:#FFB347;padding:1px 5px;border-radius:4px;font-weight:500">@${escapeHtml(name)}</span>`)
+  }
+  return html
 }
 
 /* ── CREATE TASK MODAL ───────────────────────────────────── */
@@ -1563,16 +1712,27 @@ async function editSprint(id, currentStatus) {
 async function renderMilestonesView(el) {
   el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
-    const [msData, proj] = await Promise.all([API.get('/milestones'), API.get('/projects')])
+    const [msData, proj, docsData] = await Promise.all([
+      API.get('/milestones'),
+      API.get('/projects'),
+      API.get('/documents').catch(() => ({ documents: [] })),
+    ])
     const milestones = msData.milestones||[]
     const projects = proj.projects||proj||[]
     const projMap = {}; projects.forEach(p=>projMap[p.id]=p)
+    const allDocs = docsData.documents || docsData.data || []
+    const docsByMilestone = new Map()
+    for (const d of allDocs) {
+      if (!d.source_milestone_id) continue
+      const k = String(d.source_milestone_id)
+      if (!docsByMilestone.has(k)) docsByMilestone.set(k, [])
+      docsByMilestone.get(k).push(d)
+    }
     window._milestonesCache = milestones
     window._projectsCache = projMap
     const pagination = paginateClient(milestones, _milestonesViewPage, _milestonesPageLimit)
     _milestonesViewPage = pagination.page
     const canEdit = ['admin','pm'].includes(_user.role)
-    const tpl = '2.1fr 1.2fr 1fr 1.4fr 0.9fr'
 
     el.innerHTML = `
     <div class="page-header">
@@ -1581,40 +1741,45 @@ async function renderMilestonesView(el) {
         ${canEdit?`<button class="btn btn-primary" onclick="showCreateMilestoneModal()"><i class="fas fa-plus"></i>New Milestone</button>`:''}
       </div>
     </div>
-    ${listSectionHeader(['Milestone', 'Project', 'Due / Status', 'Billing / Progress', 'Actions'], tpl)}
-    <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;flex-direction:column;gap:12px">
       ${pagination.items.map(m=>{
         const overdue = new Date(m.due_date)<new Date() && m.status!=='completed'
-        const pct = Number(m.completion_pct)||0
-        const taskCount = Array.isArray(m.tasks) ? m.tasks.length : 0
+        const tasks = Array.isArray(m.tasks) ? m.tasks : []
+        const doneCount = tasks.filter(t => t.status === 'done').length
+        // Show 100% on completed milestones even when older data still has 0,
+        // and always derive from tasks+pct when present so the bar matches reality.
+        const derivedPct = tasks.length
+          ? tasks.filter(t => t.status === 'done').reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
+          : Number(m.completion_pct) || 0
+        const pct = m.status === 'completed' ? 100 : Math.min(100, Math.round(derivedPct || 0))
         const ratingOverall = m.rating?.overall || 0
+        const fileCount = (docsByMilestone.get(String(m.id)) || []).length
         return `
-        <div class="card" style="padding:14px 16px">
-          <div style="display:grid;grid-template-columns:${tpl};gap:12px;align-items:center">
-            <div style="min-width:0">
-              <div style="font-size:14px;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(m.title)}</div>
-              <div style="font-size:11px;color:#64748b;margin-top:2px">${taskCount} task${taskCount===1?'':'s'}${ratingOverall?` • ★ ${ratingOverall.toFixed(1)}/10`:''}</div>
-            </div>
-            <div style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(projMap[m.project_id]?.name||'—')}</div>
-            <div>
-              <div style="font-size:12px;color:${overdue?'#FF5E3A':'#94a3b8'}"><i class="fas fa-calendar"></i> ${fmtDate(m.due_date)}</div>
-              <div style="margin-top:4px">${statusBadge(m.status)}</div>
-            </div>
-            <div>
-              <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:4px">
-                <span>${m.is_billable?`₹${fmtNum(m.invoice_amount)}`:'Non-billable'}</span>
-                <span>${pct}%</span>
+        <div class="card" style="padding:16px 18px;cursor:pointer" onclick="showMilestoneDetailsModal('${m.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:10px">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                <span style="font-size:15px;font-weight:600;color:#e2e8f0">${escapeHtml(m.title)}</span>
+                ${statusBadge(m.status)}
+                ${overdue?'<span class="badge badge-blocked"><i class="fas fa-exclamation-triangle"></i> Overdue</span>':''}
+                ${ratingOverall?`<span style="font-size:11px;background:rgba(255,203,71,.15);color:#FFCB47;padding:2px 8px;border-radius:10px;font-weight:600"><i class="fas fa-star"></i> ${ratingOverall.toFixed(1)}/10</span>`:''}
               </div>
-              <div class="progress-bar"><div class="progress-fill ${pct>=100?'green':pct>=70?'blue':'amber'}" style="width:${pct}%"></div></div>
-              ${canEdit?`
-              <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
-                <input type="number" min="0" max="100" step="1" value="${pct}" class="form-input" style="width:90px;padding:4px 8px;font-size:12px" onchange="updateMilestonePct('${m.id}',this.value)"/>
-                <span style="font-size:11px;color:#94a3b8">% complete</span>
-              </div>`:''}
+              <div style="font-size:12px;color:#94a3b8">${escapeHtml(projMap[m.project_id]?.name||'—')} • Due: <span style="color:${overdue?'#FF5E3A':'#cbd5e1'}">${fmtDate(m.due_date)}</span></div>
+              ${m.description?`<div style="font-size:12px;color:#cbd5e1;margin-top:8px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHtml(m.description)}</div>`:''}
             </div>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              <button class="btn btn-sm btn-outline" onclick="showMilestoneDetailsModal('${m.id}')" title="View details"><i class="fas fa-eye"></i> Details</button>
-              ${pct>=100 && canEdit ? `<button class="btn btn-sm" style="background:rgba(255,122,69,.15);color:#FF7A45;border:1px solid rgba(255,122,69,.3)" onclick="showMilestoneEmailModal('${m.id}')" title="Email client"><i class="fas fa-envelope"></i> ${m.email_sent_at?'Re-send':'Email'}</button>`:''}
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:24px;font-weight:700;color:${pct>=100?'#58C68A':pct>=60?'#FFCB47':'#FFB347'};line-height:1">${pct}<span style="font-size:14px">%</span></div>
+              <div style="font-size:10px;color:#64748b;letter-spacing:.5px">complete</div>
+            </div>
+          </div>
+          <div class="progress-bar"><div class="progress-fill ${pct>=100?'green':pct>=70?'blue':'amber'}" style="width:${pct}%"></div></div>
+          <div style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap;align-items:center">
+            <span style="font-size:11px;color:#94a3b8"><i class="fas fa-tasks" style="color:#FF7A45;margin-right:4px"></i>${doneCount}/${tasks.length} task${tasks.length===1?'':'s'}</span>
+            ${fileCount?`<span style="font-size:11px;color:#94a3b8"><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:4px"></i>${fileCount} file${fileCount===1?'':'s'}</span>`:''}
+            ${m.is_billable?`<span style="font-size:11px;color:#58C68A;font-weight:600"><i class="fas fa-indian-rupee-sign" style="margin-right:2px"></i>${fmtNum(m.invoice_amount)}</span>`:'<span style="font-size:11px;color:#64748b">Non-billable</span>'}
+            <div style="margin-left:auto;display:flex;gap:6px" onclick="event.stopPropagation()">
+              <button class="btn btn-sm btn-outline" onclick="showMilestoneDetailsModal('${m.id}')"><i class="fas fa-eye"></i> View All</button>
+              ${pct>=100 && canEdit ? `<button class="btn btn-sm" style="background:rgba(255,122,69,.15);color:#FF7A45;border:1px solid rgba(255,122,69,.3)" onclick="showMilestoneEmailModal('${m.id}')"><i class="fas fa-envelope"></i> ${m.email_sent_at?'Re-send':'Email Client'}</button>`:''}
             </div>
           </div>
         </div>`
@@ -1648,6 +1813,7 @@ async function showCreateMilestoneModal() {
     window._cmsAllUsers = allUsers
     window._cmsTasks = []
     window._cmsAssigneeOptions = []
+    window._cmsFiles = []
     showModal(`
     <div class="modal-header"><h3><i class="fas fa-flag" style="color:#FF7A45"></i> Create Milestone</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
@@ -1664,11 +1830,21 @@ async function showCreateMilestoneModal() {
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-billable" style="accent-color:#FF7A45"/> Billable Milestone</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-visible" checked style="accent-color:#FF7A45"/> Client Visible</label>
       </div>
+      <div style="border-top:1px solid rgba(148,163,184,.15);padding-top:14px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:6px"></i>Attachments (optional)</div>
+        <div style="border:1px dashed rgba(255,180,120,.32);border-radius:10px;padding:10px;background:rgba(0,0,0,.18)">
+          <input id="cms-files-input" type="file" multiple style="display:none" onchange="cmsAddFiles(this.files);this.value=''"/>
+          <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('cms-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
+          <span style="font-size:11px;color:#64748b;margin-left:8px">Files will appear under this project in the Documents section. 25 MB / file.</span>
+          <div id="cms-files-list" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
+        </div>
+      </div>
       <div style="border-top:1px solid rgba(148,163,184,.15);padding-top:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <div style="font-size:13px;font-weight:600;color:#e2e8f0"><i class="fas fa-tasks" style="color:#FF7A45;margin-right:6px"></i>Tasks under this Milestone</div>
           <button class="btn btn-sm btn-outline" type="button" onclick="cmsAddTaskRow()"><i class="fas fa-plus"></i> Add Task</button>
         </div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:10px">Each task carries a % of the milestone. As tasks complete, milestone progress updates automatically. <span id="cms-pct-summary" style="font-weight:600">Total: 0% (must equal 100%)</span></div>
         <div id="cms-tasks-list" style="display:flex;flex-direction:column;gap:8px"></div>
         <div id="cms-tasks-empty" style="font-size:12px;color:#64748b;text-align:center;padding:14px;border:1px dashed rgba(148,163,184,.2);border-radius:8px">No tasks added yet — pick a project and click "Add Task".</div>
       </div>
@@ -1738,7 +1914,7 @@ function cmsAddTaskRow() {
   const tasks = window._cmsTasks || (window._cmsTasks = [])
   const opts = window._cmsAssigneeOptions || []
   const defaultAssignee = window._cmsIsExternal && opts[0] ? opts[0].id : ''
-  tasks.push({ id: 'mt_'+Date.now().toString(36)+'_'+tasks.length, title:'', assignee_id:defaultAssignee, due_date:'', status:'pending' })
+  tasks.push({ id: 'mt_'+Date.now().toString(36)+'_'+tasks.length, title:'', assignee_id:defaultAssignee, pct_of_milestone:0, status:'pending' })
   cmsRenderTasks()
 }
 
@@ -1774,9 +1950,54 @@ function cmsRenderTasks() {
     <div style="display:grid;grid-template-columns:2.2fr 1.5fr 1fr auto;gap:8px;align-items:center;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;padding:10px">
       <input class="form-input" placeholder="Task title…" value="${escapeHtml(t.title)}" oninput="cmsUpdateTask(${i},'title',this.value)"/>
       ${assigneeCell}
-      <input class="form-input" type="date" value="${t.due_date||''}" onchange="cmsUpdateTask(${i},'due_date',this.value)"/>
+      <div style="display:flex;align-items:center;gap:4px"><input class="form-input" type="number" min="0" max="100" step="1" value="${t.pct_of_milestone||0}" onchange="cmsUpdatePct(${i},this.value)" placeholder="0" title="% of milestone this task represents"/><span style="font-size:12px;color:#94a3b8">%</span></div>
       <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsRemoveTaskRow(${i})" title="Remove"><i class="fas fa-trash"></i></button>
     </div>`
+  }).join('')
+  const total = tasks.reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
+  const summary = document.getElementById('cms-pct-summary')
+  if (summary) {
+    summary.textContent = `Total: ${total}% (must equal 100%)`
+    summary.style.color = total === 100 ? '#58C68A' : (total > 100 ? '#FF5E3A' : '#FFCB47')
+  }
+}
+
+function cmsUpdatePct(idx, value) {
+  const tasks = window._cmsTasks || []
+  if (!tasks[idx]) return
+  const num = Math.max(0, Math.min(100, Math.round(Number(value) || 0)))
+  tasks[idx].pct_of_milestone = num
+  cmsRenderTasks()
+}
+
+// ── Milestone attachment file picker ──────────────────────
+function cmsAddFiles(fileList) {
+  if (!window._cmsFiles) window._cmsFiles = []
+  for (const f of fileList) window._cmsFiles.push(f)
+  cmsRenderFilesList()
+}
+function cmsRemoveFile(idx) {
+  if (!window._cmsFiles) return
+  window._cmsFiles.splice(idx, 1)
+  cmsRenderFilesList()
+}
+function cmsRenderFilesList() {
+  const wrap = document.getElementById('cms-files-list')
+  if (!wrap) return
+  const files = window._cmsFiles || []
+  if (!files.length) { wrap.innerHTML = ''; return }
+  wrap.innerHTML = files.map((f, i) => {
+    const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
+    const tooBig = f.size > 25 * 1024 * 1024
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+        <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(f.name)}</div>
+          <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#64748b'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsRemoveFile(${i})"><i class="fas fa-times"></i></button>
+      </div>`
   }).join('')
 }
 
@@ -1795,10 +2016,21 @@ async function doCreateMilestone() {
       assignee_id: t.assignee_id || null,
       assignee_name: a ? a.name : null,
       assignee_kind: a ? a.kind : 'developer',
-      due_date: t.due_date || null,
+      pct_of_milestone: Math.max(0, Math.min(100, Math.round(Number(t.pct_of_milestone) || 0))),
       status: t.status || 'pending',
     }
   })
+  if (tasks.length) {
+    const totalPct = tasks.reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
+    if (totalPct !== 100) {
+      return toast(`Task percentages must total 100% (currently ${totalPct}%)`, 'error')
+    }
+  }
+  const pendingFiles = window._cmsFiles || []
+  for (const f of pendingFiles) {
+    if (f.size > 25 * 1024 * 1024) return toast(`"${f.name}" exceeds the 25 MB limit`, 'error')
+  }
+
   const body = {
     project_id: projectId,
     title,
@@ -1810,27 +2042,56 @@ async function doCreateMilestone() {
     tasks,
   }
   try {
+    const attachments = []
+    for (const f of pendingFiles) {
+      try {
+        const uploaded = await udUploadFileToServer(f)
+        attachments.push({
+          file_name: uploaded.file_name || f.name,
+          file_url: uploaded.url,
+          file_type: uploaded.file_type || f.type || null,
+          file_size: uploaded.file_size || f.size || 0,
+        })
+      } catch (e) {
+        toast(`"${f.name}" upload failed: ${e.message}`, 'error')
+        return
+      }
+    }
+    body.attachments = attachments
     await API.post('/milestones', body)
-    toast('Milestone created!','success')
+    toast(attachments.length
+      ? `Milestone created — ${attachments.length} file${attachments.length === 1 ? '' : 's'} added to Documents`
+      : 'Milestone created!', 'success')
+    window._cmsFiles = []
     closeModal()
     const el = document.getElementById('page-milestones-view'); if(el){el.dataset.loaded='';loadPage('milestones-view',el)}
+    const docEl = document.getElementById('page-documents-center'); if (docEl) { docEl.dataset.loaded = '' }
   } catch(e) { toast(e.message,'error') }
 }
 
 /* ── MILESTONE DETAILS ───────────────────────────────────── */
 async function showMilestoneDetailsModal(id) {
   try {
-    const [msData, projRes] = await Promise.all([API.get('/milestones'), API.get('/projects')])
+    const [msData, projRes, docsRes] = await Promise.all([
+      API.get('/milestones'),
+      API.get('/projects'),
+      API.get('/documents').catch(() => ({ documents: [] })),
+    ])
     const milestones = msData.milestones || []
     const m = milestones.find(x => String(x.id) === String(id))
     if (!m) return toast('Milestone not found', 'error')
     const projects = projRes.projects || projRes || []
     const project = projects.find(p => String(p.id) === String(m.project_id)) || {}
-    const pct = Number(m.completion_pct) || 0
     const tasks = Array.isArray(m.tasks) ? m.tasks : []
+    const derivedPct = tasks.length
+      ? tasks.filter(t => t.status === 'done').reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
+      : Number(m.completion_pct) || 0
+    const pct = m.status === 'completed' ? 100 : Math.min(100, Math.round(derivedPct || 0))
     const overdue = new Date(m.due_date) < new Date() && m.status !== 'completed'
     const canEdit = ['admin','pm'].includes(_user.role)
     const rating = m.rating || null
+    const attachments = (docsRes.documents || docsRes.data || [])
+      .filter(d => String(d.source_milestone_id || '') === String(m.id))
 
     showModal(`
     <div class="modal-header">
@@ -1858,12 +2119,7 @@ async function showMilestoneDetailsModal(id) {
           <span>Progress</span><span>${pct}% complete</span>
         </div>
         <div class="progress-bar lg"><div class="progress-fill ${pct>=100?'green':pct>=70?'blue':'amber'}" style="width:${pct}%"></div></div>
-        ${canEdit?`
-        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
-          <input type="number" min="0" max="100" step="1" value="${pct}" id="mdm-progress" class="form-input" style="width:120px" placeholder="0–100"/>
-          <span style="font-size:12px;color:#94a3b8">% complete</span>
-          <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="saveMilestoneProgress('${m.id}')"><i class="fas fa-save"></i> Save Progress</button>
-        </div>`:''}
+        <div style="font-size:11px;color:#64748b;margin-top:8px"><i class="fas fa-circle-info"></i> Progress is auto-calculated from completed tasks. Mark a task "done" to advance the milestone.</div>
       </div>
 
       <div style="margin-bottom:14px">
@@ -1872,12 +2128,28 @@ async function showMilestoneDetailsModal(id) {
           <div style="display:grid;grid-template-columns:1.6fr 1.1fr 0.9fr 1fr;gap:8px;align-items:center;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;padding:10px">
             <div style="font-size:13px;color:#e2e8f0">${escapeHtml(t.title)}</div>
             <div style="font-size:12px;color:#94a3b8"><i class="fas fa-user"></i> ${escapeHtml(t.assignee_name || 'Unassigned')}</div>
-            <div style="font-size:12px;color:#94a3b8"><i class="fas fa-calendar"></i> ${t.due_date?fmtDate(t.due_date):'—'}</div>
+            <div style="font-size:12px;color:#C56FE6;font-weight:600"><i class="fas fa-percentage"></i> ${Number(t.pct_of_milestone)||0}% of milestone</div>
             ${canEdit?`<select class="form-select" style="font-size:12px;padding:4px 6px" onchange="updateMilestoneTaskStatus('${m.id}','${t.id}',this.value)">
               ${['todo','in_progress','in_review','done','blocked'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
             </select>`:`<div style="font-size:12px;color:#94a3b8;text-transform:capitalize">${escapeHtml(String(t.status||'').replace('_',' '))}</div>`}
           </div>`).join('')}</div>` : '<div style="font-size:12px;color:#64748b;text-align:center;padding:14px;border:1px dashed rgba(148,163,184,.2);border-radius:8px">No tasks added under this milestone.</div>'}
       </div>
+
+      ${attachments.length ? `
+      <div style="margin-bottom:14px">
+        <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:6px"></i>Attachments (${attachments.length})</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${attachments.map(f => `
+            <a href="${escapeHtml(f.file_url||'#')}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;text-decoration:none">
+              <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(f.file_name || 'file')}</div>
+                <div style="font-size:10.5px;color:#64748b">${f.file_size?(Number(f.file_size)/(1024*1024)).toFixed(2)+' MB':''}${f.file_type?' • '+escapeHtml(f.file_type):''}</div>
+              </div>
+              <i class="fas fa-external-link-alt" style="color:#9F8678;font-size:11px"></i>
+            </a>`).join('')}
+        </div>
+      </div>` : ''}
 
       ${rating ? `
       <div style="padding:14px;background:rgba(255,122,69,.08);border:1px solid rgba(255,122,69,.3);border-radius:10px;margin-bottom:10px">
@@ -1902,6 +2174,57 @@ async function showMilestoneDetailsModal(id) {
   } catch(e) { toast(e.message, 'error') }
 }
 
+function showMilestoneRatingModal(id) {
+  const m = (window._milestonesCache || []).find(x => String(x.id) === String(id)) || {}
+  const r = m.rating || {}
+  const dims = [
+    ['timing', 'Timing & Delivery'],
+    ['team', 'Team Performance'],
+    ['communication', 'Communication'],
+    ['quality', 'Quality of Work'],
+  ]
+  showModal(`
+    <div class="modal-header"><h3><i class="fas fa-star" style="color:#FFCB47"></i> Rate Milestone</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:#94a3b8;margin-bottom:14px">Rate <strong style="color:#e2e8f0">${escapeHtml(m.title || '')}</strong> on a scale of 1–10.</div>
+      ${dims.map(([k, label]) => `
+        <div class="form-group">
+          <label class="form-label">${label}</label>
+          <input class="form-input" type="number" min="1" max="10" step="0.5" id="rate-${k}" value="${r[k] || ''}" placeholder="1 – 10"/>
+        </div>`).join('')}
+      <div class="form-group">
+        <label class="form-label">Comments (optional)</label>
+        <textarea class="form-textarea" id="rate-comment" rows="3" placeholder="Anything else to share?">${escapeHtml(r.comment || '')}</textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitMilestoneRating('${id}')"><i class="fas fa-paper-plane"></i> Save Rating</button>
+    </div>`, 'modal-md')
+}
+
+async function submitMilestoneRating(id) {
+  const get = (k) => parseFloat(document.getElementById('rate-' + k).value) || 0
+  const payload = {
+    timing: get('timing'),
+    team: get('team'),
+    communication: get('communication'),
+    quality: get('quality'),
+    comment: document.getElementById('rate-comment').value.trim() || null,
+  }
+  if (!payload.timing && !payload.team && !payload.communication && !payload.quality) {
+    return toast('Provide at least one rating between 1 and 10', 'error')
+  }
+  try {
+    await API.post('/milestones/' + id + '/rate', payload)
+    toast('Rating saved', 'success')
+    closeModal()
+    setTimeout(() => showMilestoneDetailsModal(id), 250)
+    const el = document.getElementById('page-milestones-view')
+    if (el) { el.dataset.loaded = '' }
+  } catch (e) { toast(e.message, 'error') }
+}
+
 async function saveMilestoneProgress(id) {
   const pctEl = document.getElementById('mdm-progress')
   if (!pctEl) return
@@ -1921,7 +2244,11 @@ async function saveMilestoneProgress(id) {
 async function updateMilestoneTaskStatus(milestoneId, taskId, status) {
   try {
     await API.put('/tasks/' + taskId, { status })
-    toast('Task updated', 'success', 1200)
+    toast('Task updated — milestone progress recalculated', 'success', 1500)
+    closeModal()
+    showMilestoneDetailsModal(milestoneId)
+    const el = document.getElementById('page-milestones-view')
+    if (el) { el.dataset.loaded = '' }
   } catch(e) { toast(e.message, 'error') }
 }
 
@@ -2541,14 +2868,123 @@ async function saveClient() {
   }
 }
 
+async function openEditClientModal(clientId) {
+  try {
+    const data = await API.get('/clients/' + clientId)
+    const cl = data.client
+    if (!cl) { toast('Client not found', 'error'); return }
+    const stateOpts = INDIAN_STATES.map(([n, c]) => `<option value="${n}" data-code="${c}" ${cl.state === n ? 'selected' : ''}>${n} (${c})</option>`).join('')
+    closeModal()
+    showModal(`
+      <div class="modal-header"><h3><i class="fas fa-building" style="color:#FF7A45"></i> Edit Client</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+      <div class="modal-body">
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Company &amp; Contact</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Company Name *</label><input class="form-input" id="ec-company" value="${escapeHtml(cl.company_name||'')}"/></div>
+          <div class="form-group"><label class="form-label">Contact Name *</label><input class="form-input" id="ec-contact" value="${escapeHtml(cl.contact_name||'')}"/></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="ec-email" type="email" value="${escapeHtml(cl.email||'')}" disabled style="opacity:.7"/></div>
+          <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="ec-phone" value="${escapeHtml(cl.phone||'')}" placeholder="+91-9800000000"/></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Website</label><input class="form-input" id="ec-website" value="${escapeHtml(cl.website||'')}" placeholder="https://example.com"/></div>
+          <div class="form-group"><label class="form-label">Industry</label><input class="form-input" id="ec-industry" value="${escapeHtml(cl.industry||'')}" placeholder="SaaS / Fintech"/></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="ec-color" type="color" value="${escapeHtml(cl.avatar_color||'#FF7A45')}" style="height:40px;padding:3px"/></div>
+          <div class="form-group"><label class="form-label">Status</label>
+            <select class="form-select" id="ec-active">
+              <option value="1" ${cl.is_active ? 'selected' : ''}>Active</option>
+              <option value="0" ${!cl.is_active ? 'selected' : ''}>Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">GSTIN</label><input class="form-input" id="ec-gstin" value="${escapeHtml(cl.gstin||'')}" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase" maxlength="15"/></div>
+          <div class="form-group"><label class="form-label">Country</label><input class="form-input" id="ec-country" value="${escapeHtml(cl.country||'India')}"/></div>
+        </div>
+        <div class="form-group"><label class="form-label">Company Address</label><textarea class="form-textarea" id="ec-address" placeholder="Building, Street, Locality" style="min-height:50px">${escapeHtml(cl.address_line||'')}</textarea></div>
+        <div style="display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:10px">
+          <div class="form-group" style="margin:0"><label class="form-label">City</label><input class="form-input" id="ec-city" value="${escapeHtml(cl.city||'')}" placeholder="Mumbai"/></div>
+          <div class="form-group" style="margin:0"><label class="form-label">State</label>
+            <select class="form-select" id="ec-state" onchange="onEditClientStateChange(this)">
+              <option value="">Select state…</option>
+              ${stateOpts}
+            </select>
+          </div>
+          <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="ec-state-code" value="${escapeHtml(cl.state_code||'')}" maxlength="3" readonly style="background:rgba(15,23,42,.4)"/></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">PIN Code</label><input class="form-input" id="ec-pincode" value="${escapeHtml(cl.pincode||'')}" maxlength="10"/></div>
+          <div class="form-group"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveEditClient('${cl.id}')"><i class="fas fa-save"></i>Save Changes</button>
+      </div>
+    `, 'modal-lg')
+  } catch (e) { toast('Failed to load client: ' + e.message, 'error') }
+}
+
+function onEditClientStateChange(sel) {
+  const opt = sel.selectedOptions[0]
+  const code = opt?.dataset?.code || ''
+  const codeEl = document.getElementById('ec-state-code')
+  if (codeEl) codeEl.value = code
+}
+
+async function saveEditClient(id) {
+  const payload = {
+    company_name: document.getElementById('ec-company').value.trim(),
+    contact_name: document.getElementById('ec-contact').value.trim(),
+    phone: document.getElementById('ec-phone').value.trim(),
+    website: document.getElementById('ec-website').value.trim(),
+    industry: document.getElementById('ec-industry').value.trim(),
+    avatar_color: document.getElementById('ec-color').value,
+    is_active: document.getElementById('ec-active').value === '1' ? 1 : 0,
+    gstin: document.getElementById('ec-gstin').value.trim().toUpperCase(),
+    address_line: document.getElementById('ec-address').value.trim(),
+    city: document.getElementById('ec-city').value.trim(),
+    state: document.getElementById('ec-state').value.trim(),
+    state_code: document.getElementById('ec-state-code').value.trim(),
+    pincode: document.getElementById('ec-pincode').value.trim(),
+    country: document.getElementById('ec-country').value.trim(),
+  }
+  if (!payload.company_name || !payload.contact_name) {
+    toast('Company name and contact name are required', 'error')
+    return
+  }
+  if (payload.gstin && !/^[0-9A-Z]{15}$/.test(payload.gstin)) {
+    toast('GSTIN must be 15 alphanumeric characters', 'error')
+    return
+  }
+  if (payload.pincode && !/^[0-9]{4,8}$/.test(payload.pincode)) {
+    toast('PIN code must be numeric (4–8 digits)', 'error')
+    return
+  }
+  try {
+    await API.put('/clients/' + id, payload)
+    toast('Client updated', 'success')
+    closeModal()
+    rerenderEnterprisePage('clients-list', () => {})
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
+}
+
 async function showClientDetail(clientId) {
   try {
     const data = await API.get('/clients/'+clientId)
     const cl = data.client
     const projects = data.projects||[]
     const invoices = data.invoices||[]
+    const canEdit = ['admin','pm','pc'].includes(String(_user?.role||'').toLowerCase())
     showModal(`
-      <div class="modal-header">${avatar(cl.company_name,cl.avatar_color)} <h3 style="margin-left:8px">${cl.company_name}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+      <div class="modal-header">${avatar(cl.company_name,cl.avatar_color)} <h3 style="margin-left:8px;flex:1">${cl.company_name}</h3>${canEdit ? `<button class="btn btn-outline btn-sm" style="margin-right:8px" onclick="openEditClientModal('${cl.id}')"><i class="fas fa-pen"></i> Edit</button>` : ''}<button class="close-btn" onclick="closeModal()">✕</button></div>
       <div class="modal-body">
         <div class="grid-2" style="margin-bottom:16px">
           ${metaItem('Contact', cl.contact_name)} ${metaItem('Email', cl.email)}

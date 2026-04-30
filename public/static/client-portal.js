@@ -201,19 +201,16 @@ let _clientData = { projects: [], invoices: [], documents: [], notifications: []
 let _clientProjectsPage = 1
 let _clientMilestonesPage = 1
 let _clientDocumentsPage = 1
-let _clientActivityPage = 1
 let _clientInvoicePage = 1
 const _clientInvoiceLimit = 10
 const _clientProjectsLimit = 6
 const _clientMilestonesLimit = 6
 const _clientDocumentsLimit = 8
-const _clientActivityLimit = 8
 
 async function renderClientMain(container) {
   _clientProjectsPage = 1
   _clientMilestonesPage = 1
   _clientDocumentsPage = 1
-  _clientActivityPage = 1
   _clientInvoicePage = 1
   container.innerHTML = `
   <div style="display:flex;min-height:100vh">
@@ -250,7 +247,6 @@ async function renderClientMain(container) {
         ${cpNavItem('cp-documents','fa-folder-open','Documents')}
         ${cpNavItem('cp-invoices','fa-file-invoice-dollar','Invoices & Billing')}
         ${cpNavItem('cp-support','fa-life-ring','Support')}
-        ${cpNavItem('cp-activity','fa-bell','Activity Feed')}
         ${cpNavItem('cp-profile','fa-user-cog','My Profile')}
       </nav>
       <div style="padding:12px 8px;border-top:1px solid #2A1812">
@@ -317,11 +313,6 @@ function cpGoDocumentsPage(page) {
   cpNavigate('cp-documents')
 }
 
-function cpGoActivityPage(page) {
-  _clientActivityPage = Math.max(1, Number(page) || 1)
-  cpNavigate('cp-activity')
-}
-
 function cpNavigate(page) {
   // Track history before navigating
   if (_clientPage !== page) {
@@ -339,7 +330,7 @@ function cpNavigate(page) {
   const titles = {
     'cp-dashboard': 'Dashboard', 'cp-projects': 'My Projects', 'cp-kanban': 'Task Board',
     'cp-milestones': 'Milestones', 'cp-documents': 'Documents', 'cp-invoices': 'Invoices & Billing',
-    'cp-support': 'Support', 'cp-activity': 'Activity Feed', 'cp-profile': 'My Profile'
+    'cp-support': 'Support', 'cp-profile': 'My Profile'
   }
   const titleEl = document.getElementById('cp-page-title')
   if (titleEl) titleEl.textContent = titles[page] || page
@@ -355,7 +346,6 @@ function cpNavigate(page) {
     case 'cp-documents':   renderCpDocuments(main); break
     case 'cp-invoices':    renderCpInvoices(main); break
     case 'cp-support':     renderCpSupport(main); break
-    case 'cp-activity':    renderCpActivity(main); break
     case 'cp-profile':     renderCpProfile(main); break
   }
 }
@@ -374,7 +364,7 @@ function cpBack() {
   const titles = {
     'cp-dashboard': 'Dashboard', 'cp-projects': 'My Projects', 'cp-kanban': 'Task Board',
     'cp-milestones': 'Milestones', 'cp-documents': 'Documents', 'cp-invoices': 'Invoices & Billing',
-    'cp-support': 'Support', 'cp-activity': 'Activity Feed', 'cp-profile': 'My Profile'
+    'cp-support': 'Support', 'cp-profile': 'My Profile'
   }
   const titleEl = document.getElementById('cp-page-title')
   if (titleEl) titleEl.textContent = titles[_clientPage] || _clientPage
@@ -390,7 +380,6 @@ function cpBack() {
     case 'cp-documents':   renderCpDocuments(main); break
     case 'cp-invoices':    renderCpInvoices(main); break
     case 'cp-support':     renderCpSupport(main); break
-    case 'cp-activity':    renderCpActivity(main); break
     case 'cp-profile':     renderCpProfile(main); break
   }
 }
@@ -412,16 +401,14 @@ function clientLogout() {
 async function renderCpDashboard(el) {
   try {
     const clientId = _user.sub || _user.id
-    const [clientData, invData, actData] = await Promise.all([
+    const [clientData, invData] = await Promise.all([
       ClientAPI.get('/clients/' + clientId),
       ClientAPI.get('/invoices?client_id=' + clientId + '&page=1&limit=4'),
-      ClientAPI.get('/activity?limit=8&client_id=' + clientId).catch(() => ({ logs: [] }))
     ])
     const client = clientData.client || {}
     const projects = clientData.projects || []
     const invoices = invData.invoices || []
     const summary = invData.summary || {}
-    const logs = actData.logs || []
 
     const totalBudget = projects.reduce((s, p) => s + (p.estimated_budget_hours || 0), 0)
     const consumedHrs = projects.reduce((s, p) => s + (p.consumed_hours || 0), 0)
@@ -495,7 +482,7 @@ async function renderCpDashboard(el) {
       </div>
     </div>
 
-    <div class="grid-2" style="margin-bottom:20px">
+    <div style="margin-bottom:20px">
       <!-- Projects status -->
       <div class="card">
         <div class="card-header"><span style="font-weight:600">Project Status Overview</span><button class="btn btn-sm btn-outline" onclick="cpNavigate('cp-projects')">View All</button></div>
@@ -516,23 +503,6 @@ async function renderCpDashboard(el) {
                 </td>
               </tr>`}).join('')}</tbody>
           </table>`}
-        </div>
-      </div>
-      <!-- Recent activity -->
-      <div class="card">
-        <div class="card-header"><span style="font-weight:600">Recent Activity</span><button class="btn btn-sm btn-outline" onclick="cpNavigate('cp-activity')">View All</button></div>
-        <div class="card-body" style="padding:12px">
-          ${logs.length === 0 ? '<div class="empty-state"><i class="fas fa-bell"></i><p>No recent activity</p></div>' :
-          logs.slice(0, 6).map(log => `
-            <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #2A1812">
-              <div style="width:28px;height:28px;border-radius:50%;background:${cpActivityColor(log.action)};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">
-                <i class="fas ${cpActivityIcon(log.action)}" style="color:#fff"></i>
-              </div>
-              <div style="min-width:0;flex:1">
-                <div style="font-size:12px;color:#e2e8f0;line-height:1.4">${log.description || (log.action + ' ' + (log.entity_type || ''))}</div>
-                <div style="font-size:10px;color:#64748b;margin-top:2px">${fmtDateRelative(log.created_at)}</div>
-              </div>
-            </div>`).join('')}
         </div>
       </div>
     </div>
@@ -648,9 +618,10 @@ async function renderCpKanban(el) {
       { id: 'blocked', label: 'Blocked', icon: 'fa-ban', color: '#FF5E3A' },
     ]
 
+    const totalTasks = taskList.length
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Task Board</h1><p class="page-subtitle">Client-visible tasks for your projects</p></div>
+      <div><h1 class="page-title">Task Board</h1><p class="page-subtitle">${totalTasks} client-visible task${totalTasks===1?'':'s'} for your projects</p></div>
       <div class="page-actions">
         <select class="form-select" style="min-width:200px" onchange="_cpKanbanProject=this.value;renderCpKanban(document.getElementById('cp-main'))">
           ${projects.map(p => `<option value="${p.id}" ${p.id === _cpKanbanProject ? 'selected' : ''}>${p.name}</option>`).join('')}
@@ -658,35 +629,37 @@ async function renderCpKanban(el) {
       </div>
     </div>
 
-    <div style="overflow-x:auto;padding-bottom:16px">
-      <div style="display:flex;gap:14px;min-width:max-content">
+    ${totalTasks === 0
+      ? `<div class="empty-state" style="margin-top:20px"><i class="fas fa-clipboard-list"></i><p>No tasks visible yet for this project.</p></div>`
+      : `<div style="overflow-x:auto;padding-bottom:16px;-webkit-overflow-scrolling:touch">
+      <div style="display:flex;gap:10px;min-width:max-content">
         ${columns.map(col => {
           const colTasks = taskList.filter(t => t.status === col.id)
-          return `<div style="width:260px;flex-shrink:0">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#1F0F08;border-radius:8px;border-top:2px solid ${col.color}">
+          return `<div style="width:210px;flex-shrink:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;background:#1F0F08;border-radius:8px;border-top:2px solid ${col.color}">
               <i class="fas ${col.icon}" style="color:${col.color};font-size:12px"></i>
               <span style="font-size:12px;font-weight:600;color:#e2e8f0">${col.label}</span>
               <span style="margin-left:auto;background:#2A1812;color:#94a3b8;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px">${colTasks.length}</span>
             </div>
-            <div style="display:flex;flex-direction:column;gap:8px;min-height:120px">
-              ${colTasks.length === 0 ? `<div style="padding:16px;text-align:center;color:#334155;font-size:12px;border:1px dashed #2A1812;border-radius:8px">No tasks</div>` :
+            <div style="display:flex;flex-direction:column;gap:8px;min-height:60px">
+              ${colTasks.length === 0 ? `<div style="padding:8px;text-align:center;color:#334155;font-size:11px;border:1px dashed #2A1812;border-radius:6px">—</div>` :
               colTasks.map(t => `
-                <div style="background:#1F0F08;border:1px solid #2A1812;border-radius:8px;padding:12px;cursor:pointer;transition:.2s" onclick="cpViewTask('${t.id}')" onmouseover="this.style.borderColor='${col.color}';this.style.boxShadow='0 4px 12px rgba(0,0,0,.3)'" onmouseout="this.style.borderColor='#2A1812';this.style.boxShadow='none'">
-                  <div style="font-size:10px;color:#64748b;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-                    <span style="font-family:monospace">${t.task_key||''}</span>
+                <div style="background:#1F0F08;border:1px solid #2A1812;border-radius:8px;padding:10px;cursor:pointer;transition:.2s" onclick="cpViewTask('${t.id}')" onmouseover="this.style.borderColor='${col.color}';this.style.boxShadow='0 4px 12px rgba(0,0,0,.3)'" onmouseout="this.style.borderColor='#2A1812';this.style.boxShadow='none'">
+                  <div style="font-size:10px;color:#64748b;margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    ${t.task_key?`<span style="font-family:monospace">${t.task_key}</span>`:''}
                     ${priorityBadge(t.priority)}
                   </div>
-                  <div style="font-size:13px;font-weight:500;color:#e2e8f0;line-height:1.4;margin-bottom:8px">${t.title}</div>
-                  ${t.description ? `<div style="font-size:11px;color:#64748b;line-height:1.4;margin-bottom:8px">${t.description.substring(0,80)}${t.description.length>80?'…':''}</div>` : ''}
-                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
-                    <span style="font-size:10px;color:#64748b">${t.module_name||''}</span>
-                    ${t.estimated_hours ? `<span style="font-size:10px;color:#94a3b8"><i class="fas fa-clock" style="margin-right:3px"></i>${t.estimated_hours}h</span>` : ''}
+                  <div style="font-size:12.5px;font-weight:500;color:#e2e8f0;line-height:1.4;margin-bottom:6px">${t.title}</div>
+                  ${t.description ? `<div style="font-size:11px;color:#64748b;line-height:1.4;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${t.description}</div>` : ''}
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:6px">
+                    <span style="font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.module_name||''}</span>
+                    ${t.estimated_hours ? `<span style="font-size:10px;color:#94a3b8;flex-shrink:0"><i class="fas fa-clock" style="margin-right:3px"></i>${t.estimated_hours}h</span>` : ''}
                   </div>
                 </div>`).join('')}
             </div>
           </div>`}).join('')}
       </div>
-    </div>`
+    </div>`}`
   } catch(e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
   }
@@ -755,22 +728,12 @@ async function renderCpMilestones(el) {
     const clientData = await ClientAPI.get('/clients/' + clientId)
     const projects = clientData.projects || []
     const projectIds = projects.map(p => p.id)
-    const milestonesHeader = `
-      <div class="card" style="margin:14px 0 12px;padding:14px 16px;background:rgba(15,23,42,.72);border:1px solid rgba(148,163,184,.22);box-shadow:none">
-        <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr;gap:12px;align-items:center;font-size:12px;letter-spacing:.03em;color:#f8fafc;font-weight:700">
-          <div>Milestone</div>
-          <div>Project</div>
-          <div>Due / Status</div>
-          <div>Billing / Progress</div>
-        </div>
-      </div>`
 
     if (projectIds.length === 0) {
       el.innerHTML = `
       <div class="page-header">
         <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">0 project milestones and delivery timeline</p></div>
       </div>
-      ${milestonesHeader}
       <div class="empty-state"><i class="fas fa-flag"></i><p>No projects assigned yet.</p></div>`
       return
     }
@@ -785,11 +748,17 @@ async function renderCpMilestones(el) {
     <div class="page-header">
       <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">${pagination.total} project milestones and delivery timeline</p></div>
     </div>
-    ${milestonesHeader}
     ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-flag"></i><p>No milestones set yet.</p></div>' :
     pagination.items.map(m => {
-      const pct = m.completion_percentage || 0
+      const tasks = Array.isArray(m.tasks) ? m.tasks : []
+      const derivedPct = tasks.length
+        ? tasks.filter(t => t.status === 'done').reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
+        : Number(m.completion_pct) || Number(m.completion_percentage) || 0
+      const pct = m.status === 'completed' ? 100 : Math.min(100, Math.round(derivedPct || 0))
       const isOverdue = m.due_date && new Date(m.due_date) < new Date() && m.status !== 'completed'
+      const rating = m.rating || null
+      const ratingOverall = rating?.overall || 0
+      const billable = m.invoice_amount || m.amount
       return `<div class="card" style="padding:20px;margin-bottom:14px">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
           <div style="flex:1;min-width:0">
@@ -797,6 +766,7 @@ async function renderCpMilestones(el) {
               <div style="font-size:15px;font-weight:600;color:#e2e8f0">${m.title}</div>
               <span class="badge ${m.status==='completed'?'badge-done':m.status==='in_progress'?'badge-inprogress':isOverdue?'badge-blocked':'badge-todo'}">${m.status?.replace('_',' ')}</span>
               ${isOverdue ? '<span class="badge badge-blocked"><i class="fas fa-exclamation-triangle"></i>Overdue</span>' : ''}
+              ${ratingOverall ? `<span style="font-size:11px;background:rgba(255,203,71,.15);color:#FFCB47;padding:2px 8px;border-radius:10px;font-weight:600"><i class="fas fa-star"></i> ${ratingOverall.toFixed(1)}/10</span>` : ''}
             </div>
             <div style="font-size:12px;color:#64748b;margin-top:4px">${m.project_name || ''} ${m.due_date ? `• Due: ${fmtDate(m.due_date)}` : ''}</div>
           </div>
@@ -809,12 +779,84 @@ async function renderCpMilestones(el) {
         <div style="width:100%;height:8px;background:#2A1812;border-radius:4px;overflow:hidden">
           <div style="height:100%;width:${Math.min(pct,100)}%;background:${pct>=100?'linear-gradient(90deg,#3FAA70,#58C68A)':pct>=60?'linear-gradient(90deg,#E5A82C,#FFCB47)':'linear-gradient(90deg,#E0612C,#FF7A45)'};border-radius:4px;transition:.5s"></div>
         </div>
-        ${m.amount ? `<div style="margin-top:10px;font-size:12px;color:#94a3b8"><i class="fas fa-indian-rupee-sign" style="margin-right:4px;color:#58C68A"></i>Billing milestone: <strong style="color:#58C68A">${fmtCurrency(m.amount)}</strong></div>` : ''}
+        ${tasks.length ? `<div style="margin-top:12px"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Tasks</div><div style="display:flex;flex-direction:column;gap:4px">${tasks.map(t => `
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:${t.status==='done'?'#58C68A':'#cbd5e1'}">
+            <i class="fas fa-${t.status==='done'?'check-circle':'circle'}" style="font-size:11px"></i>
+            <span style="flex:1;${t.status==='done'?'text-decoration:line-through':''}">${t.title}</span>
+            <span style="font-size:10px;color:#C56FE6;font-weight:600">${Number(t.pct_of_milestone)||0}%</span>
+          </div>`).join('')}</div></div>` : ''}
+        ${billable ? `<div style="margin-top:10px;font-size:12px;color:#94a3b8"><i class="fas fa-indian-rupee-sign" style="margin-right:4px;color:#58C68A"></i>Billing milestone: <strong style="color:#58C68A">${fmtCurrency(billable)}</strong></div>` : ''}
+        ${rating ? `
+        <div style="margin-top:12px;padding:10px;background:rgba(255,203,71,.08);border:1px solid rgba(255,203,71,.25);border-radius:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#FFCB47;font-weight:600;margin-bottom:6px">
+            <span><i class="fas fa-star"></i> Your Rating</span>
+            <span>${ratingOverall.toFixed(1)}/10</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px;color:#cbd5e1">
+            ${[['Timing','timing'],['Team','team'],['Communication','communication'],['Quality','quality']].map(([l,k])=>`<div><div style="color:#64748b">${l}</div><div>${Number(rating[k]||0).toFixed(1)}/10</div></div>`).join('')}
+          </div>
+          ${rating.comment?`<div style="font-size:11px;color:#cbd5e1;margin-top:6px;font-style:italic">"${rating.comment}"</div>`:''}
+        </div>` : ''}
+        ${pct >= 100 ? `<div style="margin-top:12px;display:flex;justify-content:flex-end"><button class="btn btn-sm btn-primary" onclick="cpOpenMilestoneRating('${m.id}')"><i class="fas fa-star"></i> ${rating ? 'Update Rating' : 'Rate this Milestone'}</button></div>` : ''}
       </div>`}).join('')}
     ${renderPager(pagination, 'cpGoMilestonesPage', 'cpGoMilestonesPage', 'milestones')}
     `
+    window._cpMilestonesCache = milestones
   } catch(e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
+}
+
+function cpOpenMilestoneRating(id) {
+  const m = (window._cpMilestonesCache || []).find(x => String(x.id) === String(id)) || {}
+  const r = m.rating || {}
+  const dims = [
+    ['timing', 'Timing & Delivery', 'Was the milestone delivered on time?'],
+    ['team', 'Team Performance', 'How well did the team perform?'],
+    ['communication', 'Communication', 'How was the communication?'],
+    ['quality', 'Quality of Work', 'How is the quality of the deliverable?'],
+  ]
+  showModal(`
+    <div class="modal-header"><h3><i class="fas fa-star" style="color:#FFCB47"></i> Rate Milestone</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:#94a3b8;margin-bottom:14px">Share your feedback on <strong style="color:#e2e8f0">${m.title || ''}</strong>. Rate each area from 1 to 10.</div>
+      ${dims.map(([k, label, hint]) => `
+        <div class="form-group">
+          <label class="form-label">${label}</label>
+          <input class="form-input" type="number" min="1" max="10" step="0.5" id="cp-rate-${k}" value="${r[k] || ''}" placeholder="1 – 10"/>
+          <div style="font-size:11px;color:#64748b;margin-top:4px">${hint}</div>
+        </div>`).join('')}
+      <div class="form-group">
+        <label class="form-label">Additional Comments (optional)</label>
+        <textarea class="form-textarea" id="cp-rate-comment" rows="3" placeholder="Anything else to share?">${(r.comment || '').replace(/"/g, '&quot;')}</textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="cpSubmitMilestoneRating('${id}')"><i class="fas fa-paper-plane"></i> Submit Rating</button>
+    </div>`, 'modal-md')
+}
+
+async function cpSubmitMilestoneRating(id) {
+  const get = (k) => parseFloat(document.getElementById('cp-rate-' + k).value) || 0
+  const payload = {
+    timing: get('timing'),
+    team: get('team'),
+    communication: get('communication'),
+    quality: get('quality'),
+    comment: document.getElementById('cp-rate-comment').value.trim() || null,
+  }
+  if (!payload.timing && !payload.team && !payload.communication && !payload.quality) {
+    return toast('Provide at least one rating between 1 and 10', 'error')
+  }
+  try {
+    await ClientAPI.post('/milestones/' + id + '/rate', payload)
+    toast('Thank you for your rating!', 'success')
+    closeModal()
+    const main = document.getElementById('cp-main-content')
+    if (main) renderCpMilestones(main)
+  } catch (e) {
+    toast(e.message, 'error')
   }
 }
 
@@ -825,10 +867,12 @@ async function renderCpDocuments(el) {
     const clientData = await ClientAPI.get('/clients/' + clientId)
     const projects = clientData.projects || []
 
-    let selectedProject = projects[0]?.id || ''
-    const docsData = await ClientAPI.get('/documents?visibility=client' + (selectedProject ? '&project_id=' + selectedProject : ''))
+    // Default to "All Projects" so the client sees every document tied to any
+    // of their projects (plus their own uploads). The backend already scopes
+    // results to this client's projects when role=client.
+    const selectedProject = window._cpDocProject || ''
+    const docsData = await ClientAPI.get('/documents' + (selectedProject ? '?project_id=' + selectedProject : ''))
     const docs = docsData.documents || []
-    const categories = docsData.categories || []
     const pagination = paginateClient(docs, _clientDocumentsPage, _clientDocumentsLimit)
     _clientDocumentsPage = pagination.page
 
@@ -843,13 +887,13 @@ async function renderCpDocuments(el) {
       sow: 'Statement of Work', brd: 'Business Requirements', frd: 'Functional Requirements',
       uiux: 'UI/UX Design', wireframes: 'Wireframes', meeting_notes: 'Meeting Notes',
       technical: 'Technical Docs', test_report: 'Test Reports', release: 'Release Notes',
-      billing: 'Billing', contract: 'Contracts', other: 'Other'
+      billing: 'Billing', contract: 'Contracts', bid: 'Bid Attachments', other: 'Other'
     }
     const categoryIcons = {
       sow: 'fa-handshake', brd: 'fa-clipboard-list', frd: 'fa-file-alt',
       uiux: 'fa-paint-brush', wireframes: 'fa-drafting-compass', meeting_notes: 'fa-comments',
       technical: 'fa-code', test_report: 'fa-bug', release: 'fa-rocket',
-      billing: 'fa-file-invoice-dollar', contract: 'fa-file-contract', other: 'fa-file'
+      billing: 'fa-file-invoice-dollar', contract: 'fa-file-contract', bid: 'fa-gavel', other: 'fa-file'
     }
 
     // Stash for the upload modal
@@ -857,10 +901,10 @@ async function renderCpDocuments(el) {
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Project Documents</h1><p class="page-subtitle">${pagination.total} document${pagination.total !== 1 ? 's' : ''} available</p></div>
+      <div><h1 class="page-title">Project Documents</h1><p class="page-subtitle">${pagination.total} document${pagination.total !== 1 ? 's' : ''} ${selectedProject ? 'for this project' : 'across your projects'}</p></div>
       <div class="page-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap">
         <select class="form-select" style="min-width:160px;flex:0 1 auto" onchange="cpReloadDocs(this.value)">
-          <option value="">All Projects</option>
+          <option value="" ${!selectedProject ? 'selected' : ''}>All Projects</option>
           ${projects.map(p => `<option value="${p.id}" ${p.id === selectedProject ? 'selected' : ''}>${p.name}</option>`).join('')}
         </select>
         <button class="btn btn-primary" style="white-space:nowrap;flex:0 0 auto" onclick="openCpUploadModal()"><i class="fas fa-upload"></i> Upload</button>
@@ -1251,50 +1295,6 @@ async function cpViewInvoice(invoiceId) {
   } catch(e) { toast(e.message, 'error') }
 }
 
-/* ═══ CLIENT ACTIVITY ═════════════════════════════════════ */
-async function renderCpActivity(el) {
-  try {
-    const clientId = _user.sub || _user.id
-    const data = await ClientAPI.get('/activity?client_id=' + clientId + '&limit=50').catch(() => ({ logs: [] }))
-    const logs = data.logs || data.activity || []
-    const pagination = paginateClient(logs, _clientActivityPage, _clientActivityLimit)
-    _clientActivityPage = pagination.page
-
-    el.innerHTML = `
-    <div class="page-header">
-      <div><h1 class="page-title">Activity Feed</h1><p class="page-subtitle">${pagination.total} latest updates on your projects</p></div>
-    </div>
-    <div class="card" style="padding:0">
-      <div style="padding:16px;border-bottom:1px solid #2A1812">
-        <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Recent Activity</div>
-      </div>
-      ${pagination.total === 0 ? '<div class="empty-state"><i class="fas fa-bell"></i><p>No recent activity yet.</p></div>' :
-      `<div style="padding:0">
-        ${pagination.items.map((log, i) => `
-          <div style="display:flex;gap:14px;padding:14px 16px;${i<pagination.items.length-1?'border-bottom:1px solid #2A1812':''}">
-            <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:0">
-              <div style="width:32px;height:32px;border-radius:50%;background:${cpActivityColor(log.action)};display:flex;align-items:center;justify-content:center">
-                <i class="fas ${cpActivityIcon(log.action)}" style="color:#fff;font-size:12px"></i>
-              </div>
-              ${i < logs.length-1 ? `<div style="width:1px;flex:1;background:#2A1812;min-height:20px;margin-top:4px"></div>` : ''}
-            </div>
-            <div style="flex:1;min-width:0;padding-top:4px">
-              <div style="font-size:13px;color:#e2e8f0;line-height:1.4">${log.description || (log.action + ' ' + (log.entity_type || ''))}</div>
-              ${log.project_name ? `<div style="font-size:11px;color:#FF7A45;margin-top:4px"><i class="fas fa-layer-group" style="margin-right:4px"></i>${log.project_name}</div>` : ''}
-              <div style="font-size:11px;color:#64748b;margin-top:4px;display:flex;align-items:center;gap:10px">
-                ${log.actor_name ? `<span><i class="fas fa-user" style="margin-right:3px"></i>${log.actor_name}</span>` : ''}
-                <span>${fmtDateRelative(log.created_at)}</span>
-              </div>
-            </div>
-          </div>`).join('')}
-      </div>`}
-      ${renderPager(pagination, 'cpGoActivityPage', 'cpGoActivityPage', 'activities')}
-    </div>`
-  } catch(e) {
-    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
-  }
-}
-
 /* ═══ CLIENT PROFILE ══════════════════════════════════════ */
 async function renderCpProfile(el) {
   try {
@@ -1420,16 +1420,6 @@ function cpStatusBadge(s) {
 
 function cpInvoiceBadge(s) {
   return { paid:'badge-done', pending:'badge-todo', sent:'badge-inprogress', overdue:'badge-blocked', partially_paid:'badge-review', cancelled:'badge-todo' }[s] || 'badge-todo'
-}
-
-function cpActivityColor(action) {
-  const map = { created:'#FF7A45', updated:'#F4C842', completed:'#58C68A', commented:'#C56FE6', uploaded:'#FFCB47', status_changed:'#FF7A45', deleted:'#FF5E3A' }
-  return map[action] || '#64748b'
-}
-
-function cpActivityIcon(action) {
-  const map = { created:'fa-plus', updated:'fa-edit', completed:'fa-check', commented:'fa-comment', uploaded:'fa-upload', status_changed:'fa-refresh', deleted:'fa-trash' }
-  return map[action] || 'fa-circle'
 }
 
 function fmtDateRelative(dateStr) {

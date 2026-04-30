@@ -18,14 +18,14 @@ async function renderDocumentsCenter(el) {
     ])
     const docs = docsData.documents || []
     const projects = projectsData.projects || projectsData || []
-    const categories = docsData.categories || ['sow','brd','frd','uiux','wireframes','meeting_notes','technical','test_report','release','billing','contract','other']
+    const categories = docsData.categories || ['sow','brd','frd','uiux','wireframes','meeting_notes','technical','test_report','release','billing','contract','bid','other']
     _documentsCenterPage = 1
 
     const categoryLabels = {
       sow:'Statement of Work', brd:'Business Requirements', frd:'Functional Requirements',
       uiux:'UI/UX Design', wireframes:'Wireframes', meeting_notes:'Meeting Notes',
       technical:'Technical Docs', test_report:'Test Reports', release:'Release Notes',
-      billing:'Billing', contract:'Contracts', other:'Other'
+      billing:'Billing', contract:'Contracts', bid:'Bid Attachments', other:'Other'
     }
 
     let filterProject = '', filterCategory = '', filterSearch = ''
@@ -66,7 +66,7 @@ async function renderDocumentsCenter(el) {
                   <a href="${doc.file_url||'#'}" download class="btn btn-sm btn-primary" style="flex:1;text-align:center;text-decoration:none">
                     <i class="fas fa-download"></i>Download
                   </a>
-                  ${['admin','pm'].includes(_user.role) ? `<button class="btn btn-sm btn-outline" onclick="deleteDoc('${doc.id}')" style="color:#FF5E3A;border-color:#FF5E3A"><i class="fas fa-trash"></i></button>` : ''}
+                  ${['admin','pm'].includes(_user.role) && !doc.read_only ? `<button class="btn btn-sm btn-outline" onclick="deleteDoc('${doc.id}')" style="color:#FF5E3A;border-color:#FF5E3A"><i class="fas fa-trash"></i></button>` : ''}
                 </div>
               </div>`).join('')}
           </div>
@@ -2251,6 +2251,7 @@ async function openAuctionModal() {
     clients = clientsRes.clients || clientsRes.data || []
   } catch {}
   window._auctionInvitedIds = new Set()
+  window._auctionFiles = []
   showModal(`
     <div class="modal-header">
       <h3><i class="fas fa-gavel" style="color:var(--accent);margin-right:6px"></i>New Bid Auction</h3>
@@ -2288,6 +2289,15 @@ async function openAuctionModal() {
         <textarea id="auc-scope" class="form-textarea" rows="4" placeholder="Describe the deliverables, tech, constraints — bidders read this before bidding."></textarea>
       </div>
       <div class="form-group" style="margin-bottom:0">
+        <label class="form-label"><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:6px"></i>Attachments (optional)</label>
+        <div style="border:1px dashed rgba(255,180,120,.32);border-radius:10px;padding:10px;background:rgba(0,0,0,.18)">
+          <input id="auc-files-input" type="file" multiple style="display:none" onchange="aucAddFiles(this.files);this.value=''"/>
+          <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('auc-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:8px">Bidders + Documents will see these. 25 MB / file.</span>
+          <div id="auc-files-list" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
         <label class="form-label"><i class="fas fa-users" style="color:#FF7A45;margin-right:6px"></i>Invite teams (role=team) *</label>
         <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
           <div id="auc-team-list" style="max-height:220px;overflow-y:auto;padding:8px">
@@ -2313,6 +2323,36 @@ async function openAuctionModal() {
   `, 'modal-xl')
 }
 
+function aucAddFiles(fileList) {
+  if (!window._auctionFiles) window._auctionFiles = []
+  for (const f of fileList) window._auctionFiles.push(f)
+  aucRenderFilesList()
+}
+function aucRemoveFile(idx) {
+  if (!window._auctionFiles) return
+  window._auctionFiles.splice(idx, 1)
+  aucRenderFilesList()
+}
+function aucRenderFilesList() {
+  const wrap = document.getElementById('auc-files-list')
+  if (!wrap) return
+  const files = window._auctionFiles || []
+  if (!files.length) { wrap.innerHTML = ''; return }
+  wrap.innerHTML = files.map((f, i) => {
+    const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
+    const tooBig = f.size > 25 * 1024 * 1024
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+        <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
+          <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#64748b'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="aucRemoveFile(${i})"><i class="fas fa-times"></i></button>
+      </div>`
+  }).join('')
+}
+
 function toggleAuctionInvite(id, checked) {
   if (!window._auctionInvitedIds) window._auctionInvitedIds = new Set()
   if (checked) window._auctionInvitedIds.add(id)
@@ -2334,13 +2374,33 @@ async function submitAuction() {
   const end = document.getElementById('auc-end').value || null
   const invited = Array.from(window._auctionInvitedIds || [])
 
+  const pendingFiles = window._auctionFiles || []
+
   if (!name || !code) { toast('Name and Code required', 'error'); return }
   if (!scope) { toast('Add the project scope', 'error'); return }
   if (!maxBid || maxBid <= 0) { toast('Enter a valid maximum bid amount', 'error'); return }
   if (!deadlineRaw) { toast('Set a bid deadline', 'error'); return }
   if (invited.length === 0) { toast('Pick at least one team to invite', 'error'); return }
+  for (const f of pendingFiles) {
+    if (f.size > 25 * 1024 * 1024) { toast(`"${f.name}" exceeds the 25 MB limit`, 'error'); return }
+  }
 
   try {
+    const attachments = []
+    for (const f of pendingFiles) {
+      try {
+        const uploaded = await udUploadFileToServer(f)
+        attachments.push({
+          file_name: uploaded.file_name || f.name,
+          file_url: uploaded.url,
+          file_type: uploaded.file_type || f.type || null,
+          file_size: uploaded.file_size || f.size || 0,
+        })
+      } catch (e) {
+        toast(`"${f.name}" upload failed: ${e.message}`, 'error')
+        return
+      }
+    }
     await API.post('/bids', {
       name, code,
       client_id: clientSelect?.value || null,
@@ -2352,11 +2412,15 @@ async function submitAuction() {
       planned_start_date: start,
       planned_end_date: end,
       invited_user_ids: invited,
+      attachments,
     })
     toast('Auction created', 'success')
+    window._auctionFiles = []
     closeModal()
     const el = document.getElementById('page-bidding-view')
     if (el) { el.dataset.loaded = ''; renderBiddingView(el) }
+    const docEl = document.getElementById('page-documents-center')
+    if (docEl) { docEl.dataset.loaded = ''; }
   } catch (e) { toast('Failed: ' + e.message, 'error') }
 }
 
@@ -2372,12 +2436,10 @@ function openPlaceBidModal(auctionId) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div style="padding:10px;border-radius:10px;background:rgba(255,122,69,0.08);border:1px solid rgba(255,122,69,0.18);font-size:12px;color:#FFB347">
-        <i class="fas fa-circle-info"></i> Maximum allowed bid: <strong>₹${Number(a.max_bid_amount || 0).toLocaleString()}</strong>
-      </div>
       <div class="form-group">
         <label class="form-label">Your bid amount (₹) *</label>
-        <input id="bid-amount" class="form-input" type="number" min="1" step="1" max="${a.max_bid_amount || ''}" value="${myBid?.amount || ''}" placeholder="Must be ≤ ₹${Number(a.max_bid_amount || 0).toLocaleString()}"/>
+        <input id="bid-amount" class="form-input" type="number" min="1" step="1" max="${a.max_bid_amount || ''}" value="${myBid?.amount || ''}" placeholder="Enter your bid amount" oninput="validateBidAmount(this, ${Number(a.max_bid_amount) || 0})"/>
+        <div id="bid-amount-error" style="display:none;margin-top:6px;font-size:12px;color:#F87171"></div>
       </div>
       <div class="form-group">
         <label class="form-label">Delivery in (days)</label>
@@ -2395,14 +2457,51 @@ function openPlaceBidModal(auctionId) {
   `, 'modal-md')
 }
 
+function validateBidAmount(input, maxBidAmount) {
+  const errEl = document.getElementById('bid-amount-error')
+  if (!errEl) return
+  const val = parseFloat(input.value)
+  if (input.value === '' || Number.isNaN(val)) {
+    errEl.style.display = 'none'
+    errEl.textContent = ''
+    input.classList.remove('input-error')
+    return
+  }
+  if (val <= 0) {
+    errEl.textContent = 'Enter a valid bid amount'
+    errEl.style.display = 'block'
+    input.classList.add('input-error')
+    return
+  }
+  if (Number(maxBidAmount) > 0 && val > Number(maxBidAmount)) {
+    errEl.textContent = `Bid cannot exceed the maximum of ₹${Number(maxBidAmount).toLocaleString()}`
+    errEl.style.display = 'block'
+    input.classList.add('input-error')
+    return
+  }
+  errEl.style.display = 'none'
+  errEl.textContent = ''
+  input.classList.remove('input-error')
+}
+
 async function submitPlaceBid(auctionId, maxBidAmount) {
-  const amount = parseFloat(document.getElementById('bid-amount').value)
+  const amountInput = document.getElementById('bid-amount')
+  const errEl = document.getElementById('bid-amount-error')
+  const amount = parseFloat(amountInput.value)
   const days = parseFloat(document.getElementById('bid-days').value)
   const note = (document.getElementById('bid-note').value || '').trim()
-  if (!amount || amount <= 0) { toast('Enter a valid bid amount', 'error'); return }
+  const showInlineErr = (msg) => {
+    if (errEl) {
+      errEl.textContent = msg
+      errEl.style.display = 'block'
+    }
+    amountInput?.classList.add('input-error')
+    amountInput?.focus()
+  }
+  if (!amount || amount <= 0) { showInlineErr('Enter a valid bid amount'); return }
   // Frontend guard so the user gets the message before the round-trip.
   if (Number(maxBidAmount) > 0 && amount > Number(maxBidAmount)) {
-    toast(`Bid amount cannot exceed the maximum of ₹${Number(maxBidAmount).toLocaleString()}`, 'error')
+    showInlineErr(`Bid cannot exceed the maximum of ₹${Number(maxBidAmount).toLocaleString()}`)
     return
   }
   try {
@@ -2446,6 +2545,21 @@ async function openAuctionDetailModal(auctionId) {
       <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
         ${winnerName ? `<div style="padding:10px;border-radius:10px;background:rgba(88,198,138,0.1);border:1px solid rgba(88,198,138,0.3);font-size:13px;color:#FFF1E6"><i class="fas fa-trophy" style="color:#86E0A8"></i> <strong>${escapeInbox(winnerName)}</strong> won at ₹${Number(a.winner_amount || 0).toLocaleString()}${a.resulting_project_id ? ' — project auto-created' : ''}</div>` : ''}
         ${a.scope ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Scope</div><div style="font-size:13px;color:#E8D2BD;line-height:1.55;white-space:pre-wrap">${escapeInbox(a.scope)}</div></div>` : ''}
+        ${(a.attachments && a.attachments.length) ? `
+          <div>
+            <div style="font-size:10px;color:#9F8678;text-transform:uppercase;margin-bottom:6px">Attachments (${a.attachments.length})</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${a.attachments.map(f => `
+                <a href="${escapeInbox(f.file_url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;text-decoration:none">
+                  <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeInbox(f.file_name || 'file')}</div>
+                    <div style="font-size:10.5px;color:#64748b">${f.file_size ? (Number(f.file_size) / (1024 * 1024)).toFixed(2) + ' MB' : ''}${f.file_type ? ' • ' + escapeInbox(f.file_type) : ''}</div>
+                  </div>
+                  <i class="fas fa-external-link-alt" style="color:#9F8678;font-size:11px"></i>
+                </a>`).join('')}
+            </div>
+          </div>` : ''}
         <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#9F8678">
           <span><i class="fas fa-rupee-sign"></i> Max ₹${Number(a.max_bid_amount || 0).toLocaleString()}</span>
           <span><i class="fas fa-stopwatch"></i> Closes ${new Date(a.bid_deadline).toLocaleString()}</span>

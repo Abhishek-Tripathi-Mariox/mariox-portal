@@ -178,6 +178,18 @@ export function createBidsRouter(models: MongoModels, jwtSecret: string) {
         return res.status(400).json({ error: 'Planned end date must be after start date' })
       }
 
+      const attachments = Array.isArray(body.attachments)
+        ? body.attachments
+            .filter((a: any) => a && typeof a === 'object' && a.file_url)
+            .map((a: any) => ({
+              file_name: String(a.file_name || 'file').slice(0, 255),
+              file_url: String(a.file_url),
+              file_type: a.file_type ? String(a.file_type).slice(0, 120) : null,
+              file_size: Number(a.file_size) || 0,
+            }))
+            .slice(0, 20)
+        : []
+
       const invitedRaw = Array.isArray(body.invited_user_ids) ? body.invited_user_ids : []
       const invitedTrimmed: string[] = Array.from(new Set<string>(
         invitedRaw.map((v: any) => String(v || '').trim()).filter((s: string) => s.length > 0),
@@ -211,6 +223,7 @@ export function createBidsRouter(models: MongoModels, jwtSecret: string) {
         planned_end_date: plannedEnd || null,
         max_bid_amount: maxBidAmount,
         invited_user_ids: invitedTrimmed,
+        attachments,
         status: 'open',
         awarded_submission_id: null,
         awarded_user_id: null,
@@ -512,6 +525,34 @@ export function createBidsRouter(models: MongoModels, jwtSecret: string) {
         wip_limit: col.wip_limit,
         is_done_column: col.is_done_column,
       })))
+
+      // 3a) Copy bid attachments into the project's documents library so they
+      // show up under the project once the bid converts to a real project.
+      const bidAttachments = Array.isArray(auction.attachments) ? auction.attachments : []
+      if (bidAttachments.length) {
+        await models.documents.insertMany(bidAttachments.map((f: any) => ({
+          id: generateId('doc'),
+          project_id: projectId,
+          client_id: auction.client_id || null,
+          title: `${auction.name} — ${f.file_name || 'attachment'}`,
+          description: `From bid auction ${auction.code}`,
+          category: 'bid',
+          file_name: f.file_name || 'file',
+          file_url: f.file_url,
+          file_size: Number(f.file_size) || 0,
+          file_type: f.file_type || null,
+          version: '1.0',
+          uploaded_by: auction.created_by || user?.sub || null,
+          uploaded_by_role: 'staff',
+          visibility: 'internal',
+          is_client_visible: 0,
+          tags: null,
+          download_count: 0,
+          source_bid_id: auction.id,
+          created_at: nowIso,
+          updated_at: nowIso,
+        })))
+      }
 
       // 3) For in-house winners, also create a project_assignments row so the
       // winner sees the project on their dashboard / workload immediately.

@@ -124,17 +124,20 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
   function normalizeTasks(input: any): any[] {
     if (!Array.isArray(input)) return []
     const now = new Date().toISOString()
-    return input.slice(0, 50).map((t: any, idx: number) => ({
-      id: String(t?.id || `mt_${Date.now().toString(36)}_${idx}`),
-      title: String(t?.title || '').trim().slice(0, 200),
-      description: t?.description ? String(t.description).trim().slice(0, 1000) : null,
-      assignee_id: t?.assignee_id ? String(t.assignee_id) : null,
-      assignee_name: t?.assignee_name ? String(t.assignee_name).slice(0, 200) : null,
-      assignee_kind: t?.assignee_kind === 'team' ? 'team' : 'developer',
-      due_date: t?.due_date ? String(t.due_date) : null,
-      status: ['pending', 'in_progress', 'done', 'blocked'].includes(t?.status) ? t.status : 'pending',
-      created_at: t?.created_at || now,
-    })).filter((t) => t.title.length >= 1)
+    return input.slice(0, 50).map((t: any, idx: number) => {
+      const pct = Number(t?.pct_of_milestone)
+      return {
+        id: String(t?.id || `mt_${Date.now().toString(36)}_${idx}`),
+        title: String(t?.title || '').trim().slice(0, 200),
+        description: t?.description ? String(t.description).trim().slice(0, 1000) : null,
+        assignee_id: t?.assignee_id ? String(t.assignee_id) : null,
+        assignee_name: t?.assignee_name ? String(t.assignee_name).slice(0, 200) : null,
+        assignee_kind: t?.assignee_kind === 'team' ? 'team' : 'developer',
+        pct_of_milestone: Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : 0,
+        status: ['pending', 'in_progress', 'done', 'blocked'].includes(t?.status) ? t.status : 'pending',
+        created_at: t?.created_at || now,
+      }
+    }).filter((t) => t.title.length >= 1)
   }
 
   function normalizeRating(input: any): any | null {
@@ -198,12 +201,16 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
       }
       const enriched = milestones.map((m) => {
         const liveTasks = tasksByMilestone.get(String(m.id)) || []
+        const refsByTaskId = new Map<string, any>()
+        if (Array.isArray(m.tasks)) {
+          for (const ref of m.tasks) refsByTaskId.set(String(ref.id), ref)
+        }
         const liveSnap = liveTasks.map((t) => ({
           id: t.id,
           title: t.title,
           assignee_id: t.assignee_id || null,
           assignee_name: usersById.get(String(t.assignee_id))?.full_name || null,
-          due_date: t.due_date || null,
+          pct_of_milestone: Number(t.pct_of_milestone ?? refsByTaskId.get(String(t.id))?.pct_of_milestone) || 0,
           status: t.status || 'todo',
         }))
         return {
@@ -225,7 +232,7 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
       const user = req.user as any
       if (!['admin', 'pm', 'pc'].includes(user?.role)) return res.status(403).json({ error: 'Forbidden' })
       const body = req.body || {}
-      const { project_id, title, description, due_date, is_billable = 0, invoice_amount = 0, client_visible = 1, deliverables, tasks } = body
+      const { project_id, title, description, due_date, is_billable = 0, invoice_amount = 0, client_visible = 1, deliverables, tasks, attachments } = body
       if (!project_id || !title || !due_date) return res.status(400).json({ error: 'project_id, title, due_date required' })
       const id = generateId('ms')
       const now = new Date().toISOString()
@@ -251,7 +258,8 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
           story_points: 0,
           estimated_hours: 0,
           logged_hours: 0,
-          due_date: t.due_date || null,
+          due_date: null,
+          pct_of_milestone: Number(t.pct_of_milestone) || 0,
           labels: null,
           is_client_visible: 1,
           is_billable: Number(is_billable ? 1 : 0),
@@ -267,7 +275,7 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
             assignee_id: t.assignee_id || null,
             assignee_name: t.assignee_name || null,
             assignee_kind: t.assignee_kind || 'developer',
-            due_date: t.due_date || null,
+            pct_of_milestone: Number(t.pct_of_milestone) || 0,
             status: 'todo',
             created_at: now,
           })
@@ -295,6 +303,44 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
         updated_at: now,
       }
       await models.milestones.insertOne(milestone)
+
+      // Persist any attached files as project documents so they appear in the
+      // Documents center (filtered by project) and stay accessible after the
+      // milestone is closed. Failures here are non-fatal — the milestone is
+      // already created.
+      if (Array.isArray(attachments) && attachments.length) {
+        try {
+          const docRows = attachments
+            .filter((a: any) => a && a.file_url)
+            .slice(0, 20)
+            .map((a: any) => ({
+              id: generateId('doc'),
+              project_id,
+              client_id: null,
+              title: `${title} — ${String(a.file_name || 'attachment').slice(0, 180)}`,
+              description: `Attached when creating milestone "${title}"`,
+              category: 'other',
+              file_name: String(a.file_name || 'file').slice(0, 255),
+              file_url: String(a.file_url),
+              file_size: Number(a.file_size) || 0,
+              file_type: a.file_type ? String(a.file_type).slice(0, 120) : null,
+              version: '1.0',
+              uploaded_by: user?.sub || null,
+              uploaded_by_role: 'staff',
+              visibility: Number(client_visible) ? 'all' : 'internal',
+              is_client_visible: Number(client_visible) ? 1 : 0,
+              tags: null,
+              download_count: 0,
+              source_milestone_id: id,
+              created_at: now,
+              updated_at: now,
+            }))
+          if (docRows.length) await models.documents.insertMany(docRows)
+        } catch (e) {
+          console.warn('[milestones] failed to create attachment documents:', e)
+        }
+      }
+
       return res.status(201).json({ milestone })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to create milestone' })
@@ -400,7 +446,8 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
       const id = req.params.id
       const milestone = await models.milestones.findById(id) as any
       if (!milestone) return res.status(404).json({ error: 'Milestone not found' })
-      if (Number(milestone.completion_pct) < 100) {
+      const isComplete = Number(milestone.completion_pct) >= 100 || milestone.status === 'completed'
+      if (!isComplete) {
         return res.status(400).json({ error: 'Rating is available only after milestone is 100% complete' })
       }
       const rating = normalizeRating(req.body || {})

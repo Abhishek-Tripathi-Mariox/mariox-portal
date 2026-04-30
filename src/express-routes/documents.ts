@@ -41,11 +41,12 @@ export function createDocumentsRouter(models: MongoModels, jwtSecret: string) {
         ]
       }
 
-      const [docs, users, projects, clients] = await Promise.all([
+      const [docs, users, projects, clients, auctions] = await Promise.all([
         models.documents.find(filter) as Promise<any[]>,
         models.users.find({}) as Promise<any[]>,
         models.projects.find({}) as Promise<any[]>,
         models.clients.find({}) as Promise<any[]>,
+        models.bidAuctions.find({}) as Promise<any[]>,
       ])
       const usersById = new Map(users.map((u) => [String(u.id), u]))
       const clientsById = new Map(clients.map((c) => [String(c.id), c]))
@@ -70,6 +71,51 @@ export function createDocumentsRouter(models: MongoModels, jwtSecret: string) {
             project_name: projectsById.get(String(d.project_id))?.name || null,
           }
         })
+
+      // Surface bid auction attachments alongside regular documents so they
+      // appear in the Documents center even before the auction is awarded.
+      // Clients can't see other tenants' bids, so we omit this for the
+      // client role entirely.
+      if (role !== 'client') {
+        for (const a of auctions || []) {
+          const atts = Array.isArray(a.attachments) ? a.attachments : []
+          if (!atts.length) continue
+          if (project_id && String(a.resulting_project_id || '') !== String(project_id)) continue
+          if (category && category !== 'bid') continue
+          const creator = usersById.get(String(a.created_by))
+          for (const f of atts) {
+            enriched.push({
+              id: `bid-att:${a.id}:${f.file_url}`,
+              project_id: a.resulting_project_id || null,
+              project_name: projectsById.get(String(a.resulting_project_id))?.name || null,
+              client_id: a.client_id || null,
+              title: `${a.name} — ${f.file_name || 'attachment'}`,
+              description: `Auction ${a.code}`,
+              category: 'bid',
+              file_name: f.file_name || 'file',
+              file_url: f.file_url,
+              file_size: Number(f.file_size) || 0,
+              file_type: f.file_type || null,
+              version: '1.0',
+              uploaded_by: a.created_by || null,
+              uploaded_by_name: creator?.full_name || null,
+              uploaded_by_role: 'staff',
+              uploader_color: creator?.avatar_color || null,
+              visibility: 'internal',
+              is_client_visible: 0,
+              tags: null,
+              download_count: 0,
+              created_at: a.created_at || null,
+              updated_at: a.updated_at || null,
+              source: 'bid',
+              bid_id: a.id,
+              read_only: true,
+            })
+          }
+        }
+        enriched.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+      }
+
       return res.json({ documents: enriched, categories: DOC_CATEGORIES, data: enriched })
     } catch {
       return res.json({ documents: [], categories: DOC_CATEGORIES, data: [] })

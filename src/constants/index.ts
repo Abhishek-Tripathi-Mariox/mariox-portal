@@ -78,7 +78,7 @@ export const PRIORITY_LEVELS = {
 // Document Categories
 export const DOC_CATEGORIES = [
   'sow', 'brd', 'frd', 'uiux', 'wireframes', 'meeting_notes',
-  'technical', 'test_report', 'release', 'billing', 'contract', 'other'
+  'technical', 'test_report', 'release', 'billing', 'contract', 'bid', 'other'
 ] as const
 
 // Support Ticket Status

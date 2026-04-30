@@ -13,6 +13,7 @@ import {
   validateRequired,
   respondWithError,
 } from '../validators'
+import { createUserNotifications } from './notifications'
 
 const TASK_TYPES = ['task', 'bug', 'feature', 'epic', 'story', 'subtask'] as const
 const TASK_PRIORITIES = ['critical', 'high', 'medium', 'low'] as const
@@ -442,7 +443,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
 
       const body = req.body || {}
       const patch: any = { updated_at: new Date().toISOString() }
-      const allowed = ['title', 'description', 'task_type', 'status', 'priority', 'assignee_id', 'sprint_id', 'milestone_id', 'story_points', 'estimated_hours', 'logged_hours', 'due_date', 'labels', 'is_client_visible', 'is_billable', 'position']
+      const allowed = ['title', 'description', 'task_type', 'status', 'priority', 'assignee_id', 'sprint_id', 'milestone_id', 'story_points', 'estimated_hours', 'logged_hours', 'due_date', 'pct_of_milestone', 'labels', 'is_client_visible', 'is_billable', 'position']
       for (const k of allowed) {
         if (k in body) patch[k] = k === 'labels' && Array.isArray(body[k]) ? JSON.stringify(body[k]) : body[k]
       }
@@ -450,6 +451,39 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
         patch.completed_at = new Date().toISOString()
       }
       await models.tasks.updateById(id, { $set: patch })
+
+      // Auto-update milestone progress based on completed tasks' percentages.
+      // This is the contract: each milestone task carries pct_of_milestone, and
+      // the milestone's completion_pct is the sum of pct_of_milestone for tasks
+      // currently in 'done'. We recompute on every status change to either side
+      // so re-opening a task ('done' → 'in_progress') subtracts that share back.
+      const milestoneId = oldTask.milestone_id
+      const statusChanged = body.status !== undefined && body.status !== oldTask.status
+      const pctChanged = body.pct_of_milestone !== undefined
+      if (milestoneId && (statusChanged || pctChanged)) {
+        try {
+          const allMilestoneTasks = await models.tasks.find({ milestone_id: milestoneId }) as any[]
+          let completionPct = 0
+          for (const t of allMilestoneTasks) {
+            const tStatus = t.id === id && body.status !== undefined ? body.status : t.status
+            const tPct = t.id === id && body.pct_of_milestone !== undefined
+              ? Number(body.pct_of_milestone)
+              : Number(t.pct_of_milestone)
+            if (tStatus === 'done' && Number.isFinite(tPct)) completionPct += tPct
+          }
+          completionPct = Math.max(0, Math.min(100, Math.round(completionPct)))
+          const milestoneStatus = completionPct >= 100 ? 'completed' : (completionPct > 0 ? 'in_progress' : 'pending')
+          await models.milestones.updateById(milestoneId, {
+            $set: {
+              completion_pct: completionPct,
+              status: milestoneStatus,
+              updated_at: new Date().toISOString(),
+            },
+          })
+        } catch (e) {
+          console.warn('[tasks] failed to recompute milestone progress:', e)
+        }
+      }
 
       if (body.status && body.status !== oldTask.status) {
         await models.activityLogs.insertOne({
@@ -530,10 +564,13 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       if (!task) return res.status(404).json({ error: 'Task not found' })
       const perm = await checkKanbanPerm(models, task.project_id, user?.role, user?.sub, 'can_comment')
       if (!perm.allowed) return res.status(403).json({ error: 'You do not have permission to comment on this board' })
-      const { content, is_internal = 0 } = req.body || {}
+      const { content, is_internal = 0, mention_user_ids } = req.body || {}
       if (!content) return res.status(400).json({ error: 'content required' })
       const now = new Date().toISOString()
       const id = generateId('cmt')
+      const mentionIds: string[] = Array.isArray(mention_user_ids)
+        ? Array.from(new Set(mention_user_ids.map((v: any) => String(v || '').trim()).filter(Boolean)))
+        : []
       const comment = {
         id,
         entity_type: 'task',
@@ -542,9 +579,34 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
         author_client_id: user?.role === 'client' ? user?.sub : null,
         content,
         is_internal: Number(is_internal || 0),
+        mention_user_ids: mentionIds,
         created_at: now,
       }
       await models.comments.insertOne(comment)
+
+      // Notify @mentioned users (excluding the author so they don't notify themselves).
+      if (mentionIds.length) {
+        try {
+          const recipients = mentionIds.filter((uid) => uid && uid !== user?.sub)
+          if (recipients.length) {
+            const author = user?.sub ? await models.users.findById(user.sub) as any : null
+            const authorName = author?.full_name || author?.email || 'Someone'
+            const preview = String(content).replace(/\s+/g, ' ').slice(0, 160)
+            await createUserNotifications(models, recipients, {
+              type: 'mention',
+              title: `${authorName} mentioned you in a comment`,
+              body: preview,
+              link: `task:${taskId}`,
+              actor_id: user?.sub || null,
+              actor_name: authorName,
+              meta: { task_id: taskId, comment_id: id },
+            })
+          }
+        } catch (e) {
+          console.warn('[tasks] mention notify failed:', e)
+        }
+      }
+
       return res.status(201).json({ comment })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to post comment' })

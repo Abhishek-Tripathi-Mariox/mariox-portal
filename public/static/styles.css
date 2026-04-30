@@ -2132,6 +2132,10 @@ body::before, body::after { display: none !important; }
 }
 .form-input::placeholder,
 .form-textarea::placeholder { color: rgba(232,210,189,0.45) !important; }
+.form-input.input-error, .form-select.input-error, .form-textarea.input-error {
+  border-color: #F87171 !important;
+  box-shadow: 0 0 0 3px rgba(248,113,113,0.18), inset 0 1px 2px rgba(0,0,0,0.30) !important;
+}
 .form-label {
   color: var(--text-secondary) !important;
   font-size: 11px !important;
