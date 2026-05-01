@@ -322,9 +322,9 @@ export function createInvoicesRouter(models: MongoModels, jwtSecret: string, run
       if (!to.length) return res.status(400).json({ error: 'Client email is required' })
 
       const subject = String(body.subject || `Invoice ${invoice.invoice_number} from ${runtimeEnv.COMPANY_NAME || 'Mariox Software'}`).trim()
-      const { html, text } = buildInvoiceEmailGST({ inv: invoice, client, project, env: runtimeEnv })
+      const { html, text, inlineImages } = buildInvoiceEmailGST({ inv: invoice, client, project, env: runtimeEnv })
 
-      await sendInvoiceViaSmtp({ env: runtimeEnv, to, cc, subject, html, text })
+      await sendInvoiceViaSmtp({ env: runtimeEnv, to, cc, subject, html, text, inlineImages })
 
       const nextStatus = ['paid', 'partially_paid', 'cancelled'].includes(invoice.status) ? invoice.status : 'sent'
       const now = new Date().toISOString()

@@ -118,33 +118,52 @@ function isSameStateGST(env: InvoiceEmailEnv, place: string) {
   return place.startsWith(code)
 }
 
-// Resolve a signature image to something usable in an email body.
-// 1. INVOICE_SIGNATURE_URL env  → use that absolute URL.
-// 2. Local file at public/static/images/mariox-sign.{png,jpg,jpeg}
-//    → read once, return as a base64 data URL (renders in any email client).
-// 3. Otherwise return '' so the template hides the image gracefully.
-let _cachedSignatureDataUrl: string | null = null
-function resolveSignatureSrc(env: InvoiceEmailEnv): string {
+// Inline image to be attached to the MIME message and referenced by `cid:`.
+export interface InlineImage {
+  cid: string
+  filename: string
+  contentType: string
+  base64: string
+}
+
+// Resolve a signature image. Three sources, in order:
+// 1. INVOICE_SIGNATURE_URL env → absolute URL embedded directly in the HTML.
+// 2. Local file at public/static/images/mariox-sign.{png,jpg,jpeg} → attach
+//    as a CID part. Gmail/Outlook honor `cid:` references; `data:` URIs are
+//    blocked by Gmail in email bodies, so CID is the only reliable embed.
+// 3. Otherwise no image — template hides the <img> gracefully.
+const SIGNATURE_CID = 'invoice-signature'
+let _cachedSignature: { src: string; attachment: InlineImage | null } | null = null
+
+function resolveSignature(env: InvoiceEmailEnv): { src: string; attachment: InlineImage | null } {
   const explicit = String(env.INVOICE_SIGNATURE_URL || '').trim()
-  if (explicit) return explicit
-  if (_cachedSignatureDataUrl !== null) return _cachedSignatureDataUrl
+  if (explicit) return { src: explicit, attachment: null }
+  if (_cachedSignature !== null) return _cachedSignature
   const exts: Array<[string, string]> = [
     ['mariox-sign.png', 'image/png'],
     ['mariox-sign.jpg', 'image/jpeg'],
     ['mariox-sign.jpeg', 'image/jpeg'],
   ]
-  for (const [name, mime] of exts) {
+  for (const [name, contentType] of exts) {
     const filePath = path.resolve(process.cwd(), 'public/static/images', name)
     try {
       if (fs.existsSync(filePath)) {
         const buf = fs.readFileSync(filePath)
-        _cachedSignatureDataUrl = `data:${mime};base64,${buf.toString('base64')}`
-        return _cachedSignatureDataUrl
+        _cachedSignature = {
+          src: `cid:${SIGNATURE_CID}`,
+          attachment: {
+            cid: SIGNATURE_CID,
+            filename: name,
+            contentType,
+            base64: buf.toString('base64'),
+          },
+        }
+        return _cachedSignature
       }
     } catch {}
   }
-  _cachedSignatureDataUrl = ''
-  return ''
+  _cachedSignature = { src: '', attachment: null }
+  return _cachedSignature
 }
 
 export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmailInput) {
@@ -158,7 +177,9 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
   const bankAcc = setting(env, 'BANK_ACCOUNT_NUMBER')
   const bankIfsc = setting(env, 'BANK_IFSC')
   const bankBranch = setting(env, 'BANK_BRANCH')
-  const signatureSrc = resolveSignatureSrc(env)
+  const signature = resolveSignature(env)
+  const signatureSrc = signature.src
+  const inlineImages: InlineImage[] = signature.attachment ? [signature.attachment] : []
 
   const invoiceNumber = inv.invoice_number || inv.id || ''
   const issueDate = fmtDate(inv.issue_date)
@@ -344,42 +365,85 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
     `Bank: ${bankName} · A/c: ${bankAcc} · IFSC: ${bankIfsc}`,
   ].filter(Boolean).join('\n')
 
-  return { html, text }
+  return { html, text, inlineImages }
 }
 
 // ──────────────────────── SMTP delivery ─────────────────────────
 
 interface SmtpReply { code: number; lines: string[] }
 
-function buildMime(opts: { from: string; to: string[]; cc: string[]; subject: string; html: string; text: string }) {
-  const boundary = `----devportal-${Date.now()}`
-  const headers = [
+// Wrap base64 content into 76-char lines as required by RFC 2045 for the
+// `base64` Content-Transfer-Encoding. Some MTAs reject longer lines.
+function wrapBase64(b64: string) {
+  return b64.replace(/(.{76})/g, '$1\r\n')
+}
+
+function buildMime(opts: {
+  from: string
+  to: string[]
+  cc: string[]
+  subject: string
+  html: string
+  text: string
+  inlineImages?: InlineImage[]
+}) {
+  const ts = Date.now()
+  const altBoundary = `----devportal-alt-${ts}`
+  const inline = opts.inlineImages || []
+
+  const altPart = [
+    `--${altBoundary}`,
+    'Content-Type: text/plain; charset="utf-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    opts.text,
+    `--${altBoundary}`,
+    'Content-Type: text/html; charset="utf-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    opts.html,
+    `--${altBoundary}--`,
+  ].join('\r\n')
+
+  const baseHeaders = [
     `From: ${opts.from}`,
     `To: ${opts.to.join(', ')}`,
     opts.cc.length ? `Cc: ${opts.cc.join(', ')}` : '',
     `Subject: =?UTF-8?B?${Buffer.from(opts.subject, 'utf8').toString('base64')}?=`,
     `MIME-Version: 1.0`,
     `Date: ${new Date().toUTCString()}`,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-  ].filter(Boolean).join('\r\n')
+  ].filter(Boolean)
 
-  const body = [
-    '',
-    `--${boundary}`,
-    'Content-Type: text/plain; charset="utf-8"',
-    'Content-Transfer-Encoding: 8bit',
-    '',
-    opts.text,
-    `--${boundary}`,
-    'Content-Type: text/html; charset="utf-8"',
-    'Content-Transfer-Encoding: 8bit',
-    '',
-    opts.html,
-    `--${boundary}--`,
-    '',
-  ].join('\r\n')
+  if (inline.length === 0) {
+    const headers = [...baseHeaders, `Content-Type: multipart/alternative; boundary="${altBoundary}"`].join('\r\n')
+    return headers + '\r\n\r\n' + altPart + '\r\n'
+  }
 
-  return headers + '\r\n' + body
+  // Inline images: wrap the alternative part in multipart/related so HTML
+  // can reference each via `cid:<Content-ID>`. Required for Gmail to render.
+  const relBoundary = `----devportal-rel-${ts}`
+  const headers = [...baseHeaders, `Content-Type: multipart/related; boundary="${relBoundary}"`].join('\r\n')
+
+  const parts: string[] = [
+    `--${relBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    '',
+    altPart,
+  ]
+  for (const img of inline) {
+    parts.push(
+      `--${relBoundary}`,
+      `Content-Type: ${img.contentType}; name="${img.filename}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-ID: <${img.cid}>`,
+      `Content-Disposition: inline; filename="${img.filename}"`,
+      '',
+      wrapBase64(img.base64),
+    )
+  }
+  parts.push(`--${relBoundary}--`, '')
+
+  return headers + '\r\n\r\n' + parts.join('\r\n')
 }
 
 function dotStuff(message: string) {
@@ -394,6 +458,7 @@ export async function sendInvoiceViaSmtp(opts: {
   html: string
   text: string
   brandName?: string
+  inlineImages?: InlineImage[]
 }) {
   const env = opts.env
   const host = String(env.SMTP_HOST || '').trim()
@@ -499,7 +564,7 @@ export async function sendInvoiceViaSmtp(opts: {
     }
     await cmd('DATA', [354], 'DATA')
 
-    const mime = buildMime({ from: `${brandName} <${from}>`, to: opts.to, cc: opts.cc, subject: opts.subject, html: opts.html, text: opts.text })
+    const mime = buildMime({ from: `${brandName} <${from}>`, to: opts.to, cc: opts.cc, subject: opts.subject, html: opts.html, text: opts.text, inlineImages: opts.inlineImages })
     await send(dotStuff(mime) + '\r\n.')
     reply = await readReply()
     if (reply.code !== 250) throw new Error(`Message delivery failed: ${reply.lines.join(' | ')}`)
