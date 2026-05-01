@@ -5,6 +5,8 @@
 
 import net from 'node:net'
 import tls from 'node:tls'
+import fs from 'node:fs'
+import path from 'node:path'
 
 export interface InvoiceEmailEnv {
   SMTP_HOST?: string
@@ -116,6 +118,35 @@ function isSameStateGST(env: InvoiceEmailEnv, place: string) {
   return place.startsWith(code)
 }
 
+// Resolve a signature image to something usable in an email body.
+// 1. INVOICE_SIGNATURE_URL env  → use that absolute URL.
+// 2. Local file at public/static/images/mariox-sign.{png,jpg,jpeg}
+//    → read once, return as a base64 data URL (renders in any email client).
+// 3. Otherwise return '' so the template hides the image gracefully.
+let _cachedSignatureDataUrl: string | null = null
+function resolveSignatureSrc(env: InvoiceEmailEnv): string {
+  const explicit = String(env.INVOICE_SIGNATURE_URL || '').trim()
+  if (explicit) return explicit
+  if (_cachedSignatureDataUrl !== null) return _cachedSignatureDataUrl
+  const exts: Array<[string, string]> = [
+    ['mariox-sign.png', 'image/png'],
+    ['mariox-sign.jpg', 'image/jpeg'],
+    ['mariox-sign.jpeg', 'image/jpeg'],
+  ]
+  for (const [name, mime] of exts) {
+    const filePath = path.resolve(process.cwd(), 'public/static/images', name)
+    try {
+      if (fs.existsSync(filePath)) {
+        const buf = fs.readFileSync(filePath)
+        _cachedSignatureDataUrl = `data:${mime};base64,${buf.toString('base64')}`
+        return _cachedSignatureDataUrl
+      }
+    } catch {}
+  }
+  _cachedSignatureDataUrl = ''
+  return ''
+}
+
 export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmailInput) {
   const companyName = setting(env, 'COMPANY_NAME')
   const gstin = setting(env, 'COMPANY_GSTIN')
@@ -127,6 +158,7 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
   const bankAcc = setting(env, 'BANK_ACCOUNT_NUMBER')
   const bankIfsc = setting(env, 'BANK_IFSC')
   const bankBranch = setting(env, 'BANK_BRANCH')
+  const signatureSrc = resolveSignatureSrc(env)
 
   const invoiceNumber = inv.invoice_number || inv.id || ''
   const issueDate = fmtDate(inv.issue_date)
@@ -266,7 +298,7 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
       </td>
       <td style="vertical-align:top;text-align:right">
         <div style="font-size:11px;color:#374151">For ${escapeHtml(companyName)}</div>
-        <div style="margin-top:8px"><img src="${escapeHtml(env.PUBLIC_BASE_URL || '')}/static/images/mariox-sign.png" alt="Authorized Signature" style="max-height:64px;max-width:200px;display:inline-block"/></div>
+        ${signatureSrc ? `<div style="margin-top:8px"><img src="${escapeHtml(signatureSrc)}" alt="Authorized Signature" style="max-height:64px;max-width:200px;display:inline-block"/></div>` : '<div style="margin-top:32px"></div>'}
         <div style="margin-top:6px;font-size:11px;color:#374151;border-top:1px solid #cbd5e1;display:inline-block;padding:6px 18px 0">Authorized Signatory</div>
       </td>
     </tr>
