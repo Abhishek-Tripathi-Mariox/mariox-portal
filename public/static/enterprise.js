@@ -3379,6 +3379,12 @@ async function renderBillingAdmin(el) {
               <option value="">All Status</option>
               ${['pending','sent','paid','partially_paid','overdue','cancelled'].map(s=>`<option value="${s}">${s}</option>`).join('')}
             </select>
+            <select id="bill-project" class="form-select" style="width:180px" onchange="applyBillingFilters()">
+              <option value="">All Projects</option>
+              ${Array.from(new Map(invoices.filter(i=>i.project_id).map(i=>[String(i.project_id), i.project_name||i.project_code||i.project_id])).entries())
+                .sort((a,b)=>String(a[1]).localeCompare(String(b[1])))
+                .map(([id,name])=>`<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('')}
+            </select>
             <input id="bill-paid-from" class="form-input" type="date" style="width:155px" title="Paid on or after" onchange="applyBillingFilters()"/>
             <input id="bill-paid-to" class="form-input" type="date" style="width:155px" title="Paid on or before" onchange="applyBillingFilters()"/>
             <select id="bill-paid-by" class="form-select" style="width:160px" onchange="applyBillingFilters()">
@@ -3394,7 +3400,7 @@ async function renderBillingAdmin(el) {
             <thead><tr><th>Invoice</th><th>Client</th><th>Project</th><th>Amount</th><th>Status</th><th>Issue Date</th><th>Due Date</th><th>Paid On</th><th>Paid Marked By</th><th>Actions</th></tr></thead>
             <tbody>
               ${invoices.map(i=>`
-              <tr data-status="${i.status||''}" data-paid-date="${i.paid_date||''}" data-paid-by="${escapeHtml(i.paid_marked_by_name||'')}" data-search="${escapeHtml(((i.invoice_number||'')+' '+(i.company_name||'')+' '+(i.project_name||'')+' '+(i.title||'')).toLowerCase())}">
+              <tr data-status="${i.status||''}" data-project-id="${escapeHtml(i.project_id||'')}" data-paid-date="${i.paid_date||''}" data-paid-by="${escapeHtml(i.paid_marked_by_name||'')}" data-search="${escapeHtml(((i.invoice_number||'')+' '+(i.company_name||'')+' '+(i.project_name||'')+' '+(i.title||'')).toLowerCase())}">
                 <td><div style="font-weight:600;font-size:12px;font-family:monospace;color:#FFB347">${i.invoice_number}</div><div style="font-size:11px;color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.title}</div></td>
                 <td><div style="display:flex;align-items:center;gap:6px">${avatar(i.company_name||'?',i.client_color||'#FF7A45','sm')}<span style="font-size:12px">${i.company_name||'—'}</span></div></td>
                 <td><span style="font-size:12px;color:#94a3b8">${i.project_name||'—'}</span></td>
@@ -3435,16 +3441,19 @@ function goBillingInvoicePage(page) {
 function applyBillingFilters() {
   const q = (document.getElementById('bill-search')?.value || '').trim().toLowerCase()
   const status = document.getElementById('bill-status')?.value || ''
+  const projectId = document.getElementById('bill-project')?.value || ''
   const from = document.getElementById('bill-paid-from')?.value || ''
   const to = document.getElementById('bill-paid-to')?.value || ''
   const paidBy = document.getElementById('bill-paid-by')?.value || ''
   document.querySelectorAll('#inv-table tbody tr').forEach(tr => {
     const rowStatus = tr.dataset.status || ''
+    const rowProject = tr.dataset.projectId || ''
     const rowPaid = tr.dataset.paidDate || ''
     const rowBy = tr.dataset.paidBy || ''
     const haystack = tr.dataset.search || ''
     let show = true
     if (status && rowStatus !== status) show = false
+    if (show && projectId && rowProject !== projectId) show = false
     if (show && q && !haystack.includes(q)) show = false
     if (show && paidBy && rowBy !== paidBy) show = false
     if (show && from && (!rowPaid || rowPaid < from)) show = false
@@ -3454,7 +3463,7 @@ function applyBillingFilters() {
 }
 
 function resetBillingFilters() {
-  ;['bill-search','bill-status','bill-paid-from','bill-paid-to','bill-paid-by'].forEach(id => {
+  ;['bill-search','bill-status','bill-project','bill-paid-from','bill-paid-to','bill-paid-by'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = ''
   })
   applyBillingFilters()
