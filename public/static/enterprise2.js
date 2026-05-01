@@ -2037,7 +2037,7 @@ function openLeaveDetailModal(id) {
         </div>` : ''}
       ${canApprove ? `
         <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Decision reason <span style="color:#9F8678;font-weight:400">(required when rejecting)</span></label>
+          <label class="form-label">Decision reason <span style="color:#9F8678;font-weight:400">(optional)</span></label>
           <textarea id="lv-decision-reason" class="form-textarea" rows="3" placeholder="Why are you approving / rejecting this leave?"></textarea>
         </div>` : ''}
     </div>
@@ -2053,11 +2053,6 @@ function openLeaveDetailModal(id) {
 async function submitLeaveDecision(id, status) {
   const reasonEl = document.getElementById('lv-decision-reason')
   const reason = reasonEl ? reasonEl.value.trim() : ''
-  if (status === 'rejected' && !reason) {
-    toast('Please enter a reason before disapproving', 'error')
-    if (reasonEl) reasonEl.focus()
-    return
-  }
   try {
     await API.patch(`/leaves/${id}/approve`, { status, decision_reason: reason || null })
     toast(`Leave ${status}`, 'success')
@@ -2209,8 +2204,8 @@ function showRejectLeaveModal(id) {
   showModal(`
   <div class="modal-header"><h3><i class="fas fa-times-circle" style="color:#FF5E3A"></i> Reject Leave</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
   <div class="modal-body">
-    <div style="font-size:13px;color:#94a3b8;margin-bottom:12px">Provide a reason — the employee will see this in their notification.</div>
-    <div class="form-group"><label class="form-label">Rejection reason *</label><textarea id="rj-reason" class="form-textarea" rows="3" placeholder="Why is this leave being rejected?"></textarea></div>
+    <div style="font-size:13px;color:#94a3b8;margin-bottom:12px">Optionally add a reason — the employee will see this in their notification.</div>
+    <div class="form-group"><label class="form-label">Rejection reason <span style="color:#9F8678;font-weight:400">(optional)</span></label><textarea id="rj-reason" class="form-textarea" rows="3" placeholder="Why is this leave being rejected?"></textarea></div>
   </div>
   <div class="modal-footer">
     <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -2219,9 +2214,8 @@ function showRejectLeaveModal(id) {
 }
 async function doRejectLeave(id) {
   const reason = document.getElementById('rj-reason')?.value.trim() || ''
-  if (!reason) { toast('Please enter a rejection reason', 'error'); return }
   try {
-    await API.patch(`/leaves/${id}/approve`, { status: 'rejected', decision_reason: reason })
+    await API.patch(`/leaves/${id}/approve`, { status: 'rejected', decision_reason: reason || null })
     toast('Leave rejected', 'info')
     closeModal()
   } catch (e) { toast('Failed: ' + e.message, 'error') }

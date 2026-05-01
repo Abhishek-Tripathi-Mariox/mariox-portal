@@ -2,6 +2,7 @@ import type { Router } from 'express'
 import { Router as createRouter } from 'express'
 import { SignJWT, jwtVerify } from 'jose'
 import type { MongoModels } from '../models/mongo-models'
+import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
 import {
   validateEmail,
   validateNewPassword,
@@ -107,6 +108,43 @@ export function createClientAuthRouter(models: MongoModels, jwtSecret: string, p
         name: client.contact_name,
         company: client.company_name,
         exp: Math.floor(Date.now() / 1000) + 86400 * 7,
+      }
+      const token = await signToken(payload, jwtSecret)
+      return res.json({
+        token,
+        client: {
+          id: client.id,
+          email: client.email,
+          company_name: client.company_name,
+          contact_name: client.contact_name,
+          avatar_color: client.avatar_color,
+          role: 'client',
+        },
+      })
+    } catch (error) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Admin-only: issue a client session token without requiring the client's
+  // password. Used by the "Login" button on each client card so an admin can
+  // open the client portal as that client.
+  router.post('/impersonate/:id', createAuthMiddleware(jwtSecret), requireRole('admin'), async (req, res) => {
+    try {
+      const id = String(req.params.id || '')
+      const client = await models.clients.findById(id) as any
+      if (!client) return res.status(404).json({ error: 'Client not found' })
+      if (Number(client.is_active ?? 1) !== 1) {
+        return res.status(400).json({ error: 'Client is inactive' })
+      }
+      const payload = {
+        sub: client.id,
+        email: client.email,
+        role: 'client',
+        name: client.contact_name,
+        company: client.company_name,
+        impersonated_by: (req.user as any)?.sub || null,
+        exp: Math.floor(Date.now() / 1000) + 3600,
       }
       const token = await signToken(payload, jwtSecret)
       return res.json({

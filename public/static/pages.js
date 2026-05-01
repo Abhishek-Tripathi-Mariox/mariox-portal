@@ -671,6 +671,31 @@ function openProjectModal(id = null) {
               </div>
             </div>
 
+            ${_user?.role === 'admin' ? `
+            <div class="card" id="proj-commercial-card">
+              <div class="card-header">
+                <h3>Commercial Info</h3>
+                <span style="font-size:12px;color:var(--text-muted)">Admin-only — choose who else can see these</span>
+              </div>
+              <div class="card-body">
+                <div class="grid-2" style="gap:12px">
+                  <div class="form-group"><label class="form-label">Sold By</label><input id="proj-sold-by" class="form-input" value="${esc(proj?.sold_by||'')}" placeholder="Salesperson / partner name"/></div>
+                  <div class="form-group"><label class="form-label">Project Amount</label><input id="proj-amount" class="form-input" type="number" step="0.01" min="0" value="${proj?.project_amount ?? ''}" placeholder="e.g. 500000"/></div>
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                  <label class="form-label">Visible to roles <span style="color:var(--text-muted);font-weight:400">(admin always sees)</span></label>
+                  <div style="display:flex;gap:14px;flex-wrap:wrap;padding:8px 0">
+                    ${['pm','pc','developer','team','client'].map(role => {
+                      const checked = Array.isArray(proj?.commercial_visible_to) && proj.commercial_visible_to.includes(role)
+                      return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);cursor:pointer">
+                        <input type="checkbox" class="proj-commercial-role" value="${role}" ${checked?'checked':''} style="accent-color:#FF7A45"/>${role.toUpperCase()}
+                      </label>`
+                    }).join('')}
+                  </div>
+                </div>
+              </div>
+            </div>` : ''}
+
             <div class="card">
               <div class="card-header"><h3>Attachments</h3><span style="font-size:12px;color:var(--text-muted)">Files and pasted links appear under this project in Documents (25 MB / file)</span></div>
               <div class="card-body">
@@ -875,6 +900,10 @@ async function saveProject(id) {
     // Total Hours / Revenue were removed from the form — preserve existing
     // values on edit (from the loaded project record), default to 0 on create.
     const existing = window._projEditingRecord || null
+    const soldByEl = document.getElementById('proj-sold-by')
+    const amountEl = document.getElementById('proj-amount')
+    const commercialRoles = Array.from(document.querySelectorAll('.proj-commercial-role:checked'))
+      .map(el => el.value)
     const payload = {
       name: document.getElementById('proj-name').value.trim(),
       code: document.getElementById('proj-code').value.trim(),
@@ -897,6 +926,13 @@ async function saveProject(id) {
       billable: document.getElementById('proj-billable').value==='1',
       description: document.getElementById('proj-desc').value,
       remarks: document.getElementById('proj-remarks').value,
+      // Commercial fields — only present in the form for admins; preserved
+      // for non-admins by falling back to the loaded record.
+      sold_by: soldByEl ? (soldByEl.value.trim() || null) : (existing?.sold_by ?? null),
+      project_amount: amountEl
+        ? (amountEl.value === '' ? null : Number(amountEl.value))
+        : (existing?.project_amount ?? null),
+      commercial_visible_to: soldByEl ? commercialRoles : (existing?.commercial_visible_to ?? []),
     }
     if (!payload.name || !payload.code || !payload.start_date) {
       utils.toast('Please fill required fields (Name, Code, Start Date)', 'error'); return

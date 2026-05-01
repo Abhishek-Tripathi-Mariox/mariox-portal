@@ -141,10 +141,6 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
       const user = req.user as any
       const status = validateEnum(req.body?.status, LEAVE_APPROVAL_STATUSES, 'Status')
       const rawReason = typeof req.body?.decision_reason === 'string' ? req.body.decision_reason.trim() : ''
-      // A reason is mandatory when rejecting so the employee knows why.
-      if (status === 'rejected' && !rawReason) {
-        return res.status(400).json({ error: 'Please provide a reason for rejecting the leave' })
-      }
       const decisionReason = rawReason
         ? validateLength(rawReason, 1, 1000, 'Decision reason')
         : null

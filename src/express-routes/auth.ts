@@ -200,5 +200,43 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
     }
   })
 
+  // Admin-only: issue a session token for any staff user without their
+  // password, so admins can troubleshoot a member's view from the team list.
+  router.post('/impersonate/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+      const adminCtx = req.user as any
+      const userId = String(req.params.id || '').trim()
+      if (!userId) return res.status(400).json({ error: 'user_id is required' })
+      const target = await models.users.findById(userId) as any
+      if (!target) return res.status(404).json({ error: 'User not found' })
+      if (Number(target.is_active ?? 1) !== 1) {
+        return res.status(400).json({ error: 'User is inactive' })
+      }
+      const payload = {
+        sub: target.id,
+        email: target.email,
+        role: normalizeRole(target.role),
+        name: target.full_name,
+        impersonated_by: adminCtx?.sub || null,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }
+      const token = await signToken(payload, jwtSecret)
+      return res.json({
+        token,
+        user: {
+          id: target.id,
+          email: target.email,
+          full_name: target.full_name,
+          role: normalizeRole(target.role),
+          designation: target.designation,
+          avatar_color: target.avatar_color,
+          must_change_password: 0,
+        },
+      })
+    } catch (error) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
   return router
 }

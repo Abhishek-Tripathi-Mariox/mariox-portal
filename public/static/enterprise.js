@@ -2883,13 +2883,16 @@ async function renderClientsList(el) {
     <div class="grid-2">
       ${pagination.items.map(cl=>`
         <div class="client-project-card" onclick="showClientDetail('${cl.id}')">
-          <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
-            ${avatar(cl.company_name,cl.avatar_color,'lg')}
-            <div>
-              <div style="font-size:15px;font-weight:600;color:#e2e8f0">${cl.company_name}</div>
-              <div style="font-size:12px;color:#94a3b8">${cl.contact_name}</div>
-              <div style="font-size:12px;color:#64748b">${cl.email}</div>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">
+            <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0">
+              ${avatar(cl.company_name,cl.avatar_color,'lg')}
+              <div style="min-width:0">
+                <div style="font-size:15px;font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.company_name}</div>
+                <div style="font-size:12px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.contact_name}</div>
+                <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.email}</div>
+              </div>
             </div>
+            ${_user.role === 'admin' ? `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i> Login</button>` : ''}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
             <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#e2e8f0">${cl.project_count||0}</div><div style="font-size:11px;color:#64748b">Projects</div></div>
@@ -3124,6 +3127,37 @@ async function saveEditClient(id) {
   }
 }
 
+async function loginAsClient(clientId, companyName) {
+  if (_user?.role !== 'admin') return toast('Only admins can use this', 'error')
+  const label = companyName || 'this client'
+  if (!confirm(`Login as ${label}?\n\nYour admin session will be replaced. You'll need to sign in again afterwards.`)) return
+  try {
+    const data = await API.post('/client-auth/impersonate/' + clientId, {})
+    if (!data?.token || !data?.client) throw new Error('Impersonation failed')
+    saveAuth(data.token, { ...data.client, role: 'client', name: data.client.contact_name })
+    toast('Logged in as ' + (data.client.company_name || 'client'), 'success')
+    if (typeof renderClientPortal === 'function') renderClientPortal()
+    else window.location.reload()
+  } catch (e) {
+    toast('Login failed: ' + e.message, 'error')
+  }
+}
+
+async function loginAsTeamMember(userId, fullName) {
+  if (_user?.role !== 'admin') return toast('Only admins can use this', 'error')
+  const label = fullName || 'this user'
+  if (!confirm(`Login as ${label}?\n\nYour admin session will be replaced. You'll need to sign in again afterwards.`)) return
+  try {
+    const data = await API.post('/auth/impersonate/' + userId, {})
+    if (!data?.token || !data?.user) throw new Error('Impersonation failed')
+    saveAuth(data.token, { ...data.user, role: data.user.role })
+    toast('Logged in as ' + (data.user.full_name || 'user'), 'success')
+    Router.navigate(defaultPage())
+  } catch (e) {
+    toast('Login failed: ' + e.message, 'error')
+  }
+}
+
 async function showClientDetail(clientId) {
   try {
     const data = await API.get('/clients/' + clientId)
@@ -3339,20 +3373,28 @@ async function renderBillingAdmin(el) {
       <div class="card billing-table-shell">
         <div class="card-header billing-table-header">
           <span style="font-weight:600">All Invoices</span>
-          <div style="display:flex;gap:8px">
-            <select class="form-select" style="width:130px" onchange="filterTable(this.value,'inv-table')">
-            <option value="">All Status</option>
-            ${['pending','sent','paid','partially_paid','overdue','cancelled'].map(s=>`<option value="${s}">${s}</option>`).join('')}
-          </select>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input id="bill-search" class="form-input" style="width:200px" placeholder="Search invoice / client / project" oninput="applyBillingFilters()"/>
+            <select id="bill-status" class="form-select" style="width:140px" onchange="applyBillingFilters()">
+              <option value="">All Status</option>
+              ${['pending','sent','paid','partially_paid','overdue','cancelled'].map(s=>`<option value="${s}">${s}</option>`).join('')}
+            </select>
+            <input id="bill-paid-from" class="form-input" type="date" style="width:155px" title="Paid on or after" onchange="applyBillingFilters()"/>
+            <input id="bill-paid-to" class="form-input" type="date" style="width:155px" title="Paid on or before" onchange="applyBillingFilters()"/>
+            <select id="bill-paid-by" class="form-select" style="width:160px" onchange="applyBillingFilters()">
+              <option value="">All Marked-By</option>
+              ${Array.from(new Set(invoices.map(i=>i.paid_marked_by_name).filter(Boolean))).map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')}
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="resetBillingFilters()" title="Clear filters"><i class="fas fa-rotate-left"></i></button>
+          </div>
         </div>
-      </div>
       <div class="billing-table-scroll">
         <div class="table-wrap">
           <table class="data-table" id="inv-table">
-            <thead><tr><th>Invoice</th><th>Client</th><th>Project</th><th>Amount</th><th>Status</th><th>Issue Date</th><th>Due Date</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Invoice</th><th>Client</th><th>Project</th><th>Amount</th><th>Status</th><th>Issue Date</th><th>Due Date</th><th>Paid On</th><th>Paid Marked By</th><th>Actions</th></tr></thead>
             <tbody>
               ${invoices.map(i=>`
-              <tr>
+              <tr data-status="${i.status||''}" data-paid-date="${i.paid_date||''}" data-paid-by="${escapeHtml(i.paid_marked_by_name||'')}" data-search="${escapeHtml(((i.invoice_number||'')+' '+(i.company_name||'')+' '+(i.project_name||'')+' '+(i.title||'')).toLowerCase())}">
                 <td><div style="font-weight:600;font-size:12px;font-family:monospace;color:#FFB347">${i.invoice_number}</div><div style="font-size:11px;color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.title}</div></td>
                 <td><div style="display:flex;align-items:center;gap:6px">${avatar(i.company_name||'?',i.client_color||'#FF7A45','sm')}<span style="font-size:12px">${i.company_name||'—'}</span></div></td>
                 <td><span style="font-size:12px;color:#94a3b8">${i.project_name||'—'}</span></td>
@@ -3360,6 +3402,8 @@ async function renderBillingAdmin(el) {
                 <td><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></td>
                 <td style="font-size:12px">${fmtDate(i.issue_date)}</td>
                 <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#94a3b8'}">${fmtDate(i.due_date)}</td>
+                <td style="font-size:12px;color:${i.paid_date?'#58C68A':'#64748b'}">${i.paid_date?fmtDate(i.paid_date):'—'}</td>
+                <td style="font-size:12px;color:#94a3b8">${i.paid_marked_by_name?escapeHtml(i.paid_marked_by_name):'—'}</td>
                 <td>
                   <div style="display:flex;gap:4px">
                     ${_user.role==='admin'?`<button class="btn btn-xs btn-outline" title="Send Invoice" aria-label="Send Invoice" onclick="showSendInvoiceModal('${i.id}')"><i class="fas fa-paper-plane"></i></button>`:''}
@@ -3386,6 +3430,34 @@ function goBillingInvoicePage(page) {
     el.dataset.loaded = ''
     loadPage('billing-admin', el)
   }
+}
+
+function applyBillingFilters() {
+  const q = (document.getElementById('bill-search')?.value || '').trim().toLowerCase()
+  const status = document.getElementById('bill-status')?.value || ''
+  const from = document.getElementById('bill-paid-from')?.value || ''
+  const to = document.getElementById('bill-paid-to')?.value || ''
+  const paidBy = document.getElementById('bill-paid-by')?.value || ''
+  document.querySelectorAll('#inv-table tbody tr').forEach(tr => {
+    const rowStatus = tr.dataset.status || ''
+    const rowPaid = tr.dataset.paidDate || ''
+    const rowBy = tr.dataset.paidBy || ''
+    const haystack = tr.dataset.search || ''
+    let show = true
+    if (status && rowStatus !== status) show = false
+    if (show && q && !haystack.includes(q)) show = false
+    if (show && paidBy && rowBy !== paidBy) show = false
+    if (show && from && (!rowPaid || rowPaid < from)) show = false
+    if (show && to && (!rowPaid || rowPaid > to)) show = false
+    tr.style.display = show ? '' : 'none'
+  })
+}
+
+function resetBillingFilters() {
+  ;['bill-search','bill-status','bill-paid-from','bill-paid-to','bill-paid-by'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = ''
+  })
+  applyBillingFilters()
 }
 
 async function showCreateInvoiceModal() {
@@ -3767,7 +3839,7 @@ async function renderTeamOverview(el) {
         <table class="data-table" id="team-overview-table">
           <thead><tr>
             <th>Member</th><th>Email</th><th>Role</th><th>Designation</th>
-            <th>Capacity</th><th>Joined</th><th>Status</th>${canEdit ? '<th style="width:140px">Actions</th>' : ''}
+            <th>Capacity</th><th>Joined</th><th>Status</th>${canEdit ? '<th style="width:180px">Actions</th>' : ''}
           </tr></thead>
           <tbody>
             ${pagination.items.map(u => {
@@ -3792,6 +3864,7 @@ async function renderTeamOverview(el) {
                   <div style="display:flex;gap:4px">
                     <button class="btn btn-xs btn-outline" title="Edit" onclick="openEditTeamMember('${u.id}')"><i class="fas fa-edit"></i></button>
                     ${isAdmin ? `<button class="btn btn-xs btn-outline" title="Reset password" onclick="openResetCredsModal('user','${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')"><i class="fas fa-key"></i></button>` : ''}
+                    ${isAdmin && u.is_active && String(u.id) !== String(_user?.sub||_user?.id||'') ? `<button class="btn btn-xs btn-primary" title="Login as ${(u.full_name||'').replace(/"/g,'&quot;')}" onclick="loginAsTeamMember('${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')"><i class="fas fa-user-secret"></i></button>` : ''}
                     <button class="btn btn-xs ${u.is_active ? 'btn-outline' : 'btn-primary'}" title="${u.is_active ? 'Deactivate' : 'Activate'}" onclick="toggleTeamMemberStatus('${u.id}',${!u.is_active})"><i class="fas fa-${u.is_active ? 'ban' : 'check'}"></i></button>
                   </div>
                 </td>` : ''}

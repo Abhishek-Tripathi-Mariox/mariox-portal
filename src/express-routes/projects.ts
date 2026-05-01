@@ -41,6 +41,16 @@ function computeProjectMetrics(project: any) {
   return { timeline_progress: timelineProgress, days_remaining_pct: daysRemainingPct }
 }
 
+// Strip commercial fields (sold_by, project_amount) from the payload unless
+// the requesting role is admin or appears in the project's commercial_visible_to list.
+function applyCommercialVisibility<T extends Record<string, any>>(project: T, role: string): T {
+  if (role === 'admin') return project
+  const allowed = Array.isArray(project.commercial_visible_to) ? project.commercial_visible_to : []
+  if (allowed.map((r: any) => String(r).toLowerCase()).includes(role)) return project
+  const { sold_by, project_amount, commercial_visible_to, ...rest } = project as any
+  return rest as T
+}
+
 export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
   const router = Router()
   router.use(createAuthMiddleware(jwtSecret))
@@ -96,8 +106,9 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         const pm = usersById.get(String(p.pm_id)) as any
         const pc = usersById.get(String(p.pc_id)) as any
         const devs = assignmentsByProject.get(String(p.id)) || []
+        const base = applyCommercialVisibility(p, role)
         return {
-          ...p,
+          ...base,
           team_lead_name: tl?.full_name || null,
           pm_name: pm?.full_name || null,
           pc_name: pc?.full_name || null,
@@ -217,8 +228,9 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
       const pm = usersById.get(String(project.pm_id))
       const pc = usersById.get(String(project.pc_id))
 
+      const scopedProject = applyCommercialVisibility(project, role)
       const data = {
-        ...project,
+        ...scopedProject,
         team_lead_name: (tl as any)?.full_name || null,
         pm_name: (pm as any)?.full_name || null,
         pc_name: (pc as any)?.full_name || null,
@@ -297,6 +309,13 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         ? validatePositiveNumber(body.estimated_budget_hours, 'Estimated budget hours')
         : 0
       const revenue = body.revenue !== undefined ? validatePositiveNumber(body.revenue, 'Revenue') : 0
+      const projectAmount = body.project_amount !== undefined && body.project_amount !== null && body.project_amount !== ''
+        ? validatePositiveNumber(body.project_amount, 'Project amount')
+        : null
+      const soldBy = body.sold_by ? validateLength(String(body.sold_by).trim(), 1, 200, 'Sold by') : null
+      const commercialVisibleTo = Array.isArray(body.commercial_visible_to)
+        ? body.commercial_visible_to.map((r: any) => String(r).trim().toLowerCase()).filter(Boolean)
+        : []
 
       const id = generateId('proj')
       const now = new Date().toISOString()
@@ -323,6 +342,9 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,
         billable: body.billable !== undefined ? (body.billable ? 1 : 0) : 1,
         revenue,
+        sold_by: soldBy,
+        project_amount: projectAmount,
+        commercial_visible_to: commercialVisibleTo,
         remarks: body.remarks ? validateLength(String(body.remarks), 0, 2000, 'Remarks') : null,
         consumed_hours: 0,
         // Set when this project was auto-created from an awarded bid auction.
@@ -591,6 +613,13 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         ? validatePositiveNumber(body.estimated_budget_hours, 'Estimated budget hours')
         : 0
       const revenue = body.revenue !== undefined ? validatePositiveNumber(body.revenue, 'Revenue') : 0
+      const projectAmount = body.project_amount !== undefined && body.project_amount !== null && body.project_amount !== ''
+        ? validatePositiveNumber(body.project_amount, 'Project amount')
+        : null
+      const soldBy = body.sold_by ? validateLength(String(body.sold_by).trim(), 1, 200, 'Sold by') : null
+      const commercialVisibleTo = Array.isArray(body.commercial_visible_to)
+        ? body.commercial_visible_to.map((r: any) => String(r).trim().toLowerCase()).filter(Boolean)
+        : []
 
       const $set: any = {
         name,
@@ -613,6 +642,9 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,
         billable: body.billable ? 1 : 0,
         revenue,
+        sold_by: soldBy,
+        project_amount: projectAmount,
+        commercial_visible_to: commercialVisibleTo,
         remarks: body.remarks ? validateLength(String(body.remarks), 0, 2000, 'Remarks') : null,
         updated_at: new Date().toISOString(),
       }

@@ -42,12 +42,15 @@ export function createInvoicesRouter(models: MongoModels, jwtSecret: string, run
       const invoices = await models.invoices.find({}) as any[]
       const projects = await models.projects.find({}) as any[]
       const clients = await models.clients.find({}) as any[]
+      const users = await models.users.find({}) as any[]
       const projById = new Map(projects.map((p) => [String(p.id), p]))
       const cliById = new Map(clients.map((c) => [String(c.id), c]))
+      const usrById = new Map(users.map((u) => [String(u.id), u]))
       const enriched = invoices
         .map((invoice) => {
           const proj = projById.get(String(invoice.project_id))
           const cli = cliById.get(String(invoice.client_id))
+          const paidByUser = invoice.paid_marked_by ? usrById.get(String(invoice.paid_marked_by)) : null
           return {
             ...invoice,
             project_name: proj?.name,
@@ -64,6 +67,7 @@ export function createInvoicesRouter(models: MongoModels, jwtSecret: string, run
             client_pincode: cli?.pincode,
             client_country: cli?.country,
             client_color: cli?.avatar_color,
+            paid_marked_by_name: invoice.paid_marked_by_name || paidByUser?.full_name || null,
           }
         })
         .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
@@ -260,6 +264,7 @@ export function createInvoicesRouter(models: MongoModels, jwtSecret: string, run
       const id = String(req.params.id)
       const invoice = await models.invoices.findById(id) as any
       if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+      const user = req.user as any
       const body = req.body || {}
       const paidAmount = body.paid_amount !== undefined
         ? validatePositiveNumber(body.paid_amount, 'Paid amount')
@@ -277,6 +282,9 @@ export function createInvoicesRouter(models: MongoModels, jwtSecret: string, run
           paid_date: paidDate,
           transaction_ref: body.transaction_ref || invoice.transaction_ref || null,
           status,
+          paid_marked_by: user?.sub || null,
+          paid_marked_by_name: user?.name || null,
+          paid_marked_at: now,
           updated_at: now,
         },
       })
