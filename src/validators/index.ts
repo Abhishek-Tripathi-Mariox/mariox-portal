@@ -92,7 +92,7 @@ export const validateName = (
     throw new ValidationError(`${fieldName} must be between ${min} and ${max} characters`)
   }
   if (/^\d+$/.test(text)) {
-    throw new ValidationError(`${fieldName} cannot be all digits`)
+    throw new ValidationError(`${fieldName} cannot be number`)
   }
   if (/[<>{}\\]/.test(text)) {
     throw new ValidationError(`${fieldName} contains disallowed characters`)

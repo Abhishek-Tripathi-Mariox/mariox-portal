@@ -1126,7 +1126,9 @@ a { text-decoration: none; color: inherit; }
   border-radius: var(--radius-xl);
   width: min(580px, 95vw);
   max-height: 90vh;
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: var(--shadow-lg);
 }
 .modal-lg  { width: min(760px, 96vw); }
@@ -1136,22 +1138,23 @@ a { text-decoration: none; color: inherit; }
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center;
   justify-content: space-between;
-  position: sticky; top: 0;
   background: var(--surface);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  flex-shrink: 0;
   z-index: 1;
 }
 .modal-header h3 {
   font-size: 16px; font-weight: 800;
   color: var(--text-primary);
 }
-.modal-body  { padding: 24px; }
+.modal-body  { padding: 24px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
 .modal-footer {
   padding: 18px 24px;
   border-top: 1px solid var(--border);
   display: flex; justify-content: flex-end; gap: 10px;
   background: var(--surface-2);
   border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  flex-shrink: 0;
 }
 .close-btn {
   width: 32px; height: 32px;

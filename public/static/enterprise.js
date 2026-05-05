@@ -19,6 +19,7 @@ let _myTasksPage = 1
 let _resourcesPage = 1
 let _approvalQueuePage = 1
 let _clientsListPage = 1
+let _clientsListFilter = 'active'
 let _teamOverviewPage = 1
 let _billingInvoicePage = 1
 
@@ -1699,13 +1700,63 @@ async function doCreateSprint() {
 }
 
 async function editSprint(id, currentStatus) {
-  const newStatus = currentStatus==='planning'?'active':currentStatus==='active'?'completed':currentStatus
-  if (newStatus===currentStatus) return
+  return guardedModalOpen('edit-sprint:' + id, async () => {
+    try {
+      const [spData, projRes] = await Promise.all([
+        API.get('/sprints'),
+        API.get('/projects'),
+      ])
+      const sprint = (spData.sprints || []).find(s => String(s.id) === String(id))
+      if (!sprint) { toast('Sprint not found', 'error'); return }
+      const projects = projRes.projects || projRes || []
+      const statuses = ['planning', 'active', 'completed', 'cancelled']
+      showModal(`
+        <div class="modal-header"><h3><i class="fas fa-bolt" style="color:#FF7A45;margin-right:6px"></i>Edit Sprint</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+        <div class="modal-body">
+          <div class="form-group"><label class="form-label">Project</label>
+            <select class="form-select" id="esp-project">
+              ${projects.map(p => `<option value="${p.id}" ${sprint.project_id === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Sprint Name *</label><input class="form-input" id="esp-name" value="${escapeHtml(sprint.name || '')}"/></div>
+          <div class="form-group"><label class="form-label">Sprint Goal</label><textarea class="form-textarea" id="esp-goal">${escapeHtml(sprint.goal || '')}</textarea></div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Start Date *</label><input class="form-input" type="date" id="esp-start" value="${escapeHtml(sprint.start_date || '')}"/></div>
+            <div class="form-group"><label class="form-label">End Date *</label><input class="form-input" type="date" id="esp-end" value="${escapeHtml(sprint.end_date || '')}"/></div>
+          </div>
+          <div class="form-group"><label class="form-label">Status</label>
+            <select class="form-select" id="esp-status">
+              ${statuses.map(s => `<option value="${s}" ${sprint.status === s ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="doUpdateSprint('${sprint.id}')"><i class="fas fa-save"></i>Save Changes</button>
+        </div>
+      `)
+    } catch (e) {
+      toast('Failed to load sprint: ' + e.message, 'error')
+    }
+  })
+}
+
+async function doUpdateSprint(id) {
+  const body = {
+    project_id: document.getElementById('esp-project')?.value,
+    name: document.getElementById('esp-name')?.value.trim(),
+    goal: document.getElementById('esp-goal')?.value.trim(),
+    start_date: document.getElementById('esp-start')?.value,
+    end_date: document.getElementById('esp-end')?.value,
+    status: document.getElementById('esp-status')?.value,
+  }
+  if (!body.name || !body.start_date || !body.end_date) return toast('Name and dates are required', 'error')
   try {
-    await API.put('/sprints/'+id, {status: newStatus})
-    toast('Sprint status updated to '+newStatus,'success')
-    const el = document.getElementById('page-sprints-view'); if(el){el.dataset.loaded='';loadPage('sprints-view',el)}
-  } catch(e) { toast(e.message,'error') }
+    await API.put('/sprints/' + id, body)
+    toast('Sprint updated', 'success')
+    closeModal()
+    const el = document.getElementById('page-sprints-view'); if (el) { el.dataset.loaded = ''; loadPage('sprints-view', el) }
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
 }
 
 /* ── MILESTONES VIEW ────────────────────────────────────── */
@@ -2868,17 +2919,44 @@ async function bulkApprove() {
 }
 
 /* ── CLIENTS LIST (Admin) ────────────────────────────────── */
+function setClientsFilter(filter) {
+  _clientsListFilter = filter
+  _clientsListPage = 1
+  rerenderEnterprisePage('clients-list', () => {})
+}
+async function deleteClient(id, name) {
+  if (!window.confirm(`Delete client "${name}"? This action cannot be undone.`)) return
+  try {
+    await API.delete('/clients/' + id)
+    toast('Client deleted', 'success')
+    rerenderEnterprisePage('clients-list', () => {})
+  } catch (e) {
+    toast('Failed to delete: ' + e.message, 'error')
+  }
+}
 async function renderClientsList(el) {
   el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const data = await API.get('/clients')
-    const clients = data.clients||[]
-    const pagination = paginateClient(clients, _clientsListPage, _clientsPageLimit)
+    const allClients = data.clients||[]
+    const activeCount = allClients.filter(c => c.is_active).length
+    const inactiveCount = allClients.length - activeCount
+    const filter = _clientsListFilter || 'active'
+    const filtered = filter === 'all' ? allClients
+      : filter === 'inactive' ? allClients.filter(c => !c.is_active)
+      : allClients.filter(c => c.is_active)
+    const pagination = paginateClient(filtered, _clientsListPage, _clientsPageLimit)
     _clientsListPage = pagination.page
+    const tabBtn = (key, label, count) => `<button class="btn btn-xs ${filter === key ? 'btn-primary' : 'btn-outline'}" onclick="setClientsFilter('${key}')">${label} <span style="opacity:.7">(${count})</span></button>`
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Clients</h1><p class="page-subtitle">${pagination.total} client companies</p></div>
+      <div><h1 class="page-title">Clients</h1><p class="page-subtitle">${pagination.total} ${filter === 'inactive' ? 'inactive' : filter === 'active' ? 'active' : ''} client companies</p></div>
       ${_user.role === 'admin' ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="openImportClientsModal()"><i class="fas fa-file-csv"></i>Import CSV</button><button class="btn btn-primary" onclick="openCreateClientModal()"><i class="fas fa-user-plus"></i>Add Client</button></div>` : ''}
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+      ${tabBtn('active', 'Active', activeCount)}
+      ${tabBtn('inactive', 'Inactive', inactiveCount)}
+      ${tabBtn('all', 'All', allClients.length)}
     </div>
     <div class="grid-2">
       ${pagination.items.map(cl=>`
@@ -2892,7 +2970,7 @@ async function renderClientsList(el) {
                 <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.email}</div>
               </div>
             </div>
-            ${_user.role === 'admin' ? `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i> Login</button>` : ''}
+            ${_user.role === 'admin' ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i> Login</button><button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Delete client"><i class="fas fa-trash"></i> Delete</button></div>` : ''}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
             <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#e2e8f0">${cl.project_count||0}</div><div style="font-size:11px;color:#64748b">Projects</div></div>
@@ -2903,7 +2981,7 @@ async function renderClientsList(el) {
             <span class="status-chip status-${cl.is_active?'active':'cancelled'}">${cl.is_active?'Active':'Inactive'}</span>
             <span style="font-size:12px;color:#475569">${cl.industry||'—'}</span>
           </div>
-        </div>`).join('') || '<div class="empty-state"><i class="fas fa-building"></i><p>No clients registered</p></div>'}
+        </div>`).join('') || '<div class="empty-state"><i class="fas fa-building"></i><p>No clients in this view</p></div>'}
     </div>
     ${renderPager(pagination, 'goClientsPage', 'goClientsPage', 'clients', 'clients-list')}
     `
@@ -2928,40 +3006,40 @@ function openCreateClientModal() {
     <div class="modal-body">
       <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Company &amp; Contact</div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Company Name *</label><input class="form-input" id="client-company" placeholder="Acme Corp"/></div>
-        <div class="form-group"><label class="form-label">Contact Name *</label><input class="form-input" id="client-contact" placeholder="John Doe"/></div>
+        <div class="form-group"><label class="form-label">Company Name *</label><input class="form-input" id="client-company" placeholder="Enter Company Name"/></div>
+        <div class="form-group"><label class="form-label">Contact Name *</label><input class="form-input" id="client-contact" placeholder="Enter Contact Name"/></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Email *</label><input class="form-input" id="client-email" type="email" placeholder="john@company.com"/></div>
-        <div class="form-group"><label class="form-label">Password *</label><input class="form-input" id="client-password" type="password" placeholder="Temporary password"/></div>
+        <div class="form-group"><label class="form-label">Email *</label><input class="form-input" id="client-email" type="email" placeholder="Enter Email"/></div>
+        <div class="form-group"><label class="form-label">Password *</label><input class="form-input" id="client-password" type="password" placeholder="Enter Your Password"/></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="client-phone" placeholder="+91-9800000000"/></div>
-        <div class="form-group"><label class="form-label">Website</label><input class="form-input" id="client-website" placeholder="https://example.com"/></div>
+        <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="client-phone" placeholder="Enter Phone Number"/></div>
+        <div class="form-group"><label class="form-label">Website</label><input class="form-input" id="client-website" placeholder="Enter Website"/></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Industry</label><input class="form-input" id="client-industry" placeholder="SaaS / Fintech"/></div>
+        <div class="form-group"><label class="form-label">Industry</label><input class="form-input" id="client-industry" placeholder="Enter Industry"/></div>
         <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="client-color" type="color" value="#FF7A45" style="height:40px;padding:3px"/></div>
       </div>
 
       <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">GSTIN</label><input class="form-input" id="client-gstin" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase" maxlength="15"/></div>
-        <div class="form-group"><label class="form-label">Country</label><input class="form-input" id="client-country" placeholder="India" value="India"/></div>
+        <div class="form-group"><label class="form-label">GSTIN</label><input class="form-input" id="client-gstin" placeholder="Enter GSTIN" style="text-transform:uppercase" maxlength="15"/></div>
+        <div class="form-group"><label class="form-label">Country</label><input class="form-input" id="client-country" placeholder="Enter Country" value="India"/></div>
       </div>
-      <div class="form-group"><label class="form-label">Company Address</label><textarea class="form-textarea" id="client-address" placeholder="Building, Street, Locality" style="min-height:50px"></textarea></div>
+      <div class="form-group"><label class="form-label">Company Address</label><textarea class="form-textarea" id="client-address" placeholder="Enter Company Address" style="min-height:50px"></textarea></div>
       <div style="display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:10px">
-        <div class="form-group" style="margin:0"><label class="form-label">City</label><input class="form-input" id="client-city" placeholder="Mumbai"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">City</label><input class="form-input" id="client-city" placeholder="City"/></div>
         <div class="form-group" style="margin:0"><label class="form-label">State</label>
           <select class="form-select" id="client-state" onchange="onClientStateChange(this)">
             <option value="">Select state…</option>
             ${stateOpts}
           </select>
         </div>
-        <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="client-state-code" placeholder="27" maxlength="3" readonly style="background:rgba(15,23,42,.4)"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="client-state-code" placeholder="" maxlength="3" readonly style="background:rgba(15,23,42,.4)"/></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">PIN Code</label><input class="form-input" id="client-pincode" placeholder="400001" maxlength="10"/></div>
+        <div class="form-group"><label class="form-label">PIN Code</label><input class="form-input" id="client-pincode" placeholder="Pincode" maxlength="10"/></div>
         <div class="form-group"></div>
       </div>
     </div>
@@ -3009,6 +3087,17 @@ async function saveClient() {
     toast('PIN code must be numeric (4–8 digits)', 'error')
     return
   }
+  if (payload.city) {
+    if (/^\d+$/.test(payload.city)) { toast('City cannot be number', 'error'); return }
+    if (!/^[A-Za-z][A-Za-z\s.\-']{1,79}$/.test(payload.city)) {
+      toast('City must be letters only (2–80 characters)', 'error')
+      return
+    }
+  }
+  if (payload.state && /^\d+$/.test(payload.state)) {
+    toast('State cannot be number', 'error')
+    return
+  }
   try {
     await API.post('/clients', payload)
     toast('Client created successfully', 'success')
@@ -3020,6 +3109,7 @@ async function saveClient() {
 }
 
 async function openEditClientModal(clientId) {
+  return guardedModalOpen('edit-client:' + clientId, async () => {
   try {
     const data = await API.get('/clients/' + clientId)
     const cl = data.client
@@ -3079,6 +3169,7 @@ async function openEditClientModal(clientId) {
       </div>
     `, 'modal-lg')
   } catch (e) { toast('Failed to load client: ' + e.message, 'error') }
+  })
 }
 
 function onEditClientStateChange(sel) {
@@ -3115,6 +3206,17 @@ async function saveEditClient(id) {
   }
   if (payload.pincode && !/^[0-9]{4,8}$/.test(payload.pincode)) {
     toast('PIN code must be numeric (4–8 digits)', 'error')
+    return
+  }
+  if (payload.city) {
+    if (/^\d+$/.test(payload.city)) { toast('City cannot be number', 'error'); return }
+    if (!/^[A-Za-z][A-Za-z\s.\-']{1,79}$/.test(payload.city)) {
+      toast('City must be letters only (2–80 characters)', 'error')
+      return
+    }
+  }
+  if (payload.state && /^\d+$/.test(payload.state)) {
+    toast('State cannot be number', 'error')
     return
   }
   try {
@@ -3738,6 +3840,8 @@ async function doSendInvoice(id) {
     subject: document.getElementById('se-subject')?.value.trim(),
   }
   if (!body.to) return toast('Client email is required', 'error')
+  const confirmMsg = `Send this invoice to ${body.to}${body.cc ? ' (cc: ' + body.cc + ')' : ''}?`
+  if (!window.confirm(confirmMsg)) return
   try {
     await API.post(`/invoices/${id}/send-email`, body)
     toast('Invoice email sent!', 'success')
@@ -3903,11 +4007,13 @@ function openTeamMemberModal(role) {
 }
 
 async function openEditTeamMember(id) {
-  try {
-    const res = await API.get(`/users/${id}`)
-    if (typeof openDeveloperModal !== 'function') { toast('User modal unavailable', 'error'); return }
-    openDeveloperModal(res.data)
-  } catch (e) { toast(e.message, 'error') }
+  return guardedModalOpen('edit-user:' + id, async () => {
+    try {
+      const res = await API.get(`/users/${id}`)
+      if (typeof openDeveloperModal !== 'function') { toast('User modal unavailable', 'error'); return }
+      openDeveloperModal(res.data)
+    } catch (e) { toast(e.message, 'error') }
+  })
 }
 
 async function toggleTeamMemberStatus(id, active) {
@@ -4168,6 +4274,12 @@ async function submitImportCsv(kind) {
   const submitBtn = document.getElementById('import-submit-btn')
   const file = fileInput?.files?.[0]
   if (!file) { toast('Please choose a CSV file', 'error'); return }
+  const isCsvByName = /\.csv$/i.test(file.name || '')
+  const isCsvByType = !file.type || /csv/i.test(file.type) || file.type === 'text/plain'
+  if (!isCsvByName || !isCsvByType) {
+    toast('Invalid file format — please upload a .csv file', 'error')
+    return
+  }
   const csv = (await file.text()).trim()
   if (!csv) { toast('CSV file is empty', 'error'); return }
 
@@ -4178,15 +4290,23 @@ async function submitImportCsv(kind) {
     const created = res.created_count || 0
     const errCount = res.error_count || 0
     const errors = res.errors || []
-    const result = document.getElementById('import-result')
-    if (result) {
-      result.style.display = ''
-      const kindLabel = kind === 'users' ? 'team members' : kind === 'projects' ? 'projects' : 'clients'
-      result.innerHTML = `
-        <div style="padding:12px 14px;border-radius:10px;background:rgba(88,198,138,0.10);border:1px solid rgba(88,198,138,0.30);color:#86E0A8;font-size:13px;margin-bottom:8px">
-          <i class="fas fa-check-circle"></i> <strong>${created}</strong> ${kindLabel} imported successfully.
-        </div>
-        ${errCount > 0 ? `
+    const kindLabel = kind === 'users' ? 'team members' : kind === 'projects' ? 'projects' : 'clients'
+
+    // Refresh the list page
+    const pageMap = { users: 'team-overview', clients: 'clients-list', projects: 'projects-list' }
+    const pageKey = pageMap[kind] || 'clients-list'
+    const el = document.getElementById('page-' + pageKey)
+    if (el) { el.dataset.loaded = ''; loadPage(pageKey, el) }
+
+    if (errCount > 0) {
+      // Keep the modal open so the user can review which rows were skipped
+      const result = document.getElementById('import-result')
+      if (result) {
+        result.style.display = ''
+        result.innerHTML = `
+          <div style="padding:12px 14px;border-radius:10px;background:rgba(88,198,138,0.10);border:1px solid rgba(88,198,138,0.30);color:#86E0A8;font-size:13px;margin-bottom:8px">
+            <i class="fas fa-check-circle"></i> <strong>${created}</strong> ${kindLabel} imported successfully.
+          </div>
           <div style="padding:12px 14px;border-radius:10px;background:rgba(255,94,58,0.10);border:1px solid rgba(255,94,58,0.30);color:#FF8866;font-size:12.5px;line-height:1.5">
             <i class="fas fa-triangle-exclamation"></i> <strong>${errCount}</strong> rows skipped:
             <ul style="margin:6px 0 0 18px;padding:0">
@@ -4194,16 +4314,13 @@ async function submitImportCsv(kind) {
               ${errors.length > 25 ? `<li>…and ${errors.length - 25} more</li>` : ''}
             </ul>
           </div>
-        ` : ''}
-      `
+        `
+      }
+      toast(`${created} imported, ${errCount} skipped`, 'warning')
+    } else {
+      toast(`${created} ${kindLabel} imported successfully`, 'success')
+      closeModal()
     }
-    toast(`${created} imported${errCount ? `, ${errCount} skipped` : ''}`, errCount ? 'warning' : 'success')
-
-    // Refresh the list page
-    const pageMap = { users: 'team-overview', clients: 'clients-list', projects: 'projects-list' }
-    const pageKey = pageMap[kind] || 'clients-list'
-    const el = document.getElementById('page-' + pageKey)
-    if (el) { el.dataset.loaded = ''; loadPage(pageKey, el) }
   } catch (e) {
     toast('Import failed: ' + (e.message || 'unknown'), 'error')
   } finally {

@@ -3,6 +3,7 @@ import type { MongoModels } from '../models/mongo-models'
 import { createAuthMiddleware } from '../express-middleware/auth'
 import { DOC_CATEGORIES } from '../constants'
 import { generateId } from '../utils/helpers'
+import { extractS3Key, getS3Object, type S3Env } from '../utils/s3-upload'
 import {
   validateRequired,
   validateLength,
@@ -15,7 +16,7 @@ import {
 
 const DOC_VISIBILITIES = ['internal', 'client', 'all'] as const
 
-export function createDocumentsRouter(models: MongoModels, jwtSecret: string) {
+export function createDocumentsRouter(models: MongoModels, jwtSecret: string, runtimeEnv: S3Env = {}) {
   const router = Router()
   router.use(createAuthMiddleware(jwtSecret))
 
@@ -244,6 +245,40 @@ export function createDocumentsRouter(models: MongoModels, jwtSecret: string) {
       return res.json({ file_url: doc.file_url, file_name: doc.file_name })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to record download' })
+    }
+  })
+
+  // Inline preview proxy: streams the S3 object back with
+  // `Content-Disposition: inline` regardless of how the object was uploaded.
+  // The frontend fetches this with the Bearer token then wraps the response
+  // body in a Blob URL so the iframe/img/video element can render it without
+  // the browser ever seeing an "attachment" disposition.
+  router.get('/:id/preview', async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const doc = await models.documents.findById(id) as any
+      if (!doc) return res.status(404).json({ error: 'Document not found' })
+
+      const key = extractS3Key(runtimeEnv, String(doc.file_url || ''))
+      if (!key) return res.status(400).json({ error: 'File location not available' })
+
+      const obj = await getS3Object(runtimeEnv, key)
+      const fileName = String(doc.file_name || 'file')
+      res.setHeader('Content-Type', obj.contentType || doc.file_type || 'application/octet-stream')
+      res.setHeader('Content-Disposition', `inline; filename="${fileName.replace(/"/g, '')}"`)
+      if (obj.contentLength) res.setHeader('Content-Length', String(obj.contentLength))
+      res.setHeader('Cache-Control', 'private, max-age=300')
+
+      if (obj.body && typeof obj.body.pipe === 'function') {
+        obj.body.pipe(res)
+      } else if (obj.body && typeof obj.body.transformToByteArray === 'function') {
+        const bytes = await obj.body.transformToByteArray()
+        res.end(Buffer.from(bytes))
+      } else {
+        return res.status(500).json({ error: 'Unable to stream file' })
+      }
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to load preview' })
     }
   })
 

@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import sharp from 'sharp'
 import { generateId } from './helpers'
 
@@ -175,5 +175,35 @@ export async function uploadFileToS3(env: S3Env, opts: UploadOpts): Promise<Uplo
     file_type: contentType,
     file_size: buffer.length,
     was_compressed: wasCompressed,
+  }
+}
+
+// Extract the S3 object key from a stored file_url. Stored URLs look like
+// `${publicBase}/${key}` so we strip the publicBase prefix. Falls back to the
+// pathname when the URL doesn't match (e.g. legacy or external links).
+export function extractS3Key(env: S3Env, fileUrl: string): string | null {
+  if (!fileUrl) return null
+  try {
+    const { publicBase } = getS3Client(env)
+    if (fileUrl.startsWith(publicBase + '/')) {
+      return fileUrl.slice(publicBase.length + 1)
+    }
+    const parsed = new URL(fileUrl)
+    return parsed.pathname.replace(/^\/+/, '') || null
+  } catch {
+    return null
+  }
+}
+
+// Fetch an S3 object and return its body + metadata. Used by the preview
+// proxy to stream files with `Content-Disposition: inline` regardless of how
+// the object was originally uploaded.
+export async function getS3Object(env: S3Env, key: string) {
+  const { client, bucket } = getS3Client(env)
+  const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+  return {
+    body: result.Body as any, // Readable stream in Node
+    contentType: result.ContentType || 'application/octet-stream',
+    contentLength: result.ContentLength,
   }
 }

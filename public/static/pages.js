@@ -127,29 +127,33 @@ async function openDeveloperModal(dev = null) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
+      <form autocomplete="off" onsubmit="event.preventDefault();return false">
+      <input type="text" name="prevent_autofill" autocomplete="off" style="display:none"/>
+      <input type="password" name="prevent_autofill_pwd" autocomplete="off" style="display:none"/>
       <div class="grid-2">
-        <div class="form-group"><label class="form-label">Full Name *</label><input id="dev-name" class="form-input" value="${dev?.full_name||''}" placeholder="Rahul Sharma"/></div>
-        <div class="form-group"><label class="form-label">Email *</label><input id="dev-email" class="form-input" type="email" value="${dev?.email||''}" placeholder="rahul@company.com"/></div>
-        <div class="form-group"><label class="form-label">Phone</label><input id="dev-phone" class="form-input" value="${dev?.phone||''}" placeholder="+91-9876543210"/></div>
-        <div class="form-group"><label class="form-label">Designation</label><input id="dev-designation" class="form-input" value="${dev?.designation||''}" placeholder="Senior Developer"/></div>
+        <div class="form-group"><label class="form-label">Full Name *</label><input id="dev-name" class="form-input" value="${dev?.full_name||''}" placeholder="Full Name" autocomplete="off"/></div>
+        <div class="form-group"><label class="form-label">Email *</label><input id="dev-email" class="form-input" type="email" value="${dev?.email||''}" placeholder="Email" autocomplete="off"/></div>
+        <div class="form-group"><label class="form-label">Phone</label><input id="dev-phone" class="form-input" value="${dev?.phone||''}" placeholder="Phone Number" autocomplete="off"/></div>
+        <div class="form-group"><label class="form-label">Designation</label><input id="dev-designation" class="form-input" value="${dev?.designation||''}" placeholder="Designation" autocomplete="off"/></div>
         <div class="form-group"><label class="form-label">Role</label>
           <select id="dev-role" class="form-select">
             ${roleOptions.map(([value, label]) => `<option value="${value}" ${selectedRole === value ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
         </div>
-        <div class="form-group"><label class="form-label">Joining Date</label><input id="dev-joining" class="form-input" type="date" value="${dev?.joining_date||''}"/></div>
+        <div class="form-group"><label class="form-label">Joining Date</label><input id="dev-joining" class="form-input" type="date" value="${dev?.joining_date||''}" onclick="this.showPicker && this.showPicker()" style="cursor:pointer"/></div>
         <div class="form-group"><label class="form-label">Daily Work Hours</label><input id="dev-daily-hours" class="form-input" type="number" value="${dev?.daily_work_hours||8}" min="1" max="12"/></div>
         <div class="form-group"><label class="form-label">Monthly Available Hours</label><input id="dev-monthly-hours" class="form-input" type="number" value="${dev?.monthly_available_hours||160}"/></div>
         <div class="form-group"><label class="form-label">Hourly Cost (₹)</label><input id="dev-hourly-cost" class="form-input" type="number" value="${dev?.hourly_cost||0}"/></div>
         <div class="form-group"><label class="form-label">Avatar Color</label><input id="dev-color" class="form-input" type="color" value="${dev?.avatar_color||'#FF7A45'}" style="height:40px;cursor:pointer;padding:4px"/></div>
       </div>
       <div class="form-group"><label class="form-label">Tech Stack (comma separated)</label>
-        <input id="dev-tech" class="form-input" value="${Array.isArray(tech) ? tech.join(', ') : ''}" placeholder="React, Node.js, PostgreSQL"/></div>
+        <input id="dev-tech" class="form-input" value="${Array.isArray(tech) ? tech.join(', ') : ''}" placeholder="Tech Stack" autocomplete="off"/></div>
       <div class="form-group"><label class="form-label">Skill Tags (comma separated)</label>
-        <input id="dev-skills" class="form-input" value="${Array.isArray(skills) ? skills.join(', ') : ''}" placeholder="Backend, API, DevOps"/></div>
+        <input id="dev-skills" class="form-input" value="${Array.isArray(skills) ? skills.join(', ') : ''}" placeholder="Skill Tags" autocomplete="off"/></div>
       <div class="form-group"><label class="form-label">Remarks</label>
-        <textarea id="dev-remarks" class="form-textarea" rows="2" placeholder="Additional notes...">${dev?.remarks||''}</textarea></div>
-      ${!isEdit ? `<div class="form-group"><label class="form-label">Password *</label><input id="dev-password" class="form-input" type="password" placeholder="Temporary password"/></div>` : ''}
+        <textarea id="dev-remarks" class="form-textarea" rows="2" placeholder="Remarks">${dev?.remarks||''}</textarea></div>
+      ${!isEdit ? `<div class="form-group"><label class="form-label">Password *</label><input id="dev-password" class="form-input" type="password" placeholder="Enter Your Password" autocomplete="new-password"/></div>` : ''}
+      </form>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -488,13 +492,14 @@ function openProjectModal(id = null) {
       const devsRes = await API.get(`/projects/${id}/developers`).catch(() => ({ developers: [] }))
       currentDevs = devsRes.developers || []
     }
-    const [devsRes, pmsRes, pcsRes, clientsRes, teamsRes, teamUsersRes] = await Promise.all([
+    const [devsRes, pmsRes, pcsRes, clientsRes, teamsRes, teamUsersRes, allUsersRes] = await Promise.all([
       API.get('/users?role=developer'),
       API.get('/users?role=pm'),
       API.get('/users?role=pc').catch(() => ({ users: [] })),
       API.get('/clients').catch(() => ({ clients: [] })),
       API.get('/project-teams').catch(() => ({ teams: [] })),
       API.get('/users?role=team').catch(() => ({ users: [] })),
+      API.get('/users').catch(() => ({ users: [] })),
     ])
     // Backend aliases /users?role=developer to {developer,team} so we strictly filter
     // here: in-house picker = pure role=developer, external picker = pure role=team
@@ -502,10 +507,17 @@ function openProjectModal(id = null) {
     // alias never lets a non-PM into the PM dropdown.
     const devs = (devsRes.users || devsRes.data || [])
       .filter(u => String(u.role || '').toLowerCase() === 'developer')
-    const pms = (pmsRes.users || pmsRes.data || [])
-      .filter(u => String(u.role || '').toLowerCase() === 'pm' && Number(u.is_active ?? 1) === 1)
+    const allUsers = (allUsersRes.users || allUsersRes.data || [])
+    const isActive = u => Number(u.is_active ?? 1) === 1
+    // PM dropdown also accepts admin users so projects can always be assigned
+    // even on a fresh install where no dedicated PM has been created yet.
+    let pms = (pmsRes.users || pmsRes.data || [])
+      .filter(u => String(u.role || '').toLowerCase() === 'pm' && isActive(u))
+    if (!pms.length) {
+      pms = allUsers.filter(u => ['pm', 'admin'].includes(String(u.role || '').toLowerCase()) && isActive(u))
+    }
     const pcs = (pcsRes.users || pcsRes.data || [])
-      .filter(u => String(u.role || '').toLowerCase() === 'pc' && Number(u.is_active ?? 1) === 1)
+      .filter(u => String(u.role || '').toLowerCase() === 'pc' && isActive(u))
     const clients = clientsRes.clients || clientsRes.data || []
     const teams = teamsRes.teams || teamsRes.data || []
     const teamUsers = (teamUsersRes.users || teamUsersRes.data || [])
@@ -595,7 +607,7 @@ function openProjectModal(id = null) {
               <div class="card-body">
                 <div class="grid-2" style="gap:12px;margin-bottom:16px">
                   <div class="form-group"><label class="form-label">Project Manager *</label>
-                    <select id="proj-pm" class="form-select"><option value="">Select PM</option>${pms.map(p=>`<option value="${p.id}" ${proj?.pm_id===p.id?'selected':''}>${esc(p.full_name)}</option>`).join('')}</select></div>
+                    <select id="proj-pm" class="form-select">${pms.length ? '<option value="">Select PM</option>' : '<option value="">No PMs available — add one in Team</option>'}${pms.map(p=>`<option value="${p.id}" ${proj?.pm_id===p.id?'selected':''}>${esc(p.full_name)} (${esc(String(p.role || '').toUpperCase())})</option>`).join('')}</select></div>
                   <div class="form-group"><label class="form-label">Product Coordinator</label>
                     <select id="proj-pc" class="form-select"><option value="">None</option>${pcs.map(c=>`<option value="${c.id}" ${proj?.pc_id===c.id?'selected':''}>${esc(c.full_name)}</option>`).join('')}</select></div>
                 </div>

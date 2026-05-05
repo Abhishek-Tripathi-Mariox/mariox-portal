@@ -60,9 +60,9 @@ async function renderDocumentsCenter(el) {
                   </div>
                 </div>
                 <div style="display:flex;gap:6px;margin-top:12px">
-                  <a href="${doc.file_url||'#'}" target="_blank" class="btn btn-sm btn-outline" style="flex:1;text-align:center;text-decoration:none">
+                  <button type="button" class="btn btn-sm btn-outline" style="flex:1" onclick="viewDocPreview('${doc.id}', '${encodeURIComponent(doc.file_url||'')}', '${encodeURIComponent(doc.file_type||'')}', '${encodeURIComponent(doc.title||doc.file_name||'Document')}')">
                     <i class="fas fa-eye"></i>View
-                  </a>
+                  </button>
                   <a href="${doc.file_url||'#'}" download class="btn btn-sm btn-primary" style="flex:1;text-align:center;text-decoration:none">
                     <i class="fas fa-download"></i>Download
                   </a>
@@ -346,6 +346,93 @@ async function deleteDoc(id) {
   try { await API.delete('/documents/' + id); toast('Deleted', 'success')
     const docEl = document.getElementById('page-documents-center'); if (docEl) { docEl.dataset.loaded=''; renderDocumentsCenter(docEl) } }
   catch(e) { toast(e.message, 'error') }
+}
+
+// Track active blob URLs so we can revoke them when the modal closes,
+// otherwise they leak memory across previews.
+let _docPreviewBlobUrl = null
+function _revokeDocPreviewBlob() {
+  if (_docPreviewBlobUrl) {
+    try { URL.revokeObjectURL(_docPreviewBlobUrl) } catch {}
+    _docPreviewBlobUrl = null
+  }
+}
+
+// Preview a document inline. We fetch the file through the server proxy
+// (`/api/documents/:id/preview`) which streams it back with `inline`
+// disposition, then wrap the response in a Blob URL so the iframe/img/video
+// embed can never trigger a download — the browser sees a same-origin blob.
+async function viewDocPreview(id, _encodedUrl, encodedType, encodedTitle) {
+  const fallbackUrl = decodeURIComponent(_encodedUrl || '')
+  const type = decodeURIComponent(encodedType || '').toLowerCase()
+  const title = decodeURIComponent(encodedTitle || 'Document')
+
+  _revokeDocPreviewBlob()
+
+  // Open a placeholder modal immediately so the user knows something is happening.
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-eye" style="color:#FF7A45;margin-right:6px"></i>${escapeHtml(title)}</h3>
+      <button class="close-btn" onclick="_revokeDocPreviewBlob();closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="doc-preview-body" style="padding:0;min-height:300px">
+      <div style="padding:40px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#FF7A45"></i><div style="margin-top:12px;font-size:13px">Loading preview…</div></div>
+    </div>
+  `, 'modal-xl')
+
+  let blobUrl = ''
+  let resolvedType = type
+  try {
+    const res = await fetch('/api/documents/' + encodeURIComponent(id) + '/preview', {
+      headers: { 'Authorization': 'Bearer ' + _token },
+    })
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const blob = await res.blob()
+    blobUrl = URL.createObjectURL(blob)
+    _docPreviewBlobUrl = blobUrl
+    if (blob.type) resolvedType = blob.type.toLowerCase()
+  } catch (e) {
+    const body = document.getElementById('doc-preview-body')
+    if (body) {
+      body.innerHTML = `
+        <div style="padding:40px;text-align:center;color:#94a3b8">
+          <i class="fas fa-triangle-exclamation" style="font-size:36px;color:#FF8866;margin-bottom:12px;display:block"></i>
+          <p style="font-size:13px;margin-bottom:14px">Preview failed: ${escapeHtml(e.message || 'unknown error')}</p>
+          ${fallbackUrl ? `<a href="${fallbackUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none"><i class="fas fa-external-link-alt"></i> Open in new tab</a>` : ''}
+        </div>`
+    }
+    return
+  }
+
+  const isImage = /^image\//.test(resolvedType)
+  const isPdf = resolvedType === 'application/pdf'
+  const isVideo = /^video\//.test(resolvedType)
+  const isAudio = /^audio\//.test(resolvedType)
+  const isText = /^text\//.test(resolvedType) || resolvedType === 'application/json' || resolvedType === 'application/xml'
+
+  let inner
+  if (isImage) {
+    inner = `<div style="display:flex;align-items:center;justify-content:center;background:#0a0a0a;min-height:400px"><img src="${blobUrl}" alt="${escapeHtml(title)}" style="max-width:100%;max-height:75vh;object-fit:contain"/></div>`
+  } else if (isPdf) {
+    inner = `<iframe src="${blobUrl}" style="width:100%;height:75vh;border:0;background:#0a0a0a"></iframe>`
+  } else if (isVideo) {
+    inner = `<div style="display:flex;align-items:center;justify-content:center;background:#0a0a0a;padding:20px"><video src="${blobUrl}" controls autoplay style="max-width:100%;max-height:70vh"></video></div>`
+  } else if (isAudio) {
+    inner = `<div style="display:flex;align-items:center;justify-content:center;padding:40px"><audio src="${blobUrl}" controls style="width:100%;max-width:520px"></audio></div>`
+  } else if (isText) {
+    inner = `<iframe src="${blobUrl}" style="width:100%;height:70vh;border:0;background:#fff"></iframe>`
+  } else {
+    inner = `
+      <div style="padding:40px;text-align:center;color:#94a3b8">
+        <i class="fas fa-file" style="font-size:48px;color:#FF7A45;margin-bottom:16px;display:block"></i>
+        <p style="font-size:14px;margin-bottom:6px">Inline preview is not available for this file type.</p>
+        <p style="font-size:12px;color:#64748b;margin-bottom:20px">Type: ${escapeHtml(resolvedType || 'unknown')}</p>
+        <a href="${blobUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none"><i class="fas fa-external-link-alt"></i> Open in new tab</a>
+      </div>`
+  }
+
+  const body = document.getElementById('doc-preview-body')
+  if (body) body.innerHTML = inner
 }
 
 /* ── TIMESHEETS VIEW ───────────────────────────────────── */

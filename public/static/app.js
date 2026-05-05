@@ -1212,7 +1212,18 @@ function showModal(html, size='') {
   }
   root.innerHTML = `<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal ${size}">${html}</div></div>`
 }
+// Guard against rapid double-clicks on slow API-backed edit openers.
+// Same key + already-running → second call drops silently. Each opener
+// passes a stable key (e.g. 'edit-client:abc123') so the same record is
+// debounced but unrelated openers can run concurrently.
+const _modalOpenerGuard = new Set()
+async function guardedModalOpen(key, fn) {
+  if (_modalOpenerGuard.has(key)) return
+  _modalOpenerGuard.add(key)
+  try { await fn() } finally { _modalOpenerGuard.delete(key) }
+}
 function closeModal() {
+  if (typeof _revokeDocPreviewBlob === 'function') _revokeDocPreviewBlob()
   const root = document.getElementById('modal-root')
   if (root) root.innerHTML = ''
 }
@@ -1363,7 +1374,7 @@ async function showNotifications() {
       <div class="modal-body" style="padding:0">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted)">
           <span id="notif-panel-summary">${data.unread_count || 0} unread · ${items.length} recent</span>
-          ${items.length ? '<button class="btn btn-xs btn-outline" onclick="markAllNotifsRead()"><i class="fas fa-check-double"></i> Mark all read</button>' : ''}
+          ${items.some((n) => !n.is_read) ? '<button id="notif-mark-all-btn" class="btn btn-xs btn-outline" onclick="markAllNotifsRead()"><i class="fas fa-check-double"></i> Mark all read</button>' : ''}
         </div>
         <div class="notif-list">
           ${items.length ? itemsHtml : '<div class="empty-state" style="padding:36px 18px"><i class="fas fa-bell-slash"></i><p>No notifications yet</p></div>'}
@@ -1372,11 +1383,19 @@ async function showNotifications() {
     `, 'modal-lg')
 
     // Auto-mark-all-read when the panel opens (Slack/Freshdesk pattern):
-    // user has now "seen" them. Update both badges immediately.
+    // user has now "seen" them. Update both badges immediately and
+    // strip the unread visuals from the rows so the panel matches state.
     const hasUnread = items.some((n) => !n.is_read)
     if (hasUnread) {
       API.post('/notifications/read-all', {}).catch(() => {})
       _notifSetBadge(0)
+      document.querySelectorAll('.notif-row.is-unread').forEach((row) => {
+        row.classList.remove('is-unread')
+        row.querySelector('.notif-row-dot')?.remove()
+      })
+      const summary = document.getElementById('notif-panel-summary')
+      if (summary) summary.textContent = '0 unread · ' + items.length + ' recent'
+      document.getElementById('notif-mark-all-btn')?.remove()
     }
   } catch (e) {
     toast('Failed to load notifications: ' + e.message, 'error')
@@ -1414,7 +1433,11 @@ async function markAllNotifsRead() {
       row.querySelector('.notif-row-dot')?.remove()
     })
     const summary = document.getElementById('notif-panel-summary')
-    if (summary) summary.textContent = '0 unread · ' + (_notifState.recent?.length || 0) + ' recent'
+    if (summary) {
+      const recentCount = document.querySelectorAll('.notif-row').length
+      summary.textContent = '0 unread · ' + recentCount + ' recent'
+    }
+    document.getElementById('notif-mark-all-btn')?.remove()
     _notifSetBadge(0)
     toast('Marked all notifications read', 'success')
     pollNotifications()
