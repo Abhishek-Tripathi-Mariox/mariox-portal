@@ -82,6 +82,7 @@ export function createProjectTeamsRouter(models: MongoModels, jwtSecret: string)
       const user = req.user as any
       const body = req.body || {}
       validateLength(String(body.name || '').trim(), 2, 80, 'Team name')
+      validateLength(String(body.alias || '').trim(), 1, 40, 'Alias')
       if (body.color) validateHexColor(body.color, 'Color')
       const projectId = body.project_id ? String(body.project_id) : null
       const id = await createTeam(models, user, projectId, body)
@@ -97,6 +98,7 @@ export function createProjectTeamsRouter(models: MongoModels, jwtSecret: string)
       const projectId = String(req.params.projectId)
       const body = req.body || {}
       validateLength(String(body.name || '').trim(), 2, 80, 'Team name')
+      validateLength(String(body.alias || '').trim(), 1, 40, 'Alias')
       if (body.color) validateHexColor(body.color, 'Color')
       const id = await createTeam(models, user, projectId, body)
       return res.status(201).json({ data: { id, project_id: projectId }, message: 'Team created successfully' })
@@ -121,11 +123,13 @@ export function createProjectTeamsRouter(models: MongoModels, jwtSecret: string)
       const teamId = String(req.params.teamId)
       const body = req.body || {}
       const name = validateLength(String(body.name || '').trim(), 2, 80, 'Team name')
+      const alias = validateLength(String(body.alias || '').trim(), 1, 40, 'Alias')
       const description = validateOptional(body.description, (v) => validateLength(String(v).trim(), 0, 2000, 'Description'))
       const color = body.color ? validateHexColor(body.color, 'Color') : '#6366f1'
       await models.projectTeams.updateById(teamId, {
         $set: {
           name,
+          alias,
           description,
           team_lead_id: body.team_lead_id || null,
           color,
@@ -212,6 +216,7 @@ async function createTeam(models: MongoModels, user: any, projectId: string | nu
     id,
     project_id: projectId,
     name: String(body.name).trim(),
+    alias: String(body.alias || '').trim(),
     description: body.description || null,
     team_lead_id: body.team_lead_id || null,
     color: body.color || '#6366f1',

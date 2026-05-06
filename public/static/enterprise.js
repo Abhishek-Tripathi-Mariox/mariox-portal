@@ -3897,12 +3897,13 @@ async function doMarkPaid(id) {
 
 /* ── TEAM OVERVIEW ──────────────────────────────────────── */
 const TEAM_ROLE_META = {
-  admin:     { label: 'Admin',     badge: 'critical'   },
-  pm:        { label: 'PM',        badge: 'inprogress' },
-  pc:        { label: 'PC',        badge: 'review'     },
-  developer: { label: 'Developer', badge: 'done'       },
-  team:      { label: 'Team',      badge: 'todo'       },
-  client:    { label: 'Client',    badge: 'review'     },
+  admin:        { label: 'Admin',        badge: 'critical'   },
+  pm:           { label: 'PM',           badge: 'inprogress' },
+  pc:           { label: 'PC',           badge: 'review'     },
+  developer:    { label: 'Developer',    badge: 'done'       },
+  team:         { label: 'Team',         badge: 'todo'       },
+  sales_agent:  { label: 'Sales Agent',  badge: 'inprogress' },
+  client:       { label: 'Client',       badge: 'review'     },
 }
 let _teamOverviewRoleFilter = ''
 
@@ -3937,7 +3938,7 @@ async function renderTeamOverview(el) {
       <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px">
         <div class="search-wrap" style="flex:1;min-width:240px"><i class="fas fa-search"></i><input class="search-bar" placeholder="Search members…" oninput="filterTable(this.value,'team-overview-table')"/></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${['', 'admin', 'pm', 'pc', 'developer', 'team'].map(r => {
+          ${['', 'admin', 'pm', 'pc', 'developer', 'team', 'sales_agent'].map(r => {
             const meta = r ? TEAM_ROLE_META[r] : { label: 'All' }
             const count = r ? (roleCounts[r] || 0) : users.length
             const active = _teamOverviewRoleFilter === r

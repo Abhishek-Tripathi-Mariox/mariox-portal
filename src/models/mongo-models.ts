@@ -282,6 +282,10 @@ export class MongoModels {
   readonly projectUpdates: MongoRepository
   readonly bidAuctions: MongoRepository
   readonly bidSubmissions: MongoRepository
+  readonly leads: MongoRepository
+  readonly leadTasks: MongoRepository
+  readonly leadStatuses: MongoRepository
+  readonly leadTaskStatuses: MongoRepository
 
   constructor(private readonly db: Db) {
     this.users = new UserModel(db.collection<UserRecord>('users'))
@@ -314,6 +318,10 @@ export class MongoModels {
     this.projectUpdates = new MongoRepository(db.collection('project_updates'))
     this.bidAuctions = new MongoRepository(db.collection('bid_auctions'))
     this.bidSubmissions = new MongoRepository(db.collection('bid_submissions'))
+    this.leads = new MongoRepository(db.collection('leads'))
+    this.leadTasks = new MongoRepository(db.collection('lead_tasks'))
+    this.leadStatuses = new MongoRepository(db.collection('lead_statuses'))
+    this.leadTaskStatuses = new MongoRepository(db.collection('lead_task_statuses'))
   }
 
   get rawDb() {

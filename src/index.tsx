@@ -128,6 +128,7 @@ app.get('*', (c) => {
   <script src="/static/client-portal.js"></script>
   <script src="/static/project-extensions.js"></script>
   <script src="/static/support.js"></script>
+  <script src="/static/leads.js"></script>
 </body>
 </html>`)
 })

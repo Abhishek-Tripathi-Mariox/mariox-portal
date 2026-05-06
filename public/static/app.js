@@ -56,6 +56,7 @@ const PAGE_PERMISSIONS = {
   'clients-list':    ['admin'],
   'billing-admin':   ['admin'],
   'team-overview':   ['admin', 'pm'],
+  'leads-view':      ['admin', 'pm', 'pc', 'sales_agent'],
   // PM Dashboard is the operational view for PM/PC only — admins land on
   // their own Super Admin Overview, so we hide pm-dashboard from them.
   'pm-dashboard':    ['pm', 'pc'],
@@ -90,6 +91,8 @@ const SIDEBAR_PAGE_GROUPS = {
   'clients-list': 'admin',
   'billing-admin': 'admin',
   'team-overview': 'admin',
+  'leads-view': 'admin',
+  'leads-view': 'admin',
   'pm-dashboard': 'pm',
   'projects-list': 'pm',
   'kanban-board': 'pm',
@@ -114,6 +117,7 @@ const SIDEBAR_GROUP_DEFAULTS = {
   pm: true,
   dev: true,
   team: true,
+  sales: true,
   analytics: false,
   settings: true,
 }
@@ -473,6 +477,7 @@ function defaultPage() {
     pc: 'pm-dashboard',
     developer: 'dev-dashboard',
     team: 'team-dashboard',
+    sales_agent: 'leads-view',
   }
   return map[_user?.role] || 'pm-dashboard'
 }
@@ -502,15 +507,24 @@ function navSection({ key, heading, chip, expanded, items, icon }) {
 function buildShell() {
   const role = String(_user.role || '').toLowerCase()
 
-  const navAdmin = navSection({
+  const navAdmin = role !== 'sales_agent' ? navSection({
     key: 'admin', heading: 'Admin', chip: 'Core', expanded: true, icon: 'fa-sparkles',
     items: [
       navItem('super-dashboard', 'fa-chart-pie', 'Overview'),
       navItem('clients-list',    'fa-building',   'Clients'),
       navItem('billing-admin',   'fa-file-invoice-dollar', 'Billing'),
       navItem('team-overview',   'fa-users',      'Team'),
+      navItem('leads-view',      'fa-bullseye',   'Leads'),
     ],
-  })
+  }) : ''
+
+  const navSales = role === 'sales_agent' ? navSection({
+    key: 'sales', heading: 'Sales', chip: 'Leads', expanded: true, icon: 'fa-bullseye',
+    items: [
+      navItem('leads-view',      'fa-bullseye',   'My Leads'),
+      navItem('my-tasks',        'fa-list-check', 'Tasks'),
+    ],
+  }) : ''
 
   // Project Management section is for admin/pm/pc oversight only. Without
   // this gate, team accounts saw Projects/Bidding/Kanban here too — duplicating
@@ -578,7 +592,7 @@ function buildShell() {
         <span>Mariox Software</span>
       </div>
     </div>
-    ${navAdmin}${navPm}${navDev}${navTeam}${navReports}
+    ${navAdmin}${navPm}${navDev}${navTeam}${navSales}${navReports}
     <div class="nav-section nav-group nav-group-settings" data-nav-group="settings">
       <button class="nav-section-toggle" type="button" data-nav-toggle="settings" aria-expanded="true">
         <span class="nav-section-heading"><i class="fas fa-sliders"></i> Settings</span>
@@ -637,6 +651,7 @@ function buildShell() {
     <div id="page-clients-list"     class="page"></div>
     <div id="page-billing-admin"    class="page"></div>
     <div id="page-team-overview"    class="page"></div>
+    <div id="page-leads-view"       class="page"></div>
     <div id="page-support-tickets"  class="page"></div>
     <div id="page-settings-view"    class="page"></div>
   </div>
@@ -671,7 +686,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','support-tickets':'Support Tickets','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','support-tickets':'Support Tickets','settings-view':'Settings'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -1491,6 +1506,7 @@ function loadPage(page, el) {
     case 'clients-list':     renderClientsList(el); break
     case 'billing-admin':    renderBillingAdmin(el); break
     case 'team-overview':    renderTeamOverview(el); break
+    case 'leads-view':       renderLeadsView(el); break
     case 'support-tickets':  renderSupportTickets(el); break
     case 'settings-view':    renderSettingsView(el); break
     default: el.innerHTML = `<div class="page-header"><h1 class="page-title">${breadcrumbMap[page]||page}</h1></div><div class="empty-state"><i class="fas fa-hammer"></i><p>Module coming soon…</p></div>`

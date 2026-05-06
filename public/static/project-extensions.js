@@ -101,15 +101,20 @@ async function renderProjectTeamsSection(projectId, containerEl) {
   }
 }
 
+function teamDisplayName(t) {
+  return String(t?.alias || t?.name || '').trim() || 'Team'
+}
+
 function renderTeamCard(t, projectDevs, canManage) {
   const members = t.members || []
+  const display = teamDisplayName(t)
   return `
     <div class="glass-card" style="padding:16px;border-left:4px solid ${t.color}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px">
         <div style="min-width:0;flex:1">
           <h3 style="font-size:15px;font-weight:700;margin:0 0 2px;display:flex;align-items:center;gap:6px">
             <span style="width:8px;height:8px;border-radius:50%;background:${t.color}"></span>
-            ${escapeHtml(t.name)}
+            ${escapeHtml(display)}
           </h3>
           ${t.description ? `<p style="font-size:12px;color:var(--text-muted);margin:0">${escapeHtml(t.description)}</p>` : ''}
         </div>
@@ -118,7 +123,7 @@ function renderTeamCard(t, projectDevs, canManage) {
             <button class="icon-btn" onclick="toggleTeamMenu('${t.id}')"><i class="fas fa-ellipsis-v"></i></button>
             <div id="team-menu-${t.id}" style="display:none;position:absolute;right:0;top:100%;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;min-width:140px;z-index:10;box-shadow:0 10px 30px rgba(0,0,0,.3)">
               <button class="dropdown-item" onclick="openEditTeamModal('${t.id}')" style="width:100%;text-align:left;padding:10px 12px;background:none;border:none;color:var(--text);cursor:pointer;font-size:13px"><i class="fas fa-pen" style="width:14px"></i> Edit</button>
-              <button class="dropdown-item" onclick="confirmDeleteTeam('${t.id}','${escapeHtml(t.name).replace(/'/g, "\\'")}')" style="width:100%;text-align:left;padding:10px 12px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:13px"><i class="fas fa-trash" style="width:14px"></i> Delete</button>
+              <button class="dropdown-item" onclick="confirmDeleteTeam('${t.id}','${escapeHtml(display).replace(/'/g, "\\'")}')" style="width:100%;text-align:left;padding:10px 12px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:13px"><i class="fas fa-trash" style="width:14px"></i> Delete</button>
             </div>
           </div>
         ` : ''}
@@ -167,6 +172,7 @@ async function openCreateTeamModal(projectId) {
     title: 'Create New Team',
     body: `
       <div class="form-group"><label class="form-label">Team name *</label><input id="team-name" class="form-input" placeholder="e.g. Backend Squad" autofocus/></div>
+      <div class="form-group"><label class="form-label">Alias *</label><input id="team-alias" class="form-input" placeholder="Short label shown everywhere instead of the name"/></div>
       <div class="form-group"><label class="form-label">Description</label><textarea id="team-desc" class="form-input" rows="2" placeholder="What does this team do?"></textarea></div>
       <div style="display:grid;grid-template-columns:1fr 120px;gap:10px">
         <div class="form-group"><label class="form-label">Team lead</label>
@@ -181,10 +187,13 @@ async function openCreateTeamModal(projectId) {
     confirmText: 'Create Team',
     onConfirm: async () => {
       const name = document.getElementById('team-name').value.trim()
+      const alias = document.getElementById('team-alias').value.trim()
       if (!name) { toast('Team name is required', 'error'); return false }
+      if (!alias) { toast('Alias is required', 'error'); return false }
       try {
         await API.post(`/project-teams/project/${projectId}`, {
           name,
+          alias,
           description: document.getElementById('team-desc').value.trim(),
           team_lead_id: document.getElementById('team-lead').value || null,
           color: document.getElementById('team-color').value,
@@ -216,6 +225,7 @@ async function openCreateTeamFromOverviewModal() {
           <div class="form-hint">Project choose karna optional hai. Team bina project ke bhi create ho sakti hai.</div>
         </div>
         <div class="form-group"><label class="form-label">Team name *</label><input id="team-name" class="form-input" placeholder="e.g. Backend Squad" autofocus/></div>
+        <div class="form-group"><label class="form-label">Alias *</label><input id="team-alias" class="form-input" placeholder="Short label shown everywhere instead of the name"/></div>
         <div class="form-group"><label class="form-label">Description</label><textarea id="team-desc" class="form-input" rows="2" placeholder="What does this team do?"></textarea></div>
         <div style="display:grid;grid-template-columns:1fr 120px;gap:10px">
           <div class="form-group"><label class="form-label">Team lead</label>
@@ -231,11 +241,14 @@ async function openCreateTeamFromOverviewModal() {
       onConfirm: async () => {
         const projectId = document.getElementById('team-project').value || null
         const name = document.getElementById('team-name').value.trim()
+        const alias = document.getElementById('team-alias').value.trim()
         if (!name) { toast('Team name is required', 'error'); return false }
+        if (!alias) { toast('Alias is required', 'error'); return false }
         try {
           await API.post('/project-teams', {
             project_id: projectId,
             name,
+            alias,
             description: document.getElementById('team-desc').value.trim(),
             team_lead_id: document.getElementById('team-lead').value || null,
             color: document.getElementById('team-color').value,
@@ -273,6 +286,7 @@ async function openEditTeamModal(teamId) {
       title: 'Edit Team',
       body: `
         <div class="form-group"><label class="form-label">Team name *</label><input id="team-name" class="form-input" value="${escapeHtml(t.name)}"/></div>
+        <div class="form-group"><label class="form-label">Alias *</label><input id="team-alias" class="form-input" value="${escapeHtml(t.alias || '')}" placeholder="Short label shown everywhere instead of the name"/></div>
         <div class="form-group"><label class="form-label">Description</label><textarea id="team-desc" class="form-input" rows="2">${escapeHtml(t.description || '')}</textarea></div>
         <div class="form-group"><label class="form-label">Team lead</label>
           <select id="team-lead" class="form-select">
@@ -285,10 +299,13 @@ async function openEditTeamModal(teamId) {
       confirmText: 'Save',
       onConfirm: async () => {
         const name = document.getElementById('team-name').value.trim()
+        const alias = document.getElementById('team-alias').value.trim()
         if (!name) { toast('Team name required', 'error'); return false }
+        if (!alias) { toast('Alias required', 'error'); return false }
         try {
           await API.put(`/project-teams/${teamId}`, {
             name,
+            alias,
             description: document.getElementById('team-desc').value.trim(),
             color: document.getElementById('team-color').value,
             team_lead_id: document.getElementById('team-lead').value || null,
@@ -340,7 +357,7 @@ async function openManageMembersModal(teamId) {
     const addableDevs = allDevs.filter(d => !memberIds.has(d.id))
 
     pxModal({
-      title: `Manage members — ${escapeHtml(t.name)}`,
+      title: `Manage members — ${escapeHtml(teamDisplayName(t))}`,
       body: `
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
           Only developers already assigned to this project can join a team. Assign more devs to the project first if needed.

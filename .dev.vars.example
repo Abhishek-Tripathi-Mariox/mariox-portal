@@ -24,6 +24,9 @@ SMTP_PASS=
 SMTP_FROM=
 SMTP_SECURE=false
 
+# Client login URL emailed when a lead is closed and converted to a client
+CLIENT_LOGIN_URL=https://portal.example.com/
+
 # Invoice template (optional — defaults to Mariox Software values)
 COMPANY_NAME=
 COMPANY_GSTIN=

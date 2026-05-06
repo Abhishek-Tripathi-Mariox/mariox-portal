@@ -9,6 +9,7 @@ export const ROLES = {
   PC: 'pc',
   DEVELOPER: 'developer',
   TEAM: 'team',
+  SALES_AGENT: 'sales_agent',
   CLIENT: 'client',
 } as const
 
@@ -22,6 +23,7 @@ export const USER_ROLES = [
   ROLES.PC,
   ROLES.DEVELOPER,
   ROLES.TEAM,
+  ROLES.SALES_AGENT,
   ROLES.CLIENT,
 ] as const
 
@@ -31,6 +33,7 @@ export const STAFF_CREATE_ROLES = [
   ROLES.PC,
   ROLES.TEAM,
   ROLES.DEVELOPER,
+  ROLES.SALES_AGENT,
 ] as const
 
 // Project Status

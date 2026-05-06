@@ -221,6 +221,12 @@ const TEAM_PERMS: PermissionKey[] = [
   'leaves.create_own',
 ]
 
+const SALES_AGENT_PERMS: PermissionKey[] = [
+  'tasks.edit_own', 'tasks.move', 'tasks.comment',
+  'timesheets.log_own',
+  'leaves.create_own',
+]
+
 const CLIENT_PERMS: PermissionKey[] = [
   'tickets.create',
 ]
@@ -255,6 +261,12 @@ export const SYSTEM_ROLE_SEEDS: SystemRoleSeed[] = [
     name: 'External Team',
     description: 'External collaborator on assigned projects',
     permissions: TEAM_PERMS,
+  },
+  {
+    key: 'sales_agent',
+    name: 'Sales Agent',
+    description: 'Handles assigned leads and follow-up tasks',
+    permissions: SALES_AGENT_PERMS,
   },
   {
     key: 'client',

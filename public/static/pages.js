@@ -136,7 +136,7 @@ async function openDeveloperModal(dev = null) {
         <div class="form-group"><label class="form-label">Phone</label><input id="dev-phone" class="form-input" value="${dev?.phone||''}" placeholder="Phone Number" autocomplete="off"/></div>
         <div class="form-group"><label class="form-label">Designation</label><input id="dev-designation" class="form-input" value="${dev?.designation||''}" placeholder="Designation" autocomplete="off"/></div>
         <div class="form-group"><label class="form-label">Role</label>
-          <select id="dev-role" class="form-select">
+          <select id="dev-role" class="form-select" onchange="onDevRoleChange(this.value)">
             ${roleOptions.map(([value, label]) => `<option value="${value}" ${selectedRole === value ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
         </div>
@@ -146,10 +146,12 @@ async function openDeveloperModal(dev = null) {
         <div class="form-group"><label class="form-label">Hourly Cost (₹)</label><input id="dev-hourly-cost" class="form-input" type="number" value="${dev?.hourly_cost||0}"/></div>
         <div class="form-group"><label class="form-label">Avatar Color</label><input id="dev-color" class="form-input" type="color" value="${dev?.avatar_color||'#FF7A45'}" style="height:40px;cursor:pointer;padding:4px"/></div>
       </div>
-      <div class="form-group"><label class="form-label">Tech Stack (comma separated)</label>
-        <input id="dev-tech" class="form-input" value="${Array.isArray(tech) ? tech.join(', ') : ''}" placeholder="Tech Stack" autocomplete="off"/></div>
-      <div class="form-group"><label class="form-label">Skill Tags (comma separated)</label>
-        <input id="dev-skills" class="form-input" value="${Array.isArray(skills) ? skills.join(', ') : ''}" placeholder="Skill Tags" autocomplete="off"/></div>
+      <div id="dev-tech-skills-wrap" style="display:${selectedRole === 'sales_agent' ? 'none' : ''}">
+        <div class="form-group"><label class="form-label">Tech Stack (comma separated)</label>
+          <input id="dev-tech" class="form-input" value="${Array.isArray(tech) ? tech.join(', ') : ''}" placeholder="Tech Stack" autocomplete="off"/></div>
+        <div class="form-group"><label class="form-label">Skill Tags (comma separated)</label>
+          <input id="dev-skills" class="form-input" value="${Array.isArray(skills) ? skills.join(', ') : ''}" placeholder="Skill Tags" autocomplete="off"/></div>
+      </div>
       <div class="form-group"><label class="form-label">Remarks</label>
         <textarea id="dev-remarks" class="form-textarea" rows="2" placeholder="Remarks">${dev?.remarks||''}</textarea></div>
       ${!isEdit ? `<div class="form-group"><label class="form-label">Password *</label><input id="dev-password" class="form-input" type="password" placeholder="Enter Your Password" autocomplete="new-password"/></div>` : ''}
@@ -171,16 +173,25 @@ async function openDeveloperModal(dev = null) {
   }
 }
 
+function onDevRoleChange(role) {
+  const wrap = document.getElementById('dev-tech-skills-wrap')
+  if (!wrap) return
+  wrap.style.display = role === 'sales_agent' ? 'none' : ''
+}
+
 async function saveDeveloper(id) {
   try {
-    const tech = document.getElementById('dev-tech').value.split(',').map(t=>t.trim()).filter(Boolean)
-    const skills = document.getElementById('dev-skills').value.split(',').map(t=>t.trim()).filter(Boolean)
+    const role = document.getElementById('dev-role').value
+    const techEl = document.getElementById('dev-tech')
+    const skillsEl = document.getElementById('dev-skills')
+    const tech = role === 'sales_agent' || !techEl ? [] : techEl.value.split(',').map(t=>t.trim()).filter(Boolean)
+    const skills = role === 'sales_agent' || !skillsEl ? [] : skillsEl.value.split(',').map(t=>t.trim()).filter(Boolean)
     const payload = {
       full_name: document.getElementById('dev-name').value,
       email: document.getElementById('dev-email').value,
       phone: document.getElementById('dev-phone').value,
       designation: document.getElementById('dev-designation').value,
-      role: document.getElementById('dev-role').value,
+      role,
       joining_date: document.getElementById('dev-joining').value,
       daily_work_hours: parseFloat(document.getElementById('dev-daily-hours').value),
       monthly_available_hours: parseFloat(document.getElementById('dev-monthly-hours').value),
@@ -659,7 +670,7 @@ function openProjectModal(id = null) {
                     <select id="proj-external-team" class="form-select">
                       <option value="">— Select —</option>
                       ${teams.length ? `<optgroup label="Project Teams">
-                        ${teams.map(t=>`<option value="${esc(t.id)}" data-kind="team" ${window._projExternalTeamId===t.id && window._projExternalAssigneeType==='team'?'selected':''}>${esc(t.name)}${t.member_count?` · ${t.member_count} members`:''}${t.lead_name?` · Lead: ${esc(t.lead_name)}`:''}</option>`).join('')}
+                        ${teams.map(t=>`<option value="${esc(t.id)}" data-kind="team" ${window._projExternalTeamId===t.id && window._projExternalAssigneeType==='team'?'selected':''}>${esc(t.alias || t.name)}${t.member_count?` · ${t.member_count} members`:''}${t.lead_name?` · Lead: ${esc(t.lead_name)}`:''}</option>`).join('')}
                       </optgroup>` : ''}
                       ${teamUsers.length ? `<optgroup label="Team Members (role: team)">
                         ${teamUsers.map(u=>`<option value="${esc(u.id)}" data-kind="user" ${window._projExternalTeamId===u.id && window._projExternalAssigneeType==='user'?'selected':''}>${esc(u.full_name)}${u.designation?` · ${esc(u.designation)}`:''}</option>`).join('')}

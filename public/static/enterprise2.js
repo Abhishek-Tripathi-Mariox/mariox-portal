@@ -994,7 +994,7 @@ async function loadReport2(tab) {
       const teamRows = teams.map(t => {
         const linked = externalProjects.filter(p => p.external_team_id === t.id && p.external_assignee_type === 'team')
         return {
-          name: t.name,
+          name: t.alias || t.name,
           lead: t.lead_name || '—',
           members: t.member_count || 0,
           projects: linked.length,
@@ -1174,10 +1174,10 @@ async function openReportSummary(kind, entityId) {
     } else if (kind === 'external-team') {
       const team = teams.find(t => String(t.id) === String(entityId))
       if (!team) { toast('Team not found', 'error'); closeModal(); return }
-      title = team.name
+      title = team.alias || team.name
       subtitle = `External team · Lead: ${team.lead_name || '—'} · ${team.member_count || 0} members`
       avatarColor = '#FF7A45'
-      avatarName = team.name
+      avatarName = team.alias || team.name
       ownedProjects = projects.filter(p => p.assignment_type === 'external' && p.external_team_id === team.id && p.external_assignee_type === 'team')
       const memberIds = new Set((team.members || []).map(m => String(m.user_id || m.id)))
       myLogs = logs.filter(l => memberIds.has(String(l.user_id)))

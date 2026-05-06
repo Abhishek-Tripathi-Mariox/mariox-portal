@@ -1,6 +1,23 @@
 import type { MongoModels, UserRecord } from '../models/mongo-models'
 import { SYSTEM_ROLE_SEEDS } from '../constants/permissions'
 
+const LEAD_STATUS_SEEDS = [
+  { key: 'new',       label: 'New',       badge: 'todo',       position: 0 },
+  { key: 'contacted', label: 'Contacted', badge: 'inprogress', position: 1 },
+  { key: 'qualified', label: 'Qualified', badge: 'review',     position: 2 },
+  { key: 'converted', label: 'Converted', badge: 'done',       position: 3 },
+  { key: 'lost',      label: 'Lost',      badge: 'critical',   position: 4 },
+  { key: 'closed',    label: 'Closed',    badge: 'done',       position: 5 },
+]
+
+const LEAD_TASK_STATUS_SEEDS = [
+  { key: 'pending',     label: 'Pending',     badge: 'todo',       position: 0 },
+  { key: 'in_progress', label: 'In Progress', badge: 'inprogress', position: 1 },
+  { key: 'done',        label: 'Done',        badge: 'done',       position: 2 },
+  { key: 'skipped',     label: 'Skipped',     badge: 'critical',   position: 3 },
+  { key: 'follow_up',   label: 'Follow Up',   badge: 'review',     position: 4 },
+]
+
 async function hashPassword(password: string, salt: string) {
   const encoder = new TextEncoder()
   const data = encoder.encode(password + salt)
@@ -83,6 +100,34 @@ export async function bootstrapSeed(models: MongoModels, runtimeEnv: Record<stri
   console.log(`[bootstrap] Admin seed ensured for ${adminEmail}`)
 
   await ensureSystemRoles(models)
+  await ensureLeadStatuses(models)
+}
+
+async function ensureLeadStatuses(models: MongoModels) {
+  const now = new Date().toISOString()
+  for (const seed of LEAD_STATUS_SEEDS) {
+    const existing = await models.leadStatuses.findOne({ key: seed.key })
+    if (existing) continue
+    await models.leadStatuses.insertOne({
+      id: `lead-status-${seed.key}`,
+      ...seed,
+      is_system: 1,
+      created_at: now,
+      updated_at: now,
+    })
+  }
+  for (const seed of LEAD_TASK_STATUS_SEEDS) {
+    const existing = await models.leadTaskStatuses.findOne({ key: seed.key })
+    if (existing) continue
+    await models.leadTaskStatuses.insertOne({
+      id: `lead-task-status-${seed.key}`,
+      ...seed,
+      is_system: 1,
+      created_at: now,
+      updated_at: now,
+    })
+  }
+  console.log('[bootstrap] Lead/task statuses seeded')
 }
 
 async function ensureSystemRoles(models: MongoModels) {
