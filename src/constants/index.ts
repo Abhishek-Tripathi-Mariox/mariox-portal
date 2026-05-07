@@ -9,6 +9,8 @@ export const ROLES = {
   PC: 'pc',
   DEVELOPER: 'developer',
   TEAM: 'team',
+  SALES_MANAGER: 'sales_manager',
+  SALES_TL: 'sales_tl',
   SALES_AGENT: 'sales_agent',
   CLIENT: 'client',
 } as const
@@ -16,6 +18,9 @@ export const ROLES = {
 export const ADMIN_ROLES = [ROLES.ADMIN]
 export const PM_ROLES = [ROLES.ADMIN, ROLES.PM, ROLES.PC]
 export const DEV_ROLES = [ROLES.ADMIN, ROLES.PM, ROLES.PC, ROLES.DEVELOPER, ROLES.TEAM]
+export const SALES_ROLES = [ROLES.SALES_MANAGER, ROLES.SALES_TL, ROLES.SALES_AGENT]
+// Anyone with full lead-system visibility (admin/PM/PC) bypasses hierarchy filters.
+export const LEADS_GLOBAL_ROLES = [ROLES.ADMIN, ROLES.PM, ROLES.PC]
 
 export const USER_ROLES = [
   ROLES.ADMIN,
@@ -23,6 +28,8 @@ export const USER_ROLES = [
   ROLES.PC,
   ROLES.DEVELOPER,
   ROLES.TEAM,
+  ROLES.SALES_MANAGER,
+  ROLES.SALES_TL,
   ROLES.SALES_AGENT,
   ROLES.CLIENT,
 ] as const
@@ -33,6 +40,8 @@ export const STAFF_CREATE_ROLES = [
   ROLES.PC,
   ROLES.TEAM,
   ROLES.DEVELOPER,
+  ROLES.SALES_MANAGER,
+  ROLES.SALES_TL,
   ROLES.SALES_AGENT,
 ] as const
 

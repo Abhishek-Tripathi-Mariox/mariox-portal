@@ -102,19 +102,45 @@ async function openEditDeveloperModal(id) {
 }
 
 async function openDeveloperModal(dev = null) {
-  // Default options (kept as a fallback if /settings/roles is not reachable)
+  // Always-on options — these wire into hierarchy logic on the backend
+  // (manager_id / tl_id validation), so they must appear regardless of
+  // what /settings/roles returns.
+  const HIERARCHY_OPTIONS = [
+    ['sales_manager', 'Sales Manager'],
+    ['sales_tl',      'Sales TL'],
+    ['sales_agent',   'Sales Agent'],
+  ]
   let roleOptions = [
     ['developer', 'Developer'],
     ['pm', 'PM'],
     ['pc', 'PC'],
     ['team', 'Team'],
+    ...HIERARCHY_OPTIONS,
   ]
   try {
     const res = await API.get('/settings/roles')
     const roles = (res.roles || res.data || []).filter(r => r.key !== 'admin' && r.key !== 'client')
     if (roles.length) {
-      roleOptions = roles.map(r => [r.key, r.name || r.key])
+      const merged = roles.map(r => [r.key, r.name || r.key])
+      // Append any hierarchy options the API didn't include — otherwise the
+      // dropdown loses them entirely once roles are seeded.
+      for (const opt of HIERARCHY_OPTIONS) {
+        if (!merged.some(([k]) => k === opt[0])) merged.push(opt)
+      }
+      roleOptions = merged
     }
+  } catch {}
+  // Always pull manager/TL pickers up-front — the dropdowns are tiny (active
+  // sales staff only) and we want them ready when the user toggles role.
+  let salesManagers = []
+  let salesTls = []
+  try {
+    const [mgrs, tls] = await Promise.all([
+      API.get('/users/sales-managers').catch(() => ({ users: [] })),
+      API.get('/users/sales-tls').catch(() => ({ users: [] })),
+    ])
+    salesManagers = mgrs.users || mgrs.data || []
+    salesTls = tls.users || tls.data || []
   } catch {}
   const isEdit = !!(dev && dev.id)
   const selectedRole = dev?.role || 'developer'
@@ -146,7 +172,27 @@ async function openDeveloperModal(dev = null) {
         <div class="form-group"><label class="form-label">Hourly Cost (₹)</label><input id="dev-hourly-cost" class="form-input" type="number" value="${dev?.hourly_cost||0}"/></div>
         <div class="form-group"><label class="form-label">Avatar Color</label><input id="dev-color" class="form-input" type="color" value="${dev?.avatar_color||'#FF7A45'}" style="height:40px;cursor:pointer;padding:4px"/></div>
       </div>
-      <div id="dev-tech-skills-wrap" style="display:${selectedRole === 'sales_agent' ? 'none' : ''}">
+      <div id="dev-sales-hierarchy-wrap" style="display:${['sales_tl','sales_agent'].includes(selectedRole) ? '' : 'none'}">
+        <div class="grid-2">
+          <div id="dev-manager-wrap" class="form-group" style="display:${['sales_tl','sales_agent'].includes(selectedRole) ? '' : 'none'}">
+            <label class="form-label">Manager ${selectedRole === 'sales_tl' ? '*' : '(auto-derived from TL)'}</label>
+            <select id="dev-manager-id" class="form-select" ${selectedRole === 'sales_agent' ? 'disabled' : ''}>
+              <option value="">— Select Manager —</option>
+              ${salesManagers.map(m => `<option value="${m.id}" ${String(dev?.manager_id||'')===String(m.id) ? 'selected' : ''}>${(m.full_name || m.email || '').replace(/</g,'&lt;')}</option>`).join('')}
+            </select>
+            ${salesManagers.length === 0 ? '<div class="form-hint" style="font-size:11px;color:#FF7A45;margin-top:4px">No active Sales Manager — create one first.</div>' : ''}
+          </div>
+          <div id="dev-tl-wrap" class="form-group" style="display:${selectedRole === 'sales_agent' ? '' : 'none'}">
+            <label class="form-label">Team Lead *</label>
+            <select id="dev-tl-id" class="form-select">
+              <option value="">— Select TL —</option>
+              ${salesTls.map(t => `<option value="${t.id}" data-manager="${t.manager_id||''}" ${String(dev?.tl_id||'')===String(t.id) ? 'selected' : ''}>${(t.full_name || t.email || '').replace(/</g,'&lt;')}</option>`).join('')}
+            </select>
+            ${salesTls.length === 0 ? '<div class="form-hint" style="font-size:11px;color:#FF7A45;margin-top:4px">No active Sales TL — create one first.</div>' : ''}
+          </div>
+        </div>
+      </div>
+      <div id="dev-tech-skills-wrap" style="display:${['sales_agent','sales_tl','sales_manager'].includes(selectedRole) ? 'none' : ''}">
         <div class="form-group"><label class="form-label">Tech Stack (comma separated)</label>
           <input id="dev-tech" class="form-input" value="${Array.isArray(tech) ? tech.join(', ') : ''}" placeholder="Tech Stack" autocomplete="off"/></div>
         <div class="form-group"><label class="form-label">Skill Tags (comma separated)</label>
@@ -154,7 +200,12 @@ async function openDeveloperModal(dev = null) {
       </div>
       <div class="form-group"><label class="form-label">Remarks</label>
         <textarea id="dev-remarks" class="form-textarea" rows="2" placeholder="Remarks">${dev?.remarks||''}</textarea></div>
-      ${!isEdit ? `<div class="form-group"><label class="form-label">Password *</label><input id="dev-password" class="form-input" type="password" placeholder="Enter Your Password" autocomplete="new-password"/></div>` : ''}
+      ${!isEdit ? `<div class="form-group"><label class="form-label">Password *</label>
+        <div style="position:relative">
+          <input id="dev-password" class="form-input" type="password" placeholder="Enter Your Password" autocomplete="new-password" style="padding-right:40px"/>
+          <button type="button" id="dev-password-toggle" onclick="toggleDevPasswordVisibility()" aria-label="Show password" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:6px;display:flex;align-items:center;justify-content:center"><i class="fas fa-eye"></i></button>
+        </div>
+      </div>` : ''}
       </form>
     </div>
     <div class="modal-footer">
@@ -173,19 +224,41 @@ async function openDeveloperModal(dev = null) {
   }
 }
 
+function toggleDevPasswordVisibility() {
+  const input = document.getElementById('dev-password')
+  const btn = document.getElementById('dev-password-toggle')
+  if (!input || !btn) return
+  const isHidden = input.type === 'password'
+  input.type = isHidden ? 'text' : 'password'
+  btn.innerHTML = `<i class="fas ${isHidden ? 'fa-eye-slash' : 'fa-eye'}"></i>`
+  btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password')
+}
+
 function onDevRoleChange(role) {
-  const wrap = document.getElementById('dev-tech-skills-wrap')
-  if (!wrap) return
-  wrap.style.display = role === 'sales_agent' ? 'none' : ''
+  const techWrap = document.getElementById('dev-tech-skills-wrap')
+  if (techWrap) techWrap.style.display = ['sales_agent','sales_tl','sales_manager'].includes(role) ? 'none' : ''
+  const hierWrap = document.getElementById('dev-sales-hierarchy-wrap')
+  const mgrWrap = document.getElementById('dev-manager-wrap')
+  const tlWrap = document.getElementById('dev-tl-wrap')
+  const mgrSel = document.getElementById('dev-manager-id')
+  if (hierWrap) hierWrap.style.display = ['sales_tl','sales_agent'].includes(role) ? '' : 'none'
+  if (mgrWrap) mgrWrap.style.display = ['sales_tl','sales_agent'].includes(role) ? '' : 'none'
+  if (tlWrap) tlWrap.style.display = role === 'sales_agent' ? '' : 'none'
+  if (mgrSel) {
+    // For sales_agent the manager is derived server-side from the TL,
+    // so disable the dropdown to keep the UX honest.
+    mgrSel.disabled = role === 'sales_agent'
+  }
 }
 
 async function saveDeveloper(id) {
   try {
     const role = document.getElementById('dev-role').value
+    const isSalesNoTech = ['sales_agent','sales_tl','sales_manager'].includes(role)
     const techEl = document.getElementById('dev-tech')
     const skillsEl = document.getElementById('dev-skills')
-    const tech = role === 'sales_agent' || !techEl ? [] : techEl.value.split(',').map(t=>t.trim()).filter(Boolean)
-    const skills = role === 'sales_agent' || !skillsEl ? [] : skillsEl.value.split(',').map(t=>t.trim()).filter(Boolean)
+    const tech = isSalesNoTech || !techEl ? [] : techEl.value.split(',').map(t=>t.trim()).filter(Boolean)
+    const skills = isSalesNoTech || !skillsEl ? [] : skillsEl.value.split(',').map(t=>t.trim()).filter(Boolean)
     const payload = {
       full_name: document.getElementById('dev-name').value,
       email: document.getElementById('dev-email').value,
@@ -199,6 +272,16 @@ async function saveDeveloper(id) {
       avatar_color: document.getElementById('dev-color').value,
       tech_stack: tech, skill_tags: skills,
       remarks: document.getElementById('dev-remarks').value,
+    }
+    if (role === 'sales_tl') {
+      const mgr = document.getElementById('dev-manager-id')?.value
+      if (!mgr) { utils.toast('Manager is required for a Sales TL', 'error'); return }
+      payload.manager_id = mgr
+    }
+    if (role === 'sales_agent') {
+      const tl = document.getElementById('dev-tl-id')?.value
+      if (!tl) { utils.toast('Team Lead is required for a Sales Agent', 'error'); return }
+      payload.tl_id = tl
     }
     if (!id && document.getElementById('dev-password')) payload.password = document.getElementById('dev-password').value
     if (id) await API.put(`/users/${id}`, payload)
@@ -520,6 +603,10 @@ function openProjectModal(id = null) {
       .filter(u => String(u.role || '').toLowerCase() === 'developer')
     const allUsers = (allUsersRes.users || allUsersRes.data || [])
     const isActive = u => Number(u.is_active ?? 1) === 1
+    // Sales staff for the Sold By dropdown — manager / TL / agent.
+    const salesPersons = allUsers
+      .filter(u => isActive(u) && ['sales_manager','sales_tl','sales_agent'].includes(String(u.role || '').toLowerCase()))
+      .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
     // PM dropdown also accepts admin users so projects can always be assigned
     // even on a fresh install where no dedicated PM has been created yet.
     let pms = (pmsRes.users || pmsRes.data || [])
@@ -702,7 +789,25 @@ function openProjectModal(id = null) {
               </div>
               <div class="card-body">
                 <div class="grid-2" style="gap:12px">
-                  <div class="form-group"><label class="form-label">Sold By</label><input id="proj-sold-by" class="form-input" value="${esc(proj?.sold_by||'')}" placeholder="Salesperson / partner name"/></div>
+                  <div class="form-group"><label class="form-label">Sold By</label>
+                    ${(() => {
+                      // Render a select of active sales staff. If the project
+                      // already has a sold_by that doesn't match any current
+                      // sales person, surface it as a "(legacy)" option so we
+                      // don't lose data on edit.
+                      const cur = (proj?.sold_by || '').trim()
+                      const matchesPerson = salesPersons.some(p => p.full_name === cur)
+                      return `
+                        <select id="proj-sold-by" class="form-select" onchange="onProjSoldByChange(this.value)">
+                          <option value="">— Select sales person —</option>
+                          ${salesPersons.map(p => `<option value="${esc(p.full_name)}" ${cur === p.full_name ? 'selected' : ''}>${esc(p.full_name)} · ${esc(String(p.role || '').replace('sales_','').toUpperCase())}</option>`).join('')}
+                          ${cur && !matchesPerson ? `<option value="${esc(cur)}" selected>${esc(cur)} (legacy)</option>` : ''}
+                          <option value="__custom__">Other / custom name…</option>
+                        </select>
+                        <input id="proj-sold-by-custom" class="form-input" placeholder="Type a custom name" style="margin-top:6px;display:none"/>
+                      `
+                    })()}
+                  </div>
                   <div class="form-group"><label class="form-label">Project Amount</label><input id="proj-amount" class="form-input" type="number" step="0.01" min="0" value="${proj?.project_amount ?? ''}" placeholder="e.g. 500000"/></div>
                 </div>
                 <div class="form-group" style="margin-bottom:0">
@@ -792,6 +897,27 @@ function filterDevDropdown(query) {
     const desig = row.querySelector('div div:last-child')?.textContent?.toLowerCase() || ''
     row.style.display = (name.includes(q) || desig.includes(q)) ? '' : 'none'
   })
+}
+
+function onProjSoldByChange(value) {
+  const custom = document.getElementById('proj-sold-by-custom')
+  if (!custom) return
+  if (value === '__custom__') {
+    custom.style.display = ''
+    custom.focus()
+  } else {
+    custom.style.display = 'none'
+    custom.value = ''
+  }
+}
+
+function readProjSoldBy() {
+  const sel = document.getElementById('proj-sold-by')
+  if (!sel) return null
+  if (sel.value === '__custom__') {
+    return (document.getElementById('proj-sold-by-custom')?.value || '').trim() || null
+  }
+  return sel.value || null
 }
 
 function setProjectAssignmentType(type) {
@@ -951,7 +1077,7 @@ async function saveProject(id) {
       remarks: document.getElementById('proj-remarks').value,
       // Commercial fields — only present in the form for admins; preserved
       // for non-admins by falling back to the loaded record.
-      sold_by: soldByEl ? (soldByEl.value.trim() || null) : (existing?.sold_by ?? null),
+      sold_by: soldByEl ? readProjSoldBy() : (existing?.sold_by ?? null),
       project_amount: amountEl
         ? (amountEl.value === '' ? null : Number(amountEl.value))
         : (existing?.project_amount ?? null),

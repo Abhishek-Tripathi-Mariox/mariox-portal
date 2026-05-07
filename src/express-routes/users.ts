@@ -1,8 +1,7 @@
-import type { Router } from 'express'
 import { Router as createRouter } from 'express'
 import type { MongoModels } from '../models/mongo-models'
 import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
-import { STAFF_CREATE_ROLES } from '../constants'
+import { ROLES, STAFF_CREATE_ROLES } from '../constants'
 import { generateId } from '../utils/helpers'
 import {
   validateEmail,
@@ -21,6 +20,47 @@ import {
 
 function normalizeRole(role: any): string {
   return String(role || '').toLowerCase().trim()
+}
+
+// Validate the manager/tl pointer the caller supplied for a sales-role user.
+// Returns { manager_id, tl_id } that should be persisted, or throws an Error.
+async function resolveSalesHierarchy(
+  models: MongoModels,
+  role: string,
+  body: any,
+  existing?: any,
+): Promise<{ manager_id: string | null; tl_id: string | null }> {
+  const r = normalizeRole(role)
+  let manager_id: string | null = body?.manager_id ? String(body.manager_id).trim() : null
+  let tl_id: string | null = body?.tl_id ? String(body.tl_id).trim() : null
+  // Preserve existing values if the request didn't include the field at all.
+  if (existing) {
+    if (!('manager_id' in (body || {}))) manager_id = existing.manager_id ?? null
+    if (!('tl_id' in (body || {}))) tl_id = existing.tl_id ?? null
+  }
+
+  if (r === ROLES.SALES_TL) {
+    if (!manager_id) throw new Error('Manager is required for a Sales TL')
+    const mgr = await models.users.findById(manager_id) as any
+    if (!mgr || normalizeRole(mgr.role) !== ROLES.SALES_MANAGER) {
+      throw new Error('Selected manager must be an active Sales Manager')
+    }
+    return { manager_id, tl_id: null }
+  }
+
+  if (r === ROLES.SALES_AGENT) {
+    if (!tl_id) throw new Error('Team Lead is required for a Sales Agent')
+    const tl = await models.users.findById(tl_id) as any
+    if (!tl || normalizeRole(tl.role) !== ROLES.SALES_TL) {
+      throw new Error('Selected TL must be an active Sales TL')
+    }
+    // Cascade the manager from the TL so manager-level visibility works
+    // without an extra hop at query time.
+    return { manager_id: tl.manager_id ?? null, tl_id }
+  }
+
+  // Non-sales roles never carry hierarchy pointers.
+  return { manager_id: null, tl_id: null }
 }
 
 function getRoleFilter(role: string) {
@@ -52,6 +92,35 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string) {
   const authMiddleware = createAuthMiddleware(jwtSecret)
 
   router.use(authMiddleware)
+
+  // Lightweight pickers used by the New User modal so we don't have to fetch
+  // every user just to populate manager/TL dropdowns. The /api/users/sales-tls
+  // endpoint optionally filters by manager_id (when picking a TL for an agent
+  // we want only TLs under that agent's selected manager).
+  router.get('/sales-managers', async (_req, res) => {
+    try {
+      const list = await models.users.find({
+        role: ROLES.SALES_MANAGER,
+        is_active: 1,
+      }) as any[]
+      list.sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
+      return res.json({ data: list, users: list })
+    } catch {
+      return res.json({ data: [], users: [] })
+    }
+  })
+
+  router.get('/sales-tls', async (req, res) => {
+    try {
+      const filter: any = { role: ROLES.SALES_TL, is_active: 1 }
+      if (req.query.manager_id) filter.manager_id = String(req.query.manager_id)
+      const list = await models.users.find(filter) as any[]
+      list.sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
+      return res.json({ data: list, users: list })
+    } catch {
+      return res.json({ data: [], users: [] })
+    }
+  })
 
   router.get('/', async (req, res) => {
     try {
@@ -190,6 +259,8 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string) {
       const existing = await models.users.findByEmail(email)
       if (existing) return res.status(409).json({ error: 'Email already registered' })
 
+      const hierarchy = await resolveSalesHierarchy(models, role, body)
+
       const encoder = new TextEncoder()
       const data = encoder.encode(password + 'devtrack-salt-2025')
       const hashBuffer = await crypto.subtle.digest('SHA-256', data)
@@ -212,6 +283,8 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string) {
         hourly_cost: hourlyCost,
         monthly_available_hours: monthlyHours,
         reporting_pm_id: body.reporting_pm_id || null,
+        manager_id: hierarchy.manager_id,
+        tl_id: hierarchy.tl_id,
         avatar_color: avatarColor,
         remarks: body.remarks || null,
       })
@@ -226,6 +299,8 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string) {
     try {
       const id = String(req.params.id)
       const body = (req.body || {}) as any
+      const existing = await models.users.findById(id) as any
+      if (!existing) return res.status(404).json({ error: 'User not found' })
       const fullName = validateName(body.full_name, 'Full name')
       const phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
       const designation = validateOptional(body.designation, (v) => validateLength(String(v).trim(), 2, 100, 'Designation'))
@@ -242,11 +317,31 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string) {
         ? validateRange(body.monthly_available_hours, 0, 744, 'Monthly available hours')
         : 160
 
+      // Allow admin/pm to change role on an existing user (e.g. promote a sales
+      // agent to TL). Falls back to the existing role if not supplied.
+      const nextRole = body.role
+        ? validateEnum(normalizeRole(body.role), STAFF_CREATE_ROLES, 'Role')
+        : normalizeRole(existing.role)
+      const hierarchy = await resolveSalesHierarchy(models, nextRole, body, existing)
+      // If a TL's manager changed, cascade the new manager_id onto every agent
+      // sitting under that TL — agents cache manager_id for fast visibility filters.
+      if (
+        nextRole === ROLES.SALES_TL &&
+        normalizeRole(existing.role) === ROLES.SALES_TL &&
+        hierarchy.manager_id !== (existing.manager_id ?? null)
+      ) {
+        await models.users.updateMany(
+          { tl_id: id, role: ROLES.SALES_AGENT },
+          { $set: { manager_id: hierarchy.manager_id, updated_at: new Date().toISOString() } },
+        )
+      }
+
       await models.users.updateById(id, {
         $set: {
           full_name: fullName,
           phone,
           designation,
+          role: nextRole,
           tech_stack: body.tech_stack ? JSON.stringify(body.tech_stack) : null,
           skill_tags: body.skill_tags ? JSON.stringify(body.skill_tags) : null,
           daily_work_hours: dailyHours,
@@ -254,6 +349,8 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string) {
           hourly_cost: hourlyCost,
           monthly_available_hours: monthlyHours,
           reporting_pm_id: body.reporting_pm_id || null,
+          manager_id: hierarchy.manager_id,
+          tl_id: hierarchy.tl_id,
           remarks: body.remarks || null,
           is_active: body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1,
           updated_at: new Date().toISOString(),

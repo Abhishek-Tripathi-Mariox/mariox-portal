@@ -14,6 +14,13 @@ export interface SmtpEnv {
   [key: string]: any
 }
 
+export interface SmtpAttachment {
+  filename: string
+  content: Buffer | Uint8Array | string // base64 string OR raw bytes
+  contentType?: string
+  encoding?: 'base64' | 'binary' // when content is a string, defaults to base64
+}
+
 export interface SmtpMessage {
   to: string | string[]
   cc?: string | string[]
@@ -21,6 +28,7 @@ export interface SmtpMessage {
   html: string
   text: string
   fromName?: string
+  attachments?: SmtpAttachment[]
 }
 
 type SmtpReply = { code: number; lines: string[] }
@@ -54,6 +62,27 @@ function dotStuff(message: string) {
     .join('\r\n')
 }
 
+function encodeAttachmentContent(att: SmtpAttachment): string {
+  // Returns base64 with CRLF every 76 chars (RFC 5322 / RFC 2045).
+  let bytes: Uint8Array
+  if (typeof att.content === 'string') {
+    if (att.encoding === 'binary') {
+      bytes = new TextEncoder().encode(att.content)
+    } else {
+      // already base64 — re-wrap it to 76-col lines
+      const cleaned = att.content.replace(/\r?\n/g, '')
+      return cleaned.replace(/(.{76})/g, '$1\r\n')
+    }
+  } else if (att.content instanceof Uint8Array) {
+    bytes = att.content
+  } else {
+    bytes = new Uint8Array(att.content as Buffer)
+  }
+  // Buffer is available in Node.js — used here for fast base64 encoding.
+  const b64 = Buffer.from(bytes).toString('base64')
+  return b64.replace(/(.{76})/g, '$1\r\n')
+}
+
 function buildMimeMessage(opts: {
   from: string
   to: string[]
@@ -61,35 +90,67 @@ function buildMimeMessage(opts: {
   subject: string
   html: string
   text: string
+  attachments?: SmtpAttachment[]
 }) {
-  const boundary = `devportal-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const altBoundary = `alt-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const altPart = [
+    `--${altBoundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    opts.text,
+    `--${altBoundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    opts.html,
+    `--${altBoundary}--`,
+    '',
+  ].join('\r\n')
+
+  const hasAttachments = !!opts.attachments && opts.attachments.length > 0
+  if (!hasAttachments) {
+    const headers = [
+      `From: ${opts.from}`,
+      `To: ${opts.to.join(', ')}`,
+      opts.cc.length ? `Cc: ${opts.cc.join(', ')}` : '',
+      `Subject: ${opts.subject}`,
+      'MIME-Version: 1.0',
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    ].filter(Boolean).join('\r\n')
+    return `${headers}\r\n\r\n${altPart}`
+  }
+
+  const mixedBoundary = `mix-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const headers = [
     `From: ${opts.from}`,
     `To: ${opts.to.join(', ')}`,
     opts.cc.length ? `Cc: ${opts.cc.join(', ')}` : '',
     `Subject: ${opts.subject}`,
     'MIME-Version: 1.0',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
+  ].filter(Boolean).join('\r\n')
+
+  const parts: string[] = [
+    `--${mixedBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    '',
+    altPart,
   ]
-    .filter(Boolean)
-    .join('\r\n')
-
-  const body = [
-    `--${boundary}`,
-    'Content-Type: text/plain; charset="UTF-8"',
-    'Content-Transfer-Encoding: 8bit',
-    '',
-    opts.text,
-    `--${boundary}`,
-    'Content-Type: text/html; charset="UTF-8"',
-    'Content-Transfer-Encoding: 8bit',
-    '',
-    opts.html,
-    `--${boundary}--`,
-    '',
-  ].join('\r\n')
-
-  return `${headers}\r\n\r\n${body}`
+  for (const att of opts.attachments!) {
+    const filename = (att.filename || 'attachment').replace(/[\r\n"]/g, '_')
+    const ctype = att.contentType || 'application/octet-stream'
+    parts.push(
+      `--${mixedBoundary}`,
+      `Content-Type: ${ctype}; name="${filename}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${filename}"`,
+      '',
+      encodeAttachmentContent(att),
+    )
+  }
+  parts.push(`--${mixedBoundary}--`, '')
+  return `${headers}\r\n\r\n${parts.join('\r\n')}`
 }
 
 function asList(value: string | string[] | undefined): string[] {
@@ -236,6 +297,7 @@ export async function sendSmtpEmail(env: SmtpEnv, message: SmtpMessage) {
       subject: message.subject,
       html: message.html,
       text: message.text,
+      attachments: message.attachments,
     })
 
     await new Promise<void>((resolve, reject) => {

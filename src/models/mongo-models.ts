@@ -36,6 +36,10 @@ export interface UserRecord extends BaseRecord {
   hourly_cost?: number
   monthly_available_hours?: number
   reporting_pm_id?: string | null
+  // Sales hierarchy: TLs report to a manager, agents report to a TL.
+  // Required for sales_tl (manager_id) and sales_agent (tl_id); ignored for other roles.
+  manager_id?: string | null
+  tl_id?: string | null
   avatar_color?: string
   remarks?: string | null
   is_active?: number
@@ -172,6 +176,8 @@ export class UserModel extends MongoRepository<UserRecord> {
       hourly_cost: input.hourly_cost ?? 0,
       monthly_available_hours: input.monthly_available_hours ?? 160,
       reporting_pm_id: input.reporting_pm_id ?? null,
+      manager_id: input.manager_id ?? null,
+      tl_id: input.tl_id ?? null,
       avatar_color: input.avatar_color || '#6366f1',
       remarks: input.remarks ?? null,
       is_active: input.is_active ?? 1,
@@ -286,6 +292,8 @@ export class MongoModels {
   readonly leadTasks: MongoRepository
   readonly leadStatuses: MongoRepository
   readonly leadTaskStatuses: MongoRepository
+  readonly leadComments: MongoRepository
+  readonly leadActivities: MongoRepository
 
   constructor(private readonly db: Db) {
     this.users = new UserModel(db.collection<UserRecord>('users'))
@@ -322,6 +330,8 @@ export class MongoModels {
     this.leadTasks = new MongoRepository(db.collection('lead_tasks'))
     this.leadStatuses = new MongoRepository(db.collection('lead_statuses'))
     this.leadTaskStatuses = new MongoRepository(db.collection('lead_task_statuses'))
+    this.leadComments = new MongoRepository(db.collection('lead_comments'))
+    this.leadActivities = new MongoRepository(db.collection('lead_activities'))
   }
 
   get rawDb() {

@@ -56,7 +56,7 @@ const PAGE_PERMISSIONS = {
   'clients-list':    ['admin'],
   'billing-admin':   ['admin'],
   'team-overview':   ['admin', 'pm'],
-  'leads-view':      ['admin', 'pm', 'pc', 'sales_agent'],
+  'leads-view':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   // PM Dashboard is the operational view for PM/PC only — admins land on
   // their own Super Admin Overview, so we hide pm-dashboard from them.
   'pm-dashboard':    ['pm', 'pc'],
@@ -68,7 +68,7 @@ const PAGE_PERMISSIONS = {
   'resources-view':  ['admin', 'pm'],
   'dev-dashboard':   ['developer'],
   'team-dashboard':  ['team'],
-  'my-tasks':        ['admin', 'pm', 'pc', 'developer', 'team'],
+  'my-tasks':        ['admin', 'pm', 'pc', 'developer', 'team', 'sales_manager', 'sales_tl', 'sales_agent'],
   'timesheets-view': ['admin', 'pm', 'pc', 'developer'],
   'leaves-view':     ['admin', 'pm', 'pc', 'developer'], // team excluded — they don't apply for leave here
   'bidding-view':    ['admin', 'pm', 'team'],
@@ -477,6 +477,8 @@ function defaultPage() {
     pc: 'pm-dashboard',
     developer: 'dev-dashboard',
     team: 'team-dashboard',
+    sales_manager: 'leads-view',
+    sales_tl: 'leads-view',
     sales_agent: 'leads-view',
   }
   return map[_user?.role] || 'pm-dashboard'
@@ -507,7 +509,8 @@ function navSection({ key, heading, chip, expanded, items, icon }) {
 function buildShell() {
   const role = String(_user.role || '').toLowerCase()
 
-  const navAdmin = role !== 'sales_agent' ? navSection({
+  const isSalesRole = ['sales_manager','sales_tl','sales_agent'].includes(role)
+  const navAdmin = !isSalesRole ? navSection({
     key: 'admin', heading: 'Admin', chip: 'Core', expanded: true, icon: 'fa-sparkles',
     items: [
       navItem('super-dashboard', 'fa-chart-pie', 'Overview'),
@@ -518,10 +521,11 @@ function buildShell() {
     ],
   }) : ''
 
-  const navSales = role === 'sales_agent' ? navSection({
-    key: 'sales', heading: 'Sales', chip: 'Leads', expanded: true, icon: 'fa-bullseye',
+  const salesHeading = role === 'sales_manager' ? 'Sales (Manager)' : role === 'sales_tl' ? 'Sales (TL)' : 'Sales'
+  const navSales = isSalesRole ? navSection({
+    key: 'sales', heading: salesHeading, chip: 'Leads', expanded: true, icon: 'fa-bullseye',
     items: [
-      navItem('leads-view',      'fa-bullseye',   'My Leads'),
+      navItem('leads-view',      'fa-bullseye',   role === 'sales_agent' ? 'My Leads' : 'Team Leads'),
       navItem('my-tasks',        'fa-list-check', 'Tasks'),
     ],
   }) : ''
@@ -1004,6 +1008,7 @@ window.addEventListener('resize', () => {
 function logout() {
   clearAuth()
   if (typeof stopNotificationPoller === 'function') stopNotificationPoller()
+  if (typeof stopFollowupAlarmPoller === 'function') stopFollowupAlarmPoller()
   document.getElementById('app').innerHTML = ''
   renderLogin()
   toast('Logged out successfully', 'info')
