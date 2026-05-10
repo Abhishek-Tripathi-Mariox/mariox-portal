@@ -284,9 +284,18 @@ async function saveDeveloper(id) {
       payload.tl_id = tl
     }
     if (!id && document.getElementById('dev-password')) payload.password = document.getElementById('dev-password').value
-    if (id) await API.put(`/users/${id}`, payload)
-    else await API.post('/users', payload)
-    utils.toast(`User ${id ? 'updated' : 'created'} successfully!`, 'success')
+    let res
+    if (id) res = await API.put(`/users/${id}`, payload)
+    else res = await API.post('/users', payload)
+    if (id) {
+      utils.toast('User updated successfully!', 'success')
+    } else {
+      const mailSent = res?.mail?.sent
+      const mailError = res?.mail?.error
+      if (mailSent) utils.toast('User created — credentials emailed', 'success')
+      else if (mailError) utils.toast(`User created, but email failed: ${mailError}`, 'error')
+      else utils.toast('User created successfully!', 'success')
+    }
     if (typeof closeModal === 'function') closeModal()
     document.getElementById('dev-modal')?.remove()
     router.navigate('developers')

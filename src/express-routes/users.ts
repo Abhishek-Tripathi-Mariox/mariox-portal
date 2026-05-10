@@ -3,6 +3,7 @@ import type { MongoModels } from '../models/mongo-models'
 import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
 import { ROLES, STAFF_CREATE_ROLES } from '../constants'
 import { generateId } from '../utils/helpers'
+import { sendSmtpEmail, type SmtpEnv } from '../utils/smtp'
 import {
   validateEmail,
   validateNewPassword,
@@ -87,7 +88,71 @@ function monthEnd(yearMonth = new Date().toISOString().slice(0, 7)) {
   return `${yearMonth}-${String(lastDay).padStart(2, '0')}`
 }
 
-export function createUsersRouter(models: MongoModels, jwtSecret: string) {
+export interface UsersRouterEnv extends SmtpEnv {
+  LOGIN_URL?: string
+  APP_URL?: string
+  PUBLIC_BASE_URL?: string
+}
+
+function escapeEmailHtml(s: string) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function buildStaffWelcomeEmail(opts: {
+  fullName: string
+  email: string
+  password: string
+  role: string
+  loginUrl: string
+}) {
+  const { fullName, email, password, role, loginUrl } = opts
+  const subject = 'Your Mariox Portal account is ready'
+  const text = [
+    `Hi ${fullName},`,
+    '',
+    `An account has been created for you on Mariox Portal.`,
+    '',
+    `Login URL : ${loginUrl}`,
+    `Email     : ${email}`,
+    `Password  : ${password}`,
+    `Role      : ${role}`,
+    '',
+    `Please log in and change your password as soon as possible.`,
+    '',
+    `— Mariox Software Pvt Ltd`,
+  ].join('\n')
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#111827;background:#f3f4f6;padding:24px">
+      <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">
+        <div style="padding:20px 24px;background:#1A0E08;color:#fff">
+          <div style="font-size:18px;font-weight:700">Welcome to Mariox Portal</div>
+          <div style="font-size:12px;opacity:.8;margin-top:4px">Your account is ready</div>
+        </div>
+        <div style="padding:24px">
+          <p style="margin:0 0 12px;font-size:14px">Hi <strong>${escapeEmailHtml(fullName)}</strong>,</p>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.55">An account has been created for you. Use the credentials below to sign in:</p>
+          <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;margin:8px 0 16px">
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280;border-bottom:1px solid #e5e7eb;width:120px">Login URL</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><a href="${escapeEmailHtml(loginUrl)}" style="color:#FF7A45">${escapeEmailHtml(loginUrl)}</a></td></tr>
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280;border-bottom:1px solid #e5e7eb">Email</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><strong>${escapeEmailHtml(email)}</strong></td></tr>
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280;border-bottom:1px solid #e5e7eb">Password</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">${escapeEmailHtml(password)}</code></td></tr>
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280">Role</td><td style="padding:10px 14px;font-size:13px">${escapeEmailHtml(role)}</td></tr>
+          </table>
+          <p style="margin:0;font-size:12px;color:#6b7280">For security, please change your password after the first login.</p>
+        </div>
+        <div style="padding:14px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280">— Mariox Software Pvt Ltd</div>
+      </div>
+    </div>`
+
+  return { subject, html, text }
+}
+
+export function createUsersRouter(models: MongoModels, jwtSecret: string, runtimeEnv: UsersRouterEnv = {}) {
   const router = createRouter()
   const authMiddleware = createAuthMiddleware(jwtSecret)
 
@@ -289,7 +354,34 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string) {
         remarks: body.remarks || null,
       })
 
-      return res.status(201).json({ data: created, message: 'User created successfully' })
+      // Best-effort welcome email with account credentials. We don't block the
+      // create response on SMTP — bubble the result back so the UI can warn
+      // when the email failed to go out.
+      let mail: { sent: boolean; error?: string } = { sent: false }
+      try {
+        const loginUrl =
+          String(runtimeEnv.LOGIN_URL || runtimeEnv.APP_URL || runtimeEnv.PUBLIC_BASE_URL || '').trim() ||
+          'http://localhost:3000/'
+        const { subject, html, text } = buildStaffWelcomeEmail({
+          fullName, email, password, role, loginUrl,
+        })
+        const smtpHost = runtimeEnv.SMTP_HOST || (runtimeEnv.SMTP_USER || runtimeEnv.SENDER_EMAIL ? 'smtp.gmail.com' : '')
+        const smtpUser = runtimeEnv.SMTP_USER || runtimeEnv.SENDER_EMAIL || ''
+        const smtpPass = String(runtimeEnv.SMTP_PASS || runtimeEnv.APP_PASSWORD || '').replace(/\s+/g, '')
+        if (!smtpHost || !smtpUser || !smtpPass) {
+          throw new Error('SMTP is not configured on the server')
+        }
+        await sendSmtpEmail(runtimeEnv, { to: email, subject, html, text })
+        mail = { sent: true }
+      } catch (err: any) {
+        mail = { sent: false, error: err?.message || String(err) }
+      }
+
+      return res.status(201).json({
+        data: created,
+        mail,
+        message: mail.sent ? 'User created — credentials emailed' : 'User created (email failed)',
+      })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }

@@ -169,6 +169,23 @@ users.put('/:id', requireRole('admin', 'pm'), async (c) => {
   }
 })
 
+// Delete user (Admin only)
+users.delete('/:id', requireRole('admin'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const actor = c.get('user')
+    if (actor && String(actor.sub || actor.id) === String(id)) {
+      return c.json({ error: 'You cannot delete your own account' }, 400)
+    }
+    const existing = await c.env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(id).first()
+    if (!existing) return c.json({ error: 'User not found' }, 404)
+    await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run()
+    return c.json({ message: 'User deleted successfully' })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
 // Toggle active status
 users.patch('/:id/status', requireRole('admin', 'pm'), async (c) => {
   try {

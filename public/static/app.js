@@ -57,6 +57,9 @@ const PAGE_PERMISSIONS = {
   'billing-admin':   ['admin'],
   'team-overview':   ['admin', 'pm'],
   'leads-view':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'lead-detail':     ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'lead-followups':  ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'lead-tasks':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   // PM Dashboard is the operational view for PM/PC only — admins land on
   // their own Super Admin Overview, so we hide pm-dashboard from them.
   'pm-dashboard':    ['pm', 'pc'],
@@ -91,8 +94,10 @@ const SIDEBAR_PAGE_GROUPS = {
   'clients-list': 'admin',
   'billing-admin': 'admin',
   'team-overview': 'admin',
-  'leads-view': 'admin',
-  'leads-view': 'admin',
+  'leads-view': 'sales',
+  'lead-followups': 'sales',
+  'lead-tasks': 'sales',
+  'lead-detail': 'sales',
   'pm-dashboard': 'pm',
   'projects-list': 'pm',
   'kanban-board': 'pm',
@@ -517,18 +522,26 @@ function buildShell() {
       navItem('clients-list',    'fa-building',   'Clients'),
       navItem('billing-admin',   'fa-file-invoice-dollar', 'Billing'),
       navItem('team-overview',   'fa-users',      'Team'),
-      navItem('leads-view',      'fa-bullseye',   'Leads'),
     ],
   }) : ''
 
-  const salesHeading = role === 'sales_manager' ? 'Sales (Manager)' : role === 'sales_tl' ? 'Sales (TL)' : 'Sales'
-  const navSales = isSalesRole ? navSection({
-    key: 'sales', heading: salesHeading, chip: 'Leads', expanded: true, icon: 'fa-bullseye',
+  // Sales CRM group — same shape as Project Management. Visible to anyone
+  // with lead access; sales-only roles get a more specific heading.
+  const salesHeading = role === 'sales_manager' ? 'Sales (Manager)'
+    : role === 'sales_tl' ? 'Sales (TL)'
+    : role === 'sales_agent' ? 'Sales'
+    : 'Sales CRM'
+  const leadsLabel = role === 'sales_agent' ? 'My Leads'
+    : (role === 'sales_manager' || role === 'sales_tl') ? 'Team Leads'
+    : 'Leads'
+  const navSales = navSection({
+    key: 'sales', heading: salesHeading, chip: 'CRM', expanded: true, icon: 'fa-bullseye',
     items: [
-      navItem('leads-view',      'fa-bullseye',   role === 'sales_agent' ? 'My Leads' : 'Team Leads'),
-      navItem('my-tasks',        'fa-list-check', 'Tasks'),
+      navItem('leads-view',      'fa-bullseye',       leadsLabel),
+      navItem('lead-followups',  'fa-calendar-check', 'Follow-ups'),
+      navItem('lead-tasks',      'fa-list-check',     'Tasks'),
     ],
-  }) : ''
+  })
 
   // Project Management section is for admin/pm/pc oversight only. Without
   // this gate, team accounts saw Projects/Bidding/Kanban here too — duplicating
@@ -656,6 +669,9 @@ function buildShell() {
     <div id="page-billing-admin"    class="page"></div>
     <div id="page-team-overview"    class="page"></div>
     <div id="page-leads-view"       class="page"></div>
+    <div id="page-lead-detail"      class="page"></div>
+    <div id="page-lead-followups"   class="page"></div>
+    <div id="page-lead-tasks"       class="page"></div>
     <div id="page-support-tickets"  class="page"></div>
     <div id="page-settings-view"    class="page"></div>
   </div>
@@ -690,7 +706,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','support-tickets':'Support Tickets','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','support-tickets':'Support Tickets','settings-view':'Settings'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -1512,6 +1528,9 @@ function loadPage(page, el) {
     case 'billing-admin':    renderBillingAdmin(el); break
     case 'team-overview':    renderTeamOverview(el); break
     case 'leads-view':       renderLeadsView(el); break
+    case 'lead-detail':      renderLeadDetailPage(el, Router.current?.params?.id); break
+    case 'lead-followups':   renderLeadFollowupsPage(el); break
+    case 'lead-tasks':       renderLeadTasksPage(el); break
     case 'support-tickets':  renderSupportTickets(el); break
     case 'settings-view':    renderSettingsView(el); break
     default: el.innerHTML = `<div class="page-header"><h1 class="page-title">${breadcrumbMap[page]||page}</h1></div><div class="empty-state"><i class="fas fa-hammer"></i><p>Module coming soon…</p></div>`
@@ -1519,26 +1538,38 @@ function loadPage(page, el) {
 }
 
 // ── Init ──────────────────────────────────────────────────────
-function resolveInitialPage() {
+function resolveInitialRoute() {
+  let page = null
+  let params = {}
   // 1) Hash route wins (e.g. #/clients-list) — survives browser refresh
   const hashMatch = (location.hash || '').match(/^#\/([\w-]+)/)
-  if (hashMatch) return hashMatch[1]
-  // 2) sessionStorage fallback — also survives refresh in same tab
+  if (hashMatch) page = hashMatch[1]
+  // 2) sessionStorage fallback — also survives refresh and restores params
+  // for parameterized routes like lead-detail.
   try {
     const cached = JSON.parse(sessionStorage.getItem('pmp_current_page') || 'null')
-    if (cached?.page) return cached.page
+    if (cached?.page) {
+      if (!page) page = cached.page
+      if (page === cached.page && cached.params) params = cached.params
+    }
   } catch {}
   // 3) Legacy path-based aliases
-  const path = (location.pathname || '/').replace(/\/+$/, '').toLowerCase()
-  const legacyMap = {
-    '/devportaloverview': 'super-dashboard',
-    '/devportaldashboard': 'super-dashboard',
-    '/overview': 'super-dashboard',
-    '/dashboard': 'super-dashboard',
-    '/pm-dashboard': 'pm-dashboard',
-    '/dev-dashboard': 'dev-dashboard',
+  if (!page) {
+    const path = (location.pathname || '/').replace(/\/+$/, '').toLowerCase()
+    const legacyMap = {
+      '/devportaloverview': 'super-dashboard',
+      '/devportaldashboard': 'super-dashboard',
+      '/overview': 'super-dashboard',
+      '/dashboard': 'super-dashboard',
+      '/pm-dashboard': 'pm-dashboard',
+      '/dev-dashboard': 'dev-dashboard',
+    }
+    page = legacyMap[path] || null
   }
-  return legacyMap[path] || null
+  return { page, params }
+}
+function resolveInitialPage() {
+  return resolveInitialRoute().page
 }
 
 function init() {
@@ -1551,9 +1582,10 @@ function init() {
     } else {
       // Render the cached version first (no UI flash), then re-sync against
       // the server in the background.
-      const initialPage = resolveInitialPage() || defaultPage()
+      const initialRoute = resolveInitialRoute()
+      const initialPage = initialRoute.page || defaultPage()
       const cachedRole = _user.role
-      Router.navigate(initialPage)
+      Router.navigate(initialPage, initialRoute.params || {})
       refreshAuthFromServer().then(() => {
         if (!_user) { renderLogin(); return }
         // Role/designation may have changed in the DB. renderApp() skips the

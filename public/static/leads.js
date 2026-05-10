@@ -209,7 +209,7 @@ function renderLeadRow(l, canManage) {
   const overdue = openTask?.due_date && new Date(openTask.due_date).getTime() < Date.now()
   return `<tr>
     <td>
-      <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="goLeadDetail('${l.id}')" title="Open lead detail">
         ${avatar(l.name, '#FF7A45', 'sm')}
         <div>
           <div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div>
@@ -227,7 +227,7 @@ function renderLeadRow(l, canManage) {
     <td><span style="font-size:12px;${overdue ? 'color:#FF5E3A;font-weight:600' : 'color:#94a3b8'}">${due}${overdue ? ' (overdue)' : ''}</span></td>
     <td>
       <div style="display:flex;gap:4px">
-        <button class="btn btn-xs btn-outline" title="View" onclick="openLeadDetailModal('${l.id}')"><i class="fas fa-eye"></i></button>
+        <button class="btn btn-xs btn-outline" title="Open detail page" onclick="goLeadDetail('${l.id}')"><i class="fas fa-up-right-from-square"></i></button>
         ${canManage ? `<button class="btn btn-xs btn-outline" title="Edit" onclick="openEditLeadModal('${l.id}')"><i class="fas fa-edit"></i></button>` : ''}
         ${canManage ? `<button class="btn btn-xs btn-outline" title="Delete" onclick="confirmDeleteLead('${l.id}','${escapeHtml(l.name).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>` : ''}
       </div>
@@ -296,7 +296,7 @@ async function openCreateLeadModal() {
           <select id="lead-assigned-to" class="form-select">
             ${assignees.map((u) => `<option value="${u.id}">${escapeHtml(u.full_name)} — ${escapeHtml(u.role)}</option>`).join('')}
           </select>
-          <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:6px">A follow-up task will be created automatically with a 4-hour due date.</div>
+          <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:6px">Schedule follow-ups manually from the lead detail page.</div>
         </div>
       </div>
     </div>
@@ -337,7 +337,7 @@ async function submitNewLead() {
     try { file = await resolveLeadRequirementFile(null) } catch { return }
     if (file) payload.requirement_file = file
     await API.post('/leads', payload)
-    toast('Lead created — follow-up task scheduled in 4h', 'success')
+    toast('Lead created', 'success')
     closeModal()
     const el = document.getElementById('page-leads-view')
     if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
@@ -468,70 +468,14 @@ async function submitEditLead(id) {
 // detail modal so re-renders can preserve selection.
 let _leadDetailState = { id: null, tab: 'followups', attachments: [] }
 
-async function openLeadDetailModal(id, opts = {}) {
-  try {
-    await loadLeadStatuses()
-    const res = await API.get(`/leads/${id}`)
-    const lead = res.data || res.lead
-    if (!lead) { toast('Lead not found', 'error'); return }
-    if (_leadDetailState.id !== id) {
-      _leadDetailState = { id, tab: opts.tab || 'followups', attachments: [] }
-    } else if (opts.tab) {
-      _leadDetailState.tab = opts.tab
-    }
-    const leadKey = String(lead.status || 'new').toLowerCase()
-    const meta = LEAD_STATUS_META[leadKey] || { label: leadKey, badge: 'todo' }
-    const tab = _leadDetailState.tab
-    const tabs = [
-      ['followups', 'Follow-ups', 'fa-clock'],
-      ['comments', 'Comments', 'fa-comments'],
-      ['timeline', 'Timeline', 'fa-stream'],
-    ]
-    showModal(`
-      <div class="modal-header">
-        <h3><i class="fas fa-bullseye" style="color:#FF7A45;margin-right:8px"></i>${escapeHtml(lead.name)} <span class="badge badge-${meta.badge}" style="margin-left:8px">${escapeHtml(meta.label)}</span></h3>
-        <button class="close-btn" onclick="closeLeadDetailModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="grid-2" style="gap:10px;margin-bottom:14px">
-          <div><div style="font-size:11px;color:#64748b;text-transform:uppercase">Email</div><div style="font-size:13px">${escapeHtml(lead.email)}</div></div>
-          <div><div style="font-size:11px;color:#64748b;text-transform:uppercase">Phone</div><div style="font-size:13px">${escapeHtml(lead.phone || '—')}</div></div>
-          <div><div style="font-size:11px;color:#64748b;text-transform:uppercase">Source</div><div style="font-size:13px">${escapeHtml(lead.source || '—')}</div></div>
-          <div><div style="font-size:11px;color:#64748b;text-transform:uppercase">Assigned To</div><div style="font-size:13px">${escapeHtml(lead.assigned_to_name || '—')}</div></div>
-          <div style="grid-column:1/-1">
-            <div style="font-size:11px;color:#64748b;text-transform:uppercase">Requirement</div>
-            <div style="font-size:13px;white-space:pre-wrap">${escapeHtml(lead.requirement || '')}</div>
-            ${lead.requirement_file?.url ? `<div style="margin-top:8px;font-size:12px"><i class="fas fa-paperclip"></i> <a href="${escapeHtml(lead.requirement_file.url)}" target="_blank" rel="noopener" style="color:#FF7A45">${escapeHtml(lead.requirement_file.name || 'attachment')}</a></div>` : ''}
-          </div>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-          <button class="btn btn-sm btn-outline" onclick="openSendPortfolioModal('${lead.id}')"><i class="fas fa-briefcase"></i> Send Portfolio</button>
-          <button class="btn btn-sm btn-outline" onclick="openSendMailModal('${lead.id}')"><i class="fas fa-paper-plane"></i> Send Mail</button>
-          ${leadsCanManage() && !lead.client_id ? `<button class="btn btn-sm btn-success" onclick="openCloseLeadModal('${lead.id}')"><i class="fas fa-handshake"></i> Close &amp; Convert</button>` : ''}
-          ${leadsCanManage() ? `<button class="btn btn-sm btn-primary" onclick="closeLeadDetailModal();openEditLeadModal('${lead.id}')"><i class="fas fa-edit"></i> Edit</button>` : ''}
-        </div>
-        <div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:10px">
-          ${tabs.map(([k,label,icon]) => `<button class="btn btn-sm ${tab===k?'btn-primary':'btn-outline'}" style="border-radius:6px 6px 0 0;border-bottom-color:${tab===k?'transparent':'var(--border)'}" onclick="switchLeadDetailTab('${lead.id}','${k}')"><i class="fas ${icon}"></i> ${label}</button>`).join('')}
-        </div>
-        <div id="lead-detail-tab-body" style="min-height:160px">${renderLeadDetailFollowups(lead)}</div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeLeadDetailModal()">Close</button>
-        ${leadsCanManage() && lead.client_id ? `<span style="font-size:12px;color:#58C68A;align-self:center"><i class="fas fa-check-circle"></i> Client created</span>` : ''}
-      </div>
-    `, 'modal-lg')
-    if (tab === 'comments') loadLeadComments(lead.id)
-    if (tab === 'timeline') loadLeadTimeline(lead.id)
-    if (tab === 'followups') {
-      // Already rendered synchronously from cached lead.tasks data
-    }
-  } catch (e) {
-    toast('Failed to load lead: ' + e.message, 'error')
-  }
+// Quick-view modal removed — every caller (alarm popups, row clicks, tab
+// shortcuts) now routes to the full lead detail page instead.
+function openLeadDetailModal(id, _opts = {}) {
+  goLeadDetail(id)
 }
 
 function closeLeadDetailModal() {
-  _leadDetailState = { id: null, tab: 'followups', attachments: [] }
+  // Kept as a no-op for any stale callers; the modal no longer exists.
   closeModal()
 }
 
@@ -1620,3 +1564,606 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 window.addEventListener('storage', () => {
   if (!localStorage.getItem('devportal_token')) stopFollowupAlarmPoller()
 })
+
+// ═══════════════════════════════════════════════════════════════
+// Lead Detail — full-page view (matches SalesCRM layout).
+// Navigates via Router.navigate('lead-detail', { id }). Renders left
+// column (info + notes + follow-ups + tasks) and right column
+// (Activity Timeline). All sub-actions go through dedicated modals.
+// ═══════════════════════════════════════════════════════════════
+
+function goLeadDetail(id) {
+  const el = document.getElementById('page-lead-detail')
+  if (el) el.dataset.loaded = ''
+  Router.navigate('lead-detail', { id })
+}
+
+const LEAD_TEMP_BADGE = {
+  new: { label: 'New', color: '#3b82f6' },
+  contacted: { label: 'Contacted', color: '#f59e0b' },
+  qualified: { label: 'Qualified', color: '#22c55e' },
+  proposal: { label: 'Proposal', color: '#8b5cf6' },
+  negotiation: { label: 'Negotiation', color: '#ec4899' },
+  closed: { label: 'Closed', color: '#10b981' },
+  warm: { label: 'Warm', color: '#f59e0b' },
+  hot: { label: 'Hot', color: '#ef4444' },
+  cold: { label: 'Cold', color: '#60a5fa' },
+}
+
+function leadHeaderBadge(statusKey) {
+  const key = String(statusKey || 'new').toLowerCase()
+  const meta = LEAD_STATUS_META[key]
+  const tone = LEAD_TEMP_BADGE[key] || { label: meta?.label || key, color: '#94a3b8' }
+  return `<span class="badge" style="background:${tone.color}20;color:${tone.color};border:1px solid ${tone.color}40;padding:6px 12px;border-radius:999px;font-weight:600;font-size:12px">${escapeHtml(meta?.label || tone.label)}</span>`
+}
+
+function fmtDateOnly(value) {
+  if (!value) return '—'
+  try {
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return '—'
+    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch { return '—' }
+}
+
+function fmtRelative(value) {
+  if (!value) return ''
+  try {
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return ''
+    const diff = Date.now() - d.getTime()
+    const mins = Math.round(diff / 60000)
+    if (mins < 1) return 'just now'
+    if (mins < 60) return `${mins} min ago`
+    const hrs = Math.round(mins / 60)
+    if (hrs < 24) return `${hrs}h ago`
+    const days = Math.round(hrs / 24)
+    if (days < 30) return `${days}d ago`
+    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch { return '' }
+}
+
+const ACTIVITY_KIND_ICONS = {
+  lead_created: 'fa-plus-circle',
+  status_changed: 'fa-exchange-alt',
+  reassigned: 'fa-user-tag',
+  comment_added: 'fa-comment',
+  note_added: 'fa-sticky-note',
+  note: 'fa-sticky-note',
+  call: 'fa-phone',
+  email: 'fa-envelope',
+  meeting: 'fa-calendar',
+  followup_added: 'fa-bell',
+  followup_updated: 'fa-bell',
+  followup_acknowledged: 'fa-bell-slash',
+  task_added: 'fa-tasks',
+  mail_sent: 'fa-paper-plane',
+  portfolio_sent: 'fa-folder-open',
+}
+
+function activityIcon(kind) {
+  return ACTIVITY_KIND_ICONS[kind] || 'fa-circle-info'
+}
+
+async function renderLeadDetailPage(el, id) {
+  if (!id) {
+    el.innerHTML = `<div class="empty-state"><p>No lead selected.</p><button class="btn btn-outline" onclick="Router.navigate('leads-view')"><i class="fas fa-arrow-left"></i> Back to Leads</button></div>`
+    return
+  }
+  el.innerHTML = `<div class="loading-state" style="padding:40px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading lead…</div>`
+  try {
+    await loadLeadStatuses()
+    const [leadRes, notesRes, timelineRes] = await Promise.all([
+      API.get(`/leads/${id}`),
+      API.get(`/leads/${id}/notes`).catch(() => ({ data: [] })),
+      API.get(`/leads/${id}/timeline`).catch(() => ({ data: [] })),
+    ])
+    const lead = leadRes.data || leadRes.lead
+    if (!lead) {
+      el.innerHTML = `<div class="empty-state"><p>Lead not found.</p><button class="btn btn-outline" onclick="Router.navigate('leads-view')">Back to Leads</button></div>`
+      return
+    }
+    const tasks = lead.tasks || []
+    const followups = tasks.filter((t) => (t.kind || 'followup') === 'followup')
+    const generalTasks = tasks.filter((t) => t.kind === 'task')
+    const notes = notesRes.data || notesRes.notes || []
+    const timeline = timelineRes.data || timelineRes.timeline || []
+    el.innerHTML = renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline)
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message)}</p><button class="btn btn-outline" onclick="Router.navigate('leads-view')">Back to Leads</button></div>`
+  }
+}
+
+function renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline) {
+  const role = String(_user?.role || '').toLowerCase()
+  const canManage = ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'].includes(role)
+  const isOwner = String(lead.assigned_to || '') === String(_user?.id || _user?.sub || '')
+  const canEdit = canManage || isOwner
+
+  const followupsHTML = followups.length
+    ? followups.map((t) => renderFollowupRowDetail(lead.id, t)).join('')
+    : `<div style="padding:16px;color:#64748b;font-size:13px;text-align:center">No follow-ups scheduled yet.</div>`
+  const tasksHTML = generalTasks.length
+    ? generalTasks.map((t) => renderTaskRowDetail(lead.id, t)).join('')
+    : `<div style="padding:16px;color:#64748b;font-size:13px;text-align:center">No tasks yet.</div>`
+  const timelineHTML = timeline.length
+    ? renderTimelineList(timeline)
+    : `<div style="padding:24px;color:#64748b;font-size:13px;text-align:center">No activity yet.</div>`
+
+  return `
+  <div class="lead-detail-page" style="padding:0 4px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="Router.navigate('leads-view')"><i class="fas fa-arrow-left"></i> Back to Leads</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-outline btn-sm" onclick="openSendPortfolioModal('${lead.id}')"><i class="fas fa-briefcase"></i> Send Portfolio</button>
+      <button class="btn btn-outline btn-sm" onclick="openSendMailModal('${lead.id}')"><i class="fas fa-paper-plane"></i> Send Mail</button>
+      ${canEdit ? `<button class="btn btn-outline btn-sm" onclick="openEditLeadModal('${lead.id}')"><i class="fas fa-edit"></i> Edit</button>` : ''}
+      ${canManage && !lead.client_id ? `<button class="btn btn-success btn-sm" onclick="openCloseLeadModal('${lead.id}')"><i class="fas fa-handshake"></i> Close &amp; Convert</button>` : ''}
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:20px">
+      <!-- LEFT COLUMN -->
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <!-- Header card -->
+        <div class="card" style="padding:18px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div style="display:flex;align-items:center;gap:12px">
+              ${avatar(lead.name, '#FF7A45')}
+              <div>
+                <div style="font-size:18px;font-weight:700;color:#e2e8f0">${escapeHtml(lead.name)}</div>
+                <div style="font-size:12px;color:#64748b;margin-top:2px">${escapeHtml(lead.source || '—')} • ${escapeHtml(lead.id)}</div>
+              </div>
+            </div>
+            ${leadHeaderBadge(lead.status)}
+          </div>
+        </div>
+
+        <!-- Contact info card -->
+        <div class="card" style="padding:18px">
+          <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:#cbd5e1">
+            <div><i class="fas fa-envelope" style="width:18px;color:#94a3b8"></i> ${escapeHtml(lead.email || '—')}</div>
+            <div><i class="fas fa-phone" style="width:18px;color:#94a3b8"></i> ${escapeHtml(lead.phone || '—')}</div>
+            <div><i class="fas fa-user" style="width:18px;color:#94a3b8"></i> Assigned to: ${escapeHtml(lead.assigned_to_name || '—')}</div>
+            <div><i class="fas fa-calendar" style="width:18px;color:#94a3b8"></i> Created: ${fmtDateOnly(lead.created_at)}</div>
+          </div>
+        </div>
+
+        <!-- Notes card -->
+        <div class="card" style="padding:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <h4 style="margin:0;font-size:14px;color:#e2e8f0">Notes</h4>
+            ${canEdit ? `<button class="btn btn-xs btn-outline" onclick="saveLeadInlineNotes('${lead.id}')"><i class="fas fa-save"></i> Save</button>` : ''}
+          </div>
+          ${canEdit
+            ? `<textarea id="lead-detail-notes" class="form-input" rows="3" placeholder="Add a note about this lead…">${escapeHtml(lead.notes || '')}</textarea>`
+            : `<div style="font-size:13px;color:#cbd5e1;white-space:pre-wrap">${escapeHtml(lead.notes || '—')}</div>`
+          }
+        </div>
+
+        <!-- Follow-ups card -->
+        <div class="card" style="padding:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px"><i class="fas fa-calendar-check" style="color:#3b82f6"></i><h4 style="margin:0;font-size:14px;color:#e2e8f0">Follow-ups (${followups.length})</h4></div>
+            ${canEdit ? `<button class="btn btn-xs btn-primary" onclick="openScheduleFollowupModal2('${lead.id}')"><i class="fas fa-plus"></i></button>` : ''}
+          </div>
+          <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Scheduled</div>
+          <div style="display:flex;flex-direction:column;gap:8px">${followupsHTML}</div>
+        </div>
+
+        <!-- Tasks card -->
+        <div class="card" style="padding:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px"><i class="fas fa-list-check" style="color:#22c55e"></i><h4 style="margin:0;font-size:14px;color:#e2e8f0">Tasks (${generalTasks.length})</h4></div>
+            ${canEdit ? `<button class="btn btn-xs btn-primary" onclick="openAddTaskModal('${lead.id}')"><i class="fas fa-plus"></i></button>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">${tasksHTML}</div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: Activity Timeline -->
+      <div class="card" style="padding:18px;align-self:start">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <h4 style="margin:0;font-size:15px;color:#e2e8f0">Activity Timeline</h4>
+        </div>
+        <div id="lead-timeline-body">${timelineHTML}</div>
+      </div>
+    </div>
+  </div>`
+}
+
+function renderFollowupRowDetail(leadId, t) {
+  const overdue = t.due_date && new Date(t.due_date).getTime() < Date.now() && t.status !== 'done'
+  const statusKey = String(t.status || 'pending').toLowerCase()
+  const meta = LEAD_TASK_STATUS_META[statusKey] || { label: statusKey, badge: 'todo' }
+  return `<div style="padding:10px;border:1px solid ${overdue ? '#FF5E3A40' : '#1e293b'};border-radius:8px;background:${overdue ? '#FF5E3A10' : '#0f172a40'}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;color:#e2e8f0;font-weight:500">${escapeHtml(t.title || '')}</div>
+        ${t.description ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${escapeHtml(t.description).slice(0, 120)}</div>` : ''}
+        <div style="font-size:11px;color:${overdue ? '#FF5E3A' : '#64748b'};margin-top:4px"><i class="fas fa-calendar"></i> ${fmtDateTime(t.due_date)}${overdue ? ' (Overdue)' : ''}</div>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center">
+        <span class="badge badge-${meta.badge}" style="font-size:10px">${escapeHtml(meta.label)}</span>
+        ${t.status !== 'done' ? `<button class="btn btn-xs btn-outline" title="Mark done" onclick="markLeadFollowupDone('${leadId}','${t.id}')"><i class="fas fa-check"></i></button>` : ''}
+      </div>
+    </div>
+  </div>`
+}
+
+function renderTaskRowDetail(leadId, t) {
+  const statusKey = String(t.status || 'pending').toLowerCase()
+  const meta = LEAD_TASK_STATUS_META[statusKey] || { label: statusKey, badge: 'todo' }
+  const priorityClass = ({ critical: 'badge-critical', high: 'badge-high', medium: 'badge-medium', low: 'badge-low' })[t.priority] || 'badge-medium'
+  return `<div style="padding:10px;border:1px solid #1e293b;border-radius:8px;background:#0f172a40">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;color:#e2e8f0;font-weight:500">${escapeHtml(t.title || '')}</div>
+        ${t.description ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${escapeHtml(t.description).slice(0, 120)}</div>` : ''}
+        <div style="font-size:11px;color:#64748b;margin-top:4px"><i class="fas fa-calendar"></i> ${fmtDateTime(t.due_date)}</div>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+        ${t.priority ? `<span class="badge ${priorityClass}" style="font-size:10px">${escapeHtml(t.priority)}</span>` : ''}
+        <span class="badge badge-${meta.badge}" style="font-size:10px">${escapeHtml(meta.label)}</span>
+        ${t.status !== 'done' ? `<button class="btn btn-xs btn-outline" title="Mark done" onclick="markLeadFollowupDone('${leadId}','${t.id}')"><i class="fas fa-check"></i></button>` : ''}
+      </div>
+    </div>
+  </div>`
+}
+
+function renderTimelineList(timeline) {
+  return `<div style="display:flex;flex-direction:column;gap:14px;position:relative">
+    ${timeline.map((a) => `
+      <div style="display:flex;gap:12px">
+        <div style="flex-shrink:0;width:34px;height:34px;border-radius:50%;background:#1e293b;display:flex;align-items:center;justify-content:center;color:#94a3b8;border:1px solid #334155"><i class="fas ${activityIcon(a.kind)}"></i></div>
+        <div style="flex:1;min-width:0;padding:10px 12px;border-radius:8px;background:#0f172a40;border:1px solid #1e293b">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="font-size:13px;color:#e2e8f0;font-weight:600">${escapeHtml(a.actor_name || 'System')}</div>
+            <div style="font-size:11px;color:#64748b;white-space:nowrap" title="${escapeHtml(a.created_at || '')}">${fmtRelative(a.created_at)}</div>
+          </div>
+          <div style="font-size:13px;color:#cbd5e1;margin-top:4px">${escapeHtml(a.summary || '')}</div>
+          <div style="margin-top:6px"><span class="badge badge-todo" style="font-size:10px">${escapeHtml(a.kind || 'event')}</span></div>
+        </div>
+      </div>
+    `).join('')}
+  </div>`
+}
+
+async function saveLeadInlineNotes(leadId) {
+  const ta = document.getElementById('lead-detail-notes')
+  if (!ta) return
+  try {
+    await API.put(`/leads/${leadId}`, { notes: ta.value })
+    toast('Notes saved', 'success')
+  } catch (e) {
+    toast('Failed to save notes: ' + e.message, 'error')
+  }
+}
+
+async function markLeadFollowupDone(leadId, taskId) {
+  try {
+    await API.patch(`/leads/tasks/${taskId}`, { status: 'done' })
+    toast('Marked done', 'success')
+    refreshLeadDetailPage(leadId)
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
+}
+
+function refreshLeadDetailPage(id) {
+  const el = document.getElementById('page-lead-detail')
+  if (!el) return
+  if (Router.current?.page === 'lead-detail' && String(Router.current?.params?.id) === String(id)) {
+    renderLeadDetailPage(el, id)
+  }
+}
+
+// ── Schedule Follow-up modal (matches screenshot 2) ─────────
+async function openScheduleFollowupModal2(leadId) {
+  await loadLeadStatuses()
+  const today = new Date()
+  const todayStr = today.toISOString().slice(0, 10)
+  const nowTime = `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`
+  showModal(`
+    <div class="modal-header">
+      <h3>Schedule Follow-up</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Activity Type</label>
+        <select id="fu2-type" class="form-select">
+          <option value="Call">Call</option>
+          <option value="Email">Email</option>
+          <option value="Meeting">Meeting</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Activity Note *</label>
+        <textarea id="fu2-note" class="form-input" rows="3" placeholder="Discuss pricing options…"></textarea>
+      </div>
+      <div class="grid-2">
+        <div class="form-group"><label class="form-label">Date *</label><input id="fu2-date" type="date" class="form-input" value="${todayStr}"/></div>
+        <div class="form-group"><label class="form-label">Time</label><input id="fu2-time" type="time" class="form-input" value="${nowTime}"/></div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group"><label class="form-label">Priority</label>
+          <select id="fu2-priority" class="form-select">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Alarm minutes before</label>
+          <input id="fu2-snooze" type="number" class="form-input" min="0" max="1440" value="10"/>
+          <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Alert pops at follow-up time minus these minutes; rings until you acknowledge.</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitScheduleFollowup2('${leadId}')">Schedule</button>
+    </div>
+  `)
+}
+
+async function submitScheduleFollowup2(leadId) {
+  const type = document.getElementById('fu2-type').value
+  const note = document.getElementById('fu2-note').value.trim()
+  const date = document.getElementById('fu2-date').value
+  const time = document.getElementById('fu2-time').value || '10:00'
+  const priority = document.getElementById('fu2-priority').value
+  const snoozeRaw = Number(document.getElementById('fu2-snooze')?.value)
+  const snooze = Number.isFinite(snoozeRaw) ? Math.max(0, Math.min(1440, Math.round(snoozeRaw))) : 10
+  if (!note) { toast('Activity note is required', 'error'); return }
+  if (!date) { toast('Date is required', 'error'); return }
+  const due = new Date(`${date}T${time}:00`)
+  if (Number.isNaN(due.getTime())) { toast('Invalid date/time', 'error'); return }
+  try {
+    await API.post(`/leads/${leadId}/followups`, {
+      title: `${type}: ${note.slice(0, 60)}`,
+      notes: note,
+      due_date: due.toISOString(),
+      snooze_minutes: snooze,
+      priority,
+    })
+    toast('Follow-up scheduled', 'success')
+    closeModal()
+    refreshLeadDetailPage(leadId)
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
+}
+
+// ── Add Task modal (matches screenshot 3) ───────────────────
+function openAddTaskModal(leadId) {
+  const todayStr = new Date().toISOString().slice(0, 10)
+  showModal(`
+    <div class="modal-header">
+      <h3>Add Task</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Title *</label>
+        <input id="task2-title" class="form-input" placeholder="Follow up call, Send proposal…" autofocus/>
+      </div>
+      <div class="form-group"><label class="form-label">Description</label>
+        <textarea id="task2-desc" class="form-input" rows="3" placeholder="Additional details…"></textarea>
+      </div>
+      <div class="form-group"><label class="form-label">Due Date *</label>
+        <input id="task2-due" type="date" class="form-input" value="${todayStr}"/>
+      </div>
+      <div class="form-group"><label class="form-label">Priority</label>
+        <select id="task2-priority" class="form-select">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddTask('${leadId}')">Create</button>
+    </div>
+  `)
+}
+
+async function submitAddTask(leadId) {
+  const title = document.getElementById('task2-title').value.trim()
+  const description = document.getElementById('task2-desc').value.trim()
+  const due = document.getElementById('task2-due').value
+  const priority = document.getElementById('task2-priority').value
+  if (!title) { toast('Title is required', 'error'); return }
+  if (!due) { toast('Due date is required', 'error'); return }
+  try {
+    await API.post(`/leads/${leadId}/tasks`, {
+      title,
+      description,
+      due_date: new Date(`${due}T17:00:00`).toISOString(),
+      priority,
+    })
+    toast('Task created', 'success')
+    closeModal()
+    refreshLeadDetailPage(leadId)
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
+}
+
+// ── Add Activity modal (matches screenshot 4) ───────────────
+function openAddActivityModal(leadId) {
+  showModal(`
+    <div class="modal-header">
+      <h3>Add Activity</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Type</label>
+        <select id="act2-type" class="form-select">
+          <option value="note" selected>Note</option>
+          <option value="call">Call</option>
+          <option value="email">Email</option>
+          <option value="meeting">Meeting</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Content *</label>
+        <textarea id="act2-content" class="form-input" rows="4" placeholder="Add your note…" autofocus></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddActivity('${leadId}')">Add</button>
+    </div>
+  `)
+}
+
+async function submitAddActivity(leadId) {
+  const kind = document.getElementById('act2-type').value
+  const content = document.getElementById('act2-content').value.trim()
+  if (!content) { toast('Content is required', 'error'); return }
+  try {
+    if (kind === 'note') {
+      // Persist as a real note (so it shows in /notes endpoint too) and also
+      // produces a note_added activity entry.
+      await API.post(`/leads/${leadId}/notes`, { text: content })
+    } else {
+      await API.post(`/leads/${leadId}/activities`, { kind, content })
+    }
+    toast('Added', 'success')
+    closeModal()
+    refreshLeadDetailPage(leadId)
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Cross-lead list pages — Follow-ups and Tasks sidebar items.
+// Each renders a flat table of every visible lead's tasks of that
+// kind (followup vs task), with quick filters and direct links to
+// the lead detail page.
+// ═══════════════════════════════════════════════════════════════
+
+let _leadListFilter = { followups: 'open', tasks: 'open' }
+
+async function renderLeadFollowupsPage(el) {
+  return renderLeadTaskListPage(el, {
+    kind: 'followup',
+    title: 'Follow-ups',
+    icon: 'fa-calendar-check',
+    iconColor: '#3b82f6',
+    emptyMsg: 'No follow-ups scheduled across your leads yet.',
+  })
+}
+
+async function renderLeadTasksPage(el) {
+  return renderLeadTaskListPage(el, {
+    kind: 'task',
+    title: 'Lead Tasks',
+    icon: 'fa-list-check',
+    iconColor: '#22c55e',
+    emptyMsg: 'No lead tasks created yet.',
+  })
+}
+
+async function renderLeadTaskListPage(el, opts) {
+  const filterKey = opts.kind === 'task' ? 'tasks' : 'followups'
+  const filter = _leadListFilter[filterKey] || 'open'
+  el.innerHTML = `<div class="page-header">
+    <h1 class="page-title"><i class="fas ${opts.icon}" style="color:${opts.iconColor};margin-right:8px"></i>${opts.title}</h1>
+  </div>
+  <div class="loading-state" style="padding:40px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
+  try {
+    await loadLeadStatuses()
+    const res = await API.get(`/leads/tasks-list?kind=${encodeURIComponent(opts.kind)}`)
+    const all = res.data || res.tasks || []
+    const visible = all.filter((t) => {
+      const s = String(t.status || 'pending').toLowerCase()
+      const isTerminal = s === 'done' || s === 'skipped' || s === 'cancelled'
+      if (filter === 'open') return !isTerminal
+      if (filter === 'done') return isTerminal
+      return true // 'all'
+    })
+    const overdueCount = all.filter((t) => {
+      const s = String(t.status || 'pending').toLowerCase()
+      const isTerminal = s === 'done' || s === 'skipped' || s === 'cancelled'
+      return !isTerminal && t.due_date && new Date(t.due_date).getTime() < Date.now()
+    }).length
+
+    el.innerHTML = `<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div>
+        <h1 class="page-title"><i class="fas ${opts.icon}" style="color:${opts.iconColor};margin-right:8px"></i>${opts.title}</h1>
+        <div style="font-size:12px;color:#94a3b8;margin-top:2px">${all.length} total · ${overdueCount} overdue</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${['open', 'done', 'all'].map((f) => `<button class="btn btn-sm ${filter === f ? 'btn-primary' : 'btn-outline'}" onclick="setLeadListFilter('${filterKey}','${f}')">${f === 'open' ? 'Open' : f === 'done' ? 'Completed' : 'All'}</button>`).join('')}
+      </div>
+    </div>
+    ${visible.length === 0
+      ? `<div class="empty-state" style="padding:40px;text-align:center;color:#64748b"><i class="fas ${opts.icon}" style="font-size:32px;color:#475569"></i><p style="margin-top:10px">${opts.emptyMsg}</p></div>`
+      : `<div class="card" style="padding:0;overflow:hidden">
+          <table class="data-table" style="width:100%;border-collapse:collapse">
+            <thead><tr style="background:#0f172a40">
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Title</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Lead</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Assignee</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Due</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Status</th>
+              <th style="padding:10px 14px;text-align:right;font-size:11px;color:#64748b;text-transform:uppercase">Actions</th>
+            </tr></thead>
+            <tbody>${visible.map((t) => renderLeadTaskListRow(t)).join('')}</tbody>
+          </table>
+        </div>`
+    }`
+  } catch (e) {
+    el.innerHTML = `<div class="page-header"><h1 class="page-title">${opts.title}</h1></div>
+      <div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message)}</p></div>`
+  }
+}
+
+function renderLeadTaskListRow(t) {
+  const statusKey = String(t.status || 'pending').toLowerCase()
+  const meta = LEAD_TASK_STATUS_META[statusKey] || { label: statusKey, badge: 'todo' }
+  const isTerminal = statusKey === 'done' || statusKey === 'skipped' || statusKey === 'cancelled'
+  const overdue = t.due_date && !isTerminal && new Date(t.due_date).getTime() < Date.now()
+  return `<tr style="border-top:1px solid #1e293b">
+    <td style="padding:10px 14px">
+      <div style="font-size:13px;color:#e2e8f0;font-weight:500">${escapeHtml(t.title || '')}</div>
+      ${t.notes ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${escapeHtml(String(t.notes).slice(0, 80))}${t.notes.length > 80 ? '…' : ''}</div>` : ''}
+    </td>
+    <td style="padding:10px 14px">
+      <a style="color:#FF7A45;font-size:13px;cursor:pointer" onclick="goLeadDetail('${t.lead_id}')">${escapeHtml(t.lead_name || '—')}</a>
+      ${t.lead_phone ? `<div style="font-size:11px;color:#64748b">${escapeHtml(t.lead_phone)}</div>` : ''}
+    </td>
+    <td style="padding:10px 14px;font-size:13px;color:#cbd5e1">${escapeHtml(t.assignee_name || '—')}</td>
+    <td style="padding:10px 14px;font-size:12px;${overdue ? 'color:#FF5E3A;font-weight:600' : 'color:#94a3b8'}">${fmtDateTime(t.due_date)}${overdue ? ' (overdue)' : ''}</td>
+    <td style="padding:10px 14px"><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
+    <td style="padding:10px 14px;text-align:right">
+      <div style="display:inline-flex;gap:4px">
+        <button class="btn btn-xs btn-outline" title="Open lead" onclick="goLeadDetail('${t.lead_id}')"><i class="fas fa-up-right-from-square"></i></button>
+        ${!isTerminal ? `<button class="btn btn-xs btn-outline" title="Mark done" onclick="markLeadTaskDoneFromList('${t.id}','${t.lead_id}')"><i class="fas fa-check"></i></button>` : ''}
+      </div>
+    </td>
+  </tr>`
+}
+
+function setLeadListFilter(kind, filter) {
+  _leadListFilter[kind] = filter
+  const pageId = kind === 'tasks' ? 'page-lead-tasks' : 'page-lead-followups'
+  const el = document.getElementById(pageId)
+  if (el) { el.dataset.loaded = ''; loadPage(pageId.replace(/^page-/, ''), el) }
+}
+
+async function markLeadTaskDoneFromList(taskId, leadId) {
+  try {
+    await API.patch(`/leads/tasks/${taskId}`, { status: 'done' })
+    toast('Marked done', 'success')
+    // Refresh whichever list page is currently active.
+    const active = document.querySelector('.page.active')
+    if (active && active.id?.startsWith('page-')) {
+      active.dataset.loaded = ''
+      loadPage(active.id.replace(/^page-/, ''), active)
+    }
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
+}

@@ -581,6 +581,7 @@ async function renderProjectsList(el) {
                     <button class="btn btn-xs btn-outline" onclick="openProjectBoard('${p.id}','${p.name}')" title="Open Kanban board"><i class="fas fa-columns"></i></button>
                     ${['admin','pm'].includes(_user.role)?`<button class="btn btn-xs btn-outline" onclick="openKanbanPermissionsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i></button>`:''}
                     ${['admin','pm'].includes(_user.role)?`<button class="btn btn-xs btn-outline" onclick="showEditProjectModal('${p.id}')" title="Edit project"><i class="fas fa-edit"></i></button>`:''}
+                    ${_user.role==='admin'?`<button class="btn btn-xs btn-outline" onclick="deleteProject('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Delete project" style="color:#FF5E3A"><i class="fas fa-trash"></i></button>`:''}
                   </div>
                 </td>
               </tr>`
@@ -591,6 +592,17 @@ async function renderProjectsList(el) {
       </div>
     </div>`
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
+}
+
+async function deleteProject(id, name) {
+  if (!window.confirm(`Delete project "${name}"? This action cannot be undone.`)) return
+  try {
+    await API.delete('/projects/' + id)
+    toast('Project deleted', 'success')
+    rerenderEnterprisePage('projects-list', () => {})
+  } catch (e) {
+    toast('Failed to delete: ' + e.message, 'error')
+  }
 }
 
 // Read-only project detail modal — used from the Projects list (esp. by team
@@ -803,16 +815,6 @@ async function renderKanbanBoard(el) {
           <select class="form-select" style="min-width:180px;max-width:220px" onchange="switchBoardProject(this.value)">
             <option value="" ${isAllProjects ? 'selected' : ''}>All Projects</option>
             ${projects.map(p => `<option value="${p.id}" ${p.id === selProject ? 'selected' : ''}>${p.name}</option>`).join('')}
-          </select>
-          <!-- Sprint Filter -->
-          <select class="form-select" style="min-width:140px" onchange="switchBoardSprint(this.value)">
-            <option value="" ${!selSprint ? 'selected' : ''}>All Sprints</option>
-            ${projectSprints.map(s => `<option value="${s.id}" ${s.id === selSprint ? 'selected' : ''}>${s.name}${s.status === 'active' ? ' ●' : ''}</option>`).join('')}
-          </select>
-          <!-- Milestone Filter -->
-          <select class="form-select" style="min-width:140px" onchange="switchBoardMilestone(this.value)">
-            <option value="" ${!selMilestone ? 'selected' : ''}>All Milestones</option>
-            ${projectMilestones.map(m => `<option value="${m.id}" ${m.id === selMilestone ? 'selected' : ''}>${m.title}</option>`).join('')}
           </select>
           ${canManage && !isAllProjects ? `
           <button class="btn btn-outline btn-sm" onclick="manageBoardColumns('${selProject}')" title="Configure board columns"><i class="fas fa-sliders-h"></i> Columns</button>
@@ -3982,6 +3984,7 @@ async function renderTeamOverview(el) {
                     ${isAdmin ? `<button class="btn btn-xs btn-outline" title="Reset password" onclick="openResetCredsModal('user','${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')"><i class="fas fa-key"></i></button>` : ''}
                     ${isAdmin && u.is_active && String(u.id) !== String(_user?.sub||_user?.id||'') ? `<button class="btn btn-xs btn-primary" title="Login as ${(u.full_name||'').replace(/"/g,'&quot;')}" onclick="loginAsTeamMember('${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')"><i class="fas fa-user-secret"></i></button>` : ''}
                     <button class="btn btn-xs ${u.is_active ? 'btn-outline' : 'btn-primary'}" title="${u.is_active ? 'Deactivate' : 'Activate'}" onclick="toggleTeamMemberStatus('${u.id}',${!u.is_active})"><i class="fas fa-${u.is_active ? 'ban' : 'check'}"></i></button>
+                    ${isAdmin && String(u.id) !== String(_user?.sub||_user?.id||'') ? `<button class="btn btn-xs btn-outline" title="Delete" onclick="deleteTeamMember('${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')" style="color:#FF5E3A"><i class="fas fa-trash"></i></button>` : ''}
                   </div>
                 </td>` : ''}
               </tr>`
@@ -4026,6 +4029,16 @@ async function toggleTeamMemberStatus(id, active) {
     const el = document.getElementById('page-team-overview')
     if (el) { el.dataset.loaded = ''; loadPage('team-overview', el) }
   } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+async function deleteTeamMember(id, name) {
+  if (!window.confirm(`Delete team member "${name}"? This action cannot be undone.`)) return
+  try {
+    await API.delete(`/users/${id}`)
+    toast('Team member deleted', 'success')
+    const el = document.getElementById('page-team-overview')
+    if (el) { el.dataset.loaded = ''; loadPage('team-overview', el) }
+  } catch (e) { toast('Failed to delete: ' + e.message, 'error') }
 }
 
 // Admin-only password reset for any user. Used both manually from the Team

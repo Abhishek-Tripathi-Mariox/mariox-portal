@@ -294,6 +294,7 @@ export class MongoModels {
   readonly leadTaskStatuses: MongoRepository
   readonly leadComments: MongoRepository
   readonly leadActivities: MongoRepository
+  readonly leadNotes: MongoRepository
 
   constructor(private readonly db: Db) {
     this.users = new UserModel(db.collection<UserRecord>('users'))
@@ -332,6 +333,7 @@ export class MongoModels {
     this.leadTaskStatuses = new MongoRepository(db.collection('lead_task_statuses'))
     this.leadComments = new MongoRepository(db.collection('lead_comments'))
     this.leadActivities = new MongoRepository(db.collection('lead_activities'))
+    this.leadNotes = new MongoRepository(db.collection('lead_notes'))
   }
 
   get rawDb() {

@@ -10,8 +10,8 @@ import {
 } from '../validators'
 import { sendSmtpEmail, type SmtpAttachment, type SmtpEnv } from '../utils/smtp'
 import { LEADS_GLOBAL_ROLES, ROLES } from '../constants'
+import { createUserNotification } from './notifications'
 
-const LEAD_TASK_OFFSET_HOURS = 4
 const DEFAULT_FOLLOWUP_SNOOZE_MINUTES = 10
 const MAX_LEAD_MAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024 // 10 MB per attachment
 
@@ -306,6 +306,49 @@ export function createLeadsRouter(
     }
   })
 
+  // ── Tasks list (cross-lead) ─────────────────────────────────
+  // Powers the "Follow-ups" and "Tasks" sidebar pages. MUST be registered
+  // before GET /:id — otherwise Express matches `tasks-list` as a lead id
+  // and the page renders "Lead not found".
+  router.get('/tasks-list', async (req, res) => {
+    try {
+      const user = req.user as any
+      const kind = String(req.query.kind || '').toLowerCase()
+      const visFilter = await buildLeadVisibilityFilter(models, user)
+      const leads = await models.leads.find(visFilter || {}) as any[]
+      if (!leads.length) return res.json({ data: [], tasks: [] })
+      const leadById = new Map(leads.map((l) => [String(l.id), l]))
+      const tasks = await models.leadTasks.find({ lead_id: { $in: leads.map((l) => l.id) } }) as any[]
+      const filtered = tasks.filter((t) => {
+        const k = String(t.kind || 'followup').toLowerCase()
+        if (!kind) return true
+        return k === kind
+      })
+      const assigneeIds = [...new Set(filtered.map((t) => String(t.assigned_to)).filter(Boolean))]
+      const users = assigneeIds.length
+        ? await models.users.find({ id: { $in: assigneeIds } }) as any[]
+        : []
+      const userById = new Map(users.map((u) => [String(u.id), u]))
+      const enriched = filtered.map((t) => {
+        const lead = leadById.get(String(t.lead_id))
+        const assignee = userById.get(String(t.assigned_to))
+        return {
+          ...t,
+          kind: t.kind || 'followup',
+          lead_name: lead?.name || '',
+          lead_email: lead?.email || '',
+          lead_phone: lead?.phone || '',
+          lead_status: lead?.status || '',
+          assignee_name: assignee?.full_name || '',
+        }
+      })
+      enriched.sort((a, b) => String(a.due_date || '').localeCompare(String(b.due_date || '')))
+      return res.json({ data: enriched, tasks: enriched })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to load tasks' })
+    }
+  })
+
   router.get('/:id', async (req, res) => {
     try {
       const user = req.user as any
@@ -349,7 +392,6 @@ export function createLeadsRouter(
 
       const now = new Date()
       const nowIso = now.toISOString()
-      const dueDate = new Date(now.getTime() + LEAD_TASK_OFFSET_HOURS * 60 * 60 * 1000).toISOString()
       const leadId = generateId('lead')
       await models.leads.insertOne({
         id: leadId,
@@ -366,32 +408,28 @@ export function createLeadsRouter(
         updated_at: nowIso,
       })
 
-      const taskId = generateId('ltask')
-      await models.leadTasks.insertOne({
-        id: taskId,
-        lead_id: leadId,
-        title: `Follow up with ${name}`,
-        description: requirement,
-        assigned_to: assignedTo,
-        assigned_by: user?.sub || null,
-        status: 'pending',
-        due_date: dueDate,
-        snooze_minutes: DEFAULT_FOLLOWUP_SNOOZE_MINUTES,
-        acknowledged_at: null,
-        acknowledged_by: null,
-        created_at: nowIso,
-        updated_at: nowIso,
-      })
-
       await logLeadActivity(models, leadId, user, 'lead_created', `Lead created and assigned to ${assignee.full_name}`, {
         assigned_to: assignedTo,
-        task_id: taskId,
-        due_date: dueDate,
       })
 
+      // Ping the assignee — surfaces in their bell icon and plays the
+      // notification sound on the frontend (lead_assigned → 'other' category).
+      if (String(assignedTo) !== String(user?.sub || '')) {
+        createUserNotification(models, {
+          user_id: assignedTo,
+          type: 'lead_assigned',
+          title: `New lead assigned: ${name}`,
+          body: requirement.slice(0, 200),
+          link: `lead:${leadId}`,
+          actor_id: user?.sub || null,
+          actor_name: user?.name || user?.full_name || null,
+          meta: { lead_id: leadId },
+        }).catch(() => { /* best-effort */ })
+      }
+
       return res.status(201).json({
-        data: { id: leadId, task_id: taskId, due_date: dueDate },
-        message: 'Lead created and follow-up task scheduled',
+        data: { id: leadId },
+        message: 'Lead created',
       })
     } catch (error: any) {
       return respondWithError(res, error, 500)
@@ -424,6 +462,7 @@ export function createLeadsRouter(
           : null
       }
       if ('source' in body) patch.source = validateLength(String(body.source || '').trim(), 1, 80, 'Source')
+      if ('notes' in body) patch.notes = String(body.notes || '').trim().slice(0, 5000)
       let nextStatus: string | null = null
       if ('status' in body) {
         nextStatus = String(body.status || 'new').trim().toLowerCase()
@@ -462,6 +501,18 @@ export function createLeadsRouter(
           from: lead.assigned_to,
           to: reassignedToUser.id,
         })
+        if (String(reassignedToUser.id) !== String(actor?.sub || '')) {
+          createUserNotification(models, {
+            user_id: String(reassignedToUser.id),
+            type: 'lead_assigned',
+            title: `Lead reassigned to you: ${lead.name}`,
+            body: String(lead.requirement || '').slice(0, 200),
+            link: `lead:${id}`,
+            actor_id: actor?.sub || null,
+            actor_name: actor?.name || actor?.full_name || null,
+            meta: { lead_id: id },
+          }).catch(() => { /* best-effort */ })
+        }
       }
       return res.json({ message: 'Lead updated' })
     } catch (error: any) {
@@ -1161,6 +1212,124 @@ export function createLeadsRouter(
 
   router.post('/:id/send-mail', (req, res) => sendLeadMail(req, res, 'mail').catch((e) => respondWithError(res, e, 500)))
   router.post('/:id/send-portfolio', (req, res) => sendLeadMail(req, res, 'portfolio').catch((e) => respondWithError(res, e, 500)))
+
+  // ── Notes (separate from comments) ──────────────────────────
+  router.get('/:id/notes', async (req, res) => {
+    try {
+      const user = req.user as any
+      const leadId = String(req.params.id)
+      const lead = await models.leads.findById(leadId) as any
+      if (!lead) return res.status(404).json({ error: 'Lead not found' })
+      if (!(await canUserAccessLead(models, user, lead))) {
+        return res.status(403).json({ error: 'Not allowed' })
+      }
+      const notes = await models.leadNotes.find({ lead_id: leadId }) as any[]
+      notes.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+      return res.json({ data: notes, notes })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to load notes' })
+    }
+  })
+
+  router.post('/:id/notes', async (req, res) => {
+    try {
+      const user = req.user as any
+      const leadId = String(req.params.id)
+      const lead = await models.leads.findById(leadId) as any
+      if (!lead) return res.status(404).json({ error: 'Lead not found' })
+      if (!(await canUserAccessLead(models, user, lead))) {
+        return res.status(403).json({ error: 'Not allowed to add notes for this lead' })
+      }
+      const body = req.body || {}
+      const text = validateLength(String(body.text || body.content || '').trim(), 1, 5000, 'Note')
+      const now = new Date().toISOString()
+      const id = generateId('lnote')
+      await models.leadNotes.insertOne({
+        id,
+        lead_id: leadId,
+        text,
+        author_id: user?.sub || null,
+        author_name: user?.name || user?.full_name || null,
+        author_role: lower(user?.role) || null,
+        created_at: now,
+      })
+      await logLeadActivity(models, leadId, user, 'note_added',
+        `Note: ${text.length > 120 ? text.slice(0, 117) + '…' : text}`,
+        { note_id: id })
+      return res.status(201).json({ data: { id }, message: 'Note added' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // ── General tasks (distinct from follow-ups via kind='task') ─
+  router.post('/:id/tasks', async (req, res) => {
+    try {
+      const user = req.user as any
+      const leadId = String(req.params.id)
+      const lead = await models.leads.findById(leadId) as any
+      if (!lead) return res.status(404).json({ error: 'Lead not found' })
+      if (!(await canUserAccessLead(models, user, lead))) {
+        return res.status(403).json({ error: 'Not allowed to add tasks for this lead' })
+      }
+      const body = req.body || {}
+      const title = validateLength(String(body.title || '').trim(), 1, 200, 'Title')
+      const description = String(body.description || '').trim().slice(0, 2000)
+      if (!body.due_date) return res.status(400).json({ error: 'Due date is required' })
+      const dueDate = new Date(body.due_date)
+      if (Number.isNaN(dueDate.getTime())) return res.status(400).json({ error: 'Invalid due date' })
+      const priority = ['low', 'medium', 'high', 'critical'].includes(String(body.priority || '').toLowerCase())
+        ? String(body.priority).toLowerCase()
+        : 'medium'
+      const assignedTo = String(body.assigned_to || lead.assigned_to || '').trim()
+      const now = new Date().toISOString()
+      const taskId = generateId('ltask')
+      await models.leadTasks.insertOne({
+        id: taskId,
+        lead_id: leadId,
+        kind: 'task',
+        title,
+        description,
+        notes: description,
+        priority,
+        assigned_to: assignedTo,
+        assigned_by: user?.sub || null,
+        status: 'pending',
+        due_date: dueDate.toISOString(),
+        snooze_minutes: 0,
+        acknowledged_at: null,
+        acknowledged_by: null,
+        created_at: now,
+        updated_at: now,
+      })
+      await logLeadActivity(models, leadId, user, 'task_added',
+        `Task added: "${title}" due ${dueDate.toISOString()}`,
+        { task_id: taskId, priority })
+      return res.status(201).json({ data: { id: taskId }, message: 'Task created' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // ── Custom activity log entry ───────────────────────────────
+  router.post('/:id/activities', async (req, res) => {
+    try {
+      const user = req.user as any
+      const leadId = String(req.params.id)
+      const lead = await models.leads.findById(leadId) as any
+      if (!lead) return res.status(404).json({ error: 'Lead not found' })
+      if (!(await canUserAccessLead(models, user, lead))) {
+        return res.status(403).json({ error: 'Not allowed' })
+      }
+      const body = req.body || {}
+      const kind = String(body.kind || body.type || 'note').toLowerCase().trim().slice(0, 40) || 'note'
+      const summary = validateLength(String(body.content || body.summary || '').trim(), 1, 2000, 'Content')
+      await logLeadActivity(models, leadId, user, kind, summary, body.meta || {})
+      return res.status(201).json({ message: 'Activity logged' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
 
   return router
 }
