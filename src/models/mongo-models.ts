@@ -292,6 +292,7 @@ export class MongoModels {
   readonly leadTasks: MongoRepository
   readonly leadStatuses: MongoRepository
   readonly leadTaskStatuses: MongoRepository
+  readonly leadSources: MongoRepository
   readonly leadComments: MongoRepository
   readonly leadActivities: MongoRepository
   readonly leadNotes: MongoRepository
@@ -331,6 +332,7 @@ export class MongoModels {
     this.leadTasks = new MongoRepository(db.collection('lead_tasks'))
     this.leadStatuses = new MongoRepository(db.collection('lead_statuses'))
     this.leadTaskStatuses = new MongoRepository(db.collection('lead_task_statuses'))
+    this.leadSources = new MongoRepository(db.collection('lead_sources'))
     this.leadComments = new MongoRepository(db.collection('lead_comments'))
     this.leadActivities = new MongoRepository(db.collection('lead_activities'))
     this.leadNotes = new MongoRepository(db.collection('lead_notes'))

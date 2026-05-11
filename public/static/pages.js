@@ -110,7 +110,9 @@ async function openDeveloperModal(dev = null) {
     ['sales_tl',      'Sales TL'],
     ['sales_agent',   'Sales Agent'],
   ]
+  const isCurrentAdmin = (typeof _user !== 'undefined' && _user?.role === 'admin')
   let roleOptions = [
+    ...(isCurrentAdmin ? [['admin', 'Admin']] : []),
     ['developer', 'Developer'],
     ['pm', 'PM'],
     ['pc', 'PC'],
@@ -119,13 +121,16 @@ async function openDeveloperModal(dev = null) {
   ]
   try {
     const res = await API.get('/settings/roles')
-    const roles = (res.roles || res.data || []).filter(r => r.key !== 'admin' && r.key !== 'client')
+    const roles = (res.roles || res.data || []).filter(r => r.key !== 'client' && (isCurrentAdmin || r.key !== 'admin'))
     if (roles.length) {
       const merged = roles.map(r => [r.key, r.name || r.key])
       // Append any hierarchy options the API didn't include — otherwise the
       // dropdown loses them entirely once roles are seeded.
       for (const opt of HIERARCHY_OPTIONS) {
         if (!merged.some(([k]) => k === opt[0])) merged.push(opt)
+      }
+      if (isCurrentAdmin && !merged.some(([k]) => k === 'admin')) {
+        merged.unshift(['admin', 'Admin'])
       }
       roleOptions = merged
     }
@@ -175,8 +180,8 @@ async function openDeveloperModal(dev = null) {
       <div id="dev-sales-hierarchy-wrap" style="display:${['sales_tl','sales_agent'].includes(selectedRole) ? '' : 'none'}">
         <div class="grid-2">
           <div id="dev-manager-wrap" class="form-group" style="display:${['sales_tl','sales_agent'].includes(selectedRole) ? '' : 'none'}">
-            <label class="form-label">Manager ${selectedRole === 'sales_tl' ? '*' : '(auto-derived from TL)'}</label>
-            <select id="dev-manager-id" class="form-select" ${selectedRole === 'sales_agent' ? 'disabled' : ''}>
+            <label class="form-label">Manager *</label>
+            <select id="dev-manager-id" class="form-select" onchange="onDevManagerChange()">
               <option value="">— Select Manager —</option>
               ${salesManagers.map(m => `<option value="${m.id}" ${String(dev?.manager_id||'')===String(m.id) ? 'selected' : ''}>${(m.full_name || m.email || '').replace(/</g,'&lt;')}</option>`).join('')}
             </select>
@@ -184,9 +189,14 @@ async function openDeveloperModal(dev = null) {
           </div>
           <div id="dev-tl-wrap" class="form-group" style="display:${selectedRole === 'sales_agent' ? '' : 'none'}">
             <label class="form-label">Team Lead *</label>
-            <select id="dev-tl-id" class="form-select">
-              <option value="">— Select TL —</option>
-              ${salesTls.map(t => `<option value="${t.id}" data-manager="${t.manager_id||''}" ${String(dev?.tl_id||'')===String(t.id) ? 'selected' : ''}>${(t.full_name || t.email || '').replace(/</g,'&lt;')}</option>`).join('')}
+            <select id="dev-tl-id" class="form-select" ${dev?.manager_id ? '' : 'disabled'}>
+              <option value="">${dev?.manager_id ? '— Select TL —' : '— Select Manager first —'}</option>
+              ${salesTls.map(t => {
+                const tlMgr = String(t.manager_id || '')
+                const selMgr = String(dev?.manager_id || '')
+                const hidden = selMgr && tlMgr !== selMgr ? 'hidden' : ''
+                return `<option value="${t.id}" data-manager="${tlMgr}" ${hidden} ${String(dev?.tl_id||'')===String(t.id) ? 'selected' : ''}>${(t.full_name || t.email || '').replace(/</g,'&lt;')}</option>`
+              }).join('')}
             </select>
             ${salesTls.length === 0 ? '<div class="form-hint" style="font-size:11px;color:#FF7A45;margin-top:4px">No active Sales TL — create one first.</div>' : ''}
           </div>
@@ -244,11 +254,35 @@ function onDevRoleChange(role) {
   if (hierWrap) hierWrap.style.display = ['sales_tl','sales_agent'].includes(role) ? '' : 'none'
   if (mgrWrap) mgrWrap.style.display = ['sales_tl','sales_agent'].includes(role) ? '' : 'none'
   if (tlWrap) tlWrap.style.display = role === 'sales_agent' ? '' : 'none'
-  if (mgrSel) {
-    // For sales_agent the manager is derived server-side from the TL,
-    // so disable the dropdown to keep the UX honest.
-    mgrSel.disabled = role === 'sales_agent'
-  }
+  if (mgrSel) mgrSel.disabled = false
+  if (role === 'sales_agent') onDevManagerChange()
+}
+
+// Sales agent flow: pick Manager first, then the TL dropdown is filtered to
+// only TLs under that Manager. The backend still derives manager_id from the
+// chosen TL, so this just narrows the UI to a valid sub-set.
+function onDevManagerChange() {
+  const mgrSel = document.getElementById('dev-manager-id')
+  const tlSel = document.getElementById('dev-tl-id')
+  if (!tlSel) return
+  const mgrId = mgrSel?.value || ''
+  let visibleCount = 0
+  Array.from(tlSel.options).forEach(opt => {
+    if (!opt.value) {
+      opt.textContent = mgrId ? '— Select TL —' : '— Select Manager first —'
+      opt.hidden = false
+      return
+    }
+    const tlMgr = opt.getAttribute('data-manager') || ''
+    const matches = !!mgrId && tlMgr === mgrId
+    opt.hidden = !matches
+    if (matches) visibleCount++
+  })
+  // Reset selection if the currently picked TL no longer belongs to the chosen manager.
+  const currentOpt = tlSel.selectedOptions[0]
+  if (currentOpt && currentOpt.hidden) tlSel.value = ''
+  if (!mgrId) tlSel.value = ''
+  tlSel.disabled = !mgrId || visibleCount === 0
 }
 
 async function saveDeveloper(id) {

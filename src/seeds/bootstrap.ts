@@ -18,6 +18,14 @@ const LEAD_TASK_STATUS_SEEDS = [
   { key: 'follow_up',   label: 'Follow Up',   badge: 'review',     position: 4 },
 ]
 
+const LEAD_SOURCE_SEEDS = [
+  { key: 'ppc',       label: 'PPC',       position: 0 },
+  { key: 'seo',       label: 'SEO',       position: 1 },
+  { key: 'referral',  label: 'Referral',  position: 2 },
+  { key: 'website',   label: 'Website',   position: 3 },
+  { key: 'other',     label: 'Other',     position: 4 },
+]
+
 async function hashPassword(password: string, salt: string) {
   const encoder = new TextEncoder()
   const data = encoder.encode(password + salt)
@@ -101,6 +109,7 @@ export async function bootstrapSeed(models: MongoModels, runtimeEnv: Record<stri
 
   await ensureSystemRoles(models)
   await ensureLeadStatuses(models)
+  await ensureLeadSources(models)
 }
 
 async function ensureLeadStatuses(models: MongoModels) {
@@ -128,6 +137,22 @@ async function ensureLeadStatuses(models: MongoModels) {
     })
   }
   console.log('[bootstrap] Lead/task statuses seeded')
+}
+
+async function ensureLeadSources(models: MongoModels) {
+  const now = new Date().toISOString()
+  for (const seed of LEAD_SOURCE_SEEDS) {
+    const existing = await models.leadSources.findOne({ key: seed.key })
+    if (existing) continue
+    await models.leadSources.insertOne({
+      id: `lead-source-${seed.key}`,
+      ...seed,
+      is_system: 1,
+      created_at: now,
+      updated_at: now,
+    })
+  }
+  console.log('[bootstrap] Lead sources seeded')
 }
 
 async function ensureSystemRoles(models: MongoModels) {

@@ -36,6 +36,7 @@ export const USER_ROLES = [
 
 // Roles that can be created through the internal staff creation flows
 export const STAFF_CREATE_ROLES = [
+  ROLES.ADMIN,
   ROLES.PM,
   ROLES.PC,
   ROLES.TEAM,

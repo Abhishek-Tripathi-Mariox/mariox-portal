@@ -47,7 +47,28 @@ async function loadLeadStatuses(force = false) {
   }
 }
 
-const LEAD_SOURCE_OPTIONS = ['PPC', 'SEO', 'Other']
+// Backed by /leads/sources — populated on first use, refreshed when the user
+// edits the catalog through the Manage Sources modal. The 'Other' suffix is
+// always shown so a custom source can be typed in even when the catalog is
+// short.
+let LEAD_SOURCE_OPTIONS = ['Other']
+let _leadSources = []
+
+async function loadLeadSources(force = false) {
+  if (!force && _leadSources.length) return
+  try {
+    const res = await API.get('/leads/sources')
+    const list = res.sources || res.data || []
+    _leadSources = list
+    const labels = list.map((s) => s.label).filter(Boolean)
+    LEAD_SOURCE_OPTIONS = labels.includes('Other') ? labels : [...labels, 'Other']
+  } catch (e) {
+    if (!_leadSources.length) {
+      _leadSources = []
+      LEAD_SOURCE_OPTIONS = ['PPC', 'SEO', 'Other']
+    }
+  }
+}
 
 function onLeadSourceChange(selectEl) {
   const wrap = document.getElementById('lead-source-other-wrap')
@@ -155,6 +176,7 @@ async function renderLeadsView(el) {
         </div>
         ${canManage ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-secondary btn-sm" onclick="openManageLeadStatusesModal()"><i class="fas fa-tags"></i> Manage Statuses</button>
+          <button class="btn btn-secondary btn-sm" onclick="openManageLeadSourcesModal()"><i class="fas fa-bullhorn"></i> Manage Sources</button>
           <button class="btn btn-primary btn-sm" onclick="openCreateLeadModal()"><i class="fas fa-plus"></i> New Lead</button>
         </div>` : ''}
       </div>
@@ -261,6 +283,7 @@ function goLeadsPage(page) {
 }
 
 async function openCreateLeadModal() {
+  await loadLeadSources()
   const assignees = await fetchSalesAssignees()
   if (!assignees.length) {
     toast('No sales agents available — create one first.', 'error')
@@ -348,7 +371,7 @@ async function submitNewLead() {
 
 async function openEditLeadModal(id) {
   try {
-    await loadLeadStatuses()
+    await Promise.all([loadLeadStatuses(), loadLeadSources()])
     const [leadRes, assignees] = await Promise.all([
       API.get(`/leads/${id}`),
       fetchSalesAssignees(),
@@ -1342,23 +1365,19 @@ function renderStatusList(kind) {
 }
 
 function renderStatusForm(kind) {
-  return `<div style="display:grid;grid-template-columns:1fr 110px;gap:6px">
+  return `<div style="display:grid;grid-template-columns:1fr;gap:6px">
     <input id="new-${kind}-status-label" class="form-input" placeholder="Label (e.g. On Hold)"/>
-    <select id="new-${kind}-status-badge" class="form-select">
-      ${LEAD_BADGE_OPTIONS.map((b) => `<option value="${b}">${b}</option>`).join('')}
-    </select>
-    <input id="new-${kind}-status-key" class="form-input" placeholder="Key (auto from label if empty)" style="grid-column:1/-1"/>
-    <button class="btn btn-primary btn-sm" style="grid-column:1/-1" onclick="addLeadStatus('${kind}')"><i class="fas fa-plus"></i> Add Status</button>
+    <input id="new-${kind}-status-key" class="form-input" placeholder="Key (auto from label if empty)"/>
+    <button class="btn btn-primary btn-sm" onclick="addLeadStatus('${kind}')"><i class="fas fa-plus"></i> Add Status</button>
   </div>`
 }
 
 async function addLeadStatus(kind) {
   const label = document.getElementById(`new-${kind}-status-label`).value.trim()
   const key = document.getElementById(`new-${kind}-status-key`).value.trim()
-  const badge = document.getElementById(`new-${kind}-status-badge`).value
   if (!label) { toast('Label required', 'error'); return }
   try {
-    await API.post(`/leads/statuses/${kind}`, { label, key: key || undefined, badge })
+    await API.post(`/leads/statuses/${kind}`, { label, key: key || undefined })
     toast('Status added', 'success')
     await loadLeadStatuses(true)
     const listEl = document.getElementById(`${kind === 'lead' ? 'lead' : 'task'}-status-list`)
@@ -1378,6 +1397,77 @@ async function deleteLeadStatus(kind, id, label) {
     await loadLeadStatuses(true)
     const listEl = document.getElementById(`${kind === 'lead' ? 'lead' : 'task'}-status-list`)
     if (listEl) listEl.innerHTML = renderStatusList(kind)
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
+}
+
+async function openManageLeadSourcesModal() {
+  if (!leadsCanManage()) {
+    toast('Only admin/PM/PC can manage sources', 'error')
+    return
+  }
+  await loadLeadSources(true)
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-bullhorn" style="color:#FF7A45;margin-right:8px"></i>Manage Lead Sources</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <h4 style="font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin:0 0 8px">Lead Sources</h4>
+      <div id="lead-source-list">${renderSourceList()}</div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">Add new source</div>
+        <div style="display:grid;grid-template-columns:1fr;gap:6px">
+          <input id="new-source-label" class="form-input" placeholder="Label (e.g. LinkedIn)"/>
+          <input id="new-source-key" class="form-input" placeholder="Key (auto from label if empty)"/>
+          <button class="btn btn-primary btn-sm" onclick="addLeadSource()"><i class="fas fa-plus"></i> Add Source</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal();reloadLeadsView()">Done</button>
+    </div>
+  `, 'modal-md')
+}
+
+function renderSourceList() {
+  if (!_leadSources.length) return '<div style="font-size:12px;color:#64748b;padding:8px">No sources defined.</div>'
+  return _leadSources.map((s) => {
+    const isSystem = Number(s.is_system || 0) === 1
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,.02)">
+      <span style="font-weight:600;color:var(--text-primary)">${escapeHtml(s.label)}</span>
+      <span style="font-size:11px;color:#64748b;font-family:monospace">${escapeHtml(s.key)}</span>
+      ${isSystem ? '<span style="font-size:10px;color:#FF7A45;margin-left:auto">SYSTEM</span>' : `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="deleteLeadSource('${s.id}','${escapeHtml(s.label).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
+    </div>`
+  }).join('')
+}
+
+async function addLeadSource() {
+  const label = document.getElementById('new-source-label').value.trim()
+  const key = document.getElementById('new-source-key').value.trim()
+  if (!label) { toast('Label required', 'error'); return }
+  try {
+    await API.post('/leads/sources', { label, key: key || undefined })
+    toast('Source added', 'success')
+    await loadLeadSources(true)
+    const listEl = document.getElementById('lead-source-list')
+    if (listEl) listEl.innerHTML = renderSourceList()
+    document.getElementById('new-source-label').value = ''
+    document.getElementById('new-source-key').value = ''
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error')
+  }
+}
+
+async function deleteLeadSource(id, label) {
+  if (!confirm(`Delete source "${label}"?`)) return
+  try {
+    await API.delete(`/leads/sources/${id}`)
+    toast('Source deleted', 'success')
+    await loadLeadSources(true)
+    const listEl = document.getElementById('lead-source-list')
+    if (listEl) listEl.innerHTML = renderSourceList()
   } catch (e) {
     toast('Failed: ' + e.message, 'error')
   }

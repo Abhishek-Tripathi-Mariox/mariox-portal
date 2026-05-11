@@ -293,6 +293,70 @@ export function createLeadsRouter(
     }
   })
 
+  // ── Lead source configuration ──────────────────────────────
+  // Mirror of /statuses, but the catalog feeds the "Source" dropdown on the
+  // lead create/edit form. Defaults are seeded on boot; admin/pm/pc can add
+  // or remove custom sources. System sources cannot be deleted.
+  router.get('/sources', async (_req, res) => {
+    try {
+      const sources = await models.leadSources.find({}) as any[]
+      sources.sort((a, b) => Number(a.position || 0) - Number(b.position || 0))
+      return res.json({ data: sources, sources })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to load sources' })
+    }
+  })
+
+  router.post('/sources', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+    try {
+      const body = req.body || {}
+      const label = validateLength(String(body.label || '').trim(), 2, 40, 'Label')
+      const key = sanitizeStatusKey(body.key || body.label)
+      if (!key) return res.status(400).json({ error: 'Source key is required' })
+      const existing = await models.leadSources.findOne({ key }) as any
+      if (existing) return res.status(409).json({ error: 'A source with this key already exists' })
+      const all = await models.leadSources.find({}) as any[]
+      const position = all.reduce((max, s) => Math.max(max, Number(s.position || 0)), -1) + 1
+      const now = new Date().toISOString()
+      const doc = {
+        id: generateId('lsource'),
+        key,
+        label,
+        position,
+        is_system: 0,
+        created_at: now,
+        updated_at: now,
+      }
+      await models.leadSources.insertOne(doc)
+      return res.status(201).json({ data: doc, source: doc })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  router.delete('/sources/:id', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const source = await models.leadSources.findById(id) as any
+      if (!source) return res.status(404).json({ error: 'Source not found' })
+      if (source.is_system) return res.status(400).json({ error: 'System sources cannot be deleted' })
+      // Match by either the canonical key or the human label since older leads
+      // were created when sources were free-text strings.
+      const inUse = await models.leads.countDocuments({
+        $or: [{ source: source.key }, { source: source.label }],
+      })
+      if (inUse > 0) {
+        return res.status(400).json({
+          error: `Source is in use by ${inUse} lead${inUse === 1 ? '' : 's'}. Reassign them first.`,
+        })
+      }
+      await models.leadSources.deleteById(id)
+      return res.json({ message: 'Source deleted' })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to delete source' })
+    }
+  })
+
   router.get('/', async (req, res) => {
     try {
       const user = req.user as any

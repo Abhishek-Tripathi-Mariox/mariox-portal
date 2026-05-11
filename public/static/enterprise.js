@@ -627,9 +627,30 @@ async function openProjectDetailModal(projectId) {
     const tlPct = Math.min(100, Math.max(0, parseFloat(p.timeline_progress || 0)))
     const assignments = (p.assignments || [])
     const myId = _user?.sub || _user?.id || ''
-    const visibleAssignments = isTeam
-      ? assignments.filter(a => a.user_id === myId)
-      : assignments
+    // The "Assignment" field shows the primary assignee — the worker with the
+    // highest allocation (excluding PM/PC leads who already surface above).
+    // Multiple names appear only if their allocations tie at the top.
+    const workerAssignments = assignments.filter(a => {
+      const arole = String(a.role || '').toLowerCase()
+      return !['pm', 'pc'].includes(arole) && Number(a.allocated_hours) > 0
+    })
+    const maxAlloc = workerAssignments.reduce((m, a) => Math.max(m, Number(a.allocated_hours) || 0), 0)
+    const primaryAssignees = workerAssignments.filter(a => Number(a.allocated_hours) === maxAlloc)
+    const assigneeNames = primaryAssignees
+      .map(a => a.full_name)
+      .filter(Boolean)
+      .join(', ')
+    // Fall back to inferring the type when the project row never had assignment_type
+    // explicitly set (seed/older records): external_team_id ⇒ external, otherwise
+    // in_house if any worker is allocated.
+    const derivedType = p.assignment_type
+      || (p.external_team_id ? 'external' : (workerAssignments.length > 0 ? 'in_house' : ''))
+    const assignmentTypeLabel = derivedType
+      ? derivedType.replace(/_/g, '-').replace(/\b\w/g, (c) => c.toUpperCase())
+      : ''
+    const assignmentDisplay = isTeam
+      ? (assignments.some(a => String(a.user_id) === String(myId)) ? 'You' : (assignmentTypeLabel || '—'))
+      : [assignmentTypeLabel, assigneeNames].filter(Boolean).join(' · ') || '—'
     closeModal()
     showModal(`
       <div class="modal-header">
@@ -654,7 +675,7 @@ async function openProjectDetailModal(projectId) {
           <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Due date</div><div style="font-size:13px;color:${p.expected_end_date && new Date(p.expected_end_date) < new Date() && p.status === 'active' ? '#FF8866' : 'var(--text-primary)'};font-weight:600">${p.expected_end_date ? fmtDate(p.expected_end_date) : '—'}</div></div>
           ${!isTeam ? `<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Project Manager</div><div style="font-size:13px;color:var(--text-primary)">${escapeHtml(p.pm_name || '—')}</div></div>` : ''}
           ${!isTeam ? `<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Coordinator</div><div style="font-size:13px;color:var(--text-primary)">${escapeHtml(p.pc_name || '—')}</div></div>` : ''}
-          <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Assignment</div><div style="font-size:13px;color:var(--text-primary);text-transform:capitalize">${escapeHtml(p.assignment_type || '—')}</div></div>
+          <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Assignment</div><div style="font-size:13px;color:var(--text-primary)">${escapeHtml(assignmentDisplay)}</div></div>
           <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Billable</div><div style="font-size:13px;color:var(--text-primary)">${p.billable ? 'Yes' : 'No'}</div></div>
           ${Number(p.revenue) > 0 ? `<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Budget / Revenue</div><div style="font-size:13px;color:var(--text-primary);font-weight:700">₹${Number(p.revenue).toLocaleString()}</div></div>` : ''}
         </div>
@@ -673,22 +694,6 @@ async function openProjectDetailModal(projectId) {
             </div>
             <div class="progress-bar"><div class="progress-fill ${burnPct >= 100 ? 'rose' : burnPct >= 80 ? 'amber' : 'green'}" style="width:${Math.min(burnPct, 100)}%"></div></div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Timeline progress ${tlPct}%</div>
-          </div>` : ''}
-
-        ${visibleAssignments.length > 0 ? `
-          <div>
-            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">${isTeam ? 'My assignment' : 'Team'} (${visibleAssignments.length})</div>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              ${visibleAssignments.map(a => `
-                <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05)">
-                  ${avatar(a.full_name || '—', a.avatar_color, 'sm')}
-                  <div style="flex:1;min-width:0">
-                    <div style="font-size:13px;color:var(--text-primary);font-weight:600">${escapeHtml(a.full_name || '—')}</div>
-                    <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(a.designation || a.role || '')}</div>
-                  </div>
-                  ${!hideHours ? `<div style="font-size:11.5px;color:var(--text-muted)">${a.allocated_hours || 0}h alloc · ${a.logged_hours || 0}h logged</div>` : ''}
-                </div>`).join('')}
-            </div>
           </div>` : ''}
 
         ${p.remarks ? `<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Remarks</div><div style="font-size:12.5px;color:var(--text-secondary);line-height:1.5">${escapeHtml(p.remarks)}</div></div>` : ''}
@@ -3934,7 +3939,7 @@ async function renderTeamOverview(el) {
       <div><h1 class="page-title">Team Overview</h1><p class="page-subtitle">${users.length} total members · ${pagination.total} shown</p></div>
       ${isAdmin ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-secondary btn-sm" onclick="openImportUsersModal()"><i class="fas fa-file-csv"></i>Import CSV</button>
-        <button class="btn btn-primary btn-sm" onclick="openTeamMemberModal('')"><i class="fas fa-user-plus"></i>Add User</button>
+        <button class="btn btn-primary btn-sm" onclick="openTeamMemberModal(_teamOverviewRoleFilter || 'admin')"><i class="fas fa-user-plus"></i>Add User</button>
       </div>` : ''}
     </div>
 

@@ -76,9 +76,10 @@ html { scroll-behavior: smooth; min-height: 100%; }
 body {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(37,99,235,0.10), transparent 28%),
-    radial-gradient(circle at top right, rgba(20,184,166,0.08), transparent 24%),
-    linear-gradient(180deg, #F8FAFC 0%, #EEF4FB 100%);
+    radial-gradient(circle at top left, rgba(91,128,167,0.35), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(54,82,110,0.45), transparent 40%),
+    linear-gradient(160deg, #4A6685 0%, #3D556F 55%, #344B63 100%);
+  background-attachment: fixed;
   color: var(--text-primary);
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   font-size: 14px;
@@ -99,7 +100,7 @@ body::before {
   width: 320px;
   height: 320px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(37,99,235,0.15), transparent 70%);
+  background: radial-gradient(circle, rgba(255,255,255,0.10), transparent 70%);
   filter: blur(8px);
 }
 body::after {
@@ -108,7 +109,7 @@ body::after {
   width: 360px;
   height: 360px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(20,184,166,0.12), transparent 72%);
+  background: radial-gradient(circle, rgba(91,128,167,0.18), transparent 72%);
   filter: blur(6px);
 }
 #app { min-height: 100vh; }
@@ -2290,9 +2291,9 @@ select:not(.form-select) option { background: #2A1812; color: var(--text-primary
 
 /* Modal & Drawer */
 .modal-overlay {
-  background: rgba(8,4,2,0.78) !important;
-  backdrop-filter: blur(6px) !important;
-  -webkit-backdrop-filter: blur(6px) !important;
+  background: rgba(20,32,46,0.72) !important;
+  backdrop-filter: blur(8px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(120%) !important;
 }
 .modal,
 .drawer {
@@ -2306,20 +2307,20 @@ select:not(.form-select) option { background: #2A1812; color: var(--text-primary
     0 0 0 1px rgba(255,180,120,0.06) inset !important;
 }
 .modal-header {
-  background: linear-gradient(180deg, rgba(255,122,69,0.06), transparent) !important;
-  border-bottom: 1px solid rgba(255,180,120,0.14) !important;
+  background: linear-gradient(180deg, rgba(140,180,220,0.08), transparent) !important;
+  border-bottom: 1px solid rgba(180,200,225,0.16) !important;
 }
 .modal-header h3 { color: var(--text-primary) !important; }
 .modal-footer {
-  background: rgba(0,0,0,0.32) !important;
-  border-top: 1px solid rgba(255,180,120,0.14) !important;
+  background: rgba(20,32,46,0.32) !important;
+  border-top: 1px solid rgba(180,200,225,0.16) !important;
 }
 .close-btn { color: var(--text-muted) !important; }
-.close-btn:hover { background: rgba(255,94,58,0.20) !important; color: #FF8866 !important; }
+.close-btn:hover { background: rgba(140,180,220,0.20) !important; color: #C5DAF0 !important; }
 .drawer-overlay {
-  background: rgba(8,4,2,0.60) !important;
-  backdrop-filter: blur(4px) !important;
-  -webkit-backdrop-filter: blur(4px) !important;
+  background: rgba(20,32,46,0.60) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
 }
 
 /* Toast */
@@ -3497,14 +3498,15 @@ body::before, body::after { display: none !important; }
    Top-edge highlights, inner gradients, sheen sweeps, depth.
    ════════════════════════════════════════════════════════════ */
 
-/* Body — subtle vertical sheen for depth */
+/* Body — Light Blue template look: slate-blue canvas with soft sheen */
 body {
   background:
-    radial-gradient(ellipse 1200px 800px at 12% -5%, rgba(255,122,69,0.32), transparent 55%),
-    radial-gradient(ellipse 1100px 800px at 92% 0%, rgba(139,92,246,0.26), transparent 55%),
-    radial-gradient(ellipse 1000px 700px at 100% 100%, rgba(99,102,241,0.22), transparent 60%),
-    radial-gradient(ellipse 900px 700px at 0% 100%, rgba(255,122,69,0.20), transparent 55%),
-    linear-gradient(160deg, #0a0c1f 0%, #0e1029 35%, #0a0c1f 70%, #07091a 100%) !important;
+    radial-gradient(ellipse 1200px 800px at 12% -5%, rgba(120,160,200,0.22), transparent 55%),
+    radial-gradient(ellipse 1100px 800px at 92% 0%, rgba(95,130,170,0.18), transparent 55%),
+    radial-gradient(ellipse 1000px 700px at 100% 100%, rgba(60,90,125,0.32), transparent 60%),
+    radial-gradient(ellipse 900px 700px at 0% 100%, rgba(80,115,155,0.22), transparent 55%),
+    linear-gradient(160deg, #4A6685 0%, #3F5770 35%, #38516A 70%, #344B63 100%) !important;
+  background-attachment: fixed !important;
 }
 
 /* ── GLOSSY CARDS ────────────────────────────────────────── */
@@ -3517,13 +3519,13 @@ body {
 .glass-card {
   position: relative !important;
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 50%),
-    linear-gradient(135deg, rgba(38,40,80,0.62), rgba(20,22,52,0.55)) !important;
-  border: 1px solid rgba(255,255,255,0.09) !important;
+    linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 55%),
+    linear-gradient(135deg, rgba(52,72,95,0.85), rgba(40,58,80,0.80)) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.10),
-    inset 0 -1px 0 rgba(0,0,0,0.30),
-    0 18px 44px rgba(8,10,28,0.55) !important;
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    0 14px 34px rgba(20,32,46,0.40) !important;
   transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease !important;
 }
 .card::before,
@@ -3567,13 +3569,7 @@ body {
 .btn-violet::before,
 .btn-success::before,
 .btn-danger::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 50% 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0));
-  pointer-events: none;
-  border-top-left-radius: inherit;
-  border-top-right-radius: inherit;
+  display: none !important;
 }
 
 .btn-primary {
@@ -3637,15 +3633,15 @@ body {
   position: relative !important;
   overflow: hidden !important;
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 50%),
-    radial-gradient(ellipse 600px 320px at 0% 0%, rgba(255,122,69,0.45), transparent 55%),
-    radial-gradient(ellipse 600px 320px at 100% 100%, rgba(139,92,246,0.40), transparent 55%),
-    linear-gradient(135deg, #14163a 0%, #1c1e52 50%, #14163a 100%) !important;
-  border: 1px solid rgba(139,92,246,0.28) !important;
+    linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 50%),
+    radial-gradient(ellipse 600px 320px at 0% 0%, rgba(140,180,220,0.35), transparent 55%),
+    radial-gradient(ellipse 600px 320px at 100% 100%, rgba(90,125,165,0.40), transparent 55%),
+    linear-gradient(135deg, #3F5A78 0%, #4A6685 50%, #3F5A78 100%) !important;
+  border: 1px solid rgba(180,200,225,0.22) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.16),
-    inset 0 -1px 0 rgba(0,0,0,0.30),
-    0 26px 60px rgba(8,10,28,0.60) !important;
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.20),
+    0 18px 48px rgba(20,32,46,0.40) !important;
 }
 .hello-banner::after,
 .page-banner::after,
@@ -3767,14 +3763,14 @@ body {
   --border-strong:   rgba(255,255,255,0.12) !important;
 }
 
-/* Body — pure black canvas with cool corner glows */
+/* Body — Light Blue template: slate-blue canvas with soft sheen */
 body {
   background:
-    radial-gradient(ellipse 1100px 700px at 12% -5%, rgba(255,122,69,0.18), transparent 55%),
-    radial-gradient(ellipse 1000px 700px at 92% 0%, rgba(139,92,246,0.16), transparent 55%),
-    radial-gradient(ellipse 900px 600px at 100% 100%, rgba(99,102,241,0.14), transparent 60%),
-    radial-gradient(ellipse 800px 600px at 0% 100%, rgba(255,122,69,0.14), transparent 55%),
-    linear-gradient(160deg, #050507 0%, #0a0a0e 50%, #050507 100%) !important;
+    radial-gradient(ellipse 1100px 700px at 12% -5%, rgba(140,180,220,0.20), transparent 55%),
+    radial-gradient(ellipse 1000px 700px at 92% 0%, rgba(95,130,170,0.18), transparent 55%),
+    radial-gradient(ellipse 900px 600px at 100% 100%, rgba(60,90,125,0.30), transparent 60%),
+    radial-gradient(ellipse 800px 600px at 0% 100%, rgba(80,115,155,0.22), transparent 55%),
+    linear-gradient(160deg, #4A6685 0%, #3F5770 35%, #38516A 70%, #344B63 100%) !important;
   background-attachment: fixed !important;
 }
 
@@ -3786,15 +3782,15 @@ body {
 .stat-card,
 .summary-card {
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 45%),
-    linear-gradient(135deg, rgba(20,20,26,0.62), rgba(8,8,12,0.55)) !important;
-  border: 1px solid rgba(255,255,255,0.07) !important;
-  backdrop-filter: blur(22px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(22px) saturate(160%) !important;
+    linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 50%),
+    linear-gradient(135deg, rgba(52,72,95,0.78), rgba(40,58,80,0.72)) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  backdrop-filter: blur(18px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.10),
-    inset 0 -1px 0 rgba(0,0,0,0.40),
-    0 20px 50px rgba(0,0,0,0.65) !important;
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    0 16px 40px rgba(20,32,46,0.40) !important;
 }
 .card:hover,
 .glass-card:hover {
@@ -3968,14 +3964,14 @@ body {
   100% { transform: translateX(140%); }
 }
 
-/* Body — deep black with breathing aurora orbs */
+/* Body — Light Blue template: slate-blue with breathing aurora orbs */
 body {
   background:
-    radial-gradient(ellipse 1100px 700px at 12% -5%, rgba(255,122,69,0.22), transparent 55%),
-    radial-gradient(ellipse 1000px 700px at 92% 0%, rgba(139,92,246,0.20), transparent 55%),
-    radial-gradient(ellipse 900px 600px at 100% 100%, rgba(34,211,238,0.14), transparent 60%),
-    radial-gradient(ellipse 800px 600px at 0% 100%, rgba(244,114,182,0.14), transparent 55%),
-    linear-gradient(160deg, #04040a 0%, #08080f 50%, #04040a 100%) !important;
+    radial-gradient(ellipse 1100px 700px at 12% -5%, rgba(140,180,220,0.22), transparent 55%),
+    radial-gradient(ellipse 1000px 700px at 92% 0%, rgba(95,130,170,0.20), transparent 55%),
+    radial-gradient(ellipse 900px 600px at 100% 100%, rgba(60,90,125,0.30), transparent 60%),
+    radial-gradient(ellipse 800px 600px at 0% 100%, rgba(80,115,155,0.22), transparent 55%),
+    linear-gradient(160deg, #4A6685 0%, #3D556F 50%, #344B63 100%) !important;
   background-attachment: fixed !important;
 }
 body::before {
@@ -4009,97 +4005,50 @@ body::before {
 .card,
 .glass-card,
 .stat-card,
-.summary-card {
+.summary-card,
+.client-project-card,
+.doc-card,
+.comment-box {
   position: relative !important;
   isolation: isolate !important;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.01) 40%, rgba(255,255,255,0) 60%),
-    linear-gradient(135deg, rgba(28,28,38,0.55), rgba(10,10,16,0.50)) !important;
+  background: rgba(48,66,88,0.72) !important;
   border: 1px solid rgba(255,255,255,0.08) !important;
-  backdrop-filter: blur(28px) saturate(180%) brightness(108%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(108%) !important;
-  border-radius: 22px !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.14),
-    inset 0 -1px 0 rgba(0,0,0,0.45),
-    inset 1px 0 0 rgba(255,255,255,0.04),
-    inset -1px 0 0 rgba(0,0,0,0.20),
-    0 28px 60px -12px rgba(0,0,0,0.75),
-    0 8px 20px -8px rgba(139,92,246,0.20) !important;
-  transition: transform .25s cubic-bezier(.2,.7,.2,1),
-              box-shadow .25s ease,
-              border-color .25s ease !important;
+  backdrop-filter: blur(18px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(130%) !important;
+  border-radius: 16px !important;
+  color: var(--text-secondary) !important;
+  box-shadow: 0 8px 24px -8px rgba(20,32,46,0.45) !important;
+  transition: border-color .2s ease, box-shadow .2s ease !important;
 }
-/* Holographic gradient border (subtle, animates only on hover) */
+.client-project-card:hover,
+.doc-card:hover {
+  border-color: rgba(180,200,225,0.32) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.30),
+    0 28px 60px -12px rgba(20,32,46,0.70),
+    0 12px 28px -8px rgba(140,180,220,0.30) !important;
+}
+/* Holographic gradient border & shimmer disabled — clean flat cards */
 .card::before,
 .glass-card::before,
 .stat-card::before,
-.summary-card::before {
-  content: '' !important;
-  position: absolute !important;
-  inset: -1px !important;
-  border-radius: inherit !important;
-  padding: 1px !important;
-  background: linear-gradient(135deg,
-    rgba(255,255,255,0.18),
-    rgba(255,122,69,0.18) 30%,
-    rgba(139,92,246,0.18) 60%,
-    rgba(34,211,238,0.14) 90%,
-    rgba(255,255,255,0.10)) !important;
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0) !important;
-          mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0) !important;
-  -webkit-mask-composite: xor !important;
-          mask-composite: exclude !important;
-  pointer-events: none !important;
-  opacity: 0.65 !important;
-  transition: opacity .25s ease !important;
-}
-/* Specular shine sweep on hover */
+.summary-card::before,
 .card::after,
 .glass-card::after,
 .stat-card::after,
 .summary-card::after {
-  content: '' !important;
-  position: absolute !important;
-  inset: 0 !important;
-  border-radius: inherit !important;
-  pointer-events: none !important;
-  background: linear-gradient(115deg,
-    transparent 35%,
-    rgba(255,255,255,0.10) 48%,
-    rgba(255,255,255,0.20) 50%,
-    rgba(255,255,255,0.10) 52%,
-    transparent 65%) !important;
-  opacity: 0 !important;
-  transform: translateX(-120%) !important;
-  transition: opacity .15s ease !important;
+  display: none !important;
 }
 .card:hover,
 .glass-card:hover,
 .stat-card:hover,
 .summary-card:hover {
-  transform: translateY(-2px) !important;
-  border-color: rgba(255,255,255,0.14) !important;
+  border-color: rgba(180,200,225,0.20) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.18),
-    inset 0 -1px 0 rgba(0,0,0,0.45),
-    0 36px 80px -16px rgba(0,0,0,0.85),
-    0 12px 28px -8px rgba(139,92,246,0.32) !important;
-}
-.card:hover::before,
-.glass-card:hover::before,
-.stat-card:hover::before,
-.summary-card:hover::before { opacity: 1 !important; }
-.card:hover::after,
-.glass-card:hover::after,
-.stat-card:hover::after,
-.summary-card:hover::after {
-  opacity: 1 !important;
-  animation: shimmerSweep 1.2s ease-out !important;
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    0 18px 40px -12px rgba(20,32,46,0.55) !important;
 }
 
 /* Stat cards keep their colored separator on top of the gradient border */
@@ -4125,71 +4074,52 @@ body::before {
   transition: transform .18s ease, filter .18s ease, box-shadow .18s ease !important;
 }
 .btn-primary {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 50%),
-    linear-gradient(135deg, #FF7A45 0%, #FF9A6C 60%, #FFB347 100%) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.45),
-    inset 0 -1px 0 rgba(0,0,0,0.20),
-    0 12px 28px rgba(255,122,69,0.45),
-    0 0 0 1px rgba(255,255,255,0.06) !important;
+  background: #D9663D !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 1px 2px rgba(20,32,46,0.20) !important;
 }
+.btn-primary:hover { background: #C25A35 !important; }
 .btn-secondary,
 .btn-violet {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 50%),
-    linear-gradient(135deg, #8B5CF6 0%, #A78BFA 60%, #C4B5FD 100%) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.42),
-    inset 0 -1px 0 rgba(0,0,0,0.20),
-    0 12px 28px rgba(139,92,246,0.45),
-    0 0 0 1px rgba(255,255,255,0.06) !important;
+  background: #7359D1 !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 1px 2px rgba(20,32,46,0.20) !important;
 }
+.btn-secondary:hover,
+.btn-violet:hover { background: #634CB8 !important; }
 .btn-success {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 50%),
-    linear-gradient(135deg, #4ADE80, #34D399 60%, #22D3EE 100%) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.42),
-    inset 0 -1px 0 rgba(0,0,0,0.20),
-    0 12px 28px rgba(74,222,128,0.40),
-    0 0 0 1px rgba(255,255,255,0.06) !important;
+  background: #379B68 !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 1px 2px rgba(20,32,46,0.20) !important;
 }
+.btn-success:hover { background: #2E8959 !important; }
 .btn-danger {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 50%),
-    linear-gradient(135deg, #F87171, #EF4444 60%, #DC2626 100%) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.40),
-    inset 0 -1px 0 rgba(0,0,0,0.20),
-    0 12px 28px rgba(248,113,113,0.42),
-    0 0 0 1px rgba(255,255,255,0.06) !important;
+  background: #C9494E !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 1px 2px rgba(20,32,46,0.20) !important;
 }
+.btn-danger:hover { background: #B33E43 !important; }
 .btn-outline {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0) 55%),
-    rgba(255,255,255,0.04) !important;
-  border: 1px solid rgba(255,255,255,0.14) !important;
-  color: #ECEDFB !important;
-  backdrop-filter: blur(14px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.14),
-    inset 0 -1px 0 rgba(0,0,0,0.18) !important;
+  background: rgba(255,255,255,0.06) !important;
+  border: 1px solid rgba(255,255,255,0.16) !important;
+  color: #E2E8F0 !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  box-shadow: none !important;
 }
-.btn:hover { transform: translateY(-1px) !important; filter: brightness(1.08) saturate(1.06) !important; }
+.btn-outline:hover {
+  background: rgba(255,255,255,0.10) !important;
+  border-color: rgba(255,255,255,0.24) !important;
+}
+.btn:hover { transform: none !important; filter: none !important; }
 .btn:active { transform: translateY(0) !important; filter: brightness(0.95) !important; }
 
-/* Specular sweep on button hover */
-.btn::after {
-  content: '' !important;
-  position: absolute !important;
-  inset: 0 !important;
-  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.30) 50%, transparent 70%) !important;
-  transform: translateX(-120%) !important;
-  pointer-events: none !important;
-}
-.btn:hover::after { animation: shimmerSweep .8s ease-out !important; }
+/* Button shimmer disabled — clean flat-design buttons */
+.btn::after { display: none !important; }
 
 /* ── HELLO / PAGE BANNERS — full liquid glass ──────────── */
 .hello-banner,
@@ -4199,19 +4129,19 @@ body::before {
   overflow: hidden !important;
   border-radius: 26px !important;
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 40%),
-    radial-gradient(ellipse 700px 360px at 0% 0%, rgba(255,122,69,0.55), transparent 55%),
-    radial-gradient(ellipse 700px 360px at 100% 100%, rgba(139,92,246,0.50), transparent 55%),
-    radial-gradient(ellipse 600px 300px at 50% 50%, rgba(34,211,238,0.18), transparent 60%),
-    linear-gradient(135deg, rgba(14,14,22,0.85), rgba(22,22,34,0.82) 50%, rgba(14,14,22,0.85) 100%) !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
-  backdrop-filter: blur(30px) saturate(180%) brightness(108%) !important;
-  -webkit-backdrop-filter: blur(30px) saturate(180%) brightness(108%) !important;
+    linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0) 40%),
+    radial-gradient(ellipse 700px 360px at 0% 0%, rgba(140,180,220,0.40), transparent 55%),
+    radial-gradient(ellipse 700px 360px at 100% 100%, rgba(95,130,170,0.40), transparent 55%),
+    radial-gradient(ellipse 600px 300px at 50% 50%, rgba(120,160,200,0.18), transparent 60%),
+    linear-gradient(135deg, rgba(63,90,120,0.88), rgba(74,102,133,0.85) 50%, rgba(56,81,106,0.88) 100%) !important;
+  border: 1px solid rgba(255,255,255,0.16) !important;
+  backdrop-filter: blur(24px) saturate(150%) brightness(105%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(150%) brightness(105%) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.20),
-    inset 0 -1px 0 rgba(0,0,0,0.40),
-    0 32px 80px -12px rgba(0,0,0,0.80),
-    0 0 0 1px rgba(255,255,255,0.04) !important;
+    inset 0 1px 0 rgba(255,255,255,0.22),
+    inset 0 -1px 0 rgba(0,0,0,0.20),
+    0 22px 56px -12px rgba(20,32,46,0.55),
+    0 0 0 1px rgba(255,255,255,0.06) !important;
 }
 .hello-banner::before,
 .page-banner::before,
@@ -4229,19 +4159,19 @@ body::before {
   border-radius: inherit !important;
 }
 
-/* ── SIDEBAR — obsidian slab with vertical aurora ─────── */
+/* ── SIDEBAR — slate-blue slab matching Light Blue theme ── */
 #sidebar {
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 30%),
-    radial-gradient(ellipse 360px 240px at 50% 0%, rgba(139,92,246,0.20), transparent 60%),
-    radial-gradient(ellipse 280px 360px at 50% 100%, rgba(255,122,69,0.16), transparent 60%),
-    linear-gradient(180deg, #06060c 0%, #050509 50%, #030305 100%) !important;
-  border-right: 1px solid rgba(255,255,255,0.06) !important;
-  backdrop-filter: blur(20px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+    linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 30%),
+    radial-gradient(ellipse 360px 240px at 50% 0%, rgba(140,180,220,0.20), transparent 60%),
+    radial-gradient(ellipse 280px 360px at 50% 100%, rgba(95,130,170,0.18), transparent 60%),
+    linear-gradient(180deg, #2E4259 0%, #283A50 50%, #233347 100%) !important;
+  border-right: 1px solid rgba(180,200,225,0.10) !important;
+  backdrop-filter: blur(20px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
   box-shadow:
-    inset -1px 0 0 rgba(255,255,255,0.05),
-    4px 0 36px rgba(0,0,0,0.85) !important;
+    inset -1px 0 0 rgba(255,255,255,0.06),
+    4px 0 28px rgba(20,32,46,0.55) !important;
 }
 .nav-item {
   border-radius: 12px !important;
@@ -4252,13 +4182,9 @@ body::before {
   transform: translateX(2px) !important;
 }
 .nav-item.active {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.24), rgba(255,255,255,0) 55%),
-    linear-gradient(135deg, #FF7A45 0%, #FF9A6C 50%, #FFB347 100%) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.40),
-    inset 0 -1px 0 rgba(0,0,0,0.20),
-    0 12px 28px rgba(255,122,69,0.50) !important;
+  background: #D9663D !important;
+  color: #FFFFFF !important;
+  box-shadow: none !important;
 }
 
 .nav-section-toggle {
@@ -4267,37 +4193,37 @@ body::before {
   -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
 }
 
-/* ── TOPBAR — chrome glass band ────────────────────────── */
+/* ── TOPBAR — slate glass band ─────────────────────────── */
 #topbar {
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 50%),
-    linear-gradient(180deg, rgba(8,8,14,0.78), rgba(4,4,8,0.62)) !important;
-  border-bottom: 1px solid rgba(255,255,255,0.06) !important;
-  backdrop-filter: blur(34px) saturate(180%) brightness(108%) !important;
-  -webkit-backdrop-filter: blur(34px) saturate(180%) brightness(108%) !important;
+    linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 50%),
+    linear-gradient(180deg, rgba(56,76,100,0.72), rgba(42,60,82,0.60)) !important;
+  border-bottom: 1px solid rgba(180,200,225,0.10) !important;
+  backdrop-filter: blur(30px) saturate(150%) brightness(105%) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(150%) brightness(105%) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.10),
-    0 14px 40px rgba(0,0,0,0.55) !important;
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    0 14px 36px rgba(20,32,46,0.40) !important;
 }
 
-/* ── MODAL / DRAWER / LOGIN — premium liquid glass ────── */
+/* ── MODAL / DRAWER / LOGIN — Light Blue liquid glass ──── */
 .modal,
 .drawer,
 .task-detail,
 .login-card {
   position: relative !important;
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 40%),
-    linear-gradient(135deg, rgba(20,20,28,0.92), rgba(8,8,14,0.92)) !important;
-  border: 1px solid rgba(255,255,255,0.10) !important;
-  backdrop-filter: blur(40px) saturate(180%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(40px) saturate(180%) brightness(105%) !important;
+    linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 40%),
+    linear-gradient(135deg, rgba(64,86,112,0.94), rgba(48,68,92,0.94)) !important;
+  border: 1px solid rgba(255,255,255,0.14) !important;
+  backdrop-filter: blur(32px) saturate(150%) brightness(105%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(150%) brightness(105%) !important;
   border-radius: 22px !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.16),
-    inset 0 -1px 0 rgba(0,0,0,0.45),
-    0 50px 120px rgba(0,0,0,0.85),
-    0 0 0 1px rgba(139,92,246,0.10) !important;
+    inset 0 1px 0 rgba(255,255,255,0.20),
+    inset 0 -1px 0 rgba(0,0,0,0.30),
+    0 40px 100px rgba(20,32,46,0.60),
+    0 0 0 1px rgba(140,180,220,0.12) !important;
 }
 .modal::before,
 .login-card::before {
@@ -4307,11 +4233,11 @@ body::before {
   border-radius: inherit !important;
   padding: 1px !important;
   background: linear-gradient(135deg,
-    rgba(255,255,255,0.20),
-    rgba(255,122,69,0.20) 30%,
-    rgba(139,92,246,0.20) 60%,
-    rgba(34,211,238,0.16) 90%,
-    rgba(255,255,255,0.10)) !important;
+    rgba(255,255,255,0.24),
+    rgba(140,180,220,0.22) 30%,
+    rgba(95,130,170,0.22) 60%,
+    rgba(180,200,225,0.18) 90%,
+    rgba(255,255,255,0.12)) !important;
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0) !important;
@@ -4321,7 +4247,7 @@ body::before {
   -webkit-mask-composite: xor !important;
           mask-composite: exclude !important;
   pointer-events: none !important;
-  opacity: 0.7 !important;
+  opacity: 0.75 !important;
 }
 
 /* Login canvas — deeper black, brighter aurora corners */
