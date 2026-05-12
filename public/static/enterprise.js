@@ -4348,3 +4348,2836 @@ async function submitImportCsv(kind) {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-upload"></i> Import' }
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   TEAM SECTION PAGES — Sales Team / Project Team / Dev Team
+   One renderer drives all three. Each page lists the relevant
+   members for its area, lets anyone create a new member, and
+   opens a detail drawer with active work, completed work,
+   activity feed, and per-member stats.
+   ═══════════════════════════════════════════════════════════ */
+
+const TEAM_SECTION_CONFIG = {
+  'sales-team': {
+    title: 'Sales Team',
+    subtitle: 'Sales agents, team leads, and managers working the pipeline.',
+    icon: 'fa-bullseye',
+    iconColor: '#FF7A45',
+    roles: ['sales_manager', 'sales_tl', 'sales_agent'],
+    defaultCreateRole: 'sales_agent',
+    workKind: 'leads',
+    pageId: 'sales-team',
+  },
+  'project-team': {
+    title: 'Project Team',
+    subtitle: 'Project managers and coordinators delivering client work.',
+    icon: 'fa-layer-group',
+    iconColor: '#3b82f6',
+    roles: ['pm', 'pc'],
+    defaultCreateRole: 'pm',
+    workKind: 'tasks',
+    pageId: 'project-team',
+  },
+  'dev-team': {
+    title: 'Dev Team',
+    subtitle: 'Developers and team members shipping the work.',
+    icon: 'fa-code',
+    iconColor: '#22c55e',
+    roles: ['developer', 'team'],
+    defaultCreateRole: 'developer',
+    workKind: 'tasks',
+    pageId: 'dev-team',
+  },
+}
+
+let _teamSectionSearch = {}
+let _teamSectionRoleFilter = {}
+
+async function renderSalesTeamPage(el)   { return _renderTeamSection(el, TEAM_SECTION_CONFIG['sales-team']) }
+async function renderProjectTeamPage(el) { return _renderTeamSection(el, TEAM_SECTION_CONFIG['project-team']) }
+async function renderDevTeamPage(el)     { return _renderTeamSection(el, TEAM_SECTION_CONFIG['dev-team']) }
+
+async function _renderTeamSection(el, cfg) {
+  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading ${cfg.title.toLowerCase()}…</div>`
+  try {
+    const res = await API.get('/users')
+    const allUsers = res.users || res.data || []
+    const members = allUsers.filter((u) => cfg.roles.includes(String(u.role || '').toLowerCase()))
+
+    const search = (_teamSectionSearch[cfg.pageId] || '').toLowerCase()
+    const roleFilter = _teamSectionRoleFilter[cfg.pageId] || ''
+    const filtered = members.filter((m) => {
+      if (roleFilter && String(m.role || '').toLowerCase() !== roleFilter) return false
+      if (search) {
+        const hay = `${m.full_name || ''} ${m.email || ''} ${m.designation || ''}`.toLowerCase()
+        if (!hay.includes(search)) return false
+      }
+      return true
+    })
+
+    const roleCounts = members.reduce((acc, u) => {
+      const k = String(u.role || '').toLowerCase()
+      acc[k] = (acc[k] || 0) + 1
+      return acc
+    }, {})
+    const activeCount = members.filter((m) => Number(m.is_active || 0) === 1).length
+
+    el.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title"><i class="fas ${cfg.icon}" style="color:${cfg.iconColor};margin-right:8px"></i>${cfg.title}</h1>
+          <p class="page-subtitle">${cfg.subtitle} · ${members.length} total · ${activeCount} active</p>
+        </div>
+        <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="openTeamSectionAddMember('${cfg.pageId}')"><i class="fas fa-user-plus"></i> Add Member</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px">
+          <div class="search-wrap" style="flex:1;min-width:240px">
+            <i class="fas fa-search"></i>
+            <input class="search-bar" placeholder="Search by name, email, designation…" value="${escapeHtml(_teamSectionSearch[cfg.pageId] || '')}" oninput="onTeamSectionSearch('${cfg.pageId}', this.value)"/>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${['', ...cfg.roles].map((r) => {
+              const meta = r ? (TEAM_ROLE_META[r] || { label: r }) : { label: 'All' }
+              const count = r ? (roleCounts[r] || 0) : members.length
+              const active = roleFilter === r
+              return `<button class="btn btn-sm ${active ? 'btn-primary' : 'btn-outline'}" onclick="filterTeamSectionByRole('${cfg.pageId}','${r}')">${meta.label} <span style="opacity:.7;margin-left:4px">${count}</span></button>`
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      ${filtered.length ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+          ${filtered.map((m) => _teamMemberCard(m, cfg)).join('')}
+        </div>
+      ` : `<div class="empty-state"><i class="fas fa-user-slash"></i><p>No members match the current filter.</p></div>`}
+    `
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
+}
+
+function _teamMemberCard(m, cfg) {
+  const role = String(m.role || '').toLowerCase()
+  const meta = TEAM_ROLE_META[role] || { label: m.role || '—', badge: 'todo' }
+  const isActive = Number(m.is_active || 0) === 1
+  return `<div class="card" style="cursor:pointer;transition:transform .15s ease, border-color .15s ease" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" onclick="openTeamMemberDetail('${m.id}','${cfg.pageId}')">
+    <div class="card-body" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        ${avatar(m.full_name, m.avatar_color || cfg.iconColor, 'md')}
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:#e2e8f0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(m.full_name || '—')}</div>
+          <div style="font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(m.designation || meta.label)}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span>
+        <span class="badge ${isActive ? 'badge-done' : 'badge-todo'}">${isActive ? 'Active' : 'Inactive'}</span>
+      </div>
+      <div style="font-size:11.5px;color:#94a3b8;display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;align-items:center;gap:6px"><i class="fas fa-envelope" style="width:12px;color:#64748b"></i>${escapeHtml(m.email || '—')}</div>
+        ${m.phone ? `<div style="display:flex;align-items:center;gap:6px"><i class="fas fa-phone" style="width:12px;color:#64748b"></i>${escapeHtml(m.phone)}</div>` : ''}
+        ${m.joining_date ? `<div style="display:flex;align-items:center;gap:6px"><i class="fas fa-calendar" style="width:12px;color:#64748b"></i>Joined ${fmtDate(m.joining_date)}</div>` : ''}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:12px">
+        <button class="btn btn-outline btn-xs" style="flex:1" onclick="event.stopPropagation();openTeamMemberDetail('${m.id}','${cfg.pageId}')">
+          <i class="fas fa-eye"></i> View
+        </button>
+        <button class="btn btn-secondary btn-xs" style="flex:1" onclick="event.stopPropagation();editTeamSectionMember('${m.id}','${cfg.pageId}')">
+          <i class="fas fa-edit"></i> Edit
+        </button>
+      </div>
+    </div>
+  </div>`
+}
+
+// Reuses the existing user-edit modal (openDeveloperModal). We refresh the
+// active team page once the modal closes so the updated fields show up
+// without a full page reload.
+async function editTeamSectionMember(userId, pageId) {
+  if (typeof openDeveloperModal !== 'function') { toast('Edit modal unavailable', 'error'); return }
+  let user = null
+  try {
+    const res = await API.get('/users/' + userId)
+    user = res.data || res.user || res
+  } catch (e) {
+    toast('Failed to load member: ' + (e.message || 'unknown'), 'error'); return
+  }
+  if (!user || !user.id) { toast('Member not found', 'error'); return }
+
+  // Patch closeModal to refresh the calling team page on dismiss.
+  const origClose = window.closeModal
+  let alreadyRefreshed = false
+  window.closeModal = function patchedClose() {
+    if (!alreadyRefreshed) {
+      alreadyRefreshed = true
+      window.closeModal = origClose
+      const el = document.getElementById('page-' + pageId)
+      if (el) { el.dataset.loaded = ''; loadPage(pageId, el) }
+    }
+    return origClose.apply(this, arguments)
+  }
+  openDeveloperModal(user)
+}
+
+function onTeamSectionSearch(pageId, value) {
+  _teamSectionSearch[pageId] = value
+  const el = document.getElementById('page-' + pageId)
+  if (el) { el.dataset.loaded = ''; loadPage(pageId, el) }
+}
+
+function filterTeamSectionByRole(pageId, role) {
+  _teamSectionRoleFilter[pageId] = role || ''
+  const el = document.getElementById('page-' + pageId)
+  if (el) { el.dataset.loaded = ''; loadPage(pageId, el) }
+}
+
+function openTeamSectionAddMember(pageId) {
+  const cfg = TEAM_SECTION_CONFIG[pageId]
+  if (!cfg) return
+  if (typeof openDeveloperModal !== 'function') { toast('User modal unavailable', 'error'); return }
+  // Re-render the page once the modal closes so the new member appears.
+  const origClose = window.closeModal
+  let alreadyRefreshed = false
+  window.closeModal = function patchedClose() {
+    if (!alreadyRefreshed) {
+      alreadyRefreshed = true
+      window.closeModal = origClose
+      const el = document.getElementById('page-' + pageId)
+      if (el) { el.dataset.loaded = ''; loadPage(pageId, el) }
+    }
+    return origClose.apply(this, arguments)
+  }
+  openDeveloperModal({ role: cfg.defaultCreateRole })
+}
+
+/* ── MEMBER DETAIL DRAWER ───────────────────────────────────
+   Shows the member's profile plus four tabs of history:
+   Active Work, Completed, Activity, Stats. Data sources depend
+   on the section (leads for sales, tasks/projects for project/dev).
+   ─────────────────────────────────────────────────────────── */
+
+let _teamDetailState = { userId: '', pageId: '', tab: 'active', cache: null }
+
+async function openTeamMemberDetail(userId, pageId) {
+  _teamDetailState = { userId, pageId, tab: 'active', cache: null }
+  showModal(`
+    <div id="team-member-detail-shell" style="min-height:520px">
+      <div style="padding:60px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading profile…</div>
+    </div>
+  `, 'modal-xl')
+  await _loadTeamMemberDetail()
+}
+
+async function _loadTeamMemberDetail() {
+  const { userId, pageId } = _teamDetailState
+  const cfg = TEAM_SECTION_CONFIG[pageId]
+  if (!cfg) return
+  try {
+    const memberRes = await API.get('/users/' + userId).catch(() => null)
+    const member = memberRes?.data || memberRes?.user || memberRes
+    if (!member || !member.id) throw new Error('Member not found')
+
+    let active = []
+    let completed = []
+    let activity = []
+    if (cfg.workKind === 'leads') {
+      const leadsRes = await API.get('/leads').catch(() => ({}))
+      const allLeads = leadsRes.data || leadsRes.leads || []
+      const mine = allLeads.filter((l) => String(l.assigned_to) === String(userId))
+      const closedKeys = ['closed', 'won', 'closed_won', 'lost', 'closed_lost']
+      active = mine.filter((l) => !closedKeys.includes(String(l.status || '').toLowerCase()))
+      completed = mine.filter((l) => closedKeys.includes(String(l.status || '').toLowerCase()))
+      activity = mine.slice().sort((a, b) =>
+        String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''))
+      ).slice(0, 30)
+    } else {
+      const tasksRes = await API.get('/tasks?assignee_id=' + encodeURIComponent(userId)).catch(() => ({}))
+      const tasks = tasksRes.tasks || tasksRes.data || []
+      const doneKeys = ['done', 'completed', 'closed']
+      active = tasks.filter((t) => !doneKeys.includes(String(t.status || '').toLowerCase()))
+      completed = tasks.filter((t) => doneKeys.includes(String(t.status || '').toLowerCase()))
+      activity = tasks.slice().sort((a, b) =>
+        String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''))
+      ).slice(0, 30)
+    }
+
+    _teamDetailState.cache = { member, active, completed, activity, cfg }
+    _renderTeamMemberDetailShell()
+  } catch (e) {
+    const shell = document.getElementById('team-member-detail-shell')
+    if (shell) shell.innerHTML = `<div style="padding:60px;text-align:center;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+  }
+}
+
+function _renderTeamMemberDetailShell() {
+  const shell = document.getElementById('team-member-detail-shell')
+  if (!shell) return
+  const { cache, tab } = _teamDetailState
+  if (!cache) return
+  const { member, active, completed, activity, cfg } = cache
+  const meta = TEAM_ROLE_META[String(member.role || '').toLowerCase()] || { label: member.role || '—', badge: 'todo' }
+  const isActive = Number(member.is_active || 0) === 1
+
+  const tabBtn = (key, label, count, icon) => `
+    <button class="btn btn-sm ${tab === key ? 'btn-primary' : 'btn-outline'}" onclick="switchTeamMemberDetailTab('${key}')">
+      <i class="fas ${icon}"></i> ${label}${typeof count === 'number' ? ` <span style="opacity:.7;margin-left:4px">${count}</span>` : ''}
+    </button>`
+
+  let body = ''
+  if (tab === 'active')         body = _renderMemberWorkList(active, cfg, true)
+  else if (tab === 'completed') body = _renderMemberWorkList(completed, cfg, false)
+  else if (tab === 'activity')  body = _renderMemberActivity(activity, cfg)
+  else if (tab === 'stats')     body = _renderMemberStats(member, active, completed, cfg)
+
+  shell.innerHTML = `
+    <div class="modal-header" style="display:flex;align-items:center;gap:14px">
+      ${avatar(member.full_name, member.avatar_color || cfg.iconColor, 'lg')}
+      <div style="flex:1">
+        <h3 style="margin:0">${escapeHtml(member.full_name || '—')}</h3>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12.5px;color:#94a3b8">
+          <span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span>
+          <span class="badge ${isActive ? 'badge-done' : 'badge-todo'}">${isActive ? 'Active' : 'Inactive'}</span>
+          <span>${escapeHtml(member.designation || '')}</span>
+        </div>
+      </div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:#94a3b8">
+        ${member.email ? `<span><i class="fas fa-envelope" style="margin-right:6px;color:#64748b"></i>${escapeHtml(member.email)}</span>` : ''}
+        ${member.phone ? `<span><i class="fas fa-phone" style="margin-right:6px;color:#64748b"></i>${escapeHtml(member.phone)}</span>` : ''}
+        ${member.joining_date ? `<span><i class="fas fa-calendar" style="margin-right:6px;color:#64748b"></i>Joined ${fmtDate(member.joining_date)}</span>` : ''}
+        ${member.monthly_available_hours ? `<span><i class="fas fa-clock" style="margin-right:6px;color:#64748b"></i>${member.monthly_available_hours}h/mo</span>` : ''}
+      </div>
+      <div style="padding:14px 18px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,0.08)">
+        ${tabBtn('active',    cfg.workKind === 'leads' ? 'Active Leads'    : 'Active Tasks',    active.length,    'fa-stream')}
+        ${tabBtn('completed', cfg.workKind === 'leads' ? 'Closed Leads'    : 'Completed',       completed.length, 'fa-check-circle')}
+        ${tabBtn('activity',  'Activity',                                  null,                'fa-clock')}
+        ${tabBtn('stats',     'Stats',                                     null,                'fa-chart-pie')}
+      </div>
+      <div style="padding:16px 18px;max-height:60vh;overflow-y:auto">${body}</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="editTeamSectionMember('${member.id}','${cfg.pageId}')"><i class="fas fa-edit"></i> Edit Member</button>
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+    </div>
+  `
+}
+
+function switchTeamMemberDetailTab(tab) {
+  _teamDetailState.tab = tab
+  _renderTeamMemberDetailShell()
+}
+
+function _renderMemberWorkList(items, cfg, isActive) {
+  if (!items.length) {
+    return `<div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-inbox"></i> ${isActive ? 'Nothing on their plate right now.' : 'No completed work yet.'}</div>`
+  }
+  if (cfg.workKind === 'leads') {
+    return `<table class="data-table">
+      <thead><tr><th>Lead</th><th>Status</th><th>Source</th><th>Created</th><th>Updated</th></tr></thead>
+      <tbody>
+        ${items.map((l) => {
+          const key = String(l.status || 'new').toLowerCase()
+          const meta = (typeof LEAD_STATUS_META !== 'undefined' && LEAD_STATUS_META[key]) || { label: key, badge: 'todo' }
+          return `<tr>
+            <td><div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="closeModal();goLeadDetail('${l.id}')">${avatar(l.name, '#FF7A45', 'sm')}<div><div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div><div style="font-size:11px;color:#64748b">${escapeHtml(l.email || '')}</div></div></div></td>
+            <td><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
+            <td style="font-size:12px;color:#94a3b8">${escapeHtml(l.source || '—')}</td>
+            <td style="font-size:12px;color:#94a3b8">${l.created_at ? fmtDate(l.created_at) : '—'}</td>
+            <td style="font-size:12px;color:#94a3b8">${l.updated_at ? fmtDate(l.updated_at) : '—'}</td>
+          </tr>`
+        }).join('')}
+      </tbody>
+    </table>`
+  }
+  return `<table class="data-table">
+    <thead><tr><th>Task</th><th>Project</th><th>Status</th><th>Priority</th><th>Due</th></tr></thead>
+    <tbody>
+      ${items.map((t) => {
+        const status = String(t.status || 'todo').toLowerCase()
+        const statusBadge = ['done', 'completed', 'closed'].includes(status) ? 'done'
+          : status === 'review' ? 'review'
+          : status === 'inprogress' || status === 'in_progress' ? 'inprogress'
+          : status === 'critical' ? 'critical'
+          : 'todo'
+        return `<tr>
+          <td><div style="font-weight:600;color:#e2e8f0">${escapeHtml(t.title || t.name || '—')}</div></td>
+          <td style="font-size:12px;color:#94a3b8">${escapeHtml(t.project_name || t.project_code || '—')}</td>
+          <td><span class="badge badge-${statusBadge}">${escapeHtml(t.status_label || t.status || '—')}</span></td>
+          <td style="font-size:12px;color:#94a3b8">${escapeHtml(t.priority || '—')}</td>
+          <td style="font-size:12px;color:#94a3b8">${t.due_date ? fmtDate(t.due_date) : '—'}</td>
+        </tr>`
+      }).join('')}
+    </tbody>
+  </table>`
+}
+
+function _renderMemberActivity(items, cfg) {
+  if (!items.length) return `<div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-clock-rotate-left"></i> No recent activity recorded.</div>`
+  return `<div style="display:flex;flex-direction:column;gap:8px">
+    ${items.map((it) => {
+      const title = cfg.workKind === 'leads' ? (it.name || '—') : (it.title || it.name || '—')
+      const when = it.updated_at || it.created_at
+      const subtitle = cfg.workKind === 'leads' ? `Status: ${it.status || 'new'} · Source: ${it.source || '—'}` : `${it.project_name || it.project_code || '—'} · ${it.status || '—'}`
+      return `<div style="display:flex;gap:12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+        <div style="width:32px;height:32px;border-radius:50%;background:${cfg.iconColor}22;color:${cfg.iconColor};display:flex;align-items:center;justify-content:center"><i class="fas ${cfg.workKind === 'leads' ? 'fa-bullseye' : 'fa-list-check'}"></i></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;color:#e2e8f0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(title)}</div>
+          <div style="font-size:11.5px;color:#94a3b8;margin-top:2px">${escapeHtml(subtitle)}</div>
+        </div>
+        <div style="font-size:11px;color:#64748b;white-space:nowrap">${when ? fmtDate(when) : ''}</div>
+      </div>`
+    }).join('')}
+  </div>`
+}
+
+function _renderMemberStats(member, active, completed, cfg) {
+  const total = active.length + completed.length
+  const completedPct = total ? Math.round((completed.length / total) * 100) : 0
+  let extra = ''
+  if (cfg.workKind === 'leads') {
+    const won = completed.filter((l) => ['closed', 'won', 'closed_won'].includes(String(l.status || '').toLowerCase())).length
+    const lost = completed.filter((l) => ['lost', 'closed_lost'].includes(String(l.status || '').toLowerCase())).length
+    const conversion = total ? Math.round((won / total) * 100) : 0
+    extra = `
+      ${_statTile('Won', won, '#22c55e', 'fa-trophy')}
+      ${_statTile('Lost', lost, '#FF5E3A', 'fa-snowflake')}
+      ${_statTile('Conversion', conversion + '%', '#FFB347', 'fa-percent')}`
+  } else {
+    const overdue = active.filter((t) => t.due_date && new Date(t.due_date).getTime() < Date.now()).length
+    extra = `
+      ${_statTile('Overdue', overdue, '#FF5E3A', 'fa-triangle-exclamation')}
+      ${_statTile('Capacity', (member.monthly_available_hours || 0) + 'h', '#3b82f6', 'fa-clock')}
+      ${_statTile('Hourly cost', '₹' + (member.hourly_cost || 0), '#FFB347', 'fa-indian-rupee-sign')}`
+  }
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+    ${_statTile(cfg.workKind === 'leads' ? 'Total leads' : 'Total tasks', total, '#FF7A45', 'fa-list')}
+    ${_statTile(cfg.workKind === 'leads' ? 'Active leads' : 'Active tasks', active.length, '#3b82f6', 'fa-stream')}
+    ${_statTile(cfg.workKind === 'leads' ? 'Closed leads' : 'Completed', completed.length, '#22c55e', 'fa-check-circle')}
+    ${_statTile('Completion', completedPct + '%', '#C56FE6', 'fa-chart-line')}
+    ${extra}
+  </div>`
+}
+
+function _statTile(label, value, color, icon) {
+  return `<div style="padding:14px;border-radius:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:12px">
+    <div style="width:38px;height:38px;border-radius:10px;background:${color}22;color:${color};display:flex;align-items:center;justify-content:center"><i class="fas ${icon}"></i></div>
+    <div>
+      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
+      <div style="font-size:20px;font-weight:700;color:#e2e8f0">${value}</div>
+    </div>
+  </div>`
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PORTFOLIO LIBRARY — Sales CRM tab
+   Admin (and users granted add-permission) maintain a catalog
+   of portfolios. Anyone with access can send a portfolio to a
+   lead; every send is recorded and shows on the lead timeline.
+   ═══════════════════════════════════════════════════════════ */
+
+let _portfolioSearch = ''
+let _portfolioCanManage = false
+
+async function renderPortfolioLibrary(el) {
+  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading portfolios…</div>`
+  try {
+    const res = await API.get('/portfolios')
+    const list = res.data || res.portfolios || []
+    _portfolioCanManage = !!res.can_manage
+    const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
+
+    const q = (_portfolioSearch || '').toLowerCase()
+    const filtered = q
+      ? list.filter((p) => (`${p.title || ''} ${p.description || ''}`).toLowerCase().includes(q))
+      : list
+
+    el.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title"><i class="fas fa-briefcase" style="color:#FFB347;margin-right:8px"></i>Portfolio Library</h1>
+          <p class="page-subtitle">${list.length} portfolio${list.length === 1 ? '' : 's'} · ready to send to any lead.</p>
+        </div>
+        <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+          ${_portfolioCanManage ? `<button class="btn btn-primary btn-sm" onclick="openPortfolioEditModal()"><i class="fas fa-plus"></i> Add Portfolio</button>` : ''}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-body" style="padding:12px 16px">
+          <div class="search-wrap" style="width:100%">
+            <i class="fas fa-search"></i>
+            <input class="search-bar" placeholder="Search by title or description…" value="${escapeHtml(_portfolioSearch)}" oninput="onPortfolioSearch(this.value)"/>
+          </div>
+        </div>
+      </div>
+
+      ${!_portfolioCanManage && !isAdmin ? `<div style="padding:10px 14px;border-radius:10px;background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.25);color:#93c5fd;font-size:12.5px;margin-bottom:14px"><i class="fas fa-info-circle"></i> You can view and send portfolios. To add new ones, ask an admin to grant you Portfolio permission.</div>` : ''}
+
+      ${filtered.length ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+          ${filtered.map((p) => _portfolioCard(p)).join('')}
+        </div>
+      ` : `<div class="empty-state"><i class="fas fa-folder-open"></i><p>${list.length ? 'No portfolios match your search.' : 'No portfolios yet — add one to get started.'}</p></div>`}
+    `
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message || 'Failed to load portfolios')}</p></div>`
+  }
+}
+
+function _portfolioCard(p) {
+  const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
+  const userId = String(_user?.sub || _user?.id || '')
+  const isOwner = String(p.created_by || '') === userId
+  const canEdit = isAdmin || isOwner || _portfolioCanManage
+  const canDelete = isAdmin || isOwner
+  const ext = (p.file?.name || '').split('.').pop()?.toLowerCase() || ''
+  const isImg = /^(png|jpe?g|gif|webp)$/.test(ext)
+  return `<div class="card">
+    <div class="card-body" style="padding:16px">
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(255,179,71,0.18);color:#FFB347;display:flex;align-items:center;justify-content:center;font-size:20px"><i class="fas ${isImg ? 'fa-image' : 'fa-file-pdf'}"></i></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:#e2e8f0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.title)}</div>
+          <div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.file?.name || '—')} · ${formatBytes(p.file?.size || 0)}</div>
+        </div>
+      </div>
+      ${p.description ? `<div style="font-size:12.5px;color:#cbd5e1;line-height:1.5;margin-bottom:10px;max-height:60px;overflow:hidden">${escapeHtml(p.description)}</div>` : ''}
+      <div style="display:flex;gap:14px;font-size:11.5px;color:#94a3b8;margin-bottom:12px">
+        <span><i class="fas fa-paper-plane" style="margin-right:4px;color:#64748b"></i>${p.send_count || 0} sent</span>
+        ${p.last_sent_at ? `<span><i class="fas fa-clock" style="margin-right:4px;color:#64748b"></i>Last ${fmtDate(p.last_sent_at)}</span>` : ''}
+        ${p.created_by_name ? `<span><i class="fas fa-user" style="margin-right:4px;color:#64748b"></i>${escapeHtml(p.created_by_name)}</span>` : ''}
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-xs" onclick="openPortfolioSendModal('${p.id}')"><i class="fas fa-paper-plane"></i> Send</button>
+        ${p.file?.url ? `<a class="btn btn-outline btn-xs" href="${escapeHtml(p.file.url)}" target="_blank" rel="noopener"><i class="fas fa-eye"></i> View</a>` : ''}
+        <button class="btn btn-outline btn-xs" onclick="openPortfolioHistoryModal('${p.id}')"><i class="fas fa-clock-rotate-left"></i> History</button>
+        ${canEdit ? `<button class="btn btn-outline btn-xs" onclick="openPortfolioEditModal('${p.id}')"><i class="fas fa-edit"></i></button>` : ''}
+        ${canDelete ? `<button class="btn btn-outline btn-xs" style="color:#FF5E3A" onclick="deletePortfolioEntry('${p.id}','${escapeHtml(p.title).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>` : ''}
+      </div>
+    </div>
+  </div>`
+}
+
+function onPortfolioSearch(value) {
+  _portfolioSearch = value || ''
+  const el = document.getElementById('page-portfolio-library')
+  if (el) { el.dataset.loaded = ''; loadPage('portfolio-library', el) }
+}
+
+async function openPortfolioEditModal(portfolioId) {
+  let existing = null
+  if (portfolioId) {
+    try {
+      const res = await API.get('/portfolios')
+      const all = res.data || res.portfolios || []
+      existing = all.find((p) => String(p.id) === String(portfolioId)) || null
+    } catch {}
+    if (!existing) { toast('Portfolio not found', 'error'); return }
+  }
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-briefcase" style="color:#FFB347;margin-right:6px"></i>${existing ? 'Edit' : 'Add'} Portfolio</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Title *</label>
+        <input id="pf-title" class="form-input" value="${escapeHtml(existing?.title || '')}" placeholder="e.g. Web Development Portfolio 2026"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea id="pf-description" class="form-input" rows="3" placeholder="Short description shown on the card">${escapeHtml(existing?.description || '')}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">File ${existing ? '(leave blank to keep current)' : '*'}</label>
+        <input id="pf-file" type="file" class="form-input" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.ppt,.pptx" style="padding:6px"/>
+        ${existing?.file?.url ? `<div class="form-hint" style="margin-top:6px">Current: <a href="${escapeHtml(existing.file.url)}" target="_blank" rel="noopener" style="color:#FFB347">${escapeHtml(existing.file.name)}</a> · ${formatBytes(existing.file.size || 0)}</div>` : '<div class="form-hint">PDF, image, doc, or slides. Up to 10 MB.</div>'}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="pf-save-btn" onclick="submitPortfolioEdit('${existing?.id || ''}')"><i class="fas fa-save"></i> ${existing ? 'Save' : 'Add Portfolio'}</button>
+    </div>
+  `, 'modal-lg')
+}
+
+async function submitPortfolioEdit(portfolioId) {
+  const title = (document.getElementById('pf-title')?.value || '').trim()
+  const description = (document.getElementById('pf-description')?.value || '').trim()
+  const fileInput = document.getElementById('pf-file')
+  const file = fileInput?.files?.[0]
+  const saveBtn = document.getElementById('pf-save-btn')
+  if (!title) { toast('Title is required', 'error'); return }
+  if (!portfolioId && !file) { toast('Please choose a file', 'error'); return }
+  if (file && file.size > 10 * 1024 * 1024) { toast('File exceeds 10 MB', 'error'); return }
+
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
+  try {
+    let fileMeta = null
+    if (file) {
+      const form = new FormData()
+      form.append('file', file)
+      const upRes = await fetch('/api/uploads', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + _token },
+        body: form,
+      })
+      const upData = await upRes.json().catch(() => ({}))
+      if (!upRes.ok) throw new Error(upData.error || 'Upload failed')
+      fileMeta = {
+        url: upData.url || upData.file_url,
+        name: upData.original_name || file.name,
+        mime: upData.mime_type || file.type,
+        size: upData.size || file.size,
+      }
+    }
+    const payload = { title, description }
+    if (fileMeta) payload.file = fileMeta
+    if (portfolioId) await API.put('/portfolios/' + portfolioId, payload)
+    else             await API.post('/portfolios', payload)
+    toast(portfolioId ? 'Portfolio updated' : 'Portfolio added', 'success')
+    closeModal()
+    const el = document.getElementById('page-portfolio-library')
+    if (el) { el.dataset.loaded = ''; loadPage('portfolio-library', el) }
+  } catch (e) {
+    toast('Save failed: ' + (e.message || 'unknown'), 'error')
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save"></i> Save' }
+  }
+}
+
+async function deletePortfolioEntry(id, title) {
+  if (!confirm(`Delete portfolio "${title}"? Send history will be preserved.`)) return
+  try {
+    await API.delete('/portfolios/' + id)
+    toast('Portfolio deleted', 'success')
+    const el = document.getElementById('page-portfolio-library')
+    if (el) { el.dataset.loaded = ''; loadPage('portfolio-library', el) }
+  } catch (e) {
+    toast('Delete failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+// ── SEND TO LEAD ───────────────────────────────────────────
+let _portfolioSendCache = { portfolioId: '', leadId: '', leads: [] }
+
+async function openPortfolioSendModal(portfolioId) {
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-paper-plane" style="color:#FFB347;margin-right:6px"></i>Send Portfolio</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div></div>
+  `, 'modal-lg')
+  try {
+    const [pfRes, leadsRes] = await Promise.all([
+      API.get('/portfolios'),
+      API.get('/leads'),
+    ])
+    const portfolio = (pfRes.data || pfRes.portfolios || []).find((p) => String(p.id) === String(portfolioId))
+    const leads = leadsRes.data || leadsRes.leads || []
+    if (!portfolio) throw new Error('Portfolio not found')
+    _portfolioSendCache = { portfolioId, leadId: '', leads }
+
+    const modal = document.querySelector('.modal .modal-body')?.parentElement
+    if (!modal) return
+    modal.innerHTML = `
+      <div class="modal-header">
+        <h3><i class="fas fa-paper-plane" style="color:#FFB347;margin-right:6px"></i>Send "${escapeHtml(portfolio.title)}"</h3>
+        <button class="close-btn" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Lead *</label>
+          <select id="pf-send-lead" class="form-select" onchange="onPortfolioLeadPick(this.value)">
+            <option value="">— Choose a lead —</option>
+            ${leads.map((l) => `<option value="${l.id}">${escapeHtml(l.name)} · ${escapeHtml(l.email || '—')}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">To *</label>
+          <input id="pf-send-to" class="form-input" placeholder="recipient@example.com"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cc (comma separated)</label>
+          <input id="pf-send-cc" class="form-input" placeholder="optional"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subject *</label>
+          <input id="pf-send-subject" class="form-input" value="Mariox Software — ${escapeHtml(portfolio.title)}"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Message *</label>
+          <textarea id="pf-send-body" class="form-input" rows="7"></textarea>
+        </div>
+        <div style="padding:10px 12px;border-radius:8px;background:rgba(255,179,71,0.10);border:1px solid rgba(255,179,71,0.22);font-size:12px;color:#FFB347">
+          <i class="fas fa-paperclip"></i> Attachment: ${escapeHtml(portfolio.file?.name || '—')} · ${formatBytes(portfolio.file?.size || 0)}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="pf-send-btn" onclick="submitPortfolioSend()"><i class="fas fa-paper-plane"></i> Send</button>
+      </div>
+    `
+  } catch (e) {
+    const body = document.querySelector('.modal .modal-body')
+    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+  }
+}
+
+function onPortfolioLeadPick(leadId) {
+  _portfolioSendCache.leadId = leadId
+  const lead = _portfolioSendCache.leads.find((l) => String(l.id) === String(leadId))
+  if (!lead) return
+  const toEl = document.getElementById('pf-send-to')
+  const bodyEl = document.getElementById('pf-send-body')
+  if (toEl) toEl.value = lead.email || ''
+  if (bodyEl && !bodyEl.value.trim()) {
+    bodyEl.value = `Hi ${lead.name},\n\nThanks for your time. As discussed, please find our portfolio attached for your reference.\n\nLet us know if you have any questions or would like to schedule a follow-up.\n\nRegards,\n${_user?.full_name || _user?.name || 'Mariox Team'}`
+  }
+}
+
+async function submitPortfolioSend() {
+  const { portfolioId, leadId } = _portfolioSendCache
+  if (!portfolioId) { toast('Portfolio missing', 'error'); return }
+  if (!leadId) { toast('Pick a lead first', 'error'); return }
+  const to = (document.getElementById('pf-send-to')?.value || '').trim()
+  const ccRaw = (document.getElementById('pf-send-cc')?.value || '').trim()
+  const subject = (document.getElementById('pf-send-subject')?.value || '').trim()
+  const text = (document.getElementById('pf-send-body')?.value || '').trim()
+  if (!to || !subject || !text) { toast('Recipient, subject and message are required', 'error'); return }
+  const cc = ccRaw ? ccRaw.split(',').map((s) => s.trim()).filter(Boolean) : []
+  const btn = document.getElementById('pf-send-btn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
+  try {
+    await API.post(`/portfolios/${portfolioId}/send/${leadId}`, { to, cc, subject, text })
+    toast('Portfolio sent — logged on the lead timeline', 'success')
+    closeModal()
+    const el = document.getElementById('page-portfolio-library')
+    if (el) { el.dataset.loaded = ''; loadPage('portfolio-library', el) }
+  } catch (e) {
+    toast('Send failed: ' + (e.message || 'unknown'), 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send' }
+  }
+}
+
+// ── HISTORY ────────────────────────────────────────────────
+async function openPortfolioHistoryModal(portfolioId) {
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-clock-rotate-left" style="color:#FFB347;margin-right:6px"></i>Send History</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+  `, 'modal-lg')
+  try {
+    const res = await API.get(`/portfolios/${portfolioId}/history`)
+    const sends = res.data || res.sends || []
+    const body = document.querySelector('.modal .modal-body')
+    if (!body) return
+    if (!sends.length) {
+      body.innerHTML = `<div class="empty-state" style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-inbox"></i><p>This portfolio hasn't been sent yet.</p></div>`
+      return
+    }
+    body.innerHTML = `
+      <div style="font-size:12.5px;color:#94a3b8;margin-bottom:10px">${sends.length} send${sends.length === 1 ? '' : 's'} total</div>
+      <table class="data-table">
+        <thead><tr><th>Lead</th><th>Recipient</th><th>Sent By</th><th>Sent</th><th>Status</th></tr></thead>
+        <tbody>
+          ${sends.map((s) => `<tr>
+            <td>${s.lead_name ? `<a href="javascript:void(0)" onclick="closeModal();goLeadDetail('${s.lead_id}')" style="color:#FFB347;font-weight:600">${escapeHtml(s.lead_name)}</a>` : '<span style="color:#64748b">— deleted —</span>'}</td>
+            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_to || '—')}</td>
+            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_by_name || '—')}</td>
+            <td style="font-size:12px;color:#94a3b8">${s.sent_at ? fmtDate(s.sent_at) : '—'}</td>
+            <td>${s.success ? '<span class="badge badge-done">Sent</span>' : `<span class="badge badge-critical" title="${escapeHtml(s.error || 'failed')}">Failed</span>`}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    `
+  } catch (e) {
+    const body = document.querySelector('.modal .modal-body')
+    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+  }
+}
+
+// ── PERMISSIONS (admin) ───────────────────────────────────
+async function openPortfolioPermissionsModal() {
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-user-shield" style="color:#FFB347;margin-right:6px"></i>Portfolio Permissions</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+  `, 'modal-lg')
+  await _renderPortfolioPermissionsBody()
+}
+
+async function _renderPortfolioPermissionsBody() {
+  const body = document.querySelector('.modal .modal-body')
+  if (!body) return
+  body.innerHTML = `<div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
+  try {
+    const [permRes, usersRes] = await Promise.all([
+      API.get('/portfolios/permissions'),
+      API.get('/users'),
+    ])
+    const grants = permRes.data || permRes.grants || []
+    const allUsers = usersRes.users || usersRes.data || []
+    const grantedIds = new Set(grants.map((g) => String(g.user_id)))
+    const candidates = allUsers
+      .filter((u) => Number(u.is_active || 0) === 1 && String(u.role || '').toLowerCase() !== 'admin')
+      .filter((u) => !grantedIds.has(String(u.id)))
+      .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
+
+    body.innerHTML = `
+      <div style="padding:10px 12px;border-radius:8px;background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.25);font-size:12.5px;color:#93c5fd;margin-bottom:14px">
+        <i class="fas fa-info-circle"></i> Admins can always add portfolios. Use this list to give other users the same ability.
+      </div>
+
+      <div class="form-group" style="display:flex;gap:8px;align-items:flex-end">
+        <div style="flex:1">
+          <label class="form-label">Grant access to</label>
+          <select id="pf-perm-user" class="form-select">
+            <option value="">— Pick a user —</option>
+            ${candidates.map((u) => `<option value="${u.id}">${escapeHtml(u.full_name)} · ${escapeHtml(u.role || '—')}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="grantPortfolioPermission()"><i class="fas fa-plus"></i> Grant</button>
+      </div>
+
+      <div style="margin-top:18px">
+        <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px">Users with permission (${grants.length})</div>
+        ${grants.length ? `
+          <table class="data-table">
+            <thead><tr><th>User</th><th>Role</th><th>Granted</th><th style="width:90px"></th></tr></thead>
+            <tbody>
+              ${grants.map((g) => `<tr>
+                <td>
+                  <div style="font-weight:600;color:#e2e8f0">${escapeHtml(g.user_name || '—')}</div>
+                  <div style="font-size:11px;color:#94a3b8">${escapeHtml(g.user_email || '')}</div>
+                </td>
+                <td style="font-size:12px;color:#94a3b8">${escapeHtml(g.user_role || '—')}</td>
+                <td style="font-size:12px;color:#94a3b8">${g.granted_at ? fmtDate(g.granted_at) : '—'}</td>
+                <td><button class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="revokePortfolioPermission('${g.user_id}','${escapeHtml(g.user_name || '').replace(/'/g, "\\'")}')"><i class="fas fa-times"></i> Revoke</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        ` : `<div style="padding:14px;color:#64748b;font-size:12.5px">No additional users yet — admins still have full access.</div>`}
+      </div>
+    `
+  } catch (e) {
+    body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load permissions')}</div>`
+  }
+}
+
+async function grantPortfolioPermission() {
+  const userId = document.getElementById('pf-perm-user')?.value || ''
+  if (!userId) { toast('Pick a user', 'error'); return }
+  try {
+    await API.post('/portfolios/permissions', { user_id: userId })
+    toast('Permission granted', 'success')
+    await _renderPortfolioPermissionsBody()
+  } catch (e) {
+    toast('Grant failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function revokePortfolioPermission(userId, name) {
+  if (!confirm(`Revoke portfolio access for ${name}?`)) return
+  try {
+    await API.delete('/portfolios/permissions/' + userId)
+    toast('Permission revoked', 'success')
+    await _renderPortfolioPermissionsBody()
+  } catch (e) {
+    toast('Revoke failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+// Admins manage Portfolio / SOW / Quotation permissions from
+// Settings → Roles & Permissions → "Sales Library" group. This
+// helper jumps straight there so the "Permissions" button on
+// each library page lands on the right tab.
+function goToSalesLibraryPermissions() {
+  Router.navigate('settings-view')
+  // Wait for the settings page renderer to mount its tab bar before we
+  // try to switch to the Roles tab.
+  setTimeout(() => {
+    if (typeof switchSettingsTab2 === 'function') switchSettingsTab2('roles')
+  }, 60)
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GENERIC "LIBRARY" HELPERS (Scope + Quotation share this)
+   Both modules render a catalog of structured documents that
+   sales users send to leads. The list page, permissions modal,
+   history modal, and lead picker are all shaped the same — so
+   the differences sit in the editor + send-payload builders.
+   ═══════════════════════════════════════════════════════════ */
+
+function _libraryPermissionsModalShell(title) {
+  return `
+    <div class="modal-header">
+      <h3><i class="fas fa-user-shield" style="color:#FFB347;margin-right:6px"></i>${escapeHtml(title)}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+  `
+}
+
+async function _renderLibraryPermissionsBody(endpointBase, refreshFn) {
+  const body = document.querySelector('.modal .modal-body')
+  if (!body) return
+  body.innerHTML = `<div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
+  try {
+    const [permRes, usersRes] = await Promise.all([
+      API.get(endpointBase + '/permissions'),
+      API.get('/users'),
+    ])
+    const grants = permRes.data || permRes.grants || []
+    const allUsers = usersRes.users || usersRes.data || []
+    const grantedIds = new Set(grants.map((g) => String(g.user_id)))
+    const candidates = allUsers
+      .filter((u) => Number(u.is_active || 0) === 1 && String(u.role || '').toLowerCase() !== 'admin')
+      .filter((u) => !grantedIds.has(String(u.id)))
+      .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
+
+    body.innerHTML = `
+      <div style="padding:10px 12px;border-radius:8px;background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.25);font-size:12.5px;color:#93c5fd;margin-bottom:14px">
+        <i class="fas fa-info-circle"></i> Admins can always add new entries. Use this list to give other users the same ability.
+      </div>
+      <div class="form-group" style="display:flex;gap:8px;align-items:flex-end">
+        <div style="flex:1">
+          <label class="form-label">Grant access to</label>
+          <select id="lib-perm-user" class="form-select">
+            <option value="">— Pick a user —</option>
+            ${candidates.map((u) => `<option value="${u.id}">${escapeHtml(u.full_name)} · ${escapeHtml(u.role || '—')}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="${refreshFn}_grant()"><i class="fas fa-plus"></i> Grant</button>
+      </div>
+      <div style="margin-top:18px">
+        <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px">Users with permission (${grants.length})</div>
+        ${grants.length ? `
+          <table class="data-table">
+            <thead><tr><th>User</th><th>Role</th><th>Granted</th><th style="width:90px"></th></tr></thead>
+            <tbody>
+              ${grants.map((g) => `<tr>
+                <td>
+                  <div style="font-weight:600;color:#e2e8f0">${escapeHtml(g.user_name || '—')}</div>
+                  <div style="font-size:11px;color:#94a3b8">${escapeHtml(g.user_email || '')}</div>
+                </td>
+                <td style="font-size:12px;color:#94a3b8">${escapeHtml(g.user_role || '—')}</td>
+                <td style="font-size:12px;color:#94a3b8">${g.granted_at ? fmtDate(g.granted_at) : '—'}</td>
+                <td><button class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="${refreshFn}_revoke('${g.user_id}','${escapeHtml(g.user_name || '').replace(/'/g, "\\'")}')"><i class="fas fa-times"></i> Revoke</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        ` : `<div style="padding:14px;color:#64748b;font-size:12.5px">No additional users yet — admins still have full access.</div>`}
+      </div>
+    `
+  } catch (e) {
+    body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load permissions')}</div>`
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCOPE LIBRARY — structured scope-of-work documents
+   ═══════════════════════════════════════════════════════════ */
+
+let _scopeSearch = ''
+let _scopeCanManage = false
+let _scopeSendCache = { scopeId: '', leadId: '', leads: [] }
+
+async function renderScopeLibrary(el) {
+  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading scopes…</div>`
+  try {
+    const res = await API.get('/scopes')
+    const list = res.data || res.scopes || []
+    _scopeCanManage = !!res.can_manage
+    const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
+    const q = (_scopeSearch || '').toLowerCase()
+    const filtered = q ? list.filter((p) => (`${p.title || ''} ${p.overview || ''} ${p.client_name || ''}`).toLowerCase().includes(q)) : list
+
+    el.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title"><i class="fas fa-file-lines" style="color:#3b82f6;margin-right:8px"></i>Scope of Work</h1>
+          <p class="page-subtitle">${list.length} scope${list.length === 1 ? '' : 's'} · build a structured deliverable doc and email it to any lead.</p>
+        </div>
+        <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+          ${_scopeCanManage ? `<button class="btn btn-primary btn-sm" onclick="openScopeEditor()"><i class="fas fa-plus"></i> New Scope</button>` : ''}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-body" style="padding:12px 16px">
+          <div class="search-wrap" style="width:100%">
+            <i class="fas fa-search"></i>
+            <input class="search-bar" placeholder="Search by title, overview, or client…" value="${escapeHtml(_scopeSearch)}" oninput="onScopeSearch(this.value)"/>
+          </div>
+        </div>
+      </div>
+
+      ${!_scopeCanManage && !isAdmin ? `<div style="padding:10px 14px;border-radius:10px;background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.25);color:#93c5fd;font-size:12.5px;margin-bottom:14px"><i class="fas fa-info-circle"></i> You can view and send scopes. Ask an admin for permission to add new ones.</div>` : ''}
+
+      ${filtered.length ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
+          ${filtered.map((p) => _scopeCard(p)).join('')}
+        </div>
+      ` : `<div class="empty-state"><i class="fas fa-folder-open"></i><p>${list.length ? 'No scopes match your search.' : 'No scopes yet — create one to get started.'}</p></div>`}
+    `
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message || 'Failed to load scopes')}</p></div>`
+  }
+}
+
+function _scopeCard(p) {
+  const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
+  const userId = String(_user?.sub || _user?.id || '')
+  const isOwner = String(p.created_by || '') === userId
+  const canEdit = isAdmin || isOwner || _scopeCanManage
+  const canDelete = isAdmin || isOwner
+  const secCount = Array.isArray(p.sections) ? p.sections.length : 0
+  const delCount = Array.isArray(p.deliverables) ? p.deliverables.length : 0
+  return `<div class="card">
+    <div class="card-body" style="padding:16px">
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(59,130,246,0.18);color:#3b82f6;display:flex;align-items:center;justify-content:center;font-size:20px"><i class="fas fa-file-lines"></i></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:#e2e8f0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.title)}</div>
+          ${p.client_name ? `<div style="font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">For ${escapeHtml(p.client_name)}</div>` : ''}
+        </div>
+      </div>
+      ${p.overview ? `<div style="font-size:12.5px;color:#cbd5e1;line-height:1.5;margin-bottom:10px;max-height:60px;overflow:hidden">${escapeHtml(p.overview)}</div>` : ''}
+      <div style="display:flex;gap:14px;font-size:11.5px;color:#94a3b8;margin-bottom:12px;flex-wrap:wrap">
+        <span><i class="fas fa-list-ul" style="margin-right:4px;color:#64748b"></i>${secCount} section${secCount === 1 ? '' : 's'}</span>
+        <span><i class="fas fa-check" style="margin-right:4px;color:#64748b"></i>${delCount} deliverable${delCount === 1 ? '' : 's'}</span>
+        ${p.file?.url ? `<a href="${escapeHtml(p.file.url)}" target="_blank" rel="noopener" style="color:#3b82f6" title="${escapeHtml(p.file.name)}"><i class="fas fa-paperclip" style="margin-right:4px"></i>File attached</a>` : ''}
+        <span><i class="fas fa-paper-plane" style="margin-right:4px;color:#64748b"></i>${p.send_count || 0} sent</span>
+        ${p.last_sent_at ? `<span><i class="fas fa-clock" style="margin-right:4px;color:#64748b"></i>${fmtDate(p.last_sent_at)}</span>` : ''}
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-xs" onclick="openScopeSendModal('${p.id}')"><i class="fas fa-paper-plane"></i> Send</button>
+        <button class="btn btn-outline btn-xs" onclick="openScopePreview('${p.id}')"><i class="fas fa-eye"></i> Preview</button>
+        <button class="btn btn-outline btn-xs" onclick="openScopeHistoryModal('${p.id}')"><i class="fas fa-clock-rotate-left"></i> History</button>
+        ${canEdit ? `<button class="btn btn-outline btn-xs" onclick="openScopeEditor('${p.id}')"><i class="fas fa-edit"></i></button>` : ''}
+        ${canDelete ? `<button class="btn btn-outline btn-xs" style="color:#FF5E3A" onclick="deleteScopeEntry('${p.id}','${escapeHtml(p.title).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>` : ''}
+      </div>
+    </div>
+  </div>`
+}
+
+function onScopeSearch(value) {
+  _scopeSearch = value || ''
+  const el = document.getElementById('page-scope-library')
+  if (el) { el.dataset.loaded = ''; loadPage('scope-library', el) }
+}
+
+let _scopeDraft = null
+
+async function openScopeEditor(scopeId) {
+  if (scopeId) {
+    try {
+      const res = await API.get('/scopes/' + scopeId)
+      _scopeDraft = _scopeNormalizeDraft(res.data)
+    } catch (e) { toast('Failed to load scope', 'error'); return }
+  } else {
+    _scopeDraft = {
+      title: '',
+      project_name: '',
+      client_name: '',
+      spoc_name: '',
+      overview: '',
+      sections: [{ heading: '', body: '', blocks: [{ type: 'paragraph', text: '' }] }],
+      deliverables: [],
+      timeline_text: '',
+      assumptions: '',
+      footer_text: '',
+      file: null,
+    }
+  }
+  _renderScopeEditorModal(scopeId || null)
+}
+
+// Make sure server-loaded drafts always have arrays where we expect them.
+function _scopeNormalizeDraft(d) {
+  const out = Object.assign({
+    title: '', project_name: '', client_name: '', spoc_name: '',
+    overview: '', sections: [], deliverables: [],
+    timeline_text: '', assumptions: '', footer_text: '',
+    file: null,
+  }, d || {})
+  out.sections = (out.sections || []).map((s) => ({
+    heading: s?.heading || '',
+    body: s?.body || '',
+    blocks: Array.isArray(s?.blocks) ? s.blocks.map((b) => Object.assign({}, b)) : [],
+  }))
+  out.deliverables = Array.isArray(out.deliverables) ? out.deliverables.slice() : []
+  return out
+}
+
+function _renderScopeEditorModal(scopeId) {
+  const d = _scopeDraft
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-file-lines" style="color:#3b82f6;margin-right:6px"></i>${scopeId ? 'Edit' : 'New'} Scope of Work</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:11.5px;color:#94a3b8">Build a structured SOW with sections, tables, bullets and more.</span>
+        <button class="btn btn-outline btn-xs" onclick="insertScopeSowTemplate()"><i class="fas fa-wand-magic-sparkles"></i> Insert SOW template</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Catalog title *</label>
+          <input class="form-input" placeholder="e.g. Klicpic Web Platform SOW" value="${escapeHtml(d.title || '')}" oninput="_scopeDraft.title=this.value"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Project Name</label>
+          <input class="form-input" placeholder="e.g. Klicpic — Web Platform (Phase 1)" value="${escapeHtml(d.project_name || '')}" oninput="_scopeDraft.project_name=this.value"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client</label>
+          <input class="form-input" placeholder="e.g. KLICPIC" value="${escapeHtml(d.client_name || '')}" oninput="_scopeDraft.client_name=this.value"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">SPOC (Single Point of Contact)</label>
+          <input class="form-input" placeholder="e.g. Mr. Deepak Kapoor" value="${escapeHtml(d.spoc_name || '')}" oninput="_scopeDraft.spoc_name=this.value"/>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Overview / Introduction</label>
+        <textarea class="form-input" rows="3" placeholder="Short summary that appears as the SOW intro paragraph" oninput="_scopeDraft.overview=this.value">${escapeHtml(d.overview || '')}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Upload SOW file (optional)</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="scope-file-input" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" class="form-input" style="flex:1;padding:6px" onchange="uploadScopeFile(this.files[0])"/>
+          ${d.file?.url ? `<button class="btn btn-outline btn-xs" onclick="removeScopeFile()" type="button"><i class="fas fa-times"></i> Remove</button>` : ''}
+        </div>
+        <div id="scope-file-meta" class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">
+          ${d.file?.url
+            ? `<i class="fas fa-paperclip" style="color:#3b82f6"></i> Attached: <a href="${escapeHtml(d.file.url)}" target="_blank" rel="noopener" style="color:#3b82f6">${escapeHtml(d.file.name)}</a> · ${formatBytes(d.file.size || 0)}`
+            : 'PDF/DOCX/image up to 10 MB. The file will be attached to the email alongside the rendered SOW.'}
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px">
+        <span style="font-size:13px;color:#cbd5e1;font-weight:600"><i class="fas fa-list-ol" style="margin-right:6px;color:#3b82f6"></i>Numbered Sections</span>
+        <button class="btn btn-outline btn-xs" onclick="addScopeSection()"><i class="fas fa-plus"></i> Add section</button>
+      </div>
+      <div id="scope-sections-wrap"></div>
+
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;font-size:12.5px;color:#94a3b8;padding:8px 0">More document fields (deliverables, timeline, assumptions, footer)</summary>
+        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-top:8px;background:rgba(255,255,255,0.02)">
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Timeline</label>
+              <textarea class="form-input" rows="3" placeholder="High-level milestones / dates" oninput="_scopeDraft.timeline_text=this.value">${escapeHtml(d.timeline_text || '')}</textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Assumptions &amp; Notes</label>
+              <textarea class="form-input" rows="3" placeholder="Anything the prospect should be aware of" oninput="_scopeDraft.assumptions=this.value">${escapeHtml(d.assumptions || '')}</textarea>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin:6px 0 6px">
+            <span style="font-size:12.5px;color:#cbd5e1;font-weight:600"><i class="fas fa-check-double" style="margin-right:6px;color:#22c55e"></i>Deliverables (legacy bullet block)</span>
+            <button class="btn btn-outline btn-xs" onclick="addScopeDeliverable()"><i class="fas fa-plus"></i> Add</button>
+          </div>
+          <div id="scope-deliverables-wrap"></div>
+          <div class="form-group" style="margin-top:10px;margin-bottom:0">
+            <label class="form-label">Footer text</label>
+            <textarea class="form-input" rows="2" placeholder="e.g. Acceptance & sign-off notes" oninput="_scopeDraft.footer_text=this.value">${escapeHtml(d.footer_text || '')}</textarea>
+          </div>
+        </div>
+      </details>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-outline" onclick="previewScopeFromDraft()"><i class="fas fa-eye"></i> Preview</button>
+      <button class="btn btn-primary" id="scope-save-btn" onclick="submitScopeEditor('${scopeId || ''}')"><i class="fas fa-save"></i> ${scopeId ? 'Save' : 'Create'}</button>
+    </div>
+  `, 'modal-xl')
+  _rerenderScopeSections()
+  _rerenderScopeDeliverables()
+}
+
+// ── Sections + blocks ─────────────────────────────────────
+function _ensureSectionBlocks(s) {
+  if (!Array.isArray(s.blocks)) s.blocks = []
+  return s
+}
+
+function updateScopeSection(i, key, value) {
+  if (!_scopeDraft.sections[i]) return
+  _scopeDraft.sections[i][key] = value
+}
+function addScopeSection() {
+  _scopeDraft.sections.push({ heading: '', body: '', blocks: [{ type: 'paragraph', text: '' }] })
+  _rerenderScopeSections()
+}
+function removeScopeSection(i) {
+  if (!confirm('Remove this section?')) return
+  _scopeDraft.sections.splice(i, 1)
+  _rerenderScopeSections()
+}
+function moveScopeSection(i, dir) {
+  const arr = _scopeDraft.sections
+  const j = i + dir
+  if (j < 0 || j >= arr.length) return
+  ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  _rerenderScopeSections()
+}
+
+function _rerenderScopeSections() {
+  const wrap = document.getElementById('scope-sections-wrap')
+  if (!wrap) return
+  wrap.innerHTML = (_scopeDraft.sections || []).map((s, i) => {
+    _ensureSectionBlocks(s)
+    return `
+      <div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;background:rgba(255,255,255,0.02)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px">
+          <span style="font-size:12px;color:#3b82f6;font-weight:700;letter-spacing:.4px;text-transform:uppercase">Section ${i + 1}</span>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-xs btn-outline" title="Move up" onclick="moveScopeSection(${i},-1)" ${i === 0 ? 'disabled' : ''}><i class="fas fa-arrow-up"></i></button>
+            <button class="btn btn-xs btn-outline" title="Move down" onclick="moveScopeSection(${i},1)" ${i === (_scopeDraft.sections.length - 1) ? 'disabled' : ''}><i class="fas fa-arrow-down"></i></button>
+            <button class="btn btn-xs btn-outline" style="color:#FF5E3A" title="Remove section" onclick="removeScopeSection(${i})"><i class="fas fa-trash"></i></button>
+          </div>
+        </div>
+        <input class="form-input" placeholder="Section heading (e.g. CRM & Lead Management Module)" value="${escapeHtml(s.heading || '')}" oninput="updateScopeSection(${i},'heading',this.value)" style="margin-bottom:10px;font-weight:600"/>
+        <div id="scope-blocks-${i}" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,255,255,0.08)">
+          <span style="font-size:11px;color:#64748b;align-self:center;margin-right:4px">Add block:</span>
+          <button class="btn btn-xs btn-outline" onclick="addScopeBlock(${i},'paragraph')"><i class="fas fa-paragraph"></i> Paragraph</button>
+          <button class="btn btn-xs btn-outline" onclick="addScopeBlock(${i},'subheading')"><i class="fas fa-heading"></i> Sub-heading</button>
+          <button class="btn btn-xs btn-outline" onclick="addScopeBlock(${i},'bullets')"><i class="fas fa-list-ul"></i> Bullets</button>
+          <button class="btn btn-xs btn-outline" onclick="addScopeBlock(${i},'numbered')"><i class="fas fa-list-ol"></i> Numbered</button>
+          <button class="btn btn-xs btn-outline" onclick="addScopeBlock(${i},'table')"><i class="fas fa-table"></i> Table</button>
+          <button class="btn btn-xs btn-outline" onclick="addScopeBlock(${i},'code')"><i class="fas fa-code"></i> Code / Diagram</button>
+        </div>
+      </div>
+    `
+  }).join('')
+  ;(_scopeDraft.sections || []).forEach((_, i) => _rerenderScopeBlocks(i))
+}
+
+function addScopeBlock(sectionIdx, type) {
+  const s = _scopeDraft.sections[sectionIdx]
+  if (!s) return
+  _ensureSectionBlocks(s)
+  if (type === 'paragraph')      s.blocks.push({ type: 'paragraph', text: '' })
+  else if (type === 'subheading')s.blocks.push({ type: 'subheading', text: '' })
+  else if (type === 'bullets')   s.blocks.push({ type: 'bullets', items: [''] })
+  else if (type === 'numbered')  s.blocks.push({ type: 'numbered', items: [''] })
+  else if (type === 'code')      s.blocks.push({ type: 'code', text: '' })
+  else if (type === 'table')     s.blocks.push({ type: 'table', columns: ['Feature', 'Description', 'Example / Use Case'], rows: [['', '', '']] })
+  _rerenderScopeBlocks(sectionIdx)
+}
+
+function removeScopeBlock(sectionIdx, blockIdx) {
+  const s = _scopeDraft.sections[sectionIdx]
+  if (!s) return
+  s.blocks.splice(blockIdx, 1)
+  _rerenderScopeBlocks(sectionIdx)
+}
+
+function moveScopeBlock(sectionIdx, blockIdx, dir) {
+  const s = _scopeDraft.sections[sectionIdx]
+  if (!s) return
+  const j = blockIdx + dir
+  if (j < 0 || j >= s.blocks.length) return
+  ;[s.blocks[blockIdx], s.blocks[j]] = [s.blocks[j], s.blocks[blockIdx]]
+  _rerenderScopeBlocks(sectionIdx)
+}
+
+function updateScopeBlockField(sectionIdx, blockIdx, key, value) {
+  const b = _scopeDraft.sections[sectionIdx]?.blocks?.[blockIdx]
+  if (!b) return
+  b[key] = value
+}
+
+function updateScopeListItem(sectionIdx, blockIdx, itemIdx, value) {
+  const b = _scopeDraft.sections[sectionIdx]?.blocks?.[blockIdx]
+  if (!b || !Array.isArray(b.items)) return
+  b.items[itemIdx] = value
+}
+function addScopeListItem(sectionIdx, blockIdx) {
+  const b = _scopeDraft.sections[sectionIdx]?.blocks?.[blockIdx]
+  if (!b || !Array.isArray(b.items)) return
+  b.items.push('')
+  _rerenderScopeBlocks(sectionIdx)
+}
+function removeScopeListItem(sectionIdx, blockIdx, itemIdx) {
+  const b = _scopeDraft.sections[sectionIdx]?.blocks?.[blockIdx]
+  if (!b || !Array.isArray(b.items)) return
+  b.items.splice(itemIdx, 1)
+  if (!b.items.length) b.items.push('')
+  _rerenderScopeBlocks(sectionIdx)
+}
+
+// Table ops
+function updateScopeTableColumn(sectionIdx, blockIdx, colIdx, value) {
+  const b = _scopeDraft.sections[sectionIdx]?.blocks?.[blockIdx]
+  if (!b || b.type !== 'table') return
+  b.columns[colIdx] = value
+}
+function updateScopeTableCell(sectionIdx, blockIdx, rowIdx, colIdx, value) {
+  const b = _scopeDraft.sections[sectionIdx]?.blocks?.[blockIdx]
+  if (!b || b.type !== 'table') return
+  if (!Array.isArray(b.rows[rowIdx])) b.rows[rowIdx] = []
+  b.rows[rowIdx][colIdx] = value
+}
+function addScopeTableColumn(sectionIdx, blockIdx) {
+  const b = _scopeDraft.sections[sectionIdx]?.blocks?.[blockIdx]
+  if (!b || b.type !== 'table') return
+  b.columns.push('Column ' + (b.columns.length + 1))
+  b.rows.forEach((r) => r.push(''))
+  _rerenderScopeBlocks(sectionIdx)
+}
+function removeScopeTableColumn(sectionIdx, blockIdx, colIdx) {
+  const b = _scopeDraft.sections[sectionIdx]?.blocks?.[blockIdx]
+  if (!b || b.type !== 'table' || b.columns.length <= 1) return
+  b.columns.splice(colIdx, 1)
+  b.rows.forEach((r) => r.splice(colIdx, 1))
+  _rerenderScopeBlocks(sectionIdx)
+}
+function addScopeTableRow(sectionIdx, blockIdx) {
+  const b = _scopeDraft.sections[sectionIdx]?.blocks?.[blockIdx]
+  if (!b || b.type !== 'table') return
+  b.rows.push(b.columns.map(() => ''))
+  _rerenderScopeBlocks(sectionIdx)
+}
+function removeScopeTableRow(sectionIdx, blockIdx, rowIdx) {
+  const b = _scopeDraft.sections[sectionIdx]?.blocks?.[blockIdx]
+  if (!b || b.type !== 'table') return
+  b.rows.splice(rowIdx, 1)
+  if (!b.rows.length) b.rows.push(b.columns.map(() => ''))
+  _rerenderScopeBlocks(sectionIdx)
+}
+
+function _scopeBlockToolbar(sectionIdx, blockIdx, blocksLen, label, icon) {
+  return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;font-weight:600"><i class="fas ${icon}" style="margin-right:4px;color:#64748b"></i>${label}</span>
+    <div style="display:flex;gap:4px">
+      <button class="btn btn-xs btn-outline" title="Move up" onclick="moveScopeBlock(${sectionIdx},${blockIdx},-1)" ${blockIdx === 0 ? 'disabled' : ''}><i class="fas fa-arrow-up"></i></button>
+      <button class="btn btn-xs btn-outline" title="Move down" onclick="moveScopeBlock(${sectionIdx},${blockIdx},1)" ${blockIdx === blocksLen - 1 ? 'disabled' : ''}><i class="fas fa-arrow-down"></i></button>
+      <button class="btn btn-xs btn-outline" style="color:#FF5E3A" title="Remove block" onclick="removeScopeBlock(${sectionIdx},${blockIdx})"><i class="fas fa-times"></i></button>
+    </div>
+  </div>`
+}
+
+function _renderScopeBlockEditor(sectionIdx, blockIdx, b, blocksLen) {
+  const wrap = (label, icon, inner) => `
+    <div style="padding:10px;border:1px solid rgba(59,130,246,0.18);border-radius:10px;background:rgba(59,130,246,0.04)">
+      ${_scopeBlockToolbar(sectionIdx, blockIdx, blocksLen, label, icon)}
+      ${inner}
+    </div>`
+
+  if (b.type === 'paragraph') {
+    return wrap('Paragraph', 'fa-paragraph',
+      `<textarea class="form-input" rows="3" placeholder="Paragraph text" oninput="updateScopeBlockField(${sectionIdx},${blockIdx},'text',this.value)">${escapeHtml(b.text || '')}</textarea>`)
+  }
+  if (b.type === 'subheading') {
+    return wrap('Sub-heading', 'fa-heading',
+      `<input class="form-input" placeholder="Sub-heading text" value="${escapeHtml(b.text || '')}" oninput="updateScopeBlockField(${sectionIdx},${blockIdx},'text',this.value)" style="font-weight:600"/>`)
+  }
+  if (b.type === 'bullets' || b.type === 'numbered') {
+    const isNum = b.type === 'numbered'
+    const itemsHtml = (b.items || []).map((it, i) => `
+      <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center">
+        <span style="font-size:11px;color:#64748b;width:18px;text-align:right">${isNum ? (i + 1) + '.' : '•'}</span>
+        <input class="form-input" placeholder="Item" value="${escapeHtml(it || '')}" oninput="updateScopeListItem(${sectionIdx},${blockIdx},${i},this.value)" style="flex:1"/>
+        <button class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="removeScopeListItem(${sectionIdx},${blockIdx},${i})"><i class="fas fa-times"></i></button>
+      </div>`).join('')
+    return wrap(isNum ? 'Numbered list' : 'Bulleted list', isNum ? 'fa-list-ol' : 'fa-list-ul', `
+      ${itemsHtml}
+      <button class="btn btn-outline btn-xs" onclick="addScopeListItem(${sectionIdx},${blockIdx})" style="margin-top:4px"><i class="fas fa-plus"></i> Add item</button>
+    `)
+  }
+  if (b.type === 'table') {
+    const colHeaders = (b.columns || []).map((c, ci) => `
+      <th style="padding:4px;min-width:120px">
+        <div style="display:flex;gap:4px;align-items:center">
+          <input class="form-input" value="${escapeHtml(c || '')}" placeholder="Column ${ci + 1}" oninput="updateScopeTableColumn(${sectionIdx},${blockIdx},${ci},this.value)" style="font-weight:600;padding:6px 8px;font-size:12px"/>
+          <button class="btn btn-xs btn-outline" style="color:#FF5E3A;padding:2px 6px" title="Remove column" onclick="removeScopeTableColumn(${sectionIdx},${blockIdx},${ci})" ${b.columns.length <= 1 ? 'disabled' : ''}><i class="fas fa-times"></i></button>
+        </div>
+      </th>`).join('')
+    const rowsHtml = (b.rows || []).map((r, ri) => {
+      const cellsHtml = b.columns.map((_, ci) => `
+        <td style="padding:4px;vertical-align:top">
+          <textarea class="form-input" rows="2" placeholder="..." oninput="updateScopeTableCell(${sectionIdx},${blockIdx},${ri},${ci},this.value)" style="padding:6px 8px;font-size:12px;min-height:40px">${escapeHtml(r[ci] || '')}</textarea>
+        </td>`).join('')
+      return `<tr>${cellsHtml}<td style="padding:4px;vertical-align:top;width:34px"><button class="btn btn-xs btn-outline" style="color:#FF5E3A" title="Remove row" onclick="removeScopeTableRow(${sectionIdx},${blockIdx},${ri})"><i class="fas fa-times"></i></button></td></tr>`
+    }).join('')
+    return wrap('Table', 'fa-table', `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:separate;border-spacing:0">
+          <thead><tr>${colHeaders}<th style="width:34px"></th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button class="btn btn-outline btn-xs" onclick="addScopeTableRow(${sectionIdx},${blockIdx})"><i class="fas fa-plus"></i> Add row</button>
+        <button class="btn btn-outline btn-xs" onclick="addScopeTableColumn(${sectionIdx},${blockIdx})"><i class="fas fa-plus"></i> Add column</button>
+      </div>
+    `)
+  }
+  if (b.type === 'code') {
+    return wrap('Code / Diagram', 'fa-code',
+      `<textarea class="form-input" rows="6" placeholder="ASCII diagram or preformatted text (monospace)" oninput="updateScopeBlockField(${sectionIdx},${blockIdx},'text',this.value)" style="font-family:'IBM Plex Mono','Courier New',monospace;font-size:12px;white-space:pre">${escapeHtml(b.text || '')}</textarea>`)
+  }
+  return ''
+}
+
+function _rerenderScopeBlocks(sectionIdx) {
+  const wrap = document.getElementById('scope-blocks-' + sectionIdx)
+  const s = _scopeDraft.sections[sectionIdx]
+  if (!wrap || !s) return
+  _ensureSectionBlocks(s)
+  if (!s.blocks.length) {
+    wrap.innerHTML = `<div style="font-size:12px;color:#64748b;padding:10px;text-align:center;border:1px dashed rgba(255,255,255,0.10);border-radius:8px">No blocks yet — add a paragraph, table, or list using the buttons below.</div>`
+    return
+  }
+  wrap.innerHTML = s.blocks.map((b, bi) => _renderScopeBlockEditor(sectionIdx, bi, b, s.blocks.length)).join('')
+}
+
+// Legacy "Deliverables" bullet block (kept for backward compat)
+function updateScopeDeliverable(i, value) { _scopeDraft.deliverables[i] = value }
+function addScopeDeliverable() {
+  _scopeDraft.deliverables.push('')
+  _rerenderScopeDeliverables()
+}
+function removeScopeDeliverable(i) {
+  _scopeDraft.deliverables.splice(i, 1)
+  _rerenderScopeDeliverables()
+}
+function _rerenderScopeDeliverables() {
+  const wrap = document.getElementById('scope-deliverables-wrap')
+  if (!wrap) return
+  const list = _scopeDraft.deliverables || []
+  wrap.innerHTML = list.length ? list.map((dl, i) => `
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <input class="form-input" placeholder="Deliverable ${i + 1}" value="${escapeHtml(dl || '')}" oninput="updateScopeDeliverable(${i},this.value)" style="flex:1"/>
+      <button class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="removeScopeDeliverable(${i})"><i class="fas fa-times"></i></button>
+    </div>
+  `).join('') : `<div style="font-size:11.5px;color:#64748b">No legacy deliverables. Prefer adding a Bullets block inside a section.</div>`
+}
+
+async function submitScopeEditor(scopeId) {
+  const d = _scopeDraft
+  if (!d.title || d.title.trim().length < 2) { toast('Catalog title is required', 'error'); return }
+  const payload = _scopeDraftToPayload(d)
+  const btn = document.getElementById('scope-save-btn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
+  try {
+    if (scopeId) await API.put('/scopes/' + scopeId, payload)
+    else         await API.post('/scopes', payload)
+    toast(scopeId ? 'Scope updated' : 'Scope created', 'success')
+    closeModal()
+    const el = document.getElementById('page-scope-library')
+    if (el) { el.dataset.loaded = ''; loadPage('scope-library', el) }
+  } catch (e) {
+    toast('Save failed: ' + (e.message || 'unknown'), 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save' }
+  }
+}
+
+function _scopeDraftToPayload(d) {
+  return {
+    title: (d.title || '').trim(),
+    project_name: (d.project_name || '').trim(),
+    client_name: (d.client_name || '').trim(),
+    spoc_name: (d.spoc_name || '').trim(),
+    overview: (d.overview || '').trim(),
+    sections: (d.sections || []).map((s) => ({
+      heading: (s.heading || '').trim(),
+      body: (s.body || '').trim(),
+      blocks: (s.blocks || []).map((b) => {
+        if (b.type === 'paragraph' || b.type === 'subheading' || b.type === 'code') return { type: b.type, text: String(b.text || '') }
+        if (b.type === 'bullets' || b.type === 'numbered') return { type: b.type, items: (b.items || []).map((x) => String(x || '')) }
+        if (b.type === 'table') return { type: 'table', columns: (b.columns || []).map((c) => String(c || '')), rows: (b.rows || []).map((r) => (r || []).map((c) => String(c || ''))) }
+        return null
+      }).filter(Boolean),
+    })).filter((s) => s.heading || s.body || s.blocks.length),
+    deliverables: (d.deliverables || []).map((x) => String(x || '').trim()).filter(Boolean),
+    timeline_text: (d.timeline_text || '').trim(),
+    assumptions: (d.assumptions || '').trim(),
+    footer_text: (d.footer_text || '').trim(),
+    file: d.file && d.file.url ? d.file : null,
+  }
+}
+
+async function uploadScopeFile(file) {
+  if (!file) return
+  if (file.size > 10 * 1024 * 1024) { toast('File exceeds 10 MB', 'error'); return }
+  const meta = document.getElementById('scope-file-meta')
+  if (meta) meta.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Uploading "${escapeHtml(file.name)}"…`
+  try {
+    const form = new FormData()
+    form.append('file', file)
+    const upRes = await fetch('/api/uploads', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + _token },
+      body: form,
+    })
+    const data = await upRes.json().catch(() => ({}))
+    if (!upRes.ok) throw new Error(data.error || 'Upload failed')
+    _scopeDraft.file = {
+      url: data.url || data.file_url,
+      name: data.original_name || file.name,
+      mime: data.mime_type || file.type,
+      size: data.size || file.size,
+    }
+    if (meta) meta.innerHTML = `<i class="fas fa-paperclip" style="color:#3b82f6"></i> Attached: <a href="${escapeHtml(_scopeDraft.file.url)}" target="_blank" rel="noopener" style="color:#3b82f6">${escapeHtml(_scopeDraft.file.name)}</a> · ${formatBytes(_scopeDraft.file.size)}`
+    toast('File uploaded', 'success')
+  } catch (e) {
+    if (meta) meta.innerHTML = '<span style="color:#FF5E3A">Upload failed: ' + escapeHtml(e.message || 'unknown') + '</span>'
+    toast('Upload failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+function removeScopeFile() {
+  _scopeDraft.file = null
+  const meta = document.getElementById('scope-file-meta')
+  if (meta) meta.innerHTML = 'PDF/DOCX/image up to 10 MB. The file will be attached to the email alongside the rendered SOW.'
+  const input = document.getElementById('scope-file-input')
+  if (input) input.value = ''
+}
+
+function insertScopeSowTemplate() {
+  if (!confirm('Replace the current sections with a sample Mariox SOW template? This overwrites any sections you have now.')) return
+  _scopeDraft.project_name = _scopeDraft.project_name || 'Project Name — Phase 1'
+  _scopeDraft.overview = _scopeDraft.overview || 'This Statement of Work (SOW) defines the scope, deliverables, milestones, timelines, payment structure, deployment responsibilities, and acceptance criteria for the project.'
+  _scopeDraft.sections = [
+    {
+      heading: 'Project Overview', body: '',
+      blocks: [
+        { type: 'paragraph', text: 'The objective of this phase is to build a scalable, secure, and modular system to support the client\'s sales, operations, booking, and customer engagement workflows.' },
+        { type: 'subheading', text: 'Core Capabilities' },
+        { type: 'bullets', items: ['Centralized CRM & Lead Management', 'Online sales enablement', 'Booking & calendar management', 'Media storage & lifecycle management', 'WhatsApp / Dialer automation', 'Reporting, analytics & role-based admin'] },
+      ],
+    },
+    {
+      heading: 'Technology Stack', body: '',
+      blocks: [
+        { type: 'table', columns: ['Layer', 'Technology'], rows: [
+          ['Frontend', 'React / Flutter Web (component-based UI)'],
+          ['Backend', 'Node.js (NestJS / Express)'],
+          ['Database', 'PostgreSQL / MongoDB'],
+          ['Cache & Queue', 'Redis / BullMQ'],
+          ['Cloud Storage', 'AWS S3 / Azure Blob'],
+          ['Hosting', 'AWS / Azure / DigitalOcean'],
+          ['Authentication', 'JWT + Role-Based Access Control'],
+        ] },
+      ],
+    },
+    {
+      heading: 'CRM & Lead Management Module', body: '',
+      blocks: [
+        { type: 'table', columns: ['Feature', 'Description', 'Example / Use Case'], rows: [
+          ['Multi-source Lead Capture', 'Capture leads from Meta Ads, WhatsApp, IVR, Web Forms', 'Meta ad lead auto-appears in CRM'],
+          ['Lead De-duplication', 'Phone/email-based duplicate prevention', 'Same user submits form twice'],
+          ['Auto Assignment', 'Rule-based lead routing (JSON-configured)', 'Meta leads → Sales Team A'],
+          ['Lead Pipeline', 'Predefined sales stages', 'Agent moves lead to "Qualified"'],
+          ['Activity Timeline', 'Unified lead activity history', 'Calls + WhatsApp + notes in one view'],
+        ] },
+      ],
+    },
+    {
+      heading: 'High-Level Logical Architecture', body: '',
+      blocks: [
+        { type: 'paragraph', text: 'Can be implemented as a modular monolith (single Node.js app with separated domains) or microservices for future scaling.' },
+        { type: 'subheading', text: 'Core Domains' },
+        { type: 'numbered', items: ['Auth & User Management Service', 'CRM & Lead Service', 'Task & Follow-Up Service', 'Catalog / Browsing Service', 'Booking & Calendar Service', 'Media Management Service', 'WhatsApp & Automation Engine', 'Reporting & Analytics Service', 'Admin & Settings Service'] },
+      ],
+    },
+    {
+      heading: 'Development Timeline (Milestone-wise)', body: '',
+      blocks: [
+        { type: 'paragraph', text: 'Overall Development Duration: 80–90 working days.' },
+        { type: 'table', columns: ['Milestone', 'Scope Covered', 'Estimated Dev Duration'], rows: [
+          ['Milestone 1', 'CRM, Lead Capture, Core Architecture, HLD', '20–25 working days'],
+          ['Milestone 2', 'Online Catalog, Sales Funnel, Booking Engine', '20–22 working days'],
+          ['Milestone 3', 'Media Management, Automation, Reports', '20–22 working days'],
+          ['Milestone 4', 'System Hardening, UAT Support, Deployment', '15–20 working days'],
+        ] },
+      ],
+    },
+    {
+      heading: 'Invoice Raising & Payment', body: '',
+      blocks: [
+        { type: 'bullets', items: ['Invoices raised per milestone entry conditions defined in the SLA.', 'For the final milestone, 15% advance and 10% on completion before deployment.'] },
+      ],
+    },
+    {
+      heading: 'Deployment & Support', body: '',
+      blocks: [
+        { type: 'bullets', items: ['Production deployment is included within the final milestone.', 'Deployment includes server setup assistance, environment configuration, and release.', '90 days post-deployment warranty support — bug fixes, performance tuning, minor refinements (non-scope-impacting).'] },
+      ],
+    },
+    {
+      heading: 'Exclusions & Third-Party Costs', body: '',
+      blocks: [
+        { type: 'paragraph', text: 'The following are excluded and shall be borne directly by the client:' },
+        { type: 'bullets', items: ['Hosting & server costs', 'WhatsApp API charges', 'Dialer provider charges', 'SMS, OCR & cloud storage usage', 'Any third-party licenses'] },
+      ],
+    },
+    {
+      heading: 'IP Ownership & Confidentiality', body: '',
+      blocks: [
+        { type: 'bullets', items: ['100% intellectual property ownership vests with the client.', 'Source code, architecture, database & UI/UX are exclusive.', 'Strict NDA applies.'] },
+      ],
+    },
+    {
+      heading: 'Acceptance & Sign-off', body: '',
+      blocks: [
+        { type: 'paragraph', text: 'This SOW, upon approval, shall serve as the binding reference document for project delivery, milestone validation, and payment alignment.' },
+      ],
+    },
+  ]
+  _rerenderScopeSections()
+  _rerenderScopeDeliverables()
+  toast('SOW template inserted — edit each section to match your project.', 'success')
+}
+
+function previewScopeFromDraft() {
+  _openScopePreviewFromObject(_scopeDraftToPayload(_scopeDraft))
+}
+
+async function deleteScopeEntry(id, title) {
+  if (!confirm(`Delete scope "${title}"? Send history will be preserved.`)) return
+  try {
+    await API.delete('/scopes/' + id)
+    toast('Scope deleted', 'success')
+    const el = document.getElementById('page-scope-library')
+    if (el) { el.dataset.loaded = ''; loadPage('scope-library', el) }
+  } catch (e) {
+    toast('Delete failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function openScopePreview(id) {
+  try {
+    const res = await API.get('/scopes/' + id)
+    _openScopePreviewFromObject(res.data)
+  } catch (e) { toast('Failed to load scope', 'error') }
+}
+
+function _renderScopeBlockPreviewHtml(b) {
+  if (!b) return ''
+  if (b.type === 'paragraph') {
+    return `<div style="font-size:13.5px;color:#cbd5e1;line-height:1.65;margin:10px 0;white-space:pre-wrap">${escapeHtml(b.text || '')}</div>`
+  }
+  if (b.type === 'subheading') {
+    return `<div style="font-weight:700;color:#e2e8f0;font-size:14.5px;margin:14px 0 6px">${escapeHtml(b.text || '')}</div>`
+  }
+  if (b.type === 'bullets') {
+    return `<ul style="margin:8px 0;padding-left:22px;color:#cbd5e1;font-size:13px;line-height:1.65">
+      ${(b.items || []).map((it) => `<li style="margin-bottom:4px">${escapeHtml(it)}</li>`).join('')}
+    </ul>`
+  }
+  if (b.type === 'numbered') {
+    return `<ol style="margin:8px 0;padding-left:22px;color:#cbd5e1;font-size:13px;line-height:1.65">
+      ${(b.items || []).map((it) => `<li style="margin-bottom:4px">${escapeHtml(it)}</li>`).join('')}
+    </ol>`
+  }
+  if (b.type === 'table') {
+    const cols = b.columns || []
+    const headHtml = cols.length ? `
+      <thead><tr style="background:rgba(255,122,69,0.18)">
+        ${cols.map((c) => `<th style="padding:8px 10px;text-align:left;font-size:12px;font-weight:700;color:#e2e8f0;border:1px solid rgba(255,122,69,0.22)">${escapeHtml(c)}</th>`).join('')}
+      </tr></thead>` : ''
+    const colCount = cols.length || (b.rows?.[0]?.length ?? 1)
+    const bodyHtml = (b.rows || []).map((r) => {
+      const cells = []
+      for (let i = 0; i < colCount; i++) {
+        cells.push(`<td style="padding:8px 10px;font-size:12.5px;color:#cbd5e1;border:1px solid rgba(255,255,255,0.06);vertical-align:top;white-space:pre-wrap">${escapeHtml(r[i] || '')}</td>`)
+      }
+      return `<tr>${cells.join('')}</tr>`
+    }).join('')
+    return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin:10px 0">${headHtml}<tbody>${bodyHtml}</tbody></table></div>`
+  }
+  if (b.type === 'code') {
+    return `<pre style="margin:10px 0;padding:12px;background:rgba(15,23,42,0.7);color:#e2e8f0;border-radius:8px;font:12px/1.55 'IBM Plex Mono','Courier New',monospace;white-space:pre;overflow:auto">${escapeHtml(b.text || '')}</pre>`
+  }
+  return ''
+}
+
+function _openScopePreviewFromObject(s) {
+  if (!s) { toast('Nothing to preview', 'error'); return }
+  const projectName = s.project_name || s.title || ''
+  const sectionsHtml = (s.sections || []).map((x, idx) => `
+    <div style="margin-top:18px">
+      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #FF7A45;margin-bottom:8px">${idx + 1}. ${escapeHtml(x.heading || '')}</div>
+      ${x.body ? `<div style="font-size:13.5px;color:#cbd5e1;line-height:1.65;margin:8px 0;white-space:pre-wrap">${escapeHtml(x.body)}</div>` : ''}
+      ${(x.blocks || []).map(_renderScopeBlockPreviewHtml).join('')}
+    </div>`).join('')
+
+  const delHtml = (s.deliverables || []).length ? `
+    <div style="margin-top:18px">
+      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #FF7A45;margin-bottom:8px">Deliverables</div>
+      <ul style="margin:8px 0;padding-left:22px;color:#cbd5e1;font-size:13px;line-height:1.65">
+        ${s.deliverables.map((d) => `<li style="margin-bottom:4px">${escapeHtml(d)}</li>`).join('')}
+      </ul>
+    </div>` : ''
+  const timelineHtml = s.timeline_text ? `
+    <div style="margin-top:18px">
+      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #FF7A45;margin-bottom:8px">Timeline</div>
+      <div style="font-size:13.5px;color:#cbd5e1;line-height:1.65;white-space:pre-wrap">${escapeHtml(s.timeline_text)}</div>
+    </div>` : ''
+  const assumptionsHtml = s.assumptions ? `
+    <div style="margin-top:18px">
+      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #FF7A45;margin-bottom:8px">Assumptions &amp; Notes</div>
+      <div style="font-size:13.5px;color:#cbd5e1;line-height:1.65;white-space:pre-wrap">${escapeHtml(s.assumptions)}</div>
+    </div>` : ''
+
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-eye" style="color:#3b82f6;margin-right:6px"></i>SOW Preview</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="text-align:center;padding-bottom:12px;border-bottom:2px solid #FF7A45;margin-bottom:14px">
+        <div style="font-size:20px;font-weight:800;color:#e2e8f0;letter-spacing:.5px">STATEMENT OF WORK (SOW)</div>
+        ${projectName ? `<div style="font-size:14px;font-weight:700;color:#FF7A45;margin-top:6px">${escapeHtml(projectName)}</div>` : ''}
+      </div>
+      <div style="font-size:13px;color:#cbd5e1;line-height:1.7;margin-bottom:14px">
+        ${(s.client_name) ? `<div><strong style="color:#e2e8f0">Client:</strong> ${escapeHtml(s.client_name)}</div>` : ''}
+        ${(s.spoc_name) ? `<div><strong style="color:#e2e8f0">SPOC:</strong> ${escapeHtml(s.spoc_name)}</div>` : ''}
+        <div><strong style="color:#e2e8f0">Development Partner:</strong> Mariox Software</div>
+      </div>
+      ${s.overview ? `<div style="font-size:13.5px;color:#cbd5e1;line-height:1.7;padding:12px 14px;border-left:3px solid #FF7A45;background:rgba(255,122,69,0.06);border-radius:0 8px 8px 0;margin-bottom:14px;white-space:pre-wrap">${escapeHtml(s.overview)}</div>` : ''}
+      ${sectionsHtml}
+      ${delHtml}
+      ${timelineHtml}
+      ${assumptionsHtml}
+      ${s.footer_text ? `<div style="margin-top:18px;font-size:13px;color:#94a3b8;line-height:1.6;white-space:pre-wrap">${escapeHtml(s.footer_text)}</div>` : ''}
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+  `, 'modal-xl')
+}
+
+async function openScopeSendModal(scopeId) {
+  showModal(`
+    <div class="modal-header"><h3><i class="fas fa-paper-plane" style="color:#3b82f6;margin-right:6px"></i>Send Scope</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+  `, 'modal-lg')
+  try {
+    const [scopeRes, leadsRes] = await Promise.all([
+      API.get('/scopes/' + scopeId),
+      API.get('/leads'),
+    ])
+    const scope = scopeRes.data
+    const leads = leadsRes.data || leadsRes.leads || []
+    _scopeSendCache = { scopeId, leadId: '', leads }
+
+    const modal = document.querySelector('.modal .modal-body')?.parentElement
+    if (!modal) return
+    modal.innerHTML = `
+      <div class="modal-header"><h3><i class="fas fa-paper-plane" style="color:#3b82f6;margin-right:6px"></i>Send "${escapeHtml(scope.title)}"</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Lead *</label>
+          <select id="sc-send-lead" class="form-select" onchange="onScopeLeadPick(this.value)">
+            <option value="">— Choose a lead —</option>
+            ${leads.map((l) => `<option value="${l.id}">${escapeHtml(l.name)} · ${escapeHtml(l.email || '—')}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">To *</label><input id="sc-send-to" class="form-input" placeholder="recipient@example.com"/></div>
+        <div class="form-group"><label class="form-label">Cc (comma separated)</label><input id="sc-send-cc" class="form-input" placeholder="optional"/></div>
+        <div class="form-group"><label class="form-label">Subject *</label><input id="sc-send-subject" class="form-input" value="Scope of Work — ${escapeHtml(scope.title)}"/></div>
+        <div style="padding:10px 12px;border-radius:8px;background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.22);font-size:12px;color:#93c5fd">
+          <i class="fas fa-file-lines"></i> The full scope (overview, sections, deliverables, timeline, assumptions) is rendered as the email body.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="sc-send-btn" onclick="submitScopeSend()"><i class="fas fa-paper-plane"></i> Send</button>
+      </div>
+    `
+  } catch (e) {
+    const body = document.querySelector('.modal .modal-body')
+    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+  }
+}
+
+function onScopeLeadPick(leadId) {
+  _scopeSendCache.leadId = leadId
+  const lead = _scopeSendCache.leads.find((l) => String(l.id) === String(leadId))
+  if (!lead) return
+  const toEl = document.getElementById('sc-send-to')
+  if (toEl) toEl.value = lead.email || ''
+}
+
+async function submitScopeSend() {
+  const { scopeId, leadId } = _scopeSendCache
+  if (!scopeId) { toast('Scope missing', 'error'); return }
+  if (!leadId) { toast('Pick a lead first', 'error'); return }
+  const to = (document.getElementById('sc-send-to')?.value || '').trim()
+  const ccRaw = (document.getElementById('sc-send-cc')?.value || '').trim()
+  const subject = (document.getElementById('sc-send-subject')?.value || '').trim()
+  if (!to || !subject) { toast('Recipient and subject are required', 'error'); return }
+  const cc = ccRaw ? ccRaw.split(',').map((s) => s.trim()).filter(Boolean) : []
+  const btn = document.getElementById('sc-send-btn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
+  try {
+    await API.post(`/scopes/${scopeId}/send/${leadId}`, { to, cc, subject })
+    toast('Scope sent — logged on the lead timeline', 'success')
+    closeModal()
+    const el = document.getElementById('page-scope-library')
+    if (el) { el.dataset.loaded = ''; loadPage('scope-library', el) }
+  } catch (e) {
+    toast('Send failed: ' + (e.message || 'unknown'), 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send' }
+  }
+}
+
+async function openScopeHistoryModal(scopeId) {
+  showModal(`
+    <div class="modal-header"><h3><i class="fas fa-clock-rotate-left" style="color:#3b82f6;margin-right:6px"></i>Send History</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+  `, 'modal-lg')
+  try {
+    const res = await API.get(`/scopes/${scopeId}/history`)
+    const sends = res.data || res.sends || []
+    const body = document.querySelector('.modal .modal-body')
+    if (!body) return
+    if (!sends.length) { body.innerHTML = `<div class="empty-state" style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-inbox"></i><p>This scope hasn't been sent yet.</p></div>`; return }
+    body.innerHTML = `
+      <div style="font-size:12.5px;color:#94a3b8;margin-bottom:10px">${sends.length} send${sends.length === 1 ? '' : 's'} total</div>
+      <table class="data-table">
+        <thead><tr><th>Lead</th><th>Recipient</th><th>Sent By</th><th>Sent</th><th>Status</th></tr></thead>
+        <tbody>
+          ${sends.map((s) => `<tr>
+            <td>${s.lead_name ? `<a href="javascript:void(0)" onclick="closeModal();goLeadDetail('${s.lead_id}')" style="color:#3b82f6;font-weight:600">${escapeHtml(s.lead_name)}</a>` : '<span style="color:#64748b">— deleted —</span>'}</td>
+            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_to || '—')}</td>
+            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_by_name || '—')}</td>
+            <td style="font-size:12px;color:#94a3b8">${s.sent_at ? fmtDate(s.sent_at) : '—'}</td>
+            <td>${s.success ? '<span class="badge badge-done">Sent</span>' : `<span class="badge badge-critical" title="${escapeHtml(s.error || 'failed')}">Failed</span>`}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`
+  } catch (e) {
+    const body = document.querySelector('.modal .modal-body')
+    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+  }
+}
+
+async function openScopePermissionsModal() {
+  showModal(_libraryPermissionsModalShell('Scope Permissions'), 'modal-lg')
+  await _renderLibraryPermissionsBody('/scopes', 'scope')
+}
+async function scope_grant() {
+  const userId = document.getElementById('lib-perm-user')?.value || ''
+  if (!userId) { toast('Pick a user', 'error'); return }
+  try { await API.post('/scopes/permissions', { user_id: userId }); toast('Permission granted', 'success'); await _renderLibraryPermissionsBody('/scopes', 'scope') }
+  catch (e) { toast('Grant failed: ' + (e.message || 'unknown'), 'error') }
+}
+async function scope_revoke(userId, name) {
+  if (!confirm(`Revoke scope access for ${name}?`)) return
+  try { await API.delete('/scopes/permissions/' + userId); toast('Permission revoked', 'success'); await _renderLibraryPermissionsBody('/scopes', 'scope') }
+  catch (e) { toast('Revoke failed: ' + (e.message || 'unknown'), 'error') }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   QUOTATION LIBRARY — structured quotes with line items + totals
+   ═══════════════════════════════════════════════════════════ */
+
+let _quoteSearch = ''
+let _quoteCanManage = false
+let _quoteDraft = null
+let _quoteSendCache = { quotationId: '', leadId: '', leads: [] }
+
+function _qCurSym(code) {
+  const c = String(code || 'INR').toUpperCase()
+  if (c === 'INR') return '₹'
+  if (c === 'USD') return '$'
+  if (c === 'EUR') return '€'
+  if (c === 'GBP') return '£'
+  return c + ' '
+}
+function _qFmt(n, code) {
+  const sym = _qCurSym(code)
+  return sym + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+async function renderQuotationLibrary(el) {
+  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading quotations…</div>`
+  try {
+    const res = await API.get('/quotations')
+    const list = res.data || res.quotations || []
+    _quoteCanManage = !!res.can_manage
+    const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
+    const q = (_quoteSearch || '').toLowerCase()
+    const filtered = q ? list.filter((p) => (`${p.title || ''} ${p.client_name || ''} ${p.quote_number || ''}`).toLowerCase().includes(q)) : list
+
+    el.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title"><i class="fas fa-file-invoice-dollar" style="color:#22c55e;margin-right:8px"></i>Quotation</h1>
+          <p class="page-subtitle">${list.length} quotation${list.length === 1 ? '' : 's'} · structured quotes with line items, tax, and totals.</p>
+        </div>
+        <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+          ${_quoteCanManage ? `<button class="btn btn-primary btn-sm" onclick="openQuoteEditor()"><i class="fas fa-plus"></i> New Quotation</button>` : ''}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-body" style="padding:12px 16px">
+          <div class="search-wrap" style="width:100%">
+            <i class="fas fa-search"></i>
+            <input class="search-bar" placeholder="Search by title, client, or quote number…" value="${escapeHtml(_quoteSearch)}" oninput="onQuoteSearch(this.value)"/>
+          </div>
+        </div>
+      </div>
+
+      ${!_quoteCanManage && !isAdmin ? `<div style="padding:10px 14px;border-radius:10px;background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:12.5px;margin-bottom:14px"><i class="fas fa-info-circle"></i> You can view and send quotations. Ask an admin for permission to add new ones.</div>` : ''}
+
+      ${filtered.length ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
+          ${filtered.map((p) => _quoteCard(p)).join('')}
+        </div>
+      ` : `<div class="empty-state"><i class="fas fa-folder-open"></i><p>${list.length ? 'No quotations match your search.' : 'No quotations yet — create one to get started.'}</p></div>`}
+    `
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message || 'Failed to load quotations')}</p></div>`
+  }
+}
+
+function _quoteCard(p) {
+  const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
+  const userId = String(_user?.sub || _user?.id || '')
+  const isOwner = String(p.created_by || '') === userId
+  const canEdit = isAdmin || isOwner || _quoteCanManage
+  const canDelete = isAdmin || isOwner
+  const items = Array.isArray(p.line_items) ? p.line_items.length : 0
+  return `<div class="card">
+    <div class="card-body" style="padding:16px">
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(34,197,94,0.18);color:#22c55e;display:flex;align-items:center;justify-content:center;font-size:20px"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:#e2e8f0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.title)}</div>
+          <div style="font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.quote_number ? '#' + escapeHtml(p.quote_number) + ' · ' : ''}${escapeHtml(p.client_name || '—')}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.03)">
+        <span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Grand Total</span>
+        <span style="font-size:16px;font-weight:700;color:#22c55e">${_qFmt(p.grand_total, p.currency)}</span>
+      </div>
+      <div style="display:flex;gap:14px;font-size:11.5px;color:#94a3b8;margin-bottom:12px;flex-wrap:wrap">
+        <span><i class="fas fa-list" style="margin-right:4px;color:#64748b"></i>${items} line${items === 1 ? '' : 's'}</span>
+        <span><i class="fas fa-percent" style="margin-right:4px;color:#64748b"></i>${p.tax_percent || 0}% tax</span>
+        ${p.validity_date ? `<span><i class="fas fa-calendar" style="margin-right:4px;color:#64748b"></i>Valid ${escapeHtml(p.validity_date)}</span>` : ''}
+        ${p.file?.url ? `<a href="${escapeHtml(p.file.url)}" target="_blank" rel="noopener" style="color:#22c55e" title="${escapeHtml(p.file.name)}"><i class="fas fa-paperclip" style="margin-right:4px"></i>File attached</a>` : ''}
+        <span><i class="fas fa-paper-plane" style="margin-right:4px;color:#64748b"></i>${p.send_count || 0} sent</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-xs" onclick="openQuoteSendModal('${p.id}')"><i class="fas fa-paper-plane"></i> Send</button>
+        <button class="btn btn-outline btn-xs" onclick="openQuotePreview('${p.id}')"><i class="fas fa-eye"></i> Preview</button>
+        <button class="btn btn-outline btn-xs" onclick="openQuoteHistoryModal('${p.id}')"><i class="fas fa-clock-rotate-left"></i> History</button>
+        ${canEdit ? `<button class="btn btn-outline btn-xs" onclick="openQuoteEditor('${p.id}')"><i class="fas fa-edit"></i></button>` : ''}
+        ${canDelete ? `<button class="btn btn-outline btn-xs" style="color:#FF5E3A" onclick="deleteQuoteEntry('${p.id}','${escapeHtml(p.title).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>` : ''}
+      </div>
+    </div>
+  </div>`
+}
+
+function onQuoteSearch(value) {
+  _quoteSearch = value || ''
+  const el = document.getElementById('page-quotation-library')
+  if (el) { el.dataset.loaded = ''; loadPage('quotation-library', el) }
+}
+
+async function openQuoteEditor(quotationId) {
+  if (quotationId) {
+    try { const res = await API.get('/quotations/' + quotationId); _quoteDraft = res.data }
+    catch { toast('Failed to load quotation', 'error'); return }
+  } else {
+    _quoteDraft = {
+      title: '',
+      quote_number: '',
+      client_name: '',
+      currency: 'INR',
+      intro_text: '',
+      line_items: [{ description: '', qty: 1, rate: 0 }],
+      tax_percent: 18,
+      validity_date: '',
+      terms_text: '',
+      file: null,
+    }
+  }
+  _renderQuoteEditorModal(quotationId || null)
+}
+
+function _renderQuoteEditorModal(quotationId) {
+  const d = _quoteDraft
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-file-invoice-dollar" style="color:#22c55e;margin-right:6px"></i>${quotationId ? 'Edit' : 'New'} Quotation</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="form-group"><label class="form-label">Title *</label><input class="form-input" placeholder="e.g. Website Build Quotation" value="${escapeHtml(d.title || '')}" oninput="_quoteDraft.title=this.value"/></div>
+        <div class="form-group"><label class="form-label">Quote Number</label><input class="form-input" placeholder="e.g. Q-2026-014" value="${escapeHtml(d.quote_number || '')}" oninput="_quoteDraft.quote_number=this.value"/></div>
+        <div class="form-group"><label class="form-label">Client (optional)</label><input class="form-input" placeholder="e.g. Acme Corp" value="${escapeHtml(d.client_name || '')}" oninput="_quoteDraft.client_name=this.value"/></div>
+        <div class="form-group"><label class="form-label">Currency</label>
+          <select class="form-select" onchange="_quoteDraft.currency=this.value;_refreshQuoteAmountCells();_rerenderQuoteTotals()">
+            ${['INR', 'USD', 'EUR', 'GBP'].map((c) => `<option value="${c}" ${d.currency === c ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Tax %</label><input type="text" inputmode="decimal" class="form-input" placeholder="0" value="${d.tax_percent || 0}" oninput="_quoteDraft.tax_percent=Number(this.value)||0;_rerenderQuoteTotals()"/></div>
+        <div class="form-group"><label class="form-label">Valid Till</label><input type="date" class="form-input" value="${escapeHtml(d.validity_date || '')}" oninput="_quoteDraft.validity_date=this.value"/></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Intro / Heading paragraph</label>
+        <textarea class="form-input" rows="3" placeholder="Short message that appears above the line items" oninput="_quoteDraft.intro_text=this.value">${escapeHtml(d.intro_text || '')}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Upload quotation file (optional)</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="quote-file-input" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xls,.xlsx" class="form-input" style="flex:1;padding:6px" onchange="uploadQuoteFile(this.files[0])"/>
+          ${d.file?.url ? `<button class="btn btn-outline btn-xs" onclick="removeQuoteFile()" type="button"><i class="fas fa-times"></i> Remove</button>` : ''}
+        </div>
+        <div id="quote-file-meta" class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">
+          ${d.file?.url
+            ? `<i class="fas fa-paperclip" style="color:#22c55e"></i> Attached: <a href="${escapeHtml(d.file.url)}" target="_blank" rel="noopener" style="color:#22c55e">${escapeHtml(d.file.name)}</a> · ${formatBytes(d.file.size || 0)}`
+            : 'PDF/DOCX/XLS/image up to 10 MB. The file will be attached to the email alongside the rendered quote.'}
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 6px">
+        <span style="font-size:13px;color:#cbd5e1;font-weight:600"><i class="fas fa-list" style="margin-right:6px;color:#22c55e"></i>Line Items</span>
+        <button class="btn btn-outline btn-xs" onclick="addQuoteLine()"><i class="fas fa-plus"></i> Add line</button>
+      </div>
+      <div id="quote-lines-wrap"></div>
+      <div id="quote-totals-wrap"></div>
+
+      <div class="form-group" style="margin-top:14px">
+        <label class="form-label">Terms &amp; Notes</label>
+        <textarea class="form-input" rows="3" placeholder="Payment terms, validity, exclusions, etc." oninput="_quoteDraft.terms_text=this.value">${escapeHtml(d.terms_text || '')}</textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="quote-save-btn" onclick="submitQuoteEditor('${quotationId || ''}')"><i class="fas fa-save"></i> ${quotationId ? 'Save' : 'Create'}</button>
+    </div>
+  `, 'modal-xl')
+  _rerenderQuoteLines()
+  _rerenderQuoteTotals()
+}
+
+function _rerenderQuoteLines() {
+  const wrap = document.getElementById('quote-lines-wrap')
+  if (!wrap) return
+  wrap.innerHTML = (_quoteDraft.line_items || []).map((it, i) => `
+    <div style="display:grid;grid-template-columns:1fr 70px 110px 110px 40px;gap:8px;margin-bottom:8px;align-items:center">
+      <input class="form-input" placeholder="Description" value="${escapeHtml(it.description || '')}" oninput="updateQuoteLine(${i},'description',this.value)"/>
+      <input type="text" inputmode="decimal" class="form-input" placeholder="Qty" value="${it.qty || 0}" oninput="updateQuoteLine(${i},'qty',this.value)" style="text-align:right"/>
+      <input type="text" inputmode="decimal" class="form-input" placeholder="Rate" value="${it.rate || 0}" oninput="updateQuoteLine(${i},'rate',this.value)" style="text-align:right"/>
+      <div id="quote-line-amount-${i}" style="text-align:right;font-weight:600;color:#e2e8f0;padding:0 8px">${_qFmt((it.qty || 0) * (it.rate || 0), _quoteDraft.currency)}</div>
+      <button class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="removeQuoteLine(${i})"><i class="fas fa-times"></i></button>
+    </div>
+  `).join('')
+}
+
+// Refresh just the amount cells (used when the currency changes — avoids
+// rebuilding the input rows, which would steal focus from whatever the user
+// is typing into right now).
+function _refreshQuoteAmountCells() {
+  ;(_quoteDraft.line_items || []).forEach((it, i) => {
+    const cell = document.getElementById('quote-line-amount-' + i)
+    if (cell) cell.textContent = _qFmt((Number(it.qty) || 0) * (Number(it.rate) || 0), _quoteDraft.currency)
+  })
+}
+
+function _rerenderQuoteTotals() {
+  const wrap = document.getElementById('quote-totals-wrap')
+  if (!wrap) return
+  const subtotal = (_quoteDraft.line_items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0)
+  const taxPct = Number(_quoteDraft.tax_percent) || 0
+  const tax = (subtotal * taxPct) / 100
+  const grand = subtotal + tax
+  const cur = _quoteDraft.currency || 'INR'
+  wrap.innerHTML = `
+    <div style="margin-top:10px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:#cbd5e1"><span>Subtotal</span><span>${_qFmt(subtotal, cur)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:#cbd5e1"><span>Tax (${taxPct}%)</span><span>${_qFmt(tax, cur)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0 0;font-size:15px;color:#22c55e;font-weight:700;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px"><span>Grand Total</span><span>${_qFmt(grand, cur)}</span></div>
+    </div>`
+}
+
+function updateQuoteLine(i, key, value) {
+  const it = _quoteDraft.line_items[i]
+  if (!it) return
+  if (key === 'qty' || key === 'rate') {
+    // Accept partial numeric input ("12.", "0.5", "") without coercing to 0 on
+    // every keystroke — that's what dropped focus before.
+    it[key] = value === '' ? 0 : (Number(value) || 0)
+    const cell = document.getElementById('quote-line-amount-' + i)
+    if (cell) cell.textContent = _qFmt((Number(it.qty) || 0) * (Number(it.rate) || 0), _quoteDraft.currency)
+    _rerenderQuoteTotals()
+  } else {
+    it[key] = value
+  }
+}
+function addQuoteLine() {
+  _quoteDraft.line_items.push({ description: '', qty: 1, rate: 0 })
+  _rerenderQuoteLines()
+  _rerenderQuoteTotals()
+}
+function removeQuoteLine(i) {
+  _quoteDraft.line_items.splice(i, 1)
+  _rerenderQuoteLines()
+  _rerenderQuoteTotals()
+}
+
+async function submitQuoteEditor(quotationId) {
+  const d = _quoteDraft
+  if (!d.title || d.title.trim().length < 2) { toast('Title is required', 'error'); return }
+  const payload = {
+    title: d.title.trim(),
+    quote_number: d.quote_number?.trim() || '',
+    client_name: d.client_name?.trim() || '',
+    currency: d.currency || 'INR',
+    intro_text: d.intro_text?.trim() || '',
+    line_items: (d.line_items || []).map((it) => ({
+      description: String(it.description || '').trim(),
+      qty: Number(it.qty) || 0,
+      rate: Number(it.rate) || 0,
+    })).filter((it) => it.description || it.qty || it.rate),
+    tax_percent: Number(d.tax_percent) || 0,
+    validity_date: d.validity_date || '',
+    terms_text: d.terms_text?.trim() || '',
+    file: d.file && d.file.url ? d.file : null,
+  }
+  const btn = document.getElementById('quote-save-btn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
+  try {
+    if (quotationId) await API.put('/quotations/' + quotationId, payload)
+    else             await API.post('/quotations', payload)
+    toast(quotationId ? 'Quotation updated' : 'Quotation created', 'success')
+    closeModal()
+    const el = document.getElementById('page-quotation-library')
+    if (el) { el.dataset.loaded = ''; loadPage('quotation-library', el) }
+  } catch (e) {
+    toast('Save failed: ' + (e.message || 'unknown'), 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save' }
+  }
+}
+
+async function uploadQuoteFile(file) {
+  if (!file) return
+  if (file.size > 10 * 1024 * 1024) { toast('File exceeds 10 MB', 'error'); return }
+  const meta = document.getElementById('quote-file-meta')
+  if (meta) meta.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Uploading "${escapeHtml(file.name)}"…`
+  try {
+    const form = new FormData()
+    form.append('file', file)
+    const upRes = await fetch('/api/uploads', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + _token },
+      body: form,
+    })
+    const data = await upRes.json().catch(() => ({}))
+    if (!upRes.ok) throw new Error(data.error || 'Upload failed')
+    _quoteDraft.file = {
+      url: data.url || data.file_url,
+      name: data.original_name || file.name,
+      mime: data.mime_type || file.type,
+      size: data.size || file.size,
+    }
+    if (meta) meta.innerHTML = `<i class="fas fa-paperclip" style="color:#22c55e"></i> Attached: <a href="${escapeHtml(_quoteDraft.file.url)}" target="_blank" rel="noopener" style="color:#22c55e">${escapeHtml(_quoteDraft.file.name)}</a> · ${formatBytes(_quoteDraft.file.size)}`
+    toast('File uploaded', 'success')
+  } catch (e) {
+    if (meta) meta.innerHTML = '<span style="color:#FF5E3A">Upload failed: ' + escapeHtml(e.message || 'unknown') + '</span>'
+    toast('Upload failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+function removeQuoteFile() {
+  _quoteDraft.file = null
+  const meta = document.getElementById('quote-file-meta')
+  if (meta) meta.innerHTML = 'PDF/DOCX/XLS/image up to 10 MB. The file will be attached to the email alongside the rendered quote.'
+  const input = document.getElementById('quote-file-input')
+  if (input) input.value = ''
+}
+
+async function deleteQuoteEntry(id, title) {
+  if (!confirm(`Delete quotation "${title}"? Send history will be preserved.`)) return
+  try {
+    await API.delete('/quotations/' + id)
+    toast('Quotation deleted', 'success')
+    const el = document.getElementById('page-quotation-library')
+    if (el) { el.dataset.loaded = ''; loadPage('quotation-library', el) }
+  } catch (e) {
+    toast('Delete failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function openQuotePreview(id) {
+  try {
+    const res = await API.get('/quotations/' + id)
+    const q = res.data
+    const cur = q.currency || 'INR'
+    const rowsHtml = (q.line_items || []).map((it, i) => `
+      <tr>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border)">${i + 1}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border)">${escapeHtml(it.description || '')}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:right">${it.qty}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:right">${_qFmt(it.rate, cur)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:600">${_qFmt(it.amount, cur)}</td>
+      </tr>`).join('')
+    showModal(`
+      <div class="modal-header"><h3><i class="fas fa-eye" style="color:#22c55e;margin-right:6px"></i>Quotation Preview</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+      <div class="modal-body">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+          <div>
+            <div style="font-size:18px;font-weight:700;color:#e2e8f0">${escapeHtml(q.title)}</div>
+            ${q.client_name ? `<div style="font-size:12px;color:#94a3b8;margin-top:2px">Prepared for ${escapeHtml(q.client_name)}</div>` : ''}
+          </div>
+          <div style="text-align:right;font-size:12px;color:#94a3b8">
+            ${q.quote_number ? `Quote #${escapeHtml(q.quote_number)}<br/>` : ''}
+            ${q.validity_date ? `Valid till ${escapeHtml(q.validity_date)}` : ''}
+          </div>
+        </div>
+        ${q.intro_text ? `<div style="font-size:13px;color:#cbd5e1;line-height:1.55;white-space:pre-wrap;margin-bottom:14px">${escapeHtml(q.intro_text)}</div>` : ''}
+        <table class="data-table" style="margin-top:6px">
+          <thead><tr><th style="width:36px">#</th><th>Description</th><th style="text-align:right;width:60px">Qty</th><th style="text-align:right;width:100px">Rate</th><th style="text-align:right;width:110px">Amount</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <div style="margin-top:12px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px"><span>Subtotal</span><span>${_qFmt(q.subtotal, cur)}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px"><span>Tax (${q.tax_percent}%)</span><span>${_qFmt(q.tax_amount, cur)}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0 0;font-size:15px;color:#22c55e;font-weight:700;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px"><span>Grand Total</span><span>${_qFmt(q.grand_total, cur)}</span></div>
+        </div>
+        ${q.terms_text ? `<div style="margin-top:14px"><div style="font-weight:700;color:#e2e8f0;font-size:14px;margin-bottom:4px">Terms &amp; Notes</div><div style="font-size:13px;color:#cbd5e1;line-height:1.55;white-space:pre-wrap">${escapeHtml(q.terms_text)}</div></div>` : ''}
+      </div>
+      <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+    `, 'modal-xl')
+  } catch (e) { toast('Failed to load quotation', 'error') }
+}
+
+async function openQuoteSendModal(quotationId) {
+  showModal(`
+    <div class="modal-header"><h3><i class="fas fa-paper-plane" style="color:#22c55e;margin-right:6px"></i>Send Quotation</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+  `, 'modal-lg')
+  try {
+    const [qRes, leadsRes] = await Promise.all([
+      API.get('/quotations/' + quotationId),
+      API.get('/leads'),
+    ])
+    const q = qRes.data
+    const leads = leadsRes.data || leadsRes.leads || []
+    _quoteSendCache = { quotationId, leadId: '', leads }
+    const modal = document.querySelector('.modal .modal-body')?.parentElement
+    if (!modal) return
+    modal.innerHTML = `
+      <div class="modal-header"><h3><i class="fas fa-paper-plane" style="color:#22c55e;margin-right:6px"></i>Send "${escapeHtml(q.title)}"</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Lead *</label>
+          <select id="qt-send-lead" class="form-select" onchange="onQuoteLeadPick(this.value)">
+            <option value="">— Choose a lead —</option>
+            ${leads.map((l) => `<option value="${l.id}">${escapeHtml(l.name)} · ${escapeHtml(l.email || '—')}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">To *</label><input id="qt-send-to" class="form-input" placeholder="recipient@example.com"/></div>
+        <div class="form-group"><label class="form-label">Cc (comma separated)</label><input id="qt-send-cc" class="form-input" placeholder="optional"/></div>
+        <div class="form-group"><label class="form-label">Subject *</label><input id="qt-send-subject" class="form-input" value="Quotation — ${escapeHtml(q.title)}${q.quote_number ? ' (' + escapeHtml(q.quote_number) + ')' : ''}"/></div>
+        <div style="padding:10px 12px;border-radius:8px;background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.22);font-size:12px;color:#86efac">
+          <i class="fas fa-file-invoice-dollar"></i> Grand Total: <strong>${_qFmt(q.grand_total, q.currency)}</strong> · The full quote (line items + totals + terms) is rendered as the email body.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="qt-send-btn" onclick="submitQuoteSend()"><i class="fas fa-paper-plane"></i> Send</button>
+      </div>
+    `
+  } catch (e) {
+    const body = document.querySelector('.modal .modal-body')
+    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+  }
+}
+
+function onQuoteLeadPick(leadId) {
+  _quoteSendCache.leadId = leadId
+  const lead = _quoteSendCache.leads.find((l) => String(l.id) === String(leadId))
+  if (!lead) return
+  const toEl = document.getElementById('qt-send-to')
+  if (toEl) toEl.value = lead.email || ''
+}
+
+async function submitQuoteSend() {
+  const { quotationId, leadId } = _quoteSendCache
+  if (!quotationId) { toast('Quotation missing', 'error'); return }
+  if (!leadId) { toast('Pick a lead first', 'error'); return }
+  const to = (document.getElementById('qt-send-to')?.value || '').trim()
+  const ccRaw = (document.getElementById('qt-send-cc')?.value || '').trim()
+  const subject = (document.getElementById('qt-send-subject')?.value || '').trim()
+  if (!to || !subject) { toast('Recipient and subject are required', 'error'); return }
+  const cc = ccRaw ? ccRaw.split(',').map((s) => s.trim()).filter(Boolean) : []
+  const btn = document.getElementById('qt-send-btn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
+  try {
+    await API.post(`/quotations/${quotationId}/send/${leadId}`, { to, cc, subject })
+    toast('Quotation sent — logged on the lead timeline', 'success')
+    closeModal()
+    const el = document.getElementById('page-quotation-library')
+    if (el) { el.dataset.loaded = ''; loadPage('quotation-library', el) }
+  } catch (e) {
+    toast('Send failed: ' + (e.message || 'unknown'), 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send' }
+  }
+}
+
+async function openQuoteHistoryModal(quotationId) {
+  showModal(`
+    <div class="modal-header"><h3><i class="fas fa-clock-rotate-left" style="color:#22c55e;margin-right:6px"></i>Send History</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+  `, 'modal-lg')
+  try {
+    const res = await API.get(`/quotations/${quotationId}/history`)
+    const sends = res.data || res.sends || []
+    const body = document.querySelector('.modal .modal-body')
+    if (!body) return
+    if (!sends.length) { body.innerHTML = `<div class="empty-state" style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-inbox"></i><p>This quotation hasn't been sent yet.</p></div>`; return }
+    body.innerHTML = `
+      <div style="font-size:12.5px;color:#94a3b8;margin-bottom:10px">${sends.length} send${sends.length === 1 ? '' : 's'} total</div>
+      <table class="data-table">
+        <thead><tr><th>Lead</th><th>Recipient</th><th>Total</th><th>Sent By</th><th>Sent</th><th>Status</th></tr></thead>
+        <tbody>
+          ${sends.map((s) => `<tr>
+            <td>${s.lead_name ? `<a href="javascript:void(0)" onclick="closeModal();goLeadDetail('${s.lead_id}')" style="color:#22c55e;font-weight:600">${escapeHtml(s.lead_name)}</a>` : '<span style="color:#64748b">— deleted —</span>'}</td>
+            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_to || '—')}</td>
+            <td style="font-size:12px;color:#e2e8f0;font-weight:600">${_qFmt(s.grand_total || 0, s.currency || 'INR')}</td>
+            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_by_name || '—')}</td>
+            <td style="font-size:12px;color:#94a3b8">${s.sent_at ? fmtDate(s.sent_at) : '—'}</td>
+            <td>${s.success ? '<span class="badge badge-done">Sent</span>' : `<span class="badge badge-critical" title="${escapeHtml(s.error || 'failed')}">Failed</span>`}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`
+  } catch (e) {
+    const body = document.querySelector('.modal .modal-body')
+    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+  }
+}
+
+async function openQuotePermissionsModal() {
+  showModal(_libraryPermissionsModalShell('Quotation Permissions'), 'modal-lg')
+  await _renderLibraryPermissionsBody('/quotations', 'quote')
+}
+async function quote_grant() {
+  const userId = document.getElementById('lib-perm-user')?.value || ''
+  if (!userId) { toast('Pick a user', 'error'); return }
+  try { await API.post('/quotations/permissions', { user_id: userId }); toast('Permission granted', 'success'); await _renderLibraryPermissionsBody('/quotations', 'quote') }
+  catch (e) { toast('Grant failed: ' + (e.message || 'unknown'), 'error') }
+}
+async function quote_revoke(userId, name) {
+  if (!confirm(`Revoke quotation access for ${name}?`)) return
+  try { await API.delete('/quotations/permissions/' + userId); toast('Permission revoked', 'success'); await _renderLibraryPermissionsBody('/quotations', 'quote') }
+  catch (e) { toast('Revoke failed: ' + (e.message || 'unknown'), 'error') }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SALES INCENTIVE TRACKER
+   For each sales agent in the selected month:
+   - target  comes from user.monthly_target
+   - rate    comes from user.incentive_rate
+   - achieved = won leads in this month (admin can override)
+   - earned   = max(0, achieved − target) × rate
+   - paid     = admin marks per row when payout is done
+   Permissions read live from /sales-incentives/summary (settings driven).
+   ═══════════════════════════════════════════════════════════ */
+
+let _salesIncentivePeriod = ''
+let _salesIncentiveCache = null
+
+function _currentSalesIncentivePeriod() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function _formatSalesIncentivePeriodLabel(p) {
+  if (!/^\d{4}-\d{2}$/.test(p || '')) return p
+  const [y, m] = p.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', { month: 'long', year: 'numeric' })
+}
+
+function _fmtINR(n) {
+  return '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+async function renderSalesIncentivePage(el) {
+  if (!_salesIncentivePeriod) _salesIncentivePeriod = _currentSalesIncentivePeriod()
+  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading incentive tracker…</div>`
+  try {
+    const res = await API.get('/sales-incentives/summary?period=' + encodeURIComponent(_salesIncentivePeriod))
+    _salesIncentiveCache = res
+    const rows = res.rows || res.data || []
+    const totals = res.totals || { target: 0, achieved: 0, earned: 0, paid_amount: 0, pending_amount: 0 }
+    const canOverride = !!res.can_override
+    const canMarkPaid = !!res.can_mark_paid
+    const canSetTarget = !!res.can_set_target
+
+    const periodLabel = _formatSalesIncentivePeriodLabel(_salesIncentivePeriod)
+
+    el.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title"><i class="fas fa-money-bill-trend-up" style="color:#22c55e;margin-right:8px"></i>Sale Incentive Tracker</h1>
+          <p class="page-subtitle">Target vs achievement for each sales agent in <strong>${escapeHtml(periodLabel)}</strong>. Earned = (achieved − target) × incentive rate.</p>
+        </div>
+        <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="si-period" type="month" class="form-input" value="${escapeHtml(_salesIncentivePeriod)}" onchange="onSalesIncentivePeriodChange(this.value)" style="width:170px"/>
+          <button class="btn btn-secondary btn-sm" onclick="renderSalesIncentivePage(document.getElementById('page-sales-incentive'))"><i class="fas fa-rotate"></i> Refresh</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">
+        ${_siKpi('Total Target', _fmtINR(totals.target), '#3b82f6', 'fa-bullseye')}
+        ${_siKpi('Total Achieved', _fmtINR(totals.achieved), '#FFB347', 'fa-trophy')}
+        ${_siKpi('Earned (this period)', _fmtINR(totals.earned), '#22c55e', 'fa-money-bill-wave')}
+        ${_siKpi('Paid out', _fmtINR(totals.paid_amount), '#94a3b8', 'fa-check-circle')}
+        ${_siKpi('Pending payout', _fmtINR(totals.pending_amount), '#FF7A45', 'fa-hourglass-half')}
+      </div>
+
+      <div style="padding:10px 14px;border-radius:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.18);color:#86efac;font-size:12.5px;margin-bottom:12px">
+        <i class="fas fa-circle-info"></i> <strong>Achieved</strong> is auto-summed from the <em>project revenue</em> of every project booked this month whose originating lead was assigned to the agent. Set the project amount when closing a lead — it flows here automatically. Admin can still override the value.
+      </div>
+
+      ${(!canSetTarget && !canOverride && !canMarkPaid) ? `<div style="padding:10px 14px;border-radius:10px;background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.25);color:#93c5fd;font-size:12.5px;margin-bottom:12px"><i class="fas fa-info-circle"></i> View only — admins manage targets, overrides and payouts. Permissions: Settings → Roles & Permissions → Sales Incentive.</div>` : ''}
+
+      ${rows.length ? `
+        <div class="card">
+          <div class="card-body p-0 table-wrap">
+            <table class="data-table">
+              <thead><tr>
+                <th>Agent</th>
+                <th style="text-align:right">Target</th>
+                <th style="text-align:right">Achieved</th>
+                <th style="text-align:right">Rate</th>
+                <th style="text-align:right">Earned</th>
+                <th>Status</th>
+                <th style="width:180px">Actions</th>
+              </tr></thead>
+              <tbody>
+                ${rows.map((r) => _siRow(r, canOverride, canMarkPaid)).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ` : `<div class="empty-state"><i class="fas fa-users-slash"></i><p>No sales agents found for this period.${canSetTarget ? ' Set targets when you create a sales user.' : ''}</p></div>`}
+    `
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message || 'Failed to load')}</p></div>`
+  }
+}
+
+function _siKpi(label, value, color, icon) {
+  return `<div class="card"><div class="card-body" style="padding:14px 16px;display:flex;align-items:center;gap:12px">
+    <div style="width:42px;height:42px;border-radius:12px;background:${color}22;display:flex;align-items:center;justify-content:center;color:${color};font-size:18px"><i class="fas ${icon}"></i></div>
+    <div>
+      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
+      <div style="font-size:18px;font-weight:700;color:#e2e8f0">${value}</div>
+    </div>
+  </div></div>`
+}
+
+function _siRow(r, canOverride, canMarkPaid) {
+  const overrideTag = r.achieved_override !== null && r.achieved_override !== undefined
+    ? ` <span class="badge badge-review" title="Manually overridden by admin">override</span>` : ''
+  const aboveTarget = r.achieved - r.target
+  const aboveBadge = aboveTarget > 0
+    ? `<span style="font-size:11px;color:#22c55e">+${_fmtINR(aboveTarget)}</span>`
+    : aboveTarget < 0
+      ? `<span style="font-size:11px;color:#FF5E3A">${_fmtINR(aboveTarget)}</span>`
+      : `<span style="font-size:11px;color:#64748b">on target</span>`
+  return `<tr>
+    <td>
+      <div style="display:flex;align-items:center;gap:10px">
+        ${avatar(r.user_name, r.avatar_color || '#FF7A45', 'sm')}
+        <div>
+          <div style="font-weight:600;color:#e2e8f0">${escapeHtml(r.user_name || '—')}</div>
+          <div style="font-size:11px;color:#94a3b8">${escapeHtml(r.user_email || '')} · ${escapeHtml(r.user_role || '')}</div>
+        </div>
+      </div>
+    </td>
+    <td style="text-align:right;font-weight:600;color:#cbd5e1">${_fmtINR(r.target)}</td>
+    <td style="text-align:right">
+      <div style="font-weight:600;color:#e2e8f0">${_fmtINR(r.achieved)}${overrideTag}</div>
+      <div>${aboveBadge}</div>
+    </td>
+    <td style="text-align:right;font-size:12px;color:#94a3b8">${_fmtINR(r.incentive_rate)}/₹ over target</td>
+    <td style="text-align:right;font-weight:700;color:#22c55e">${_fmtINR(r.earned)}</td>
+    <td>
+      ${r.paid
+        ? `<span class="badge badge-done">Paid${r.paid_at ? ' · ' + fmtDate(r.paid_at) : ''}</span>`
+        : `<span class="badge badge-todo">Pending</span>`}
+      ${r.paid_amount !== null && r.paid_amount !== undefined ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">Paid ${_fmtINR(r.paid_amount)}${r.paid_by_name ? ' by ' + escapeHtml(r.paid_by_name) : ''}</div>` : ''}
+    </td>
+    <td>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="btn btn-xs btn-outline" title="Show this agent's month-by-month history" onclick="openSalesIncentiveHistory('${r.user_id}')"><i class="fas fa-clock-rotate-left"></i> History</button>
+        ${canOverride ? `<button class="btn btn-xs btn-outline" title="Override achieved" onclick="openSalesIncentiveOverride('${r.user_id}','${r.period}')"><i class="fas fa-pen"></i></button>` : ''}
+        ${canMarkPaid && !r.paid ? `<button class="btn btn-xs btn-primary" title="Mark paid" onclick="openSalesIncentiveMarkPaid('${r.user_id}','${r.period}','${r.earned}')"><i class="fas fa-check"></i> Mark Paid</button>` : ''}
+        ${canMarkPaid && r.paid ? `<button class="btn btn-xs btn-outline" title="Undo paid" onclick="unmarkSalesIncentivePaid('${r.user_id}','${r.period}')"><i class="fas fa-rotate-left"></i> Undo</button>` : ''}
+      </div>
+    </td>
+  </tr>`
+}
+
+function onSalesIncentivePeriodChange(value) {
+  _salesIncentivePeriod = value || _currentSalesIncentivePeriod()
+  const el = document.getElementById('page-sales-incentive')
+  if (el) { el.dataset.loaded = ''; loadPage('sales-incentive', el) }
+}
+
+// "Edit Period" — admins can independently set the period's target, rate
+// and achieved override. Each field is only shown when the user has the
+// relevant permission (set_target for target/rate, override for achieved).
+function openSalesIncentiveOverride(userId, period) {
+  const row = (_salesIncentiveCache?.rows || []).find((r) => r.user_id === userId && r.period === period)
+  const cache = _salesIncentiveCache || {}
+  const canOverride = !!cache.can_override
+  const canSetTarget = !!cache.can_set_target
+  const periodLabel = _formatSalesIncentivePeriodLabel(period)
+  showModal(_siEditPeriodModalHtml({
+    title: `Edit ${periodLabel} — ${row?.user_name || ''}`,
+    period,
+    target: row?.target ?? 0,
+    rate: row?.incentive_rate ?? 0,
+    achievedAuto: row?.achieved_auto ?? 0,
+    achievedOverride: row?.achieved_override ?? '',
+    notes: row?.notes || '',
+    canOverride,
+    canSetTarget,
+    onSaveCall: `submitSalesIncentiveEditPeriod('${userId}','${period}', false)`,
+    onCancel: `closeModal()`,
+  }), 'modal-md')
+}
+
+function _siEditPeriodModalHtml(opts) {
+  const targetField = opts.canSetTarget ? `
+    <div class="form-group">
+      <label class="form-label">Monthly target for this period (₹)</label>
+      <input id="si-edit-target" type="text" inputmode="decimal" class="form-input" value="${opts.target}" placeholder="e.g. 500000"/>
+      <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Per-period target. Independent of the agent's profile setting.</div>
+    </div>` : `<div class="form-group"><label class="form-label">Monthly target (read-only)</label><input class="form-input" value="₹${Number(opts.target).toLocaleString('en-IN')}" disabled/></div>`
+
+  const rateField = opts.canSetTarget ? `
+    <div class="form-group">
+      <label class="form-label">Incentive rate (₹ paid per ₹ above target)</label>
+      <input id="si-edit-rate" type="text" inputmode="decimal" class="form-input" value="${opts.rate}" placeholder="e.g. 0.10"/>
+      <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">e.g. 0.10 = 10% commission on revenue above target.</div>
+    </div>` : `<div class="form-group"><label class="form-label">Incentive rate (read-only)</label><input class="form-input" value="${opts.rate}" disabled/></div>`
+
+  const overrideField = opts.canOverride ? `
+    <div class="form-group">
+      <label class="form-label">Achieved (₹) — override auto-calculated value</label>
+      <input id="si-edit-achieved" type="text" inputmode="decimal" class="form-input" value="${opts.achievedOverride === null || opts.achievedOverride === undefined ? '' : opts.achievedOverride}" placeholder="leave blank for auto: ${opts.achievedAuto}"/>
+      <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Leave blank to auto-sum project revenue (${'₹' + Number(opts.achievedAuto).toLocaleString('en-IN')} this period).</div>
+    </div>` : ''
+
+  return `
+    <div class="modal-header"><h3><i class="fas fa-pen" style="color:#FFB347;margin-right:6px"></i>${escapeHtml(opts.title)}</h3><button class="close-btn" onclick="${opts.onCancel}">✕</button></div>
+    <div class="modal-body">
+      ${(!opts.canSetTarget && !opts.canOverride) ? '<div style="padding:10px 12px;border-radius:8px;background:rgba(255,180,120,0.10);border:1px solid rgba(255,180,120,0.30);color:#FFB347;font-size:12.5px;margin-bottom:12px"><i class="fas fa-lock"></i> You don\'t have permission to edit any field. Settings → Roles & Permissions → Sales Incentive.</div>' : ''}
+      ${targetField}
+      ${rateField}
+      ${overrideField}
+      <div class="form-group">
+        <label class="form-label">Notes (optional)</label>
+        <textarea id="si-edit-notes" class="form-input" rows="2" placeholder="Reason for the change">${escapeHtml(opts.notes || '')}</textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="${opts.onCancel}">Cancel</button>
+      <button class="btn btn-primary" onclick="${opts.onSaveCall}"><i class="fas fa-save"></i> Save</button>
+    </div>
+  `
+}
+
+async function submitSalesIncentiveEditPeriod(userId, period, fromHistory) {
+  const cache = (fromHistory ? _salesIncentiveHistoryCache : _salesIncentiveCache) || {}
+  const canOverride = !!cache.can_override
+  const canSetTarget = !!cache.can_set_target
+
+  const payload = {}
+  const notesEl = document.getElementById('si-edit-notes')
+  if (notesEl) payload.notes = (notesEl.value || '').trim()
+
+  if (canSetTarget) {
+    const tEl = document.getElementById('si-edit-target')
+    if (tEl) {
+      const t = Number(tEl.value)
+      if (!Number.isFinite(t) || t < 0) { toast('Target must be a non-negative number', 'error'); return }
+      payload.target_snapshot = t
+    }
+    const rEl = document.getElementById('si-edit-rate')
+    if (rEl) {
+      const r = Number(rEl.value)
+      if (!Number.isFinite(r) || r < 0) { toast('Rate must be a non-negative number', 'error'); return }
+      payload.rate_snapshot = r
+    }
+  }
+  if (canOverride) {
+    const aEl = document.getElementById('si-edit-achieved')
+    if (aEl) {
+      const raw = (aEl.value || '').trim()
+      if (raw === '') payload.achieved_override = null
+      else {
+        const n = Number(raw)
+        if (!Number.isFinite(n) || n < 0) { toast('Achieved must be a non-negative number', 'error'); return }
+        payload.achieved_override = n
+      }
+    }
+  }
+  try {
+    await API.post(`/sales-incentives/${userId}/${period}/override`, payload)
+    toast('Saved', 'success')
+    closeModal()
+    const el = document.getElementById('page-sales-incentive')
+    if (el) { el.dataset.loaded = ''; loadPage('sales-incentive', el) }
+    if (fromHistory) openSalesIncentiveHistory(userId)
+  } catch (e) {
+    toast('Save failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+function openSalesIncentiveMarkPaid(userId, period, suggestedAmount) {
+  const row = (_salesIncentiveCache?.rows || []).find((r) => r.user_id === userId && r.period === period)
+  showModal(`
+    <div class="modal-header"><h3><i class="fas fa-check-circle" style="color:#22c55e;margin-right:6px"></i>Mark Paid — ${escapeHtml(row?.user_name || '')}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div style="padding:10px 12px;border-radius:8px;background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.22);font-size:12.5px;color:#86efac;margin-bottom:12px">
+        Earned for ${escapeHtml(_formatSalesIncentivePeriodLabel(period))}: <strong>${_fmtINR(row?.earned || 0)}</strong>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Paid amount (₹)</label>
+        <input id="si-paid-amount" type="text" inputmode="decimal" class="form-input" value="${suggestedAmount}" placeholder="0"/>
+        <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Defaults to the computed earned amount. Edit if you paid a different sum.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes (optional)</label>
+        <textarea id="si-paid-notes" class="form-input" rows="2" placeholder="Payment reference, transfer ID, etc."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitSalesIncentiveMarkPaid('${userId}','${period}')"><i class="fas fa-check"></i> Mark Paid</button>
+    </div>
+  `, 'modal-md')
+}
+
+async function submitSalesIncentiveMarkPaid(userId, period) {
+  const amountRaw = (document.getElementById('si-paid-amount')?.value || '').trim()
+  const notes = (document.getElementById('si-paid-notes')?.value || '').trim()
+  const payload = { notes }
+  if (amountRaw !== '') {
+    const n = Number(amountRaw)
+    if (!Number.isFinite(n) || n < 0) { toast('Enter a non-negative amount', 'error'); return }
+    payload.paid_amount = n
+  }
+  try {
+    await API.post(`/sales-incentives/${userId}/${period}/mark-paid`, payload)
+    toast('Marked paid', 'success')
+    closeModal()
+    const el = document.getElementById('page-sales-incentive')
+    if (el) { el.dataset.loaded = ''; loadPage('sales-incentive', el) }
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function unmarkSalesIncentivePaid(userId, period) {
+  if (!confirm('Undo the paid status for this period?')) return
+  try {
+    await API.post(`/sales-incentives/${userId}/${period}/unmark-paid`, {})
+    toast('Marked unpaid', 'success')
+    const el = document.getElementById('page-sales-incentive')
+    if (el) { el.dataset.loaded = ''; loadPage('sales-incentive', el) }
+    if (_salesIncentiveHistoryUserId === userId) await _refreshSalesIncentiveHistoryBody()
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+// ── Month-by-month history per agent ───────────────────────
+let _salesIncentiveHistoryUserId = ''
+let _salesIncentiveHistoryCache = null
+
+async function openSalesIncentiveHistory(userId) {
+  _salesIncentiveHistoryUserId = userId
+  showModal(`
+    <div class="modal-header"><h3><i class="fas fa-clock-rotate-left" style="color:#22c55e;margin-right:6px"></i>Month-by-month history</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body" id="si-history-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+  `, 'modal-xl')
+  await _refreshSalesIncentiveHistoryBody()
+}
+
+async function _refreshSalesIncentiveHistoryBody() {
+  const body = document.getElementById('si-history-body')
+  if (!body) return
+  try {
+    const res = await API.get(`/sales-incentives/history/${_salesIncentiveHistoryUserId}?months=12`)
+    _salesIncentiveHistoryCache = res
+    const rows = res.rows || res.data || []
+    const u = res.user || {}
+    const totals = res.totals || { earned: 0, paid_amount: 0, pending_amount: 0 }
+    const canOverride = !!res.can_override
+    const canMarkPaid = !!res.can_mark_paid
+
+    body.innerHTML = `
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--border)">
+        ${avatar(u.full_name, u.avatar_color || '#FF7A45', 'md')}
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:#e2e8f0;font-size:14px">${escapeHtml(u.full_name || '—')}</div>
+          <div style="font-size:11.5px;color:#94a3b8">${escapeHtml(u.email || '')} · ${escapeHtml(u.role || '')}</div>
+        </div>
+        <div style="text-align:right;font-size:11.5px;color:#94a3b8">
+          <div>Current target: <strong style="color:#cbd5e1">${_fmtINR(u.monthly_target || 0)}</strong></div>
+          <div>Current rate: <strong style="color:#cbd5e1">${_fmtINR(u.incentive_rate || 0)}/₹ over target</strong></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
+        ${_siKpi('Earned (12 months)', _fmtINR(totals.earned), '#22c55e', 'fa-money-bill-wave')}
+        ${_siKpi('Paid out', _fmtINR(totals.paid_amount), '#94a3b8', 'fa-check-circle')}
+        ${_siKpi('Pending', _fmtINR(totals.pending_amount), '#FF7A45', 'fa-hourglass-half')}
+      </div>
+
+      ${rows.length ? `
+        <table class="data-table">
+          <thead><tr>
+            <th>Month</th>
+            <th style="text-align:right">Target</th>
+            <th style="text-align:right">Achieved</th>
+            <th style="text-align:right">Rate</th>
+            <th style="text-align:right">Earned</th>
+            <th>Status</th>
+            <th style="width:160px">Actions</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map((r) => _siHistoryRow(r, canOverride, canMarkPaid)).join('')}
+          </tbody>
+        </table>
+      ` : `<div class="empty-state"><i class="fas fa-inbox"></i><p>No months to show.</p></div>`}
+    `
+  } catch (e) {
+    body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+  }
+}
+
+function _siHistoryRow(r, canOverride, canMarkPaid) {
+  const overrideTag = r.achieved_override !== null && r.achieved_override !== undefined
+    ? ` <span class="badge badge-review" title="Manually overridden by admin">override</span>` : ''
+  return `<tr>
+    <td><strong style="color:#e2e8f0">${escapeHtml(_formatSalesIncentivePeriodLabel(r.period))}</strong>${r.has_record ? '' : ` <span style="font-size:10px;color:#64748b">(no entry yet)</span>`}</td>
+    <td style="text-align:right;color:#cbd5e1">${_fmtINR(r.target)}</td>
+    <td style="text-align:right">${_fmtINR(r.achieved)}${overrideTag}</td>
+    <td style="text-align:right;font-size:12px;color:#94a3b8">${_fmtINR(r.incentive_rate)}/₹ over target</td>
+    <td style="text-align:right;font-weight:700;color:#22c55e">${_fmtINR(r.earned)}</td>
+    <td>
+      ${r.paid
+        ? `<span class="badge badge-done">Paid${r.paid_at ? ' · ' + fmtDate(r.paid_at) : ''}</span>`
+        : `<span class="badge badge-todo">Pending</span>`}
+      ${r.paid_amount !== null && r.paid_amount !== undefined ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${_fmtINR(r.paid_amount)}${r.paid_by_name ? ' · ' + escapeHtml(r.paid_by_name) : ''}</div>` : ''}
+    </td>
+    <td>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        ${canOverride ? `<button class="btn btn-xs btn-outline" title="Override" onclick="openSalesIncentiveOverrideFromHistory('${r.user_id}','${r.period}')"><i class="fas fa-pen"></i></button>` : ''}
+        ${canMarkPaid && !r.paid ? `<button class="btn btn-xs btn-primary" title="Mark paid" onclick="openSalesIncentiveMarkPaidFromHistory('${r.user_id}','${r.period}','${r.earned}')"><i class="fas fa-check"></i></button>` : ''}
+        ${canMarkPaid && r.paid ? `<button class="btn btn-xs btn-outline" title="Undo paid" onclick="unmarkSalesIncentivePaid('${r.user_id}','${r.period}')"><i class="fas fa-rotate-left"></i></button>` : ''}
+      </div>
+    </td>
+  </tr>`
+}
+
+// Override / Mark-paid launched from inside the history modal need to re-open
+// the same history view on save instead of refreshing the underlying page,
+// so the admin keeps their context.
+function openSalesIncentiveOverrideFromHistory(userId, period) {
+  const row = (_salesIncentiveHistoryCache?.rows || []).find((r) => r.user_id === userId && r.period === period)
+  const cache = _salesIncentiveHistoryCache || {}
+  const canOverride = !!cache.can_override
+  const canSetTarget = !!cache.can_set_target
+  showModal(_siEditPeriodModalHtml({
+    title: `Edit ${_formatSalesIncentivePeriodLabel(period)}`,
+    period,
+    target: row?.target ?? 0,
+    rate: row?.incentive_rate ?? 0,
+    achievedAuto: row?.achieved_auto ?? 0,
+    achievedOverride: row?.achieved_override ?? '',
+    notes: row?.notes || '',
+    canOverride,
+    canSetTarget,
+    onSaveCall: `submitSalesIncentiveEditPeriod('${userId}','${period}', true)`,
+    onCancel: `closeModal();openSalesIncentiveHistory('${userId}')`,
+  }), 'modal-md')
+}
+
+function openSalesIncentiveMarkPaidFromHistory(userId, period, suggestedAmount) {
+  const row = (_salesIncentiveHistoryCache?.rows || []).find((r) => r.user_id === userId && r.period === period)
+  showModal(`
+    <div class="modal-header"><h3><i class="fas fa-check-circle" style="color:#22c55e;margin-right:6px"></i>Mark Paid — ${escapeHtml(_formatSalesIncentivePeriodLabel(period))}</h3><button class="close-btn" onclick="closeModal();openSalesIncentiveHistory('${userId}')">✕</button></div>
+    <div class="modal-body">
+      <div style="padding:10px 12px;border-radius:8px;background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.22);font-size:12.5px;color:#86efac;margin-bottom:12px">
+        Earned: <strong>${_fmtINR(row?.earned || 0)}</strong>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Paid amount (₹)</label>
+        <input id="si-paid-amount" type="text" inputmode="decimal" class="form-input" value="${suggestedAmount}"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes (optional)</label>
+        <textarea id="si-paid-notes" class="form-input" rows="2" placeholder="Transfer ref, UPI, etc."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal();openSalesIncentiveHistory('${userId}')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitSalesIncentiveMarkPaidFromHistory('${userId}','${period}')"><i class="fas fa-check"></i> Mark Paid</button>
+    </div>
+  `, 'modal-md')
+}
+
+async function submitSalesIncentiveMarkPaidFromHistory(userId, period) {
+  const amountRaw = (document.getElementById('si-paid-amount')?.value || '').trim()
+  const notes = (document.getElementById('si-paid-notes')?.value || '').trim()
+  const payload = { notes }
+  if (amountRaw !== '') {
+    const n = Number(amountRaw)
+    if (!Number.isFinite(n) || n < 0) { toast('Enter a non-negative amount', 'error'); return }
+    payload.paid_amount = n
+  }
+  try {
+    await API.post(`/sales-incentives/${userId}/${period}/mark-paid`, payload)
+    toast('Marked paid', 'success')
+    closeModal()
+    const el = document.getElementById('page-sales-incentive')
+    if (el) { el.dataset.loaded = ''; loadPage('sales-incentive', el) }
+    openSalesIncentiveHistory(userId)
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}

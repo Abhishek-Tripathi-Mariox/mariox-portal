@@ -161,6 +161,34 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
       { key: 'settings.manage_roles',       label: 'Manage roles & permissions' },
     ],
   },
+  {
+    module: 'sales_library',
+    label: 'Sales Library (Portfolio / SOW / Quotation)',
+    icon: 'fa-briefcase',
+    permissions: [
+      { key: 'portfolios.manage', label: 'Add / edit / delete portfolios',
+        description: 'Maintain entries in the Portfolio library and send them to leads.' },
+      { key: 'scopes.manage',     label: 'Add / edit / delete SOW (Scope of Work)',
+        description: 'Maintain entries in the Scope of Work library and send them to leads.' },
+      { key: 'quotations.manage', label: 'Add / edit / delete quotations',
+        description: 'Maintain entries in the Quotation library and send them to leads.' },
+    ],
+  },
+  {
+    module: 'sales_incentive',
+    label: 'Sales Incentive',
+    icon: 'fa-money-bill-trend-up',
+    permissions: [
+      { key: 'sales_incentive.view_all',    label: 'View team incentive tracker',
+        description: 'See target / achieved / earned across all sales agents.' },
+      { key: 'sales_incentive.set_target',  label: 'Set monthly target & incentive rate on users',
+        description: 'Configure each agent\'s monthly target and incentive rate.' },
+      { key: 'sales_incentive.override',    label: 'Override achieved value for a period',
+        description: 'Manually edit the achieved number when auto-calc doesn\'t fit.' },
+      { key: 'sales_incentive.mark_paid',   label: 'Mark incentives as paid',
+        description: 'Record that a period\'s incentive has been paid out.' },
+    ],
+  },
 ]
 
 export const ALL_PERMISSION_KEYS: PermissionKey[] = PERMISSION_CATALOGUE.flatMap(
@@ -190,6 +218,7 @@ const PM_PERMS: PermissionKey[] = [
   'reports.view_pm_dashboard', 'reports.view_resources', 'reports.export',
   'allocations.create', 'allocations.edit', 'allocations.view',
   'leaves.create_own', 'leaves.approve', 'leaves.view_all',
+  'portfolios.manage', 'scopes.manage', 'quotations.manage',
 ]
 
 const PC_PERMS: PermissionKey[] = [

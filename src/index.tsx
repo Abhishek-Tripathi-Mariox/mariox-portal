@@ -112,7 +112,7 @@ app.get('*', (c) => {
   <!-- Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css"/>
   <!-- App CSS -->
-  <link rel="stylesheet" href="/static/styles.css"/>
+  <link rel="stylesheet" href="/static/styles.css?v=lightblue5"/>
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
@@ -120,15 +120,15 @@ app.get('*', (c) => {
 </head>
 <body>
   <div id="app"></div>
-  <script src="/static/app.js"></script>
-  <script src="/static/pages.js"></script>
-  <script src="/static/pages2.js"></script>
-  <script src="/static/enterprise.js"></script>
-  <script src="/static/enterprise2.js"></script>
-  <script src="/static/client-portal.js"></script>
-  <script src="/static/project-extensions.js"></script>
-  <script src="/static/support.js"></script>
-  <script src="/static/leads.js"></script>
+  <script src="/static/app.js?v=incent5"></script>
+  <script src="/static/pages.js?v=incent5"></script>
+  <script src="/static/pages2.js?v=incent5"></script>
+  <script src="/static/enterprise.js?v=incent5"></script>
+  <script src="/static/enterprise2.js?v=incent5"></script>
+  <script src="/static/client-portal.js?v=incent5"></script>
+  <script src="/static/project-extensions.js?v=incent5"></script>
+  <script src="/static/support.js?v=incent5"></script>
+  <script src="/static/leads.js?v=incent5"></script>
 </body>
 </html>`)
 })

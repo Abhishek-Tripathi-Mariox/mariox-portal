@@ -6,6 +6,11 @@
 
 let _leadsPage = 1
 let _leadsStatusFilter = ''
+let _leadsFromDate = ''
+let _leadsToDate = ''
+let _leadsAssigneeFilter = ''
+let _leadsSourceFilter = ''
+let _leadsAssigneeOptionsCache = []
 
 // Statuses are seeded on the server (5 defaults each) and editable via
 // the "Manage Statuses" modal. Cached after the first fetch and refreshed
@@ -153,20 +158,28 @@ async function fetchSalesAssignees() {
 async function renderLeadsView(el) {
   el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div>`
   try {
-    await loadLeadStatuses()
-    const res = await API.get('/leads')
-    const leads = res.data || res.leads || []
+    await Promise.all([loadLeadStatuses(), loadLeadSources()])
+    const [leadsRes, assignees] = await Promise.all([
+      API.get('/leads'),
+      fetchSalesAssignees().catch(() => []),
+    ])
+    _leadsAssigneeOptionsCache = assignees
+    const leads = leadsRes.data || leadsRes.leads || []
     const statusCounts = leads.reduce((acc, l) => {
       const key = String(l.status || 'new').toLowerCase()
       acc[key] = (acc[key] || 0) + 1
       return acc
     }, {})
-    const filtered = _leadsStatusFilter
-      ? leads.filter((l) => String(l.status || '').toLowerCase() === _leadsStatusFilter)
-      : leads
+
+    const filtered = applyLeadsFilters(leads)
     const pagination = paginateClient(filtered, _leadsPage, 10)
     _leadsPage = pagination.page
     const canManage = leadsCanManage()
+    const activeFilterCount =
+      (_leadsFromDate ? 1 : 0) +
+      (_leadsToDate ? 1 : 0) +
+      (_leadsAssigneeFilter ? 1 : 0) +
+      (_leadsSourceFilter ? 1 : 0)
 
     el.innerHTML = `
       <div class="page-header">
@@ -174,11 +187,13 @@ async function renderLeadsView(el) {
           <h1 class="page-title">Leads</h1>
           <p class="page-subtitle">${leads.length} total leads · ${pagination.total} shown</p>
         </div>
-        ${canManage ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" onclick="openManageLeadStatusesModal()"><i class="fas fa-tags"></i> Manage Statuses</button>
+        <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="exportLeadsCsv()" title="Download filtered leads as CSV"><i class="fas fa-file-export"></i> Export</button>
+          ${canManage ? `<button class="btn btn-secondary btn-sm" onclick="openImportLeadsModal()"><i class="fas fa-file-csv"></i> Import</button>` : ''}
+          ${canManage ? `<button class="btn btn-secondary btn-sm" onclick="openManageLeadStatusesModal()"><i class="fas fa-tags"></i> Manage Statuses</button>
           <button class="btn btn-secondary btn-sm" onclick="openManageLeadSourcesModal()"><i class="fas fa-bullhorn"></i> Manage Sources</button>
-          <button class="btn btn-primary btn-sm" onclick="openCreateLeadModal()"><i class="fas fa-plus"></i> New Lead</button>
-        </div>` : ''}
+          <button class="btn btn-primary btn-sm" onclick="openCreateLeadModal()"><i class="fas fa-plus"></i> New Lead</button>` : ''}
+        </div>
       </div>
 
       <div class="card" style="margin-bottom:12px">
@@ -195,6 +210,31 @@ async function renderLeadsView(el) {
               return `<button class="btn btn-sm ${active ? 'btn-primary' : 'btn-outline'}" onclick="filterLeadsByStatus('${s}')">${meta?.label || s} <span style="opacity:.7;margin-left:4px">${count}</span></button>`
             }).join('')}
           </div>
+        </div>
+        <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;padding:0 16px 12px">
+          <div class="form-group" style="margin:0;min-width:160px">
+            <label class="form-label" style="font-size:11px">From date</label>
+            <input id="leads-filter-from" type="date" class="form-input" value="${_leadsFromDate}" onchange="onLeadsFilterChange()"/>
+          </div>
+          <div class="form-group" style="margin:0;min-width:160px">
+            <label class="form-label" style="font-size:11px">To date</label>
+            <input id="leads-filter-to" type="date" class="form-input" value="${_leadsToDate}" onchange="onLeadsFilterChange()"/>
+          </div>
+          <div class="form-group" style="margin:0;min-width:200px">
+            <label class="form-label" style="font-size:11px">Assigned to</label>
+            <select id="leads-filter-assignee" class="form-select" onchange="onLeadsFilterChange()">
+              <option value="">All assignees</option>
+              ${assignees.map((u) => `<option value="${u.id}" ${_leadsAssigneeFilter === u.id ? 'selected' : ''}>${escapeHtml(u.full_name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;min-width:180px">
+            <label class="form-label" style="font-size:11px">Source</label>
+            <select id="leads-filter-source" class="form-select" onchange="onLeadsFilterChange()">
+              <option value="">All sources</option>
+              ${LEAD_SOURCE_OPTIONS.filter((s) => s !== 'Other').map((s) => `<option value="${escapeHtml(s)}" ${_leadsSourceFilter === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
+            </select>
+          </div>
+          ${activeFilterCount ? `<button class="btn btn-outline btn-sm" onclick="clearLeadsFilters()" style="margin-bottom:2px"><i class="fas fa-times"></i> Clear (${activeFilterCount})</button>` : ''}
         </div>
       </div>
 
@@ -220,6 +260,199 @@ async function renderLeadsView(el) {
     `
   } catch (e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
+}
+
+function applyLeadsFilters(leads) {
+  return leads.filter((l) => {
+    if (_leadsStatusFilter && String(l.status || '').toLowerCase() !== _leadsStatusFilter) return false
+    if (_leadsAssigneeFilter && String(l.assigned_to || '') !== String(_leadsAssigneeFilter)) return false
+    if (_leadsSourceFilter && String(l.source || '') !== _leadsSourceFilter) return false
+    if (_leadsFromDate) {
+      const created = l.created_at ? new Date(l.created_at).getTime() : 0
+      const from = new Date(_leadsFromDate + 'T00:00:00').getTime()
+      if (created < from) return false
+    }
+    if (_leadsToDate) {
+      const created = l.created_at ? new Date(l.created_at).getTime() : 0
+      const to = new Date(_leadsToDate + 'T23:59:59').getTime()
+      if (created > to) return false
+    }
+    return true
+  })
+}
+
+function onLeadsFilterChange() {
+  _leadsFromDate = document.getElementById('leads-filter-from')?.value || ''
+  _leadsToDate = document.getElementById('leads-filter-to')?.value || ''
+  _leadsAssigneeFilter = document.getElementById('leads-filter-assignee')?.value || ''
+  _leadsSourceFilter = document.getElementById('leads-filter-source')?.value || ''
+  _leadsPage = 1
+  const el = document.getElementById('page-leads-view')
+  if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+}
+
+function clearLeadsFilters() {
+  _leadsFromDate = ''
+  _leadsToDate = ''
+  _leadsAssigneeFilter = ''
+  _leadsSourceFilter = ''
+  _leadsPage = 1
+  const el = document.getElementById('page-leads-view')
+  if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+}
+
+// ── CSV Export ──────────────────────────────────────────────
+async function exportLeadsCsv() {
+  try {
+    const res = await API.get('/leads')
+    const all = res.data || res.leads || []
+    const leads = applyLeadsFilters(all)
+    if (!leads.length) { toast('No leads match the current filter', 'info'); return }
+
+    const headers = ['name', 'email', 'phone', 'source', 'status', 'requirement', 'assigned_to_name', 'assigned_to_email', 'created_at']
+    const csvEscape = (v) => {
+      const s = v === null || v === undefined ? '' : String(v)
+      if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+      return s
+    }
+    const lines = [headers.join(',')]
+    for (const l of leads) {
+      lines.push([
+        l.name,
+        l.email,
+        l.phone,
+        l.source,
+        l.status,
+        l.requirement,
+        l.assigned_to_name || '',
+        l.assigned_to_email || '',
+        l.created_at,
+      ].map(csvEscape).join(','))
+    }
+    const csv = lines.join('\n') + '\n'
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `leads_export_${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    toast(`Exported ${leads.length} lead${leads.length === 1 ? '' : 's'}`, 'success')
+  } catch (e) {
+    toast('Export failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+// ── CSV Import ──────────────────────────────────────────────
+function downloadLeadsImportTemplate() {
+  const headers = 'name,email,phone,source,requirement,assigned_to_name,status'
+  // Pre-fill the sample with a real assignee from the current sales team so the
+  // template is import-ready out of the box. Falls back to a placeholder name
+  // if the cache hasn't been populated yet.
+  const sampleAssignee = (_leadsAssigneeOptionsCache && _leadsAssigneeOptionsCache[0]?.full_name) || 'Sales Agent Name'
+  const csvEscape = (v) => /[",\n\r]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v)
+  const rows = [
+    ['Rahul Sharma', 'rahul@acme.com', '+91-9876543210', 'PPC', 'Looking for a website rebuild', sampleAssignee, 'new'].map(csvEscape).join(','),
+    ['Priya Verma', 'priya@globex.com', '+91-9876500001', 'SEO', 'Needs an iOS + Android app', sampleAssignee, 'contacted'].map(csvEscape).join(','),
+    ['Aman Singh', 'aman@initech.com', '+91-9876500002', 'Referral', 'Custom CRM dashboard', sampleAssignee, 'qualified'].map(csvEscape).join(','),
+  ]
+  const csv = [headers, ...rows].join('\n') + '\n'
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'leads_import_template.csv'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function openImportLeadsModal() {
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-file-csv" style="color:var(--accent);margin-right:6px"></i>Import Leads</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <div style="padding:12px 14px;border-radius:10px;background:rgba(255,180,120,0.10);border:1px solid rgba(255,180,120,0.25);font-size:12.5px;line-height:1.55;color:var(--text-secondary)">
+        <i class="fas fa-circle-info" style="color:var(--accent);margin-right:6px"></i>
+        Upload a <strong>CSV file</strong> with a header row. Excel users: <em>File → Save As → CSV (UTF-8)</em>.<br/>
+        <strong>Required columns:</strong> name, email, phone, source, requirement, assigned_to_name<br/>
+        <strong>Optional:</strong> status (defaults to <code>new</code>)<br/>
+        <strong>assigned_to_name</strong> must match the full name of an existing sales user (case-insensitive) — unmatched rows are skipped.
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn btn-outline btn-sm" onclick="downloadLeadsImportTemplate()"><i class="fas fa-download"></i> Download sample template</button>
+      </div>
+
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">CSV File *</label>
+        <input id="leads-import-file" type="file" accept=".csv,text/csv" class="form-input" style="padding:10px"/>
+        <div class="form-hint">Pick a .csv file (Excel users: File → Save As → CSV UTF-8).</div>
+      </div>
+
+      <div id="leads-import-result" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="leads-import-submit" onclick="submitImportLeads()"><i class="fas fa-upload"></i> Import</button>
+    </div>
+  `, 'modal-lg')
+}
+
+async function submitImportLeads() {
+  const fileInput = document.getElementById('leads-import-file')
+  const submitBtn = document.getElementById('leads-import-submit')
+  const file = fileInput?.files?.[0]
+  if (!file) { toast('Please choose a CSV file', 'error'); return }
+  if (!/\.csv$/i.test(file.name || '')) {
+    toast('Invalid file format — please upload a .csv file', 'error')
+    return
+  }
+  const csv = (await file.text()).trim()
+  if (!csv) { toast('CSV file is empty', 'error'); return }
+
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing…' }
+  try {
+    const res = await API.post('/leads/import', { csv })
+    const created = res.created_count || 0
+    const errCount = res.error_count || 0
+    const errors = res.errors || []
+
+    const el = document.getElementById('page-leads-view')
+    if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+
+    if (errCount > 0) {
+      const result = document.getElementById('leads-import-result')
+      if (result) {
+        result.style.display = ''
+        result.innerHTML = `
+          <div style="padding:12px 14px;border-radius:10px;background:rgba(88,198,138,0.10);border:1px solid rgba(88,198,138,0.30);color:#86E0A8;font-size:13px;margin-bottom:8px">
+            <i class="fas fa-check-circle"></i> <strong>${created}</strong> leads imported successfully.
+          </div>
+          <div style="padding:12px 14px;border-radius:10px;background:rgba(255,94,58,0.10);border:1px solid rgba(255,94,58,0.30);color:#FF8866;font-size:12.5px;line-height:1.5">
+            <i class="fas fa-triangle-exclamation"></i> <strong>${errCount}</strong> rows skipped:
+            <ul style="margin:6px 0 0 18px;padding:0">
+              ${errors.slice(0, 25).map(e => `<li>Row ${e.row}${e.email ? ' (' + escapeHtml(e.email) + ')' : ''}: ${escapeHtml(e.error)}</li>`).join('')}
+              ${errors.length > 25 ? `<li>…and ${errors.length - 25} more</li>` : ''}
+            </ul>
+          </div>
+        `
+      }
+      toast(`${created} imported, ${errCount} skipped`, 'warning')
+    } else {
+      toast(`${created} lead${created === 1 ? '' : 's'} imported successfully`, 'success')
+      closeModal()
+    }
+  } catch (e) {
+    toast('Import failed: ' + (e.message || 'unknown'), 'error')
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-upload"></i> Import' }
   }
 }
 
@@ -636,6 +869,8 @@ async function loadLeadTimeline(id) {
       comment_added: 'fa-comment',
       mail_sent: 'fa-paper-plane',
       portfolio_sent: 'fa-briefcase',
+      scope_sent: 'fa-file-lines',
+      quotation_sent: 'fa-file-invoice-dollar',
       lead_closed: 'fa-handshake',
     }[k] || 'fa-circle')
     body.innerHTML = items.map((a) => `
@@ -1165,9 +1400,13 @@ function openSendPortfolioModal(leadId) {
 }
 
 let _outboundAttachments = [] // [{ filename, contentType, content (base64) }]
+let _outboundPortfolios = []  // cached library list for the active modal
+let _outboundPickedPortfolioId = '' // '' = none / custom file mode
 
 async function openSendOutboundModal(leadId, kind) {
   _outboundAttachments = []
+  _outboundPickedPortfolioId = ''
+  _outboundPortfolios = []
   let lead = null
   try {
     const res = await API.get(`/leads/${leadId}`)
@@ -1177,26 +1416,53 @@ async function openSendOutboundModal(leadId, kind) {
   }
   if (!lead) { toast('Lead not found', 'error'); return }
   const isPortfolio = kind === 'portfolio'
+
+  // Pull the portfolio library up-front when this is a portfolio send so the
+  // user can pick an existing entry rather than re-uploading the same file.
+  if (isPortfolio) {
+    try {
+      const res = await API.get('/portfolios')
+      _outboundPortfolios = res.data || res.portfolios || []
+    } catch { _outboundPortfolios = [] }
+  }
+
   const defaultSubject = isPortfolio
     ? `Mariox Software — Our Portfolio for ${lead.name}`
     : ''
   const defaultBody = isPortfolio
     ? `Hi ${lead.name},\n\nThanks for your time. As discussed, please find our company portfolio attached for your reference.\n\nLet us know if you have any questions or would like to schedule a follow-up.\n\nRegards,\n${_user?.full_name || _user?.name || 'Mariox Team'}`
     : ''
+
+  const portfolioPickerHtml = isPortfolio ? `
+    <div class="form-group">
+      <label class="form-label">Pick from portfolio library</label>
+      <select id="om-portfolio" class="form-select" onchange="onOutboundPortfolioPick(this.value)">
+        <option value="">— Custom (attach files manually) —</option>
+        ${_outboundPortfolios.map((p) => `<option value="${p.id}">${escapeHtml(p.title)}${p.file?.name ? ' · ' + escapeHtml(p.file.name) : ''}</option>`).join('')}
+      </select>
+      <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">
+        ${_outboundPortfolios.length
+          ? 'Anyone with Sales-Library permission (Settings → Roles & Permissions) can add new portfolios here.'
+          : 'No portfolios in the library yet. Add one from Sales CRM → Portfolio (admins manage permissions in Settings).'}
+      </div>
+    </div>
+  ` : ''
+
   showModal(`
     <div class="modal-header">
       <h3><i class="fas ${isPortfolio ? 'fa-briefcase' : 'fa-paper-plane'}" style="color:#FF7A45;margin-right:8px"></i>${isPortfolio ? 'Send Portfolio' : 'Send Mail'} — ${escapeHtml(lead.name)}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
+      ${portfolioPickerHtml}
       <div class="form-group"><label class="form-label">To *</label><input id="om-to" class="form-input" value="${escapeHtml(lead.email || '')}"/></div>
       <div class="form-group"><label class="form-label">Cc (comma separated)</label><input id="om-cc" class="form-input" placeholder="optional"/></div>
       <div class="form-group"><label class="form-label">Subject *</label><input id="om-subject" class="form-input" value="${escapeHtml(defaultSubject)}"/></div>
       <div class="form-group"><label class="form-label">Message *</label>
         <textarea id="om-body" class="form-input" rows="8" style="font-family:inherit">${escapeHtml(defaultBody)}</textarea>
       </div>
-      <div class="form-group">
-        <label class="form-label">Attachments ${isPortfolio ? '(attach your portfolio PDF)' : ''}</label>
+      <div class="form-group" id="om-attach-wrap">
+        <label class="form-label">Attachments ${isPortfolio ? '(only needed in Custom mode)' : ''}</label>
         <input id="om-files" type="file" class="form-input" multiple style="padding:6px" onchange="handleOutboundAttachments(this.files)"/>
         <div id="om-attachment-list" style="margin-top:6px"></div>
         <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Up to 10 MB per file. Hold Ctrl/Cmd to select multiple files.</div>
@@ -1207,6 +1473,24 @@ async function openSendOutboundModal(leadId, kind) {
       <button class="btn btn-primary" onclick="submitOutboundMail('${leadId}','${kind}')"><i class="fas fa-paper-plane"></i> Send</button>
     </div>
   `, 'modal-lg')
+}
+
+// Picking a library portfolio replaces the manual attachment flow: the file is
+// fetched server-side and the subject defaults to the portfolio's title so the
+// user only has to confirm the recipient + message.
+function onOutboundPortfolioPick(portfolioId) {
+  _outboundPickedPortfolioId = portfolioId || ''
+  const attachWrap = document.getElementById('om-attach-wrap')
+  const subjectEl = document.getElementById('om-subject')
+  const p = _outboundPortfolios.find((x) => String(x.id) === String(portfolioId))
+  if (p) {
+    if (subjectEl) subjectEl.value = `Mariox Software — ${p.title}`
+    if (attachWrap) attachWrap.style.display = 'none'
+    _outboundAttachments = []
+    renderOutboundAttachmentList()
+  } else {
+    if (attachWrap) attachWrap.style.display = ''
+  }
 }
 
 function renderOutboundAttachmentList() {
@@ -1279,6 +1563,28 @@ async function submitOutboundMail(leadId, kind) {
   if (!subject) { toast('Subject is required', 'error'); return }
   if (!text) { toast('Message body is required', 'error'); return }
   const cc = ccRaw ? ccRaw.split(',').map(s => s.trim()).filter(Boolean) : []
+
+  // Library mode — let the portfolio endpoint fetch the stored file and log
+  // the send into portfolio_sends + the lead timeline (same path the Portfolio
+  // tab's own Send button uses).
+  if (kind === 'portfolio' && _outboundPickedPortfolioId) {
+    try {
+      await API.post(`/portfolios/${_outboundPickedPortfolioId}/send/${leadId}`, {
+        to, cc, subject, text,
+      })
+      toast('Portfolio sent', 'success')
+      _outboundAttachments = []
+      _outboundPickedPortfolioId = ''
+      closeModal()
+      if (typeof openLeadDetailModal === 'function') openLeadDetailModal(leadId, { tab: 'timeline' })
+      return
+    } catch (e) {
+      toast('Failed: ' + (e.message || 'unknown'), 'error')
+      return
+    }
+  }
+
+  // Custom mode — original behavior with manually attached files.
   const html = `<pre style="font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap">${escapeHtml(text)}</pre>`
   const payload = {
     to, cc, subject, text, html,
@@ -1294,8 +1600,7 @@ async function submitOutboundMail(leadId, kind) {
     toast(kind === 'portfolio' ? 'Portfolio sent' : 'Mail sent', 'success')
     _outboundAttachments = []
     closeModal()
-    // Refresh detail modal so timeline shows the entry.
-    openLeadDetailModal(leadId, { tab: 'timeline' })
+    if (typeof openLeadDetailModal === 'function') openLeadDetailModal(leadId, { tab: 'timeline' })
   } catch (e) {
     toast('Failed: ' + e.message, 'error')
   }
@@ -1729,6 +2034,8 @@ const ACTIVITY_KIND_ICONS = {
   task_added: 'fa-tasks',
   mail_sent: 'fa-paper-plane',
   portfolio_sent: 'fa-folder-open',
+  scope_sent: 'fa-file-lines',
+  quotation_sent: 'fa-file-invoice-dollar',
 }
 
 function activityIcon(kind) {
@@ -2153,6 +2460,286 @@ async function renderLeadTasksPage(el) {
     iconColor: '#22c55e',
     emptyMsg: 'No lead tasks created yet.',
   })
+}
+
+// ── Sale Tracker ────────────────────────────────────────────
+// Cross-cut view of every lead grouped by stage, source, assignee, and
+// recency. Built so a manager can answer "where is the pipeline stuck?"
+// without clicking into individual leads.
+let _salesTrackerView = 'pipeline' // pipeline | source | assignee | recent
+let _salesTrackerFrom = ''
+let _salesTrackerTo = ''
+
+async function renderSalesTrackerPage(el) {
+  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading sale tracker…</div>`
+  try {
+    await Promise.all([loadLeadStatuses(), loadLeadSources()])
+    const res = await API.get('/leads')
+    const allLeads = res.data || res.leads || []
+    const leads = _salesTrackerFilter(allLeads)
+
+    const total = leads.length
+    const byStatus = _groupBy(leads, (l) => String(l.status || 'new').toLowerCase())
+    const closedKeys = ['closed', 'won', 'closed_won']
+    const lostKeys = ['lost', 'closed_lost', 'cold']
+    const closedCount = closedKeys.reduce((n, k) => n + (byStatus[k]?.length || 0), 0)
+    const lostCount = lostKeys.reduce((n, k) => n + (byStatus[k]?.length || 0), 0)
+    const openCount = total - closedCount - lostCount
+    const conversion = total ? Math.round((closedCount / total) * 100) : 0
+
+    const tabBtn = (key, label, icon) => `
+      <button class="btn btn-sm ${_salesTrackerView === key ? 'btn-primary' : 'btn-outline'}"
+        onclick="switchSalesTrackerView('${key}')"><i class="fas ${icon}"></i> ${label}</button>`
+
+    let bodyHtml = ''
+    if (_salesTrackerView === 'pipeline')      bodyHtml = _renderTrackerPipeline(leads, byStatus)
+    else if (_salesTrackerView === 'source')   bodyHtml = _renderTrackerBySource(leads)
+    else if (_salesTrackerView === 'assignee') bodyHtml = _renderTrackerByAssignee(leads)
+    else                                       bodyHtml = _renderTrackerRecent(leads)
+
+    el.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title"><i class="fas fa-chart-line" style="color:#22c55e;margin-right:8px"></i>Sale Tracker</h1>
+          <p class="page-subtitle">Track the pipeline by stage, source, owner, and activity.</p>
+        </div>
+        <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="exportSalesTrackerCsv()" title="Export current view as CSV"><i class="fas fa-file-export"></i> Export</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;padding:12px 16px">
+          <div class="form-group" style="margin:0;min-width:160px">
+            <label class="form-label" style="font-size:11px">From date</label>
+            <input id="tracker-from" type="date" class="form-input" value="${_salesTrackerFrom}" onchange="onTrackerDateChange()"/>
+          </div>
+          <div class="form-group" style="margin:0;min-width:160px">
+            <label class="form-label" style="font-size:11px">To date</label>
+            <input id="tracker-to" type="date" class="form-input" value="${_salesTrackerTo}" onchange="onTrackerDateChange()"/>
+          </div>
+          ${(_salesTrackerFrom || _salesTrackerTo) ? `<button class="btn btn-outline btn-sm" onclick="clearTrackerDates()" style="margin-bottom:2px"><i class="fas fa-times"></i> Clear</button>` : ''}
+          <div style="flex:1"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            ${tabBtn('pipeline', 'Pipeline', 'fa-stream')}
+            ${tabBtn('source', 'By Source', 'fa-bullhorn')}
+            ${tabBtn('assignee', 'By Owner', 'fa-user-tie')}
+            ${tabBtn('recent', 'Recent Activity', 'fa-clock')}
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">
+        ${_trackerKpiCard('Total Leads', total, 'fa-bullseye', '#FF7A45')}
+        ${_trackerKpiCard('Open Pipeline', openCount, 'fa-stream', '#3b82f6')}
+        ${_trackerKpiCard('Won', closedCount, 'fa-trophy', '#22c55e')}
+        ${_trackerKpiCard('Lost / Cold', lostCount, 'fa-snowflake', '#94a3b8')}
+        ${_trackerKpiCard('Conversion', conversion + '%', 'fa-percent', '#FFB347')}
+      </div>
+
+      ${bodyHtml}
+    `
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
+}
+
+function _salesTrackerFilter(leads) {
+  return leads.filter((l) => {
+    const created = l.created_at ? new Date(l.created_at).getTime() : 0
+    if (_salesTrackerFrom) {
+      const from = new Date(_salesTrackerFrom + 'T00:00:00').getTime()
+      if (created < from) return false
+    }
+    if (_salesTrackerTo) {
+      const to = new Date(_salesTrackerTo + 'T23:59:59').getTime()
+      if (created > to) return false
+    }
+    return true
+  })
+}
+
+function _trackerKpiCard(label, value, icon, color) {
+  return `<div class="card"><div class="card-body" style="padding:14px 16px;display:flex;align-items:center;gap:12px">
+    <div style="width:42px;height:42px;border-radius:12px;background:${color}22;display:flex;align-items:center;justify-content:center;color:${color};font-size:18px"><i class="fas ${icon}"></i></div>
+    <div>
+      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
+      <div style="font-size:22px;font-weight:700;color:#e2e8f0">${value}</div>
+    </div>
+  </div></div>`
+}
+
+function _groupBy(items, keyFn) {
+  const out = {}
+  for (const it of items) {
+    const k = keyFn(it)
+    if (!out[k]) out[k] = []
+    out[k].push(it)
+  }
+  return out
+}
+
+function _renderTrackerPipeline(leads, byStatus) {
+  const order = _leadStatusOrder.length ? _leadStatusOrder : Object.keys(byStatus)
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+    ${order.map((key) => {
+      const meta = LEAD_STATUS_META[key] || { label: key, badge: 'todo' }
+      const items = byStatus[key] || []
+      const pct = leads.length ? Math.round((items.length / leads.length) * 100) : 0
+      return `<div class="card"><div class="card-body" style="padding:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span>
+          <span style="font-size:18px;font-weight:700;color:#e2e8f0">${items.length}</span>
+        </div>
+        <div style="height:6px;border-radius:3px;background:rgba(255,255,255,0.08);overflow:hidden;margin-bottom:10px">
+          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#FF7A45,#FFB347)"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto">
+          ${items.slice(0, 8).map((l) => `
+            <div onclick="goLeadDetail('${l.id}')" style="cursor:pointer;padding:8px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+              <div style="font-size:12.5px;font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:2px">${escapeHtml(l.assigned_to_name || '—')} · ${escapeHtml(l.source || '—')}</div>
+            </div>`).join('') || `<div style="font-size:12px;color:#64748b;padding:8px">No leads in this stage.</div>`}
+          ${items.length > 8 ? `<div style="font-size:11px;color:#64748b;text-align:center">+${items.length - 8} more</div>` : ''}
+        </div>
+      </div></div>`
+    }).join('')}
+  </div>`
+}
+
+function _renderTrackerBySource(leads) {
+  const groups = _groupBy(leads, (l) => l.source || 'Unknown')
+  const sorted = Object.entries(groups).sort((a, b) => b[1].length - a[1].length)
+  if (!sorted.length) return `<div class="empty-state"><i class="fas fa-inbox"></i><p>No leads to analyze yet.</p></div>`
+  return `<div class="card"><div class="card-body" style="padding:0">
+    <table class="data-table">
+      <thead><tr><th>Source</th><th>Total</th><th>Won</th><th>Lost / Cold</th><th>Conversion</th><th>Distribution</th></tr></thead>
+      <tbody>
+        ${sorted.map(([src, items]) => {
+          const won = items.filter((l) => ['closed', 'won', 'closed_won'].includes(String(l.status || '').toLowerCase())).length
+          const lost = items.filter((l) => ['lost', 'closed_lost', 'cold'].includes(String(l.status || '').toLowerCase())).length
+          const conv = items.length ? Math.round((won / items.length) * 100) : 0
+          const pct = leads.length ? (items.length / leads.length) * 100 : 0
+          return `<tr>
+            <td style="font-weight:600;color:#e2e8f0">${escapeHtml(src)}</td>
+            <td>${items.length}</td>
+            <td style="color:#22c55e">${won}</td>
+            <td style="color:#94a3b8">${lost}</td>
+            <td style="font-weight:600;color:${conv >= 30 ? '#22c55e' : conv >= 10 ? '#FFB347' : '#FF5E3A'}">${conv}%</td>
+            <td style="min-width:160px"><div style="height:8px;border-radius:4px;background:rgba(255,255,255,0.06);overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#FF7A45,#FFB347)"></div></div></td>
+          </tr>`
+        }).join('')}
+      </tbody>
+    </table>
+  </div></div>`
+}
+
+function _renderTrackerByAssignee(leads) {
+  const groups = _groupBy(leads, (l) => l.assigned_to_name || 'Unassigned')
+  const sorted = Object.entries(groups).sort((a, b) => b[1].length - a[1].length)
+  if (!sorted.length) return `<div class="empty-state"><i class="fas fa-inbox"></i><p>No leads to analyze yet.</p></div>`
+  return `<div class="card"><div class="card-body" style="padding:0">
+    <table class="data-table">
+      <thead><tr><th>Owner</th><th>Total</th><th>Open</th><th>Won</th><th>Lost / Cold</th><th>Conversion</th></tr></thead>
+      <tbody>
+        ${sorted.map(([name, items]) => {
+          const won = items.filter((l) => ['closed', 'won', 'closed_won'].includes(String(l.status || '').toLowerCase())).length
+          const lost = items.filter((l) => ['lost', 'closed_lost', 'cold'].includes(String(l.status || '').toLowerCase())).length
+          const open = items.length - won - lost
+          const conv = items.length ? Math.round((won / items.length) * 100) : 0
+          return `<tr>
+            <td style="display:flex;align-items:center;gap:8px">${avatar(name, '#FF7A45', 'sm')} <span style="font-weight:600;color:#e2e8f0">${escapeHtml(name)}</span></td>
+            <td>${items.length}</td>
+            <td style="color:#3b82f6">${open}</td>
+            <td style="color:#22c55e">${won}</td>
+            <td style="color:#94a3b8">${lost}</td>
+            <td style="font-weight:600;color:${conv >= 30 ? '#22c55e' : conv >= 10 ? '#FFB347' : '#FF5E3A'}">${conv}%</td>
+          </tr>`
+        }).join('')}
+      </tbody>
+    </table>
+  </div></div>`
+}
+
+function _renderTrackerRecent(leads) {
+  const sorted = leads.slice().sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
+  const items = sorted.slice(0, 30)
+  if (!items.length) return `<div class="empty-state"><i class="fas fa-inbox"></i><p>No recent activity to show.</p></div>`
+  return `<div class="card"><div class="card-body" style="padding:0">
+    <table class="data-table">
+      <thead><tr><th>Lead</th><th>Status</th><th>Owner</th><th>Source</th><th>Last Updated</th><th style="width:70px"></th></tr></thead>
+      <tbody>
+        ${items.map((l) => {
+          const key = String(l.status || 'new').toLowerCase()
+          const meta = LEAD_STATUS_META[key] || { label: key, badge: 'todo' }
+          return `<tr>
+            <td><div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="goLeadDetail('${l.id}')">${avatar(l.name, '#FF7A45', 'sm')}<div><div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div><div style="font-size:11px;color:#64748b">${escapeHtml(l.email || '')}</div></div></div></td>
+            <td><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
+            <td>${escapeHtml(l.assigned_to_name || '—')}</td>
+            <td>${escapeHtml(l.source || '—')}</td>
+            <td style="font-size:12px;color:#94a3b8">${fmtDateTime(l.updated_at || l.created_at)}</td>
+            <td><button class="btn btn-xs btn-outline" onclick="goLeadDetail('${l.id}')"><i class="fas fa-up-right-from-square"></i></button></td>
+          </tr>`
+        }).join('')}
+      </tbody>
+    </table>
+  </div></div>`
+}
+
+function switchSalesTrackerView(view) {
+  _salesTrackerView = view
+  const el = document.getElementById('page-sales-tracker')
+  if (el) { el.dataset.loaded = ''; loadPage('sales-tracker', el) }
+}
+
+function onTrackerDateChange() {
+  _salesTrackerFrom = document.getElementById('tracker-from')?.value || ''
+  _salesTrackerTo = document.getElementById('tracker-to')?.value || ''
+  const el = document.getElementById('page-sales-tracker')
+  if (el) { el.dataset.loaded = ''; loadPage('sales-tracker', el) }
+}
+
+function clearTrackerDates() {
+  _salesTrackerFrom = ''
+  _salesTrackerTo = ''
+  const el = document.getElementById('page-sales-tracker')
+  if (el) { el.dataset.loaded = ''; loadPage('sales-tracker', el) }
+}
+
+async function exportSalesTrackerCsv() {
+  try {
+    const res = await API.get('/leads')
+    const all = res.data || res.leads || []
+    const leads = _salesTrackerFilter(all)
+    if (!leads.length) { toast('No leads in the current date range', 'info'); return }
+
+    const headers = ['name', 'email', 'phone', 'source', 'status', 'assigned_to_name', 'created_at', 'updated_at']
+    const csvEscape = (v) => {
+      const s = v === null || v === undefined ? '' : String(v)
+      if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+      return s
+    }
+    const lines = [headers.join(',')]
+    for (const l of leads) {
+      lines.push([
+        l.name, l.email, l.phone, l.source, l.status,
+        l.assigned_to_name || '', l.created_at, l.updated_at,
+      ].map(csvEscape).join(','))
+    }
+    const csv = lines.join('\n') + '\n'
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `sales_tracker_${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    toast(`Exported ${leads.length} lead${leads.length === 1 ? '' : 's'}`, 'success')
+  } catch (e) {
+    toast('Export failed: ' + (e.message || 'unknown'), 'error')
+  }
 }
 
 async function renderLeadTaskListPage(el, opts) {

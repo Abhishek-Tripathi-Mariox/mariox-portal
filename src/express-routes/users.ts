@@ -317,6 +317,14 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
       const monthlyHours = body.monthly_available_hours !== undefined
         ? validateRange(body.monthly_available_hours, 0, 744, 'Monthly available hours')
         : 160
+      // Sales-specific: monthly target (any unit — leads count or revenue) and
+      // incentive rate (rupees per unit above target). Both default to 0.
+      const monthlyTarget = body.monthly_target !== undefined
+        ? validatePositiveNumber(body.monthly_target, 'Monthly target')
+        : 0
+      const incentiveRate = body.incentive_rate !== undefined
+        ? validatePositiveNumber(body.incentive_rate, 'Incentive rate')
+        : 0
       const avatarColor = body.avatar_color
         ? validateHexColor(body.avatar_color, 'Avatar color')
         : '#6366f1'
@@ -347,6 +355,8 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
         working_days_per_week: weeklyDays,
         hourly_cost: hourlyCost,
         monthly_available_hours: monthlyHours,
+        monthly_target: monthlyTarget,
+        incentive_rate: incentiveRate,
         reporting_pm_id: body.reporting_pm_id || null,
         manager_id: hierarchy.manager_id,
         tl_id: hierarchy.tl_id,
@@ -408,6 +418,12 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
       const monthlyHours = body.monthly_available_hours !== undefined
         ? validateRange(body.monthly_available_hours, 0, 744, 'Monthly available hours')
         : 160
+      const monthlyTarget = body.monthly_target !== undefined
+        ? validatePositiveNumber(body.monthly_target, 'Monthly target')
+        : (existing.monthly_target ?? 0)
+      const incentiveRate = body.incentive_rate !== undefined
+        ? validatePositiveNumber(body.incentive_rate, 'Incentive rate')
+        : (existing.incentive_rate ?? 0)
 
       // Allow admin/pm to change role on an existing user (e.g. promote a sales
       // agent to TL). Falls back to the existing role if not supplied.
@@ -440,6 +456,8 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
           working_days_per_week: weeklyDays,
           hourly_cost: hourlyCost,
           monthly_available_hours: monthlyHours,
+          monthly_target: monthlyTarget,
+          incentive_rate: incentiveRate,
           reporting_pm_id: body.reporting_pm_id || null,
           manager_id: hierarchy.manager_id,
           tl_id: hierarchy.tl_id,

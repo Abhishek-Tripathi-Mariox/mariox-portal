@@ -202,6 +202,20 @@ async function openDeveloperModal(dev = null) {
           </div>
         </div>
       </div>
+      <div id="dev-sales-incentive-wrap" style="display:${['sales_manager','sales_tl','sales_agent'].includes(selectedRole) ? '' : 'none'}">
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Monthly Revenue Target (₹)</label>
+            <input id="dev-monthly-target" class="form-input" type="text" inputmode="decimal" value="${dev?.monthly_target ?? 0}" placeholder="e.g. 500000"/>
+            <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Sales target per month in rupees. Achieved is auto-summed from project revenue (lead → close → project).</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Incentive Rate (₹ paid per ₹ above target)</label>
+            <input id="dev-incentive-rate" class="form-input" type="text" inputmode="decimal" value="${dev?.incentive_rate ?? 0}" placeholder="e.g. 0.10"/>
+            <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">e.g. 0.10 = 10% commission on revenue above target. Earned = max(0, achieved − target) × rate.</div>
+          </div>
+        </div>
+      </div>
       <div id="dev-tech-skills-wrap" style="display:${['sales_agent','sales_tl','sales_manager'].includes(selectedRole) ? 'none' : ''}">
         <div class="form-group"><label class="form-label">Tech Stack (comma separated)</label>
           <input id="dev-tech" class="form-input" value="${Array.isArray(tech) ? tech.join(', ') : ''}" placeholder="Tech Stack" autocomplete="off"/></div>
@@ -247,6 +261,8 @@ function toggleDevPasswordVisibility() {
 function onDevRoleChange(role) {
   const techWrap = document.getElementById('dev-tech-skills-wrap')
   if (techWrap) techWrap.style.display = ['sales_agent','sales_tl','sales_manager'].includes(role) ? 'none' : ''
+  const incWrap = document.getElementById('dev-sales-incentive-wrap')
+  if (incWrap) incWrap.style.display = ['sales_manager','sales_tl','sales_agent'].includes(role) ? '' : 'none'
   const hierWrap = document.getElementById('dev-sales-hierarchy-wrap')
   const mgrWrap = document.getElementById('dev-manager-wrap')
   const tlWrap = document.getElementById('dev-tl-wrap')
@@ -316,6 +332,12 @@ async function saveDeveloper(id) {
       const tl = document.getElementById('dev-tl-id')?.value
       if (!tl) { utils.toast('Team Lead is required for a Sales Agent', 'error'); return }
       payload.tl_id = tl
+    }
+    if (['sales_manager','sales_tl','sales_agent'].includes(role)) {
+      const t = document.getElementById('dev-monthly-target')?.value
+      const r = document.getElementById('dev-incentive-rate')?.value
+      payload.monthly_target = Number(t) || 0
+      payload.incentive_rate = Number(r) || 0
     }
     if (!id && document.getElementById('dev-password')) payload.password = document.getElementById('dev-password').value
     let res

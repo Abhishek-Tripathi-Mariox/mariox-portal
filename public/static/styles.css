@@ -3431,18 +3431,18 @@ body::before, body::after { display: none !important; }
 /* ── LOGIN ───────────────────────────────────────────────── */
 #login-page {
   background:
-    radial-gradient(circle 800px at 18% 18%, rgba(255,122,69,0.45), transparent 58%),
-    radial-gradient(circle 800px at 82% 22%, rgba(139,92,246,0.40), transparent 58%),
-    radial-gradient(circle 1000px at 50% 100%, rgba(99,102,241,0.36), transparent 64%),
-    linear-gradient(160deg, #08091a 0%, #0c0e22 50%, #08091a 100%) !important;
+    radial-gradient(circle 900px at 15% 15%, rgba(140,165,195,0.28), transparent 60%),
+    radial-gradient(circle 800px at 85% 25%, rgba(95,120,150,0.22), transparent 58%),
+    radial-gradient(circle 1100px at 50% 110%, rgba(60,80,105,0.30), transparent 65%),
+    linear-gradient(135deg, #6c829c 0%, #54677e 30%, #3f5067 60%, #2f3d51 100%) !important;
 }
 .login-card {
-  background: linear-gradient(135deg, rgba(28,30,64,0.75), rgba(14,16,38,0.75)) !important;
-  border: 1px solid rgba(139,92,246,0.20) !important;
+  background: linear-gradient(135deg, rgba(52,68,90,0.78), rgba(36,48,66,0.82)) !important;
+  border: 1px solid rgba(148,170,200,0.18) !important;
   border-radius: var(--radius-xl) !important;
-  backdrop-filter: blur(20px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
-  box-shadow: 0 30px 80px rgba(0,0,0,0.60) !important;
+  backdrop-filter: blur(20px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(140%) !important;
+  box-shadow: 0 30px 80px rgba(15,25,40,0.55) !important;
 }
 
 /* ── HELLO BANNER (Pass 2) ──────────────────────────────── */
@@ -3877,10 +3877,10 @@ body {
 /* Login canvas — pure black with corner glows */
 #login-page {
   background:
-    radial-gradient(circle 700px at 18% 18%, rgba(255,122,69,0.32), transparent 60%),
-    radial-gradient(circle 700px at 82% 22%, rgba(139,92,246,0.30), transparent 60%),
-    radial-gradient(circle 900px at 50% 100%, rgba(99,102,241,0.26), transparent 64%),
-    linear-gradient(160deg, #030305 0%, #07070b 50%, #030305 100%) !important;
+    radial-gradient(circle 800px at 18% 18%, rgba(170,195,225,0.24), transparent 60%),
+    radial-gradient(circle 800px at 82% 22%, rgba(110,140,175,0.22), transparent 60%),
+    radial-gradient(circle 1000px at 50% 110%, rgba(55,80,110,0.28), transparent 64%),
+    linear-gradient(135deg, #6c829c 0%, #54677e 30%, #3f5067 60%, #2f3d51 100%) !important;
 }
 
 /* ── HELLO / PAGE BANNER — subtler obsidian, brighter glow */
@@ -4250,13 +4250,13 @@ body::before {
   opacity: 0.75 !important;
 }
 
-/* Login canvas — deeper black, brighter aurora corners */
+/* Login canvas — Light Blue admin theme (diagonal sweep, bright TL → dark BR) */
 #login-page {
   background:
-    radial-gradient(circle 800px at 20% 20%, rgba(255,122,69,0.40), transparent 60%),
-    radial-gradient(circle 800px at 80% 24%, rgba(139,92,246,0.36), transparent 60%),
-    radial-gradient(circle 1000px at 50% 100%, rgba(34,211,238,0.22), transparent 64%),
-    linear-gradient(160deg, #03030a 0%, #07070f 50%, #03030a 100%) !important;
+    radial-gradient(ellipse 80% 70% at 18% 25%, rgba(180,200,225,0.30), transparent 55%),
+    radial-gradient(ellipse 60% 60% at 95% 100%, rgba(10,16,28,0.65), transparent 55%),
+    radial-gradient(ellipse 70% 60% at 100% 50%, rgba(20,28,42,0.45), transparent 55%),
+    linear-gradient(135deg, #7d8fa3 0%, #62738a 22%, #4a5b73 45%, #344358 68%, #1f2a3a 100%) !important;
 }
 
 /* ── KANBAN / TASK CARDS — liquid panels ───────────────── */

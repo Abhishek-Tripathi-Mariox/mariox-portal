@@ -35,6 +35,10 @@ export interface UserRecord extends BaseRecord {
   working_days_per_week?: number
   hourly_cost?: number
   monthly_available_hours?: number
+  // Sales-incentive configuration (sales roles): the agent's monthly target
+  // and per-unit incentive rate paid on achievement above target.
+  monthly_target?: number
+  incentive_rate?: number
   reporting_pm_id?: string | null
   // Sales hierarchy: TLs report to a manager, agents report to a TL.
   // Required for sales_tl (manager_id) and sales_agent (tl_id); ignored for other roles.
@@ -296,6 +300,16 @@ export class MongoModels {
   readonly leadComments: MongoRepository
   readonly leadActivities: MongoRepository
   readonly leadNotes: MongoRepository
+  readonly portfolios: MongoRepository
+  readonly portfolioSends: MongoRepository
+  readonly portfolioPermissions: MongoRepository
+  readonly scopes: MongoRepository
+  readonly scopeSends: MongoRepository
+  readonly scopePermissions: MongoRepository
+  readonly quotations: MongoRepository
+  readonly quotationSends: MongoRepository
+  readonly quotationPermissions: MongoRepository
+  readonly salesIncentives: MongoRepository
 
   constructor(private readonly db: Db) {
     this.users = new UserModel(db.collection<UserRecord>('users'))
@@ -336,6 +350,16 @@ export class MongoModels {
     this.leadComments = new MongoRepository(db.collection('lead_comments'))
     this.leadActivities = new MongoRepository(db.collection('lead_activities'))
     this.leadNotes = new MongoRepository(db.collection('lead_notes'))
+    this.portfolios = new MongoRepository(db.collection('portfolios'))
+    this.portfolioSends = new MongoRepository(db.collection('portfolio_sends'))
+    this.portfolioPermissions = new MongoRepository(db.collection('portfolio_permissions'))
+    this.scopes = new MongoRepository(db.collection('scopes'))
+    this.scopeSends = new MongoRepository(db.collection('scope_sends'))
+    this.scopePermissions = new MongoRepository(db.collection('scope_permissions'))
+    this.quotations = new MongoRepository(db.collection('quotations'))
+    this.quotationSends = new MongoRepository(db.collection('quotation_sends'))
+    this.quotationPermissions = new MongoRepository(db.collection('quotation_permissions'))
+    this.salesIncentives = new MongoRepository(db.collection('sales_incentives'))
   }
 
   get rawDb() {

@@ -60,6 +60,14 @@ const PAGE_PERMISSIONS = {
   'lead-detail':     ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'lead-followups':  ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'lead-tasks':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'sales-tracker':   ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'sales-team':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'portfolio-library': ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'scope-library':     ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'quotation-library': ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'sales-incentive':   ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'project-team':    ['admin', 'pm', 'pc'],
+  'dev-team':        ['admin', 'pm', 'pc', 'developer', 'team'],
   // PM Dashboard is the operational view for PM/PC only — admins land on
   // their own Super Admin Overview, so we hide pm-dashboard from them.
   'pm-dashboard':    ['pm', 'pc'],
@@ -98,6 +106,14 @@ const SIDEBAR_PAGE_GROUPS = {
   'lead-followups': 'sales',
   'lead-tasks': 'sales',
   'lead-detail': 'sales',
+  'sales-tracker': 'sales',
+  'sales-team': 'sales',
+  'portfolio-library': 'sales',
+  'scope-library': 'sales',
+  'quotation-library': 'sales',
+  'sales-incentive': 'sales',
+  'project-team': 'pm',
+  'dev-team': 'dev',
   'pm-dashboard': 'pm',
   'projects-list': 'pm',
   'kanban-board': 'pm',
@@ -540,6 +556,12 @@ function buildShell() {
       navItem('leads-view',      'fa-bullseye',       leadsLabel),
       navItem('lead-followups',  'fa-calendar-check', 'Follow-ups'),
       navItem('lead-tasks',      'fa-list-check',     'Tasks'),
+      navItem('sales-tracker',   'fa-chart-line',     'Sale Tracker'),
+      navItem('sales-team',      'fa-people-group',   'Sales Team'),
+      navItem('portfolio-library','fa-briefcase',     'Portfolio'),
+      navItem('scope-library',    'fa-file-lines',    'Scope of Work'),
+      navItem('quotation-library','fa-file-invoice-dollar', 'Quotation'),
+      navItem('sales-incentive', 'fa-money-bill-trend-up', 'Sale Incentive'),
     ],
   })
 
@@ -557,6 +579,7 @@ function buildShell() {
       navItem('milestones-view', 'fa-flag',        'Milestones'),
       navItem('documents-center','fa-folder-open', 'Documents'),
       navItem('resources-view',  'fa-users-gear',  'Resources'),
+      navItem('project-team',    'fa-people-group','Project Team'),
     ],
   }) : ''
 
@@ -575,6 +598,7 @@ function buildShell() {
       navItem('leaves-view',    'fa-umbrella-beach', 'Leaves', ' <span class="nav-badge" id="nb-leaves">0</span>'),
       navItem('support-tickets','fa-life-ring',   'Support Tickets'),
       navItem('approval-queue', 'fa-clipboard-check', 'Approvals', ' <span class="nav-badge" id="nb-approval">0</span>'),
+      navItem('dev-team',       'fa-people-group','Dev Team'),
     ],
   }) : ''
 
@@ -590,6 +614,7 @@ function buildShell() {
       navItem('my-tasks',       'fa-list-check',  'My Tasks'),
       navItem('bidding-view',   'fa-gavel',       'Bidding', ' <span class="nav-badge" id="nb-bids" style="display:none">0</span>'),
       navItem('support-tickets','fa-life-ring',   'Support Tickets'),
+      navItem('dev-team',       'fa-people-group','Dev Team'),
     ],
   }) : ''
 
@@ -672,6 +697,14 @@ function buildShell() {
     <div id="page-lead-detail"      class="page"></div>
     <div id="page-lead-followups"   class="page"></div>
     <div id="page-lead-tasks"       class="page"></div>
+    <div id="page-sales-tracker"    class="page"></div>
+    <div id="page-sales-team"       class="page"></div>
+    <div id="page-project-team"     class="page"></div>
+    <div id="page-dev-team"         class="page"></div>
+    <div id="page-portfolio-library" class="page"></div>
+    <div id="page-scope-library"    class="page"></div>
+    <div id="page-quotation-library" class="page"></div>
+    <div id="page-sales-incentive"  class="page"></div>
     <div id="page-support-tickets"  class="page"></div>
     <div id="page-settings-view"    class="page"></div>
   </div>
@@ -706,7 +739,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','support-tickets':'Support Tickets','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','support-tickets':'Support Tickets','settings-view':'Settings'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -1531,6 +1564,14 @@ function loadPage(page, el) {
     case 'lead-detail':      renderLeadDetailPage(el, Router.current?.params?.id); break
     case 'lead-followups':   renderLeadFollowupsPage(el); break
     case 'lead-tasks':       renderLeadTasksPage(el); break
+    case 'sales-tracker':    renderSalesTrackerPage(el); break
+    case 'sales-team':        renderSalesTeamPage(el); break
+    case 'project-team':      renderProjectTeamPage(el); break
+    case 'dev-team':          renderDevTeamPage(el); break
+    case 'portfolio-library': renderPortfolioLibrary(el); break
+    case 'scope-library':     renderScopeLibrary(el); break
+    case 'quotation-library': renderQuotationLibrary(el); break
+    case 'sales-incentive':   renderSalesIncentivePage(el); break
     case 'support-tickets':  renderSupportTickets(el); break
     case 'settings-view':    renderSettingsView(el); break
     default: el.innerHTML = `<div class="page-header"><h1 class="page-title">${breadcrumbMap[page]||page}</h1></div><div class="empty-state"><i class="fas fa-hammer"></i><p>Module coming soon…</p></div>`

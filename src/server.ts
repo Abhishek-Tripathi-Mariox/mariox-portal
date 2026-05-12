@@ -28,6 +28,10 @@ import { createNotificationsRouter } from './express-routes/notifications'
 import { createBidsRouter } from './express-routes/bids'
 import { createUploadsRouter } from './express-routes/uploads'
 import { createLeadsRouter } from './express-routes/leads'
+import { createPortfoliosRouter } from './express-routes/portfolios'
+import { createScopesRouter } from './express-routes/scopes'
+import { createQuotationsRouter } from './express-routes/quotations'
+import { createSalesIncentivesRouter } from './express-routes/sales-incentives'
 import { bootstrapSeed } from './seeds/bootstrap'
 import { loadRuntimeEnv } from './utils/runtime-env'
 
@@ -148,6 +152,10 @@ server.use('/api/notifications', createNotificationsRouter(models, jwtSecret))
 server.use('/api/bids', createBidsRouter(models, jwtSecret))
 server.use('/api/uploads', createUploadsRouter(jwtSecret, runtimeEnv as any))
 server.use('/api/leads', createLeadsRouter(models, jwtSecret, runtimeEnv as any, String(runtimeEnv.PASSWORD_SALT || '')))
+server.use('/api/portfolios', createPortfoliosRouter(models, jwtSecret, runtimeEnv as any))
+server.use('/api/scopes', createScopesRouter(models, jwtSecret, runtimeEnv as any))
+server.use('/api/quotations', createQuotationsRouter(models, jwtSecret, runtimeEnv as any))
+server.use('/api/sales-incentives', createSalesIncentivesRouter(models, jwtSecret))
 
 server.use('/static', express.static(path.resolve(process.cwd(), 'public/static')))
 

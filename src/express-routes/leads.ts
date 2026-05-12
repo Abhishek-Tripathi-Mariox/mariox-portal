@@ -1395,5 +1395,164 @@ export function createLeadsRouter(
     }
   })
 
+  // ── BULK IMPORT (CSV) ───────────────────────────────────
+  // CSV columns:
+  //   name, email, phone, source, requirement, assigned_to_name, status
+  // assigned_to_name is matched against users.full_name (case-insensitive) —
+  // unmatched rows are skipped. If multiple users share a name the first match wins.
+  router.get('/import/template.csv', (_req, res) => {
+    const sample = [
+      'name,email,phone,source,requirement,assigned_to_name,status',
+      'Rahul Sharma,rahul@acme.com,+91-9876543210,PPC,Looking for a website rebuild,Priya Verma,new',
+      'Priya Verma,priya@globex.com,+91-9876500001,SEO,Needs an iOS + Android app,Priya Verma,contacted',
+      'Aman Singh,aman@initech.com,+91-9876500002,Referral,Custom CRM dashboard,Priya Verma,qualified',
+    ].join('\n')
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', 'attachment; filename="leads_import_template.csv"')
+    return res.send(sample)
+  })
+
+  router.post(
+    '/import',
+    requireRole('admin', 'pm', 'pc', 'sales_manager', 'sales_tl'),
+    async (req, res) => {
+      try {
+        const user = req.user as any
+        const body = req.body || {}
+        const csvText = String(body.csv || '').trim()
+        if (!csvText) return res.status(400).json({ error: 'csv is required' })
+
+        const rows = parseCsv(csvText)
+        if (rows.length < 2) {
+          return res.status(400).json({ error: 'CSV must contain a header row and at least one data row' })
+        }
+
+        const headers = rows[0].map((h) => String(h || '').trim().toLowerCase())
+        const required = ['name', 'email', 'phone', 'source', 'requirement', 'assigned_to_name']
+        for (const r of required) {
+          if (!headers.includes(r)) {
+            return res.status(400).json({ error: `Missing required column: ${r}` })
+          }
+        }
+
+        // Build a lookup of full_name → user once, so each row doesn't pay a query.
+        // Matching is case-insensitive and ignores extra whitespace; first match wins
+        // if multiple users share the same name.
+        const allUsers = (await models.users.find({})) as any[]
+        const usersByName = new Map<string, any>()
+        for (const u of allUsers) {
+          if (u && u.full_name) {
+            const key = String(u.full_name).toLowerCase().replace(/\s+/g, ' ').trim()
+            if (!usersByName.has(key)) usersByName.set(key, u)
+          }
+        }
+
+        // Allowed statuses from the catalog — anything else falls back to 'new'.
+        const statusDocs = (await models.leadStatuses.find({})) as any[]
+        const validStatuses = new Set(statusDocs.map((s) => String(s.key || '').toLowerCase()))
+        if (!validStatuses.size) validStatuses.add('new')
+
+        const created: any[] = []
+        const errors: { row: number; email?: string; error: string }[] = []
+
+        for (let i = 1; i < rows.length; i++) {
+          const cells = rows[i]
+          if (!cells || cells.every((c) => !c?.trim())) continue
+          const record: Record<string, string> = {}
+          headers.forEach((h, idx) => {
+            record[h] = String(cells[idx] || '').trim()
+          })
+
+          try {
+            const name = validateLength(record.name, 2, 120, 'Name')
+            const email = validateEmail(record.email, 'Email')
+            const phone = validateLength(record.phone, 4, 30, 'Phone')
+            const requirement = validateLength(record.requirement, 1, 5000, 'Requirement')
+            const source = validateLength(record.source, 1, 80, 'Source')
+
+            const assigneeName = String(record.assigned_to_name || '').toLowerCase().replace(/\s+/g, ' ').trim()
+            const assignee = assigneeName ? usersByName.get(assigneeName) : null
+            if (!assignee) {
+              errors.push({
+                row: i + 1,
+                email: record.email,
+                error: `Assignee name not found: ${record.assigned_to_name}`,
+              })
+              continue
+            }
+            const assignedTo = String(assignee.id)
+
+            const requestedStatus = String(record.status || 'new').toLowerCase().trim() || 'new'
+            const status = validStatuses.has(requestedStatus) ? requestedStatus : 'new'
+
+            const now = new Date()
+            const nowIso = now.toISOString()
+            const leadId = generateId('lead')
+            await models.leads.insertOne({
+              id: leadId,
+              name,
+              email,
+              phone,
+              requirement,
+              requirement_file: null,
+              source,
+              status,
+              assigned_to: assignedTo,
+              created_by: user?.sub || null,
+              created_at: nowIso,
+              updated_at: nowIso,
+            })
+
+            await logLeadActivity(
+              models,
+              leadId,
+              user,
+              'lead_created',
+              `Lead imported and assigned to ${assignee.full_name || assignee.email}`,
+              { assigned_to: assignedTo, source_import: true },
+            )
+
+            created.push({ id: leadId, email, name, assigned_to: assignedTo })
+          } catch (e: any) {
+            errors.push({ row: i + 1, email: record.email, error: e?.message || 'Failed' })
+          }
+        }
+
+        return res.json({
+          created_count: created.length,
+          error_count: errors.length,
+          created,
+          errors,
+        })
+      } catch (error: any) {
+        return respondWithError(res, error, 500)
+      }
+    },
+  )
+
   return router
+}
+
+// Tiny CSV parser — handles quoted fields with commas and escaped quotes ("").
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let cur: string[] = []
+  let field = ''
+  let inQuotes = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') { field += '"'; i++ }
+      else if (ch === '"') { inQuotes = false }
+      else field += ch
+    } else {
+      if (ch === '"') inQuotes = true
+      else if (ch === ',') { cur.push(field); field = '' }
+      else if (ch === '\n') { cur.push(field); rows.push(cur); cur = []; field = '' }
+      else if (ch === '\r') { /* skip */ }
+      else field += ch
+    }
+  }
+  if (field || cur.length) { cur.push(field); rows.push(cur) }
+  return rows
 }
