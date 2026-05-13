@@ -61,14 +61,14 @@ const PAGE_PERMISSIONS = {
   'lead-followups':  ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'lead-tasks':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'sales-tracker':   ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
-  'sales-team':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'sales-team':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'],
   'portfolio-library': ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'scope-library':     ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'quotation-library': ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'sales-incentive':   ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'meet-setup':        ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'project-team':    ['admin', 'pm', 'pc'],
-  'dev-team':        ['admin', 'pm', 'pc', 'developer', 'team'],
+  'dev-team':        ['admin', 'pm', 'pc'],
   // PM Dashboard is the operational view for PM/PC only — admins land on
   // their own Super Admin Overview, so we hide pm-dashboard from them.
   'pm-dashboard':    ['pm', 'pc'],
@@ -91,43 +91,82 @@ const PAGE_PERMISSIONS = {
   'settings-view':   ['admin', 'pm', 'pc', 'developer', 'team'],
 }
 
-// Pages that are additionally gated by granular permissions (Settings →
-// Roles & Permissions). A user must have AT LEAST ONE of the listed
-// permission keys to see the page — even if their role is in
-// PAGE_PERMISSIONS. Admins bypass this and see everything.
+// Every page admin can grant cross-role access to is mapped here to one
+// or more granular permission keys. A user (non-admin) needs AT LEAST
+// ONE of the listed permissions to see the page — the hardcoded
+// PAGE_PERMISSIONS role list is ignored for mapped pages, so admin can
+// give e.g. `clients.view_all` to a sales agent and they'll see the
+// Clients tab even though sales_agent isn't in PAGE_PERMISSIONS for it.
 //
-// Pages not listed here keep pure role-based gating (e.g. Leads, Tasks,
-// PM Dashboard) — the user explicitly wanted the role-driven defaults
-// to stay for lead-side actions.
+// Pages NOT listed here keep pure role-based gating (Leads pages,
+// role-specific dashboards, etc.) because they're inherently scoped to
+// a role family rather than a feature permission.
 const NAV_PERMISSION_MAP = {
+  // Admin areas
+  'super-dashboard':   ['reports.view_admin_dashboard'],
+  'clients-list':      ['clients.create', 'clients.view_all', 'clients.edit', 'clients.delete'],
+  'billing-admin':     ['invoices.create', 'invoices.view_all', 'invoices.send', 'invoices.mark_paid', 'invoices.delete'],
+  'team-overview':     ['users.view_all'],
+  // Team directories — gate on user-list visibility
+  'sales-team':        ['users.view_all'],
+  'project-team':      ['users.view_all'],
+  'dev-team':          ['users.view_all'],
+  // PM / work
+  'pm-dashboard':      ['reports.view_pm_dashboard'],
+  'projects-list':     ['projects.create', 'projects.view_all', 'projects.edit', 'projects.delete'],
+  'kanban-board':      ['tasks.create', 'tasks.edit_any', 'tasks.edit_own', 'tasks.move', 'tasks.comment'],
+  'documents-center':  ['documents.upload', 'documents.view_all', 'documents.delete'],
+  'resources-view':    ['reports.view_resources'],
+  'reports-view':      ['reports.export', 'reports.view_admin_dashboard', 'reports.view_pm_dashboard', 'reports.view_resources'],
+  // Operations
+  'timesheets-view':   ['timesheets.log_own', 'timesheets.approve', 'timesheets.edit_any', 'timesheets.view_team', 'timesheets.view_all'],
+  'leaves-view':       ['leaves.create_own', 'leaves.approve', 'leaves.view_all'],
+  'approval-queue':    ['leaves.approve', 'timesheets.approve'],
+  'support-tickets':   ['tickets.create', 'tickets.view_all', 'tickets.assign', 'tickets.delete', 'tickets.internal_notes'],
+  'alerts-view':       ['reports.view_admin_dashboard'],
+  // Sales-library + meetings (already gated)
   'portfolio-library': ['portfolios.create', 'portfolios.edit', 'portfolios.delete', 'portfolios.manage'],
   'scope-library':     ['scopes.create', 'scopes.edit', 'scopes.delete', 'scopes.manage'],
   'quotation-library': ['quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.manage'],
   'meet-setup':        ['meetings.create', 'meetings.edit', 'meetings.delete'],
   'sales-incentive':   ['sales_incentive.view_all', 'sales_incentive.set_target', 'sales_incentive.override', 'sales_incentive.mark_paid'],
+  // Pages intentionally NOT mapped (role-based only):
+  //   leads-view / lead-detail / lead-followups / lead-tasks / sales-tracker
+  //   → role-bound to sales family; no granular catalog entry yet
+  //   dev-dashboard / team-dashboard / my-tasks
+  //   → role-specific landing pages
+  //   bidding-view, sprints-view, milestones-view, settings-view
+  //   → no catalog entry yet; admin can keep role-based default
 }
 
 function hasAnyPermission(keys) {
   if (!Array.isArray(keys) || !keys.length) return true
-  // Legacy sessions (logged in before this feature shipped) won't have a
-  // permissions array until the next /verify call refreshes it. Don't
-  // hide the tab in that gap — the sidebar will re-render with the right
-  // filter as soon as /verify lands.
-  if (!_user || _user.permissions == null) return true
-  const perms = Array.isArray(_user.permissions) ? _user.permissions : []
+  // Strict check: a missing permissions array means "no permissions",
+  // not "show everything". Legacy sessions get the right tabs once
+  // /verify completes (init() re-renders the sidebar on permsChanged).
+  const perms = Array.isArray(_user?.permissions) ? _user.permissions : []
   for (const k of keys) if (perms.includes(k)) return true
   return false
 }
 
 function canSeePage(page) {
-  const allowed = PAGE_PERMISSIONS[page]
-  if (allowed && !allowed.includes(String(_user?.role || '').toLowerCase())) return false
-  // Admin sees everything once the role check passes — granular perms are
-  // an additional filter for non-admins only.
-  if (String(_user?.role || '').toLowerCase() === 'admin') return true
+  const role = String(_user?.role || '').toLowerCase()
+  // Admin bypasses every gate — they see and do everything.
+  if (role === 'admin') return true
+  // Permission-first: if the page is mapped to granular keys, the
+  // hardcoded role list is ignored. This is what lets admin grant
+  // `clients.view_all` to a sales agent and have the Clients tab
+  // actually appear, even though sales_agent isn't in
+  // PAGE_PERMISSIONS['clients-list'].
   const perms = NAV_PERMISSION_MAP[page]
-  if (perms && !hasAnyPermission(perms)) return false
-  return true
+  if (perms && perms.length) {
+    return hasAnyPermission(perms)
+  }
+  // Unmapped pages stay role-based (lead pages, role-specific dashboards,
+  // settings, etc.).
+  const allowed = PAGE_PERMISSIONS[page]
+  if (!allowed) return true
+  return allowed.includes(role)
 }
 
 const SIDEBAR_GROUP_STORAGE_KEY = 'devportal_sidebar_groups'
@@ -512,10 +551,17 @@ function renderApp() {
   if (!_user) { renderLogin(); return }
   if (_user.role === 'client') { renderClientPortal(); return }
 
-  // Build the shell once
-  if (!document.getElementById('sidebar')) {
+  // Rebuild the shell when no sidebar exists OR the cached shell was built
+  // for a different user. The "different user" case happens on account
+  // switch (admin → developer) — without this check, the stale admin
+  // sidebar persisted because the #sidebar element from the old session
+  // was still in the DOM and the early-return skipped the rebuild.
+  const currentUserKey = String(_user.sub || _user.id || _user.email || '')
+  const builtForKey = app?.dataset.shellUser || ''
+  if (!document.getElementById('sidebar') || builtForKey !== currentUserKey) {
     app.innerHTML = buildShell()
     bindNav()
+    if (app) app.dataset.shellUser = currentUserKey
   }
   const pg = Router.current?.page || defaultPage()
   ensureSidebarGroupOpen(pg)
@@ -524,6 +570,36 @@ function renderApp() {
   updateNav(pg)
   updateTopbar(pg)
   updateBackButton()
+  renderImpersonationBanner()
+}
+
+// When the active session is an impersonation (token issued via
+// /auth/impersonate), pin a slim banner to the top of the viewport so
+// the user remembers whose perspective they're in — and give them a
+// one-click way back to their real account.
+function renderImpersonationBanner() {
+  const existing = document.getElementById('impersonation-banner')
+  const impBy = _user?.impersonated_by
+  if (!impBy || !impBy.id) {
+    if (existing) existing.remove()
+    document.body.style.removeProperty('padding-top')
+    return
+  }
+  const banner = existing || (() => {
+    const el = document.createElement('div')
+    el.id = 'impersonation-banner'
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#7c3aed,#3b82f6);color:#fff;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;font:600 13px/1.4 Arial,Helvetica,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.25)'
+    document.body.appendChild(el)
+    return el
+  })()
+  const safeName = (_user?.full_name || _user?.name || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+  const safeBy = String(impBy.name || 'admin').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+  banner.innerHTML = `
+    <div><i class="fas fa-user-secret" style="margin-right:6px"></i> You are logged in as <strong>${safeName}</strong> (impersonated by ${safeBy})</div>
+    <button onclick="endImpersonation()" style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:6px;padding:5px 12px;font-weight:600;cursor:pointer"><i class="fas fa-undo"></i> Return to admin</button>
+  `
+  // Push the rest of the app down so the banner doesn't cover the topbar.
+  document.body.style.paddingTop = `${banner.offsetHeight}px`
 }
 
 function defaultPage() {
@@ -565,8 +641,11 @@ function navSection({ key, heading, chip, expanded, items, icon }) {
 function buildShell() {
   const role = String(_user.role || '').toLowerCase()
 
-  const isSalesRole = ['sales_manager','sales_tl','sales_agent'].includes(role)
-  const navAdmin = !isSalesRole ? navSection({
+  // Admin/Core section — gating is now per-item via canSeePage (which is
+  // permission-first). If admin grants e.g. `clients.view_all` to a
+  // sales agent, the Clients item appears here and the section becomes
+  // visible. Empty sections auto-collapse (navSection drops blanks).
+  const navAdmin = navSection({
     key: 'admin', heading: 'Admin', chip: 'Core', expanded: true, icon: 'fa-sparkles',
     items: [
       navItem('super-dashboard', 'fa-chart-pie', 'Overview'),
@@ -574,7 +653,7 @@ function buildShell() {
       navItem('billing-admin',   'fa-file-invoice-dollar', 'Billing'),
       navItem('team-overview',   'fa-users',      'Team'),
     ],
-  }) : ''
+  })
 
   // Sales CRM group — same shape as Project Management. Visible to anyone
   // with lead access; sales-only roles get a more specific heading.
@@ -601,10 +680,10 @@ function buildShell() {
     ],
   })
 
-  // Project Management section is for admin/pm/pc oversight only. Without
-  // this gate, team accounts saw Projects/Bidding/Kanban here too — duplicating
-  // their own "My Workspace" section since those pages are shared.
-  const navPm = ['admin', 'pm', 'pc'].includes(role) ? navSection({
+  // Project Management section — items gated per-permission. Team-role
+  // sees a dedicated "My Workspace" section below, so we still hide this
+  // from team to avoid duplicate Projects/Kanban links.
+  const navPm = role !== 'team' ? navSection({
     key: 'pm', heading: 'Project Management', chip: 'Work', expanded: true, icon: 'fa-layer-group',
     items: [
       navItem('pm-dashboard',    'fa-gauge-high', 'PM Dashboard'),
@@ -619,8 +698,10 @@ function buildShell() {
     ],
   }) : ''
 
-  const devHeading = role === 'developer' ? 'My Work' : 'Developer View'
-  const devChip    = role === 'developer' ? 'Me' : 'Dev'
+  // Header label adapts to role so a sales agent doesn't see "Developer
+  // View" sitting above their Tasks / Timesheets / Leaves.
+  const devHeading = role === 'developer' ? 'My Work' : 'My Workspace'
+  const devChip    = role === 'developer' ? 'Me' : 'Work'
   // Hard-gate the entire dev section away from team accounts. Team gets its
   // own "My Workspace" section below; without this gate Tasks/Support items
   // (which are shared) keep this section non-empty and timesheet/leave links
@@ -1664,21 +1745,33 @@ function init() {
       const initialRoute = resolveInitialRoute()
       const initialPage = initialRoute.page || defaultPage()
       const cachedRole = _user.role
+      // Capture the cached permissions snapshot so we can tell if /verify
+      // brought back a different set — admin tweaking a role's perms in
+      // Settings should also bounce the sidebar without a re-login.
+      const cachedPermsKey = Array.isArray(_user.permissions)
+        ? _user.permissions.slice().sort().join('|')
+        : '__missing__'
       Router.navigate(initialPage, initialRoute.params || {})
       refreshAuthFromServer().then(() => {
         if (!_user) { renderLogin(); return }
+        const freshPermsKey = Array.isArray(_user.permissions)
+          ? _user.permissions.slice().sort().join('|')
+          : '__missing__'
+        const roleChanged = _user.role !== cachedRole
+        const permsChanged = freshPermsKey !== cachedPermsKey
         // Role/designation may have changed in the DB. renderApp() skips the
         // shell rebuild if a sidebar already exists, so we wipe + re-mount
-        // when the role flipped — that rebuilds the sidebar with fresh
-        // permissions and bounces away from any now-forbidden page.
-        if (_user.role !== cachedRole) {
+        // when the role flipped OR permissions changed — that rebuilds the
+        // sidebar with fresh permissions and bounces away from any
+        // now-forbidden page.
+        if (roleChanged || permsChanged) {
           const app = document.getElementById('app')
           if (app) app.innerHTML = ''
           Router.current = null
           Router.history = []
           const next = canSeePage(initialPage) ? initialPage : defaultPage()
           Router.navigate(next)
-          if (typeof toast === 'function') toast(`Your role changed to ${_user.role}`, 'info')
+          if (roleChanged && typeof toast === 'function') toast(`Your role changed to ${_user.role}`, 'info')
         } else if (Router.current && !canSeePage(Router.current.page)) {
           Router.current = null
           Router.navigate(defaultPage())

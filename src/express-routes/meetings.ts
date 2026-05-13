@@ -15,6 +15,7 @@ import { generateId } from '../utils/helpers'
 import { validateLength, respondWithError } from '../validators'
 import { createUserNotifications } from './notifications'
 import { sendSmtpEmail, type SmtpEnv } from '../utils/smtp'
+import { canUserAccessLead } from './leads'
 
 function lower(value: any): string {
   return String(value || '').toLowerCase().trim()
@@ -460,12 +461,17 @@ export function createMeetingsRouter(
     try {
       const user = req.user as any
       const perms = await getMeetingPerms(models, user)
-      if (!perms.canCreate) {
-        return res.status(403).json({ error: 'Not allowed to schedule meetings' })
-      }
       const payload = normalizeMeetingPayload(req.body || {})
       const lead = (await models.leads.findOne({ id: payload.lead_id })) as any
       if (!lead) return res.status(404).json({ error: 'Lead not found' })
+      // Either explicit meetings.create perm OR access to the specific
+      // lead is enough — this is what lets the Schedule Follow-up flow
+      // create meetings without granting `meetings.create` to every sales
+      // agent. Mirrors the rule we use for lead tasks and notes.
+      const hasLeadAccess = await canUserAccessLead(models, user, lead)
+      if (!perms.canCreate && !hasLeadAccess) {
+        return res.status(403).json({ error: 'Not allowed to schedule meetings' })
+      }
 
       const now = new Date().toISOString()
       const id = generateId('mtg')

@@ -93,6 +93,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
           avatar_color: user.avatar_color,
           must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
           permissions,
+          impersonated_by: null,
         },
       })
     } catch (error) {
@@ -115,6 +116,12 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
       res.setHeader('Pragma', 'no-cache')
       const permissions = await loadRolePermissions(models, user.role)
+      // Surface the impersonation context so the frontend can show a
+      // "you're acting as X — return to admin" banner. Only present when
+      // the token carries imp_sub (set by the /impersonate endpoint).
+      const impersonatedBy = payload.imp_sub
+        ? { id: String(payload.imp_sub), name: String(payload.imp_name || '') }
+        : null
       return res.json({
         valid: true,
         user: {
@@ -126,10 +133,122 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
           avatar_color: user.avatar_color,
           must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
           permissions,
+          impersonated_by: impersonatedBy,
         },
       })
     } catch {
       return res.status(401).json({ valid: false })
+    }
+  })
+
+  // ─── Impersonation ────────────────────────────────────────────────
+  // Lets an admin / PM / PC / sales manager / sales TL log in AS another
+  // user without knowing their password. Issues a fresh token whose `sub`
+  // is the target user, and carries the original requester's identity in
+  // `imp_sub` / `imp_name` so the frontend can show a return banner.
+  // Hard-coded guards:
+  //   - Can't impersonate yourself (no-op).
+  //   - Can't impersonate an admin unless you ARE an admin (privilege
+  //     escalation).
+  //   - Can't chain impersonation (an already-impersonating token can't
+  //     start a new impersonation; they must end the current one first).
+  router.post('/impersonate/:userId', authMiddleware, async (req, res) => {
+    try {
+      const ctx = req.user as any
+      if (ctx?.imp_sub) {
+        return res.status(409).json({ error: 'Already impersonating — end the current session first' })
+      }
+      const requesterRole = String(ctx?.role || '').toLowerCase().trim()
+      const allowedRoles = ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl']
+      if (!allowedRoles.includes(requesterRole)) {
+        return res.status(403).json({ error: 'Not allowed to impersonate' })
+      }
+      const targetId = String(req.params.userId || '').trim()
+      if (!targetId) return res.status(400).json({ error: 'Target user is required' })
+      if (targetId === String(ctx?.sub || '')) {
+        return res.status(400).json({ error: "You're already this user" })
+      }
+      const target = await models.users.findActiveById(targetId) as any
+      if (!target) return res.status(404).json({ error: 'User not found or inactive' })
+      const targetRole = String(target.role || '').toLowerCase().trim()
+      if (targetRole === 'admin' && requesterRole !== 'admin') {
+        return res.status(403).json({ error: 'Only an admin can impersonate another admin' })
+      }
+      const requester = await models.users.findById(String(ctx?.sub || '')) as any
+
+      const payload = {
+        sub: target.id,
+        email: target.email,
+        role: normalizeRole(target.role),
+        name: target.full_name,
+        // Audit trail: who actually triggered this session.
+        imp_sub: ctx.sub,
+        imp_name: requester?.full_name || ctx?.name || '',
+        // Short-lived — impersonation shouldn't outlive an admin's attention.
+        exp: Math.floor(Date.now() / 1000) + 60 * 60,
+      }
+      const token = await signToken(payload, jwtSecret)
+      const permissions = await loadRolePermissions(models, target.role)
+
+      return res.json({
+        token,
+        user: {
+          id: target.id,
+          email: target.email,
+          full_name: target.full_name,
+          role: normalizeRole(target.role),
+          designation: target.designation,
+          avatar_color: target.avatar_color,
+          must_change_password: Number(target.must_change_password) === 1 ? 1 : 0,
+          permissions,
+          impersonated_by: { id: String(ctx.sub), name: requester?.full_name || ctx?.name || '' },
+        },
+      })
+    } catch (error: any) {
+      console.error('Impersonate error:', error)
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // End an active impersonation session and re-issue a token for the
+  // original requester. Frontend calls this from the "Return to admin"
+  // banner so the user doesn't have to log in again.
+  router.post('/end-impersonation', authMiddleware, async (req, res) => {
+    try {
+      const ctx = req.user as any
+      if (!ctx?.imp_sub) {
+        return res.status(400).json({ error: 'Not currently impersonating' })
+      }
+      const original = await models.users.findActiveById(String(ctx.imp_sub)) as any
+      if (!original) {
+        return res.status(404).json({ error: 'Original account is no longer active' })
+      }
+      const payload = {
+        sub: original.id,
+        email: original.email,
+        role: normalizeRole(original.role),
+        name: original.full_name,
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+      }
+      const token = await signToken(payload, jwtSecret)
+      const permissions = await loadRolePermissions(models, original.role)
+      return res.json({
+        token,
+        user: {
+          id: original.id,
+          email: original.email,
+          full_name: original.full_name,
+          role: normalizeRole(original.role),
+          designation: original.designation,
+          avatar_color: original.avatar_color,
+          must_change_password: Number(original.must_change_password) === 1 ? 1 : 0,
+          permissions,
+          impersonated_by: null,
+        },
+      })
+    } catch (error: any) {
+      console.error('End-impersonation error:', error)
+      return respondWithError(res, error, 500)
     }
   })
 

@@ -53,7 +53,7 @@ async function buildLeadVisibilityFilter(
   return { assigned_to: userId }
 }
 
-async function canUserAccessLead(models: MongoModels, user: any, lead: any): Promise<boolean> {
+export async function canUserAccessLead(models: MongoModels, user: any, lead: any): Promise<boolean> {
   if (!lead) return false
   const filter = await buildLeadVisibilityFilter(models, user)
   if (!filter) return true
@@ -587,11 +587,19 @@ export function createLeadsRouter(
   // Close a lead and convert it into a client. Required body fields cover
   // everything on the client model that isn't already on the lead, plus a
   // password. Sends a credentials email so the client can sign in.
-  router.post('/:id/close', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.post('/:id/close', async (req, res) => {
     try {
+      const user = req.user as any
       const id = String(req.params.id)
       const lead = await models.leads.findById(id) as any
       if (!lead) return res.status(404).json({ error: 'Lead not found' })
+      // Anyone with visibility on this lead can close it — mirrors the
+      // "if you see the lead, you can act on it" rule used elsewhere
+      // (tasks, follow-ups, meetings). Backend stays strict so a
+      // sales_agent can only close their own assigned leads.
+      if (!(await canUserAccessLead(models, user, lead))) {
+        return res.status(403).json({ error: 'Not allowed to close this lead' })
+      }
       if (lead.client_id) {
         return res.status(409).json({ error: 'A client has already been created for this lead' })
       }
@@ -952,6 +960,24 @@ export function createLeadsRouter(
       if ('status' in body) patch.status = String(body.status || 'pending').trim().toLowerCase()
       if ('notes' in body) patch.notes = String(body.notes || '').trim().slice(0, 2000)
       if ('due_date' in body) patch.due_date = body.due_date ? new Date(body.due_date).toISOString() : null
+      // Edit support for the row-level Edit modal: title / description /
+      // priority. Same length caps as the create routes so the data stays
+      // consistent across the two entry points.
+      if ('title' in body) {
+        const title = String(body.title || '').trim()
+        if (title.length < 1 || title.length > 200) {
+          return res.status(400).json({ error: 'Title must be 1-200 characters' })
+        }
+        patch.title = title
+      }
+      if ('description' in body) patch.description = String(body.description || '').trim().slice(0, 2000)
+      if ('priority' in body) {
+        const p = String(body.priority || '').trim().toLowerCase()
+        if (p && !['low', 'medium', 'high', 'critical'].includes(p)) {
+          return res.status(400).json({ error: 'Invalid priority' })
+        }
+        if (p) patch.priority = p
+      }
       if ('snooze_minutes' in body) {
         const m = Math.max(0, Math.min(24 * 60, Math.round(Number(body.snooze_minutes) || 0)))
         patch.snooze_minutes = m
@@ -971,6 +997,37 @@ export function createLeadsRouter(
           `Follow-up updated: ${summaryParts.join(', ')}`, { task_id: taskId, ...patch })
       }
       return res.json({ message: 'Task updated' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Delete a lead task / follow-up. Same access rules as PATCH: owner,
+  // manager, or anyone with visibility on the parent lead. We stamp the
+  // lead activity timeline so the row's history isn't lost.
+  router.delete('/tasks/:taskId', async (req, res) => {
+    try {
+      const user = req.user as any
+      const role = lower(user?.role)
+      const taskId = String(req.params.taskId)
+      const task = await models.leadTasks.findById(taskId) as any
+      if (!task) return res.status(404).json({ error: 'Task not found' })
+      const isOwner = String(task.assigned_to) === String(user?.sub)
+      const isManager = LEADS_GLOBAL_ROLES.includes(role as any)
+      let canEdit = isOwner || isManager
+      if (!canEdit) {
+        const lead = await models.leads.findById(String(task.lead_id)) as any
+        canEdit = await canUserAccessLead(models, user, lead)
+      }
+      if (!canEdit) {
+        return res.status(403).json({ error: 'Not allowed to delete this task' })
+      }
+      await models.leadTasks.deleteById(taskId)
+      const kind = String(task.kind || 'followup') === 'task' ? 'task_deleted' : 'followup_deleted'
+      await logLeadActivity(models, String(task.lead_id), user, kind,
+        `${kind === 'task_deleted' ? 'Task' : 'Follow-up'} "${task.title || taskId}" deleted`,
+        { task_id: taskId })
+      return res.json({ message: 'Task deleted' })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }

@@ -1,7 +1,34 @@
 import type { NextFunction, Request, Response } from 'express'
 import { jwtVerify } from 'jose'
+import type { MongoModels } from '../models/mongo-models'
 
 const encoder = new TextEncoder()
+
+// Has-permission check used by route handlers that want to gate access on
+// granular permission keys (e.g. `clients.view_all`) rather than a fixed
+// role list. Admin always passes. A non-admin passes if their role doc in
+// the `roles` collection contains AT LEAST ONE of the requested keys.
+//
+// Use this together with the role allowlist in each route: pass either
+// check, that way old role-gated flows keep working AND new permission
+// grants take effect immediately when admin toggles them in Settings.
+export async function userHasAnyPermission(
+  models: MongoModels,
+  user: any,
+  ...keys: string[]
+): Promise<boolean> {
+  const role = String(user?.role || '').toLowerCase().trim()
+  if (role === 'admin') return true
+  if (!role || !keys.length) return false
+  try {
+    const doc = (await models.roles.findOne({ key: role })) as any
+    const perms: string[] = Array.isArray(doc?.permissions) ? doc.permissions : []
+    for (const k of keys) if (perms.includes(k)) return true
+    return false
+  } catch {
+    return false
+  }
+}
 
 async function verifyToken(token: string, secret: string) {
   const { payload } = await jwtVerify(token, encoder.encode(secret))

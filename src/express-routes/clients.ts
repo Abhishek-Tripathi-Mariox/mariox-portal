@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware } from '../express-middleware/auth'
+import { createAuthMiddleware, userHasAnyPermission } from '../express-middleware/auth'
 import {
   validateEmail,
   validateNewPassword,
@@ -34,9 +34,9 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
     try {
       const user = req.user as any
       const role = String(user?.role || '').toLowerCase()
-      if (!['admin', 'pm', 'pc'].includes(role)) {
-        return res.status(403).json({ error: 'Forbidden' })
-      }
+      const allowed = ['admin', 'pm', 'pc'].includes(role)
+        || await userHasAnyPermission(models, user, 'clients.create')
+      if (!allowed) return res.status(403).json({ error: 'Forbidden' })
 
       const body = req.body || {}
       const email = validateEmail(body.email)
@@ -97,9 +97,11 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
       const user = req.user as any
       const role = String(user?.role || '').toLowerCase()
       const id = String(req.params.id)
-      if (!['admin', 'pm', 'pc'].includes(role) && !(role === 'client' && user?.sub === id)) {
-        return res.status(403).json({ error: 'Forbidden' })
-      }
+      const isSelfClient = role === 'client' && user?.sub === id
+      const allowed = isSelfClient
+        || ['admin', 'pm', 'pc'].includes(role)
+        || await userHasAnyPermission(models, user, 'clients.edit')
+      if (!allowed) return res.status(403).json({ error: 'Forbidden' })
 
       const body = req.body || {}
       const patch: any = { updated_at: new Date().toISOString() }
@@ -130,7 +132,9 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
     try {
       const user = req.user as any
       const role = String(user?.role || '').toLowerCase()
-      if (role !== 'admin') return res.status(403).json({ error: 'Forbidden' })
+      const allowed = role === 'admin'
+        || await userHasAnyPermission(models, user, 'clients.delete')
+      if (!allowed) return res.status(403).json({ error: 'Forbidden' })
       await models.clients.deleteById(String(req.params.id))
       return res.json({ message: 'Client deleted successfully' })
     } catch (error: any) {
@@ -170,9 +174,10 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
   router.get('/', async (req, res) => {
     try {
       const user = req.user as any
-      if (!['admin', 'pm'].includes(String(user.role || '').toLowerCase())) {
-        return res.status(403).json({ error: 'Forbidden' })
-      }
+      const role = String(user?.role || '').toLowerCase()
+      const allowed = ['admin', 'pm'].includes(role)
+        || await userHasAnyPermission(models, user, 'clients.view_all', 'clients.create', 'clients.edit', 'clients.delete')
+      if (!allowed) return res.status(403).json({ error: 'Forbidden' })
 
       const clients = await models.clients.find({}) as any[]
       const projects = await models.projects.find({}) as any[]

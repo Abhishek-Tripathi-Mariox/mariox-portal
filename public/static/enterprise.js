@@ -4483,13 +4483,16 @@ function _teamMemberCard(m, cfg) {
         ${m.phone ? `<div style="display:flex;align-items:center;gap:6px"><i class="fas fa-phone" style="width:12px;color:#64748b"></i>${escapeHtml(m.phone)}</div>` : ''}
         ${m.joining_date ? `<div style="display:flex;align-items:center;gap:6px"><i class="fas fa-calendar" style="width:12px;color:#64748b"></i>Joined ${fmtDate(m.joining_date)}</div>` : ''}
       </div>
-      <div style="display:flex;gap:6px;margin-top:12px">
-        <button class="btn btn-outline btn-xs" style="flex:1" onclick="event.stopPropagation();openTeamMemberDetail('${m.id}','${cfg.pageId}')">
+      <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-xs" style="flex:1;min-width:60px" onclick="event.stopPropagation();openTeamMemberDetail('${m.id}','${cfg.pageId}')">
           <i class="fas fa-eye"></i> View
         </button>
-        <button class="btn btn-secondary btn-xs" style="flex:1" onclick="event.stopPropagation();editTeamSectionMember('${m.id}','${cfg.pageId}')">
+        <button class="btn btn-secondary btn-xs" style="flex:1;min-width:60px" onclick="event.stopPropagation();editTeamSectionMember('${m.id}','${cfg.pageId}')">
           <i class="fas fa-edit"></i> Edit
         </button>
+        ${_canImpersonate(m) ? `<button class="btn btn-primary btn-xs" style="flex:1;min-width:80px;background:#3b82f6;border-color:#3b82f6" onclick="event.stopPropagation();impersonateUser('${m.id}','${escapeHtml(m.full_name || '').replace(/'/g, "\\'")}')" title="Log in as this user">
+          <i class="fas fa-user-secret"></i> Login as
+        </button>` : ''}
       </div>
     </div>
   </div>`
@@ -4498,6 +4501,60 @@ function _teamMemberCard(m, cfg) {
 // Reuses the existing user-edit modal (openDeveloperModal). We refresh the
 // active team page once the modal closes so the updated fields show up
 // without a full page reload.
+// Gate the "Login as" button on team cards. Admin can impersonate anyone
+// except themselves; PM/PC/sales managers can impersonate anyone who isn't
+// an admin (server enforces the strict version — this just hides the
+// button so the UI doesn't show actions that will 403). Already-
+// impersonating sessions can't start a second one.
+function _canImpersonate(targetUser) {
+  if (!_user || !targetUser) return false
+  if (_user.impersonated_by) return false
+  const myRole = String(_user.role || '').toLowerCase()
+  if (!['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'].includes(myRole)) return false
+  const myId = String(_user.sub || _user.id || '')
+  const targetId = String(targetUser.id || '')
+  if (!targetId || targetId === myId) return false
+  const targetRole = String(targetUser.role || '').toLowerCase()
+  if (targetRole === 'admin' && myRole !== 'admin') return false
+  return true
+}
+
+async function impersonateUser(userId, fullName) {
+  if (!userId) return
+  if (!confirm(`Log in as ${fullName || 'this user'}? You'll be able to return to your own account from the top banner.`)) return
+  try {
+    const data = await API.post(`/auth/impersonate/${userId}`, {})
+    if (!data?.token) throw new Error('Bad response — no token returned')
+    saveAuth(data.token, data.user)
+    toast(`Now logged in as ${data.user.full_name || data.user.name || 'user'}`, 'success')
+    // Wipe shell so renderApp rebuilds with the target user's sidebar.
+    const app = document.getElementById('app')
+    if (app) app.innerHTML = ''
+    Router.current = null
+    Router.history = []
+    Router.navigate(defaultPage())
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function endImpersonation() {
+  if (!_user?.impersonated_by) return
+  try {
+    const data = await API.post('/auth/end-impersonation', {})
+    if (!data?.token) throw new Error('Bad response — no token returned')
+    saveAuth(data.token, data.user)
+    toast(`Returned to ${data.user.full_name || data.user.name || 'admin'}`, 'success')
+    const app = document.getElementById('app')
+    if (app) app.innerHTML = ''
+    Router.current = null
+    Router.history = []
+    Router.navigate(defaultPage())
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
 async function editTeamSectionMember(userId, pageId) {
   if (typeof openDeveloperModal !== 'function') { toast('Edit modal unavailable', 'error'); return }
   let user = null

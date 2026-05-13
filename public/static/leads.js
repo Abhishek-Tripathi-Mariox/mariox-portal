@@ -921,7 +921,6 @@ async function submitNewFollowup(leadId) {
 }
 
 async function openCloseLeadModal(id) {
-  if (!leadsCanManage()) { toast('Only admin/PM/PC can close leads', 'error'); return }
   try {
     const [res, pmsRes, pcsRes, salesPersons] = await Promise.all([
       API.get(`/leads/${id}`),
@@ -931,6 +930,15 @@ async function openCloseLeadModal(id) {
     ])
     const lead = res.data || res.lead
     if (!lead) { toast('Lead not found', 'error'); return }
+    // Either user manages leads broadly, or owns this specific lead
+    // (sales_agent on their assigned lead). Backend re-checks via
+    // canUserAccessLead so this is just a courtesy guard.
+    const userId = String(_user?.sub || _user?.id || '')
+    const isOwner = String(lead.assigned_to || '') === userId
+    if (!leadsCanManage() && !isOwner) {
+      toast("You don't have access to close this lead", 'error')
+      return
+    }
     if (lead.client_id) {
       toast('A client has already been created for this lead', 'info')
       return
@@ -2109,18 +2117,24 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
   const isPresetSource = LEAD_SOURCE_OPTIONS.includes(lead.source) && lead.source !== 'Other'
   const sourceSelectVal = isPresetSource ? lead.source : 'Other'
   const sourceCustomVal = isPresetSource ? '' : (lead.source || '')
+  // "Closed" is selectable here — but picking it doesn't just flip a flag.
+  // The submit handler routes through the Close & Convert flow so a client
+  // (and optional project) are created atomically with the close.
   const statusOptions = _leadStatusOrder
-    .filter((k) => k !== 'closed' || lead.status === 'closed')
     .map((k) => `<option value="${k}" ${lead.status === k ? 'selected' : ''}>${escapeHtml(LEAD_STATUS_META[k]?.label || k)}</option>`)
     .join('')
   return `
     <div class="card" style="padding:18px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
           <i class="fas fa-bullseye" style="color:#FF7A45"></i>
           <h4 style="margin:0;font-size:14px;color:#e2e8f0">Lead Information</h4>
         </div>
-        <button class="btn btn-primary btn-xs" onclick="submitInlineLeadEdit('${lead.id}')"><i class="fas fa-save"></i> Save Changes</button>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          ${canEdit && !lead.client_id ? `<button class="btn btn-success btn-xs" onclick="openCloseLeadModal('${lead.id}')" title="Close lead and create a client + project"><i class="fas fa-handshake"></i> Close &amp; Convert</button>` : ''}
+          ${lead.client_id ? '<span style="font-size:11px;color:#58C68A"><i class="fas fa-check-circle"></i> Client created</span>' : ''}
+          <button class="btn btn-primary btn-xs" onclick="submitInlineLeadEdit('${lead.id}')"><i class="fas fa-save"></i> Save Changes</button>
+        </div>
       </div>
 
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
@@ -2151,9 +2165,13 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
         </div>
         <div class="form-group" style="margin:0">
           <label class="form-label" style="font-size:11px">Status</label>
-          <select id="lead-inline-status" class="form-select" ${lead.status === 'closed' ? 'disabled' : ''}>
+          <select id="lead-inline-status" class="form-select"
+                  data-original="${escape(lead.status || '')}"
+                  data-has-client="${lead.client_id ? '1' : ''}"
+                  ${lead.status === 'closed' ? 'disabled' : ''}>
             ${statusOptions}
           </select>
+          ${lead.status !== 'closed' && !lead.client_id ? '<div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Picking "Closed" opens the Close &amp; Convert form (client + project).</div>' : ''}
         </div>
         ${canManage ? `
         <div class="form-group" style="margin:0;grid-column:1/-1">
@@ -2201,6 +2219,19 @@ function removeInlineLeadExistingFile() {
 }
 
 async function submitInlineLeadEdit(id) {
+  // Special case: user switched Status to "closed" on a lead that isn't
+  // closed yet and doesn't have a client. Route through the full Close &
+  // Convert flow instead of a flat PUT so the client (and optional
+  // project) get created atomically alongside the status flip.
+  const statusEl = document.getElementById('lead-inline-status')
+  const newStatus = statusEl?.value || ''
+  const oldStatus = statusEl?.getAttribute('data-original') || ''
+  const hasClient = statusEl?.getAttribute('data-has-client') === '1'
+  if (newStatus === 'closed' && oldStatus !== 'closed' && !hasClient) {
+    openCloseLeadModal(id)
+    return
+  }
+
   // Source resolution mirrors the old modal's resolveLeadSource, but uses
   // the inline IDs so it doesn't clash if both forms ever co-exist.
   const select = document.getElementById('lead-inline-source')
@@ -2285,7 +2316,7 @@ function renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline, as
       <div style="flex:1"></div>
       <button class="btn btn-outline btn-sm" onclick="openSendPortfolioModal('${lead.id}')"><i class="fas fa-briefcase"></i> Send Portfolio</button>
       <button class="btn btn-outline btn-sm" onclick="openSendMailModal('${lead.id}')"><i class="fas fa-paper-plane"></i> Send Mail</button>
-      ${canManage && !lead.client_id ? `<button class="btn btn-success btn-sm" onclick="openCloseLeadModal('${lead.id}')"><i class="fas fa-handshake"></i> Close &amp; Convert</button>` : ''}
+      ${canEdit && !lead.client_id ? `<button class="btn btn-success btn-sm" onclick="openCloseLeadModal('${lead.id}')"><i class="fas fa-handshake"></i> Close &amp; Convert</button>` : ''}
     </div>
 
     <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:20px">
@@ -2348,9 +2379,11 @@ function renderFollowupRowDetail(leadId, t) {
         ${t.description ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${escapeHtml(t.description).slice(0, 120)}</div>` : ''}
         <div style="font-size:11px;color:${overdue ? '#FF5E3A' : '#64748b'};margin-top:4px"><i class="fas fa-calendar"></i> ${fmtDateTime(t.due_date)}${overdue ? ' (Overdue)' : ''}</div>
       </div>
-      <div style="display:flex;gap:4px;align-items:center">
+      <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
         <span class="badge badge-${meta.badge}" style="font-size:10px">${escapeHtml(meta.label)}</span>
         ${t.status !== 'done' ? `<button class="btn btn-xs btn-outline" title="Mark done" onclick="markLeadFollowupDone('${leadId}','${t.id}')"><i class="fas fa-check"></i></button>` : ''}
+        <button class="btn btn-xs btn-outline" title="Edit" onclick="openEditLeadTaskModal('${leadId}','${t.id}')"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-xs btn-outline" style="color:#FF5E3A" title="Delete" onclick="confirmDeleteLeadTask('${leadId}','${t.id}','${escapeHtml(t.title || '').replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>
       </div>
     </div>
   </div>`
@@ -2371,6 +2404,8 @@ function renderTaskRowDetail(leadId, t) {
         ${t.priority ? `<span class="badge ${priorityClass}" style="font-size:10px">${escapeHtml(t.priority)}</span>` : ''}
         <span class="badge badge-${meta.badge}" style="font-size:10px">${escapeHtml(meta.label)}</span>
         ${t.status !== 'done' ? `<button class="btn btn-xs btn-outline" title="Mark done" onclick="markLeadFollowupDone('${leadId}','${t.id}')"><i class="fas fa-check"></i></button>` : ''}
+        <button class="btn btn-xs btn-outline" title="Edit" onclick="openEditLeadTaskModal('${leadId}','${t.id}')"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-xs btn-outline" style="color:#FF5E3A" title="Delete" onclick="confirmDeleteLeadTask('${leadId}','${t.id}','${escapeHtml(t.title || '').replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>
       </div>
     </div>
   </div>`
@@ -2412,6 +2447,140 @@ async function markLeadFollowupDone(leadId, taskId) {
     refreshLeadDetailPage(leadId)
   } catch (e) {
     toast('Failed: ' + e.message, 'error')
+  }
+}
+
+// Edit a follow-up or task row. Single modal that adapts to the task's
+// `kind` — follow-ups expose time + alarm snooze, plain tasks just date.
+// Title / description / priority / status are shared. We GET the task
+// fresh so the form opens with the latest values instead of whatever the
+// stale list cache holds.
+async function openEditLeadTaskModal(leadId, taskId) {
+  let t = null
+  try {
+    // The list endpoint already returns tasks inline on the lead, but we
+    // fetch the lead again to get a definitely-current snapshot. Cheap.
+    const r = await API.get(`/leads/${leadId}`)
+    const lead = r.data || r.lead
+    const tasks = (lead?.tasks || [])
+    t = tasks.find((x) => String(x.id) === String(taskId)) || null
+  } catch {}
+  if (!t) { toast('Task not found', 'error'); return }
+  const kind = String(t.kind || 'followup') === 'task' ? 'task' : 'followup'
+  const due = t.due_date ? new Date(t.due_date) : new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const dateStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`
+  const timeStr = `${pad(due.getHours())}:${pad(due.getMinutes())}`
+  const priority = String(t.priority || 'medium').toLowerCase()
+  const status = String(t.status || 'pending').toLowerCase()
+  const statusOpts = (_leadTaskStatusOrder.length ? _leadTaskStatusOrder : ['pending', 'in_progress', 'done'])
+    .map((k) => `<option value="${k}" ${status === k ? 'selected' : ''}>${escapeHtml(LEAD_TASK_STATUS_META[k]?.label || k)}</option>`)
+    .join('')
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-edit" style="color:#FF7A45;margin-right:6px"></i>Edit ${kind === 'task' ? 'Task' : 'Follow-up'}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Title *</label>
+        <input id="edt-title" class="form-input" value="${escapeHtml(t.title || '')}"/>
+      </div>
+      <div class="form-group"><label class="form-label">Description</label>
+        <textarea id="edt-desc" class="form-input" rows="3">${escapeHtml(t.description || t.notes || '')}</textarea>
+      </div>
+      <div class="grid-2">
+        <div class="form-group"><label class="form-label">Date *</label>
+          <input id="edt-date" type="date" class="form-input" value="${dateStr}"/>
+        </div>
+        ${kind === 'followup' ? `
+        <div class="form-group"><label class="form-label">Time</label>
+          <input id="edt-time" type="time" class="form-input" value="${timeStr}"/>
+        </div>` : `
+        <div class="form-group"><label class="form-label">Priority</label>
+          <select id="edt-priority" class="form-select">
+            <option value="low" ${priority === 'low' ? 'selected' : ''}>Low</option>
+            <option value="medium" ${priority === 'medium' ? 'selected' : ''}>Medium</option>
+            <option value="high" ${priority === 'high' ? 'selected' : ''}>High</option>
+            <option value="critical" ${priority === 'critical' ? 'selected' : ''}>Critical</option>
+          </select>
+        </div>`}
+      </div>
+      <div class="grid-2">
+        ${kind === 'followup' ? `
+        <div class="form-group"><label class="form-label">Priority</label>
+          <select id="edt-priority" class="form-select">
+            <option value="low" ${priority === 'low' ? 'selected' : ''}>Low</option>
+            <option value="medium" ${priority === 'medium' ? 'selected' : ''}>Medium</option>
+            <option value="high" ${priority === 'high' ? 'selected' : ''}>High</option>
+            <option value="critical" ${priority === 'critical' ? 'selected' : ''}>Critical</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Alarm minutes before</label>
+          <input id="edt-snooze" type="number" class="form-input" min="0" max="1440" value="${Math.max(0, Math.min(1440, Math.round(Number(t.snooze_minutes) || 10)))}"/>
+        </div>` : `
+        <div class="form-group" style="grid-column:1/-1"><label class="form-label">Status</label>
+          <select id="edt-status" class="form-select">${statusOpts}</select>
+        </div>`}
+      </div>
+      ${kind === 'followup' ? `
+      <div class="form-group"><label class="form-label">Status</label>
+        <select id="edt-status" class="form-select">${statusOpts}</select>
+      </div>` : ''}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditLeadTask('${leadId}','${taskId}','${kind}')"><i class="fas fa-save"></i> Save</button>
+    </div>
+  `)
+}
+
+async function submitEditLeadTask(leadId, taskId, kind) {
+  const title = (document.getElementById('edt-title')?.value || '').trim()
+  if (!title) { toast('Title is required', 'error'); return }
+  const desc = (document.getElementById('edt-desc')?.value || '').trim()
+  const dateStr = (document.getElementById('edt-date')?.value || '').trim()
+  if (!dateStr) { toast('Date is required', 'error'); return }
+  const priority = (document.getElementById('edt-priority')?.value || 'medium').trim().toLowerCase()
+  const status = (document.getElementById('edt-status')?.value || 'pending').trim().toLowerCase()
+  // Follow-ups carry a time-of-day and an alarm snooze; plain tasks just
+  // use end-of-day so the existing date-only UX still works.
+  let due
+  if (kind === 'followup') {
+    const timeStr = (document.getElementById('edt-time')?.value || '10:00').trim()
+    due = new Date(`${dateStr}T${timeStr}:00`)
+  } else {
+    due = new Date(`${dateStr}T17:00:00`)
+  }
+  if (Number.isNaN(due.getTime())) { toast('Invalid date/time', 'error'); return }
+  const payload = {
+    title,
+    description: desc,
+    due_date: due.toISOString(),
+    priority,
+    status,
+  }
+  if (kind === 'followup') {
+    const snoozeRaw = Number(document.getElementById('edt-snooze')?.value)
+    if (Number.isFinite(snoozeRaw)) payload.snooze_minutes = Math.max(0, Math.min(1440, Math.round(snoozeRaw)))
+  }
+  try {
+    await API.patch(`/leads/tasks/${taskId}`, payload)
+    toast(kind === 'task' ? 'Task updated' : 'Follow-up updated', 'success')
+    closeModal()
+    refreshLeadDetailPage(leadId)
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function confirmDeleteLeadTask(leadId, taskId, title) {
+  if (!confirm(`Delete "${title}"? This cannot be undone.`)) return
+  try {
+    await API.delete(`/leads/tasks/${taskId}`)
+    toast('Deleted', 'success')
+    refreshLeadDetailPage(leadId)
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
   }
 }
 
