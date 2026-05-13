@@ -130,12 +130,14 @@ const NAV_PERMISSION_MAP = {
   'quotation-library': ['quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.manage'],
   'meet-setup':        ['meetings.create', 'meetings.edit', 'meetings.delete'],
   'sales-incentive':   ['sales_incentive.view_all', 'sales_incentive.set_target', 'sales_incentive.override', 'sales_incentive.mark_paid'],
+  // Settings page — visible if user has ANY settings.* permission.
+  'settings-view':     ['settings.manage_company', 'settings.manage_holidays', 'settings.manage_tech_stacks', 'settings.manage_invites', 'settings.manage_roles'],
   // Pages intentionally NOT mapped (role-based only):
   //   leads-view / lead-detail / lead-followups / lead-tasks / sales-tracker
   //   → role-bound to sales family; no granular catalog entry yet
   //   dev-dashboard / team-dashboard / my-tasks
   //   → role-specific landing pages
-  //   bidding-view, sprints-view, milestones-view, settings-view
+  //   bidding-view, sprints-view, milestones-view
   //   → no catalog entry yet; admin can keep role-based default
 }
 
@@ -743,6 +745,16 @@ function buildShell() {
     ],
   })
 
+  // Settings section — gated via NAV_PERMISSION_MAP so it shows only for
+  // admin or anyone with at least one settings.* permission. Used to be
+  // hardcoded into the shell and bypassed canSeePage entirely.
+  const navSettings = navSection({
+    key: 'settings', heading: 'Settings', chip: 'App', expanded: true, icon: 'fa-sliders',
+    items: [
+      navItem('settings-view', 'fa-gear', 'Settings'),
+    ],
+  })
+
   return `
   <div id="sidebar">
     <div class="logo">
@@ -751,17 +763,7 @@ function buildShell() {
         <span>Mariox Software</span>
       </div>
     </div>
-    ${navAdmin}${navPm}${navDev}${navTeam}${navSales}${navReports}
-    <div class="nav-section nav-group nav-group-settings" data-nav-group="settings">
-      <button class="nav-section-toggle" type="button" data-nav-toggle="settings" aria-expanded="true">
-        <span class="nav-section-heading"><i class="fas fa-sliders"></i> Settings</span>
-        <span class="nav-section-chip">App</span>
-        <i class="fas fa-chevron-down nav-section-caret"></i>
-      </button>
-      <div class="nav-section-body">
-        <a class="nav-item" data-page="settings-view"><span class="nav-icon"><i class="fas fa-gear"></i></span>Settings</a>
-      </div>
-    </div>
+    ${navAdmin}${navPm}${navDev}${navTeam}${navSales}${navReports}${navSettings}
     <div class="sidebar-footer">
       <div class="user-card" onclick="showProfileModal()">
         ${avatar(_user.name||_user.full_name, _user.avatar_color||'#FF7A45')}
