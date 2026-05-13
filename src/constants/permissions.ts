@@ -162,16 +162,43 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     ],
   },
   {
-    module: 'sales_library',
-    label: 'Sales Library (Portfolio / SOW / Quotation)',
+    module: 'portfolios',
+    label: 'Portfolios',
     icon: 'fa-briefcase',
     permissions: [
-      { key: 'portfolios.manage', label: 'Add / edit / delete portfolios',
-        description: 'Maintain entries in the Portfolio library and send them to leads.' },
-      { key: 'scopes.manage',     label: 'Add / edit / delete SOW (Scope of Work)',
-        description: 'Maintain entries in the Scope of Work library and send them to leads.' },
-      { key: 'quotations.manage', label: 'Add / edit / delete quotations',
-        description: 'Maintain entries in the Quotation library and send them to leads.' },
+      { key: 'portfolios.create', label: 'Create portfolios' },
+      { key: 'portfolios.edit',   label: 'Edit portfolios' },
+      { key: 'portfolios.delete', label: 'Delete portfolios' },
+    ],
+  },
+  {
+    module: 'scopes',
+    label: 'SOW (Scope of Work)',
+    icon: 'fa-file-signature',
+    permissions: [
+      { key: 'scopes.create', label: 'Create SOW' },
+      { key: 'scopes.edit',   label: 'Edit SOW' },
+      { key: 'scopes.delete', label: 'Delete SOW' },
+    ],
+  },
+  {
+    module: 'quotations',
+    label: 'Quotations',
+    icon: 'fa-file-invoice',
+    permissions: [
+      { key: 'quotations.create', label: 'Create quotations' },
+      { key: 'quotations.edit',   label: 'Edit quotations' },
+      { key: 'quotations.delete', label: 'Delete quotations' },
+    ],
+  },
+  {
+    module: 'meetings',
+    label: 'Meet Setup',
+    icon: 'fa-video',
+    permissions: [
+      { key: 'meetings.create', label: 'Schedule meetings' },
+      { key: 'meetings.edit',   label: 'Edit meetings' },
+      { key: 'meetings.delete', label: 'Delete meetings' },
     ],
   },
   {
@@ -218,7 +245,10 @@ const PM_PERMS: PermissionKey[] = [
   'reports.view_pm_dashboard', 'reports.view_resources', 'reports.export',
   'allocations.create', 'allocations.edit', 'allocations.view',
   'leaves.create_own', 'leaves.approve', 'leaves.view_all',
-  'portfolios.manage', 'scopes.manage', 'quotations.manage',
+  'portfolios.create', 'portfolios.edit', 'portfolios.delete',
+  'scopes.create', 'scopes.edit', 'scopes.delete',
+  'quotations.create', 'quotations.edit', 'quotations.delete',
+  'meetings.create', 'meetings.edit', 'meetings.delete',
 ]
 
 const PC_PERMS: PermissionKey[] = [

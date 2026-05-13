@@ -38,6 +38,22 @@ async function signToken(payload: Record<string, any>, secret: string) {
     .sign(encoder.encode(secret))
 }
 
+// Look up the granular permission keys assigned to a role in the roles
+// collection. Admins always get an empty array back here — the frontend
+// short-circuits "admin sees everything" without consulting this list, so
+// we don't need to enumerate every key just to satisfy the catalogue.
+async function loadRolePermissions(models: MongoModels, role: string): Promise<string[]> {
+  const key = String(role || '').toLowerCase().trim()
+  if (!key || key === 'admin') return []
+  try {
+    const doc = (await models.roles.findOne({ key })) as any
+    const perms = Array.isArray(doc?.permissions) ? doc.permissions : []
+    return perms.map((p: any) => String(p)).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
 export function createAuthRouter(models: MongoModels, jwtSecret: string, passwordSalt: string): Router {
   const router = createRouter()
   const authMiddleware = createAuthMiddleware(jwtSecret)
@@ -64,6 +80,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
       }
       const token = await signToken(payload, jwtSecret)
+      const permissions = await loadRolePermissions(models, user.role)
 
       return res.json({
         token,
@@ -75,6 +92,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
           designation: user.designation,
           avatar_color: user.avatar_color,
           must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
+          permissions,
         },
       })
     } catch (error) {
@@ -96,6 +114,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
       // role/designation changes need to take effect on the next reload.
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
       res.setHeader('Pragma', 'no-cache')
+      const permissions = await loadRolePermissions(models, user.role)
       return res.json({
         valid: true,
         user: {
@@ -106,6 +125,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
           designation: user.designation,
           avatar_color: user.avatar_color,
           must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
+          permissions,
         },
       })
     } catch {

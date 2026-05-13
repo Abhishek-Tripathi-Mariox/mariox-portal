@@ -17,21 +17,33 @@ function lower(value: any): string {
   return String(value || '').toLowerCase().trim()
 }
 
-// Permission source: Settings → Roles & Permissions (capability key
-// `quotations.manage`). Admin always passes. Legacy per-user grants still
-// pass for backward compat with old installs.
-async function canManageQuotations(models: MongoModels, user: any): Promise<boolean> {
+// Permission source: Settings → Roles & Permissions. Granular keys are
+// `quotations.create | edit | delete`. Legacy `quotations.manage` is still
+// honored as a superset for older role docs. Admin always passes. Legacy
+// per-user grants in quotationPermissions also still pass for backward
+// compat with old installs.
+async function getQuotationPerms(models: MongoModels, user: any): Promise<{
+  canCreate: boolean; canEdit: boolean; canDelete: boolean;
+}> {
   const role = lower(user?.role)
-  if (role === 'admin') return true
+  if (role === 'admin') {
+    return { canCreate: true, canEdit: true, canDelete: true }
+  }
+  let perms: string[] = []
   if (role) {
     const roleDoc = (await models.roles.findOne({ key: role })) as any
-    const perms = Array.isArray(roleDoc?.permissions) ? roleDoc.permissions : []
-    if (perms.includes('quotations.manage')) return true
+    perms = Array.isArray(roleDoc?.permissions) ? roleDoc.permissions : []
   }
   const userId = String(user?.sub || user?.id || '')
-  if (!userId) return false
-  const grant = (await models.quotationPermissions.findOne({ user_id: userId })) as any
-  return !!grant
+  const legacyGrant = userId
+    ? !!(await models.quotationPermissions.findOne({ user_id: userId }))
+    : false
+  const hasManage = perms.includes('quotations.manage') || legacyGrant
+  return {
+    canCreate: hasManage || perms.includes('quotations.create'),
+    canEdit:   hasManage || perms.includes('quotations.edit'),
+    canDelete: hasManage || perms.includes('quotations.delete'),
+  }
 }
 
 function num(v: any, fallback = 0): number {
@@ -237,7 +249,8 @@ export function createQuotationsRouter(
       }))
 
       const user = req.user as any
-      const canManage = await canManageQuotations(models, user)
+      const perms = await getQuotationPerms(models, user)
+      const canManage = perms.canCreate || perms.canEdit || perms.canDelete
       return res.json({ data: enriched, quotations: enriched, can_manage: canManage })
     } catch (error: any) {
       return respondWithError(res, error, 500)
@@ -313,7 +326,8 @@ export function createQuotationsRouter(
   router.post('/', async (req, res) => {
     try {
       const user = req.user as any
-      if (!(await canManageQuotations(models, user))) {
+      const perms = await getQuotationPerms(models, user)
+      if (!perms.canCreate) {
         return res.status(403).json({ error: 'Not allowed to add quotations' })
       }
       const payload = normalizeQuotationPayload(req.body || {})
@@ -342,8 +356,8 @@ export function createQuotationsRouter(
 
       const isAdmin = lower(user?.role) === 'admin'
       const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      const canManage = await canManageQuotations(models, user)
-      if (!isAdmin && !isOwner && !canManage) {
+      const perms = await getQuotationPerms(models, user)
+      if (!isAdmin && !isOwner && !perms.canEdit) {
         return res.status(403).json({ error: 'Not allowed to edit this quotation' })
       }
 
@@ -364,7 +378,8 @@ export function createQuotationsRouter(
       if (!existing) return res.status(404).json({ error: 'Quotation not found' })
       const isAdmin = lower(user?.role) === 'admin'
       const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      if (!isAdmin && !isOwner) {
+      const perms = await getQuotationPerms(models, user)
+      if (!isAdmin && !isOwner && !perms.canDelete) {
         return res.status(403).json({ error: 'Not allowed to delete this quotation' })
       }
       await models.quotations.deleteOne({ id })

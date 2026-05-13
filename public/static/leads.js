@@ -483,7 +483,6 @@ function renderLeadRow(l, canManage) {
     <td>
       <div style="display:flex;gap:4px">
         <button class="btn btn-xs btn-outline" title="Open detail page" onclick="goLeadDetail('${l.id}')"><i class="fas fa-up-right-from-square"></i></button>
-        ${canManage ? `<button class="btn btn-xs btn-outline" title="Edit" onclick="openEditLeadModal('${l.id}')"><i class="fas fa-edit"></i></button>` : ''}
         ${canManage ? `<button class="btn btn-xs btn-outline" title="Delete" onclick="confirmDeleteLead('${l.id}','${escapeHtml(l.name).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>` : ''}
       </div>
     </td>
@@ -2049,11 +2048,15 @@ async function renderLeadDetailPage(el, id) {
   }
   el.innerHTML = `<div class="loading-state" style="padding:40px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading lead…</div>`
   try {
-    await loadLeadStatuses()
-    const [leadRes, notesRes, timelineRes] = await Promise.all([
+    // Sources + assignees are needed by the now-inline edit fields. Cheap
+    // to load alongside the lead so the detail page can render in a single
+    // pass without a follow-up fetch when the user starts editing.
+    await Promise.all([loadLeadStatuses(), loadLeadSources()])
+    const [leadRes, notesRes, timelineRes, assignees] = await Promise.all([
       API.get(`/leads/${id}`),
       API.get(`/leads/${id}/notes`).catch(() => ({ data: [] })),
       API.get(`/leads/${id}/timeline`).catch(() => ({ data: [] })),
+      fetchSalesAssignees().catch(() => []),
     ])
     const lead = leadRes.data || leadRes.lead
     if (!lead) {
@@ -2065,17 +2068,205 @@ async function renderLeadDetailPage(el, id) {
     const generalTasks = tasks.filter((t) => t.kind === 'task')
     const notes = notesRes.data || notesRes.notes || []
     const timeline = timelineRes.data || timelineRes.timeline || []
-    el.innerHTML = renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline)
+    el.innerHTML = renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline, assignees)
   } catch (e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message)}</p><button class="btn btn-outline" onclick="Router.navigate('leads-view')">Back to Leads</button></div>`
   }
 }
 
-function renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline) {
+// Inline lead-info card replaces the read-only header + contact cards and
+// the separate "Edit Lead" modal. All editable fields live on the detail
+// page and submit through one Save button. Read-only viewers (no canEdit)
+// see the same data formatted as static text.
+function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
+  const escape = (v) => escapeHtml(v == null ? '' : String(v))
+  if (!canEdit) {
+    return `
+      <div class="card" style="padding:18px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:12px">
+            ${avatar(lead.name, '#FF7A45')}
+            <div>
+              <div style="font-size:18px;font-weight:700;color:#e2e8f0">${escape(lead.name)}</div>
+              <div style="font-size:12px;color:#64748b;margin-top:2px">${escape(lead.source || '—')} • ${escape(lead.id)}</div>
+            </div>
+          </div>
+          ${leadHeaderBadge(lead.status)}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:#cbd5e1">
+          <div><i class="fas fa-envelope" style="width:18px;color:#94a3b8"></i> ${escape(lead.email || '—')}</div>
+          <div><i class="fas fa-phone" style="width:18px;color:#94a3b8"></i> ${escape(lead.phone || '—')}</div>
+          <div><i class="fas fa-user" style="width:18px;color:#94a3b8"></i> Assigned to: ${escape(lead.assigned_to_name || '—')}</div>
+          <div><i class="fas fa-calendar" style="width:18px;color:#94a3b8"></i> Created: ${fmtDateOnly(lead.created_at)}</div>
+          ${lead.requirement ? `<div style="margin-top:6px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Requirement</div><div style="white-space:pre-wrap">${escape(lead.requirement)}</div></div>` : ''}
+          ${lead.requirement_file?.url ? `<div><i class="fas fa-paperclip"></i> <a href="${escape(lead.requirement_file.url)}" target="_blank" rel="noopener" style="color:#FF7A45">${escape(lead.requirement_file.name || 'attachment')}</a></div>` : ''}
+        </div>
+      </div>
+    `
+  }
+
+  // Editable mode — same logic as the old modal but inline.
+  const isPresetSource = LEAD_SOURCE_OPTIONS.includes(lead.source) && lead.source !== 'Other'
+  const sourceSelectVal = isPresetSource ? lead.source : 'Other'
+  const sourceCustomVal = isPresetSource ? '' : (lead.source || '')
+  const statusOptions = _leadStatusOrder
+    .filter((k) => k !== 'closed' || lead.status === 'closed')
+    .map((k) => `<option value="${k}" ${lead.status === k ? 'selected' : ''}>${escapeHtml(LEAD_STATUS_META[k]?.label || k)}</option>`)
+    .join('')
+  return `
+    <div class="card" style="padding:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="fas fa-bullseye" style="color:#FF7A45"></i>
+          <h4 style="margin:0;font-size:14px;color:#e2e8f0">Lead Information</h4>
+        </div>
+        <button class="btn btn-primary btn-xs" onclick="submitInlineLeadEdit('${lead.id}')"><i class="fas fa-save"></i> Save Changes</button>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        ${avatar(lead.name, '#FF7A45')}
+        <div style="flex:1;min-width:0">
+          <input id="lead-inline-name" class="form-input" style="font-size:16px;font-weight:600" value="${escape(lead.name)}" placeholder="Full name *"/>
+          <div style="font-size:11px;color:#64748b;margin-top:4px">ID: ${escape(lead.id)} · Created: ${fmtDateOnly(lead.created_at)}</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">Email *</label>
+          <input id="lead-inline-email" type="email" class="form-input" value="${escape(lead.email || '')}"/>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">Phone *</label>
+          <input id="lead-inline-phone" class="form-input" value="${escape(lead.phone || '')}"/>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">Source *</label>
+          <select id="lead-inline-source" class="form-select" onchange="onInlineLeadSourceChange(this)">
+            ${LEAD_SOURCE_OPTIONS.map((s) => `<option value="${s}" ${sourceSelectVal === s ? 'selected' : ''}>${s}</option>`).join('')}
+          </select>
+          <div id="lead-inline-source-other-wrap" style="display:${sourceSelectVal === 'Other' ? '' : 'none'};margin-top:6px">
+            <input id="lead-inline-source-other" class="form-input" placeholder="Specify source" value="${escape(sourceCustomVal)}"/>
+          </div>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">Status</label>
+          <select id="lead-inline-status" class="form-select" ${lead.status === 'closed' ? 'disabled' : ''}>
+            ${statusOptions}
+          </select>
+        </div>
+        ${canManage ? `
+        <div class="form-group" style="margin:0;grid-column:1/-1">
+          <label class="form-label" style="font-size:11px">Assigned to *</label>
+          <select id="lead-inline-assigned-to" class="form-select">
+            ${assignees.map((u) => `<option value="${escape(u.id)}" ${String(lead.assigned_to) === String(u.id) ? 'selected' : ''}>${escape(u.full_name)} — ${escape(u.role)}</option>`).join('')}
+          </select>
+        </div>
+        ` : `
+        <div style="grid-column:1/-1;font-size:12px;color:#94a3b8;padding:6px 0">
+          <i class="fas fa-user" style="width:16px"></i> Assigned to: ${escape(lead.assigned_to_name || '—')}
+        </div>
+        `}
+        <div class="form-group" style="margin:0;grid-column:1/-1">
+          <label class="form-label" style="font-size:11px">Requirement *</label>
+          <textarea id="lead-inline-requirement" class="form-input" rows="3">${escape(lead.requirement || '')}</textarea>
+        </div>
+        <div class="form-group" style="margin:0;grid-column:1/-1">
+          <label class="form-label" style="font-size:11px">Attachment (optional)</label>
+          <div id="lead-inline-existing-file-wrap" style="display:${lead.requirement_file?.url ? '' : 'none'};margin-bottom:6px;font-size:12px;color:#cbd5e1">
+            <i class="fas fa-paperclip"></i>
+            <a href="${lead.requirement_file?.url || ''}" target="_blank" rel="noopener" style="color:#FF7A45">${escape(lead.requirement_file?.name || '')}</a>
+            <button type="button" class="btn btn-xs btn-outline" style="margin-left:8px" onclick="removeInlineLeadExistingFile()">Remove</button>
+            <input type="hidden" id="lead-inline-existing-file" value='${lead.requirement_file ? escape(JSON.stringify(lead.requirement_file)) : ''}'/>
+          </div>
+          <input id="lead-inline-file" type="file" class="form-input" style="padding:6px"/>
+          <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Pick a new file to replace the current attachment, or leave blank to keep it.</div>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function onInlineLeadSourceChange(selectEl) {
+  const wrap = document.getElementById('lead-inline-source-other-wrap')
+  if (!wrap) return
+  wrap.style.display = String(selectEl.value || '') === 'Other' ? '' : 'none'
+}
+
+function removeInlineLeadExistingFile() {
+  const wrap = document.getElementById('lead-inline-existing-file-wrap')
+  const hidden = document.getElementById('lead-inline-existing-file')
+  if (wrap) wrap.style.display = 'none'
+  if (hidden) hidden.value = ''
+}
+
+async function submitInlineLeadEdit(id) {
+  // Source resolution mirrors the old modal's resolveLeadSource, but uses
+  // the inline IDs so it doesn't clash if both forms ever co-exist.
+  const select = document.getElementById('lead-inline-source')
+  const otherInput = document.getElementById('lead-inline-source-other')
+  const selVal = select?.value || ''
+  const source = selVal === 'Other' ? (otherInput?.value || '').trim() : selVal
+  if (!source) { toast('Please specify the source', 'error'); return }
+
+  let existingFile = null
+  try {
+    const raw = document.getElementById('lead-inline-existing-file')?.value
+    if (raw) existingFile = JSON.parse(raw)
+  } catch {}
+  // Re-use the existing helper that handles fresh file uploads + size
+  // checks. It looks for the file input by id 'lead-file' — we have a
+  // different id, so we temporarily mirror the element id for compat.
+  const fileInput = document.getElementById('lead-inline-file')
+  const shim = document.createElement('input')
+  shim.type = 'file'
+  shim.id = 'lead-file'
+  shim.style.display = 'none'
+  // Files can't be moved between inputs directly; transfer via DataTransfer.
+  if (fileInput?.files?.length) {
+    const dt = new DataTransfer()
+    dt.items.add(fileInput.files[0])
+    shim.files = dt.files
+  }
+  document.body.appendChild(shim)
+  let file
+  try { file = await resolveLeadRequirementFile(existingFile) } catch { shim.remove(); return }
+  shim.remove()
+
+  const requirementText = (document.getElementById('lead-inline-requirement')?.value || '').trim()
+  if (!requirementText && !file) {
+    toast('Add a requirement description or attach a file', 'error')
+    return
+  }
+  const assignedInput = document.getElementById('lead-inline-assigned-to')
+  const payload = {
+    name: (document.getElementById('lead-inline-name')?.value || '').trim(),
+    email: (document.getElementById('lead-inline-email')?.value || '').trim(),
+    phone: (document.getElementById('lead-inline-phone')?.value || '').trim(),
+    source,
+    status: document.getElementById('lead-inline-status')?.value,
+    requirement: requirementText || '(see attached file)',
+    requirement_file: file,
+  }
+  // Only send assigned_to if the field exists (managers only) — otherwise
+  // server keeps the current owner unchanged.
+  if (assignedInput) payload.assigned_to = assignedInput.value
+  try {
+    await API.put(`/leads/${id}`, payload)
+    toast('Lead updated', 'success')
+    const el = document.getElementById('page-lead-detail')
+    if (el) { el.dataset.loaded = ''; loadPage('lead-detail', el) }
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+function renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline, assignees) {
   const role = String(_user?.role || '').toLowerCase()
   const canManage = ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'].includes(role)
   const isOwner = String(lead.assigned_to || '') === String(_user?.id || _user?.sub || '')
   const canEdit = canManage || isOwner
+  const assigneeList = Array.isArray(assignees) ? assignees : []
 
   const followupsHTML = followups.length
     ? followups.map((t) => renderFollowupRowDetail(lead.id, t)).join('')
@@ -2094,36 +2285,14 @@ function renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline) {
       <div style="flex:1"></div>
       <button class="btn btn-outline btn-sm" onclick="openSendPortfolioModal('${lead.id}')"><i class="fas fa-briefcase"></i> Send Portfolio</button>
       <button class="btn btn-outline btn-sm" onclick="openSendMailModal('${lead.id}')"><i class="fas fa-paper-plane"></i> Send Mail</button>
-      ${canEdit ? `<button class="btn btn-outline btn-sm" onclick="openEditLeadModal('${lead.id}')"><i class="fas fa-edit"></i> Edit</button>` : ''}
       ${canManage && !lead.client_id ? `<button class="btn btn-success btn-sm" onclick="openCloseLeadModal('${lead.id}')"><i class="fas fa-handshake"></i> Close &amp; Convert</button>` : ''}
     </div>
 
     <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:20px">
       <!-- LEFT COLUMN -->
       <div style="display:flex;flex-direction:column;gap:16px">
-        <!-- Header card -->
-        <div class="card" style="padding:18px">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-            <div style="display:flex;align-items:center;gap:12px">
-              ${avatar(lead.name, '#FF7A45')}
-              <div>
-                <div style="font-size:18px;font-weight:700;color:#e2e8f0">${escapeHtml(lead.name)}</div>
-                <div style="font-size:12px;color:#64748b;margin-top:2px">${escapeHtml(lead.source || '—')} • ${escapeHtml(lead.id)}</div>
-              </div>
-            </div>
-            ${leadHeaderBadge(lead.status)}
-          </div>
-        </div>
-
-        <!-- Contact info card -->
-        <div class="card" style="padding:18px">
-          <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:#cbd5e1">
-            <div><i class="fas fa-envelope" style="width:18px;color:#94a3b8"></i> ${escapeHtml(lead.email || '—')}</div>
-            <div><i class="fas fa-phone" style="width:18px;color:#94a3b8"></i> ${escapeHtml(lead.phone || '—')}</div>
-            <div><i class="fas fa-user" style="width:18px;color:#94a3b8"></i> Assigned to: ${escapeHtml(lead.assigned_to_name || '—')}</div>
-            <div><i class="fas fa-calendar" style="width:18px;color:#94a3b8"></i> Created: ${fmtDateOnly(lead.created_at)}</div>
-          </div>
-        </div>
+        <!-- Lead Information (inline-editable) -->
+        ${renderLeadInfoCardInline(lead, assigneeList, canEdit, canManage)}
 
         <!-- Notes card -->
         <div class="card" style="padding:18px">
@@ -2255,8 +2424,22 @@ function refreshLeadDetailPage(id) {
 }
 
 // ── Schedule Follow-up modal (matches screenshot 2) ─────────
+// State for the Schedule Follow-up modal. When Activity Type = Meeting we
+// also create a real meeting record (linked to the lead) and surface the
+// attendees / link / duration controls. Reset every time the modal opens.
+let _fu2State = { attendees: [], users: null }
+
 async function openScheduleFollowupModal2(leadId) {
   await loadLeadStatuses()
+  // Eagerly load active users for the attendees picker — cheap, and lets
+  // the meeting block render immediately when the user toggles type.
+  if (!_fu2State.users) {
+    try {
+      const res = await API.get('/users')
+      _fu2State.users = (res.users || res.data || []).filter((u) => Number(u.is_active || 0) === 1)
+    } catch { _fu2State.users = [] }
+  }
+  _fu2State.attendees = []
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
   const nowTime = `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`
@@ -2267,13 +2450,46 @@ async function openScheduleFollowupModal2(leadId) {
     </div>
     <div class="modal-body">
       <div class="form-group"><label class="form-label">Activity Type</label>
-        <select id="fu2-type" class="form-select">
+        <select id="fu2-type" class="form-select" onchange="_fu2OnTypeChange(this.value)">
           <option value="Call">Call</option>
           <option value="Email">Email</option>
           <option value="Meeting">Meeting</option>
           <option value="Other">Other</option>
         </select>
       </div>
+
+      <!-- Meeting-only block: revealed when type=Meeting. Submit handler
+           creates a real meeting + emails lead/attendees if SMTP is set. -->
+      <div id="fu2-meeting-block" style="display:none;padding:12px 14px;background:rgba(167,139,250,0.08);border-left:3px solid #a78bfa;border-radius:0 6px 6px 0;margin:8px 0">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#a78bfa;margin-bottom:10px">
+          <i class="fas fa-video"></i> A meeting will also be created and visible in Meet Setup.
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label" style="font-size:11px">Meeting link</label>
+          <div style="display:flex;gap:6px;align-items:stretch">
+            <input id="fu2-link" class="form-input" style="flex:1" placeholder="https://meet.jit.si/… or paste Google Meet / Zoom URL"/>
+            <button type="button" class="btn btn-outline btn-sm" onclick="_fu2GenerateLink()" title="Generate free Jitsi link"><i class="fas fa-wand-magic-sparkles"></i> Generate</button>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-bottom:8px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label" style="font-size:11px">Duration (min)</label>
+            <input id="fu2-duration" type="number" min="5" max="600" class="form-input" value="30"/>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label" style="font-size:11px">&nbsp;</label>
+            <div style="font-size:11px;color:#94a3b8;padding-top:6px">Lead + attendees auto-emailed</div>
+          </div>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">Internal attendees (optional)</label>
+          <input class="form-input" placeholder="Filter team members…" oninput="_fu2FilterAttendees(this.value)" style="margin-bottom:6px;font-size:12px"/>
+          <div id="fu2-attendees-list" style="max-height:140px;overflow:auto;border:1px solid rgba(255,255,255,0.10);border-radius:6px;padding:4px 8px">
+            ${_fu2RenderAttendeeOptions(_fu2State.users || [], '')}
+          </div>
+        </div>
+      </div>
+
       <div class="form-group"><label class="form-label">Activity Note *</label>
         <textarea id="fu2-note" class="form-input" rows="3" placeholder="Discuss pricing options…"></textarea>
       </div>
@@ -2302,6 +2518,63 @@ async function openScheduleFollowupModal2(leadId) {
   `)
 }
 
+function _fu2OnTypeChange(type) {
+  const block = document.getElementById('fu2-meeting-block')
+  if (block) block.style.display = String(type) === 'Meeting' ? '' : 'none'
+}
+
+function _fu2RenderAttendeeOptions(users, filter) {
+  const f = String(filter || '').toLowerCase()
+  const selected = new Set((_fu2State.attendees || []).map(String))
+  const filtered = (users || []).filter((u) => {
+    if (!f) return true
+    return `${u.full_name || ''} ${u.email || ''} ${u.designation || ''}`.toLowerCase().includes(f)
+  })
+  if (!filtered.length) return '<div style="padding:6px;color:#64748b;font-size:11px">No matches</div>'
+  return filtered.map((u) => {
+    const id = String(u.id)
+    const checked = selected.has(id) ? 'checked' : ''
+    return `<label style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;font-size:12px">
+      <input type="checkbox" value="${escapeHtml(id)}" ${checked} onchange="_fu2ToggleAttendee('${escapeHtml(id)}', this.checked)"/>
+      <span style="flex:1;min-width:0;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(u.full_name || u.email || id)}${u.email ? ` <span style="color:#64748b">· ${escapeHtml(u.email)}</span>` : ''}</span>
+    </label>`
+  }).join('')
+}
+
+function _fu2FilterAttendees(q) {
+  const box = document.getElementById('fu2-attendees-list')
+  if (box) box.innerHTML = _fu2RenderAttendeeOptions(_fu2State.users || [], q)
+}
+
+function _fu2ToggleAttendee(id, checked) {
+  const set = new Set((_fu2State.attendees || []).map(String))
+  if (checked) set.add(String(id))
+  else set.delete(String(id))
+  _fu2State.attendees = Array.from(set)
+}
+
+function _fu2GenerateLink() {
+  // Same Jitsi room-id logic as Meet Setup's Generate button — but uses
+  // the activity note as the slug so the URL is readable.
+  let rand = ''
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      rand = crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+    } else if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const bytes = new Uint8Array(12)
+      crypto.getRandomValues(bytes)
+      rand = Array.from(bytes).map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 16)
+    }
+  } catch {}
+  if (!rand) rand = Math.random().toString(36).slice(2, 14) + Math.random().toString(36).slice(2, 6)
+  const note = (document.getElementById('fu2-note')?.value || '').trim()
+  const slug = (note || 'Followup').replace(/[^a-zA-Z0-9]+/g, '').slice(0, 20) || 'Followup'
+  const url = `https://meet.jit.si/Mariox-${slug}-${rand}`
+  const input = document.getElementById('fu2-link')
+  if (input) input.value = url
+  toast('Jitsi Meet link generated', 'success')
+}
+
 async function submitScheduleFollowup2(leadId) {
   const type = document.getElementById('fu2-type').value
   const note = document.getElementById('fu2-note').value.trim()
@@ -2322,7 +2595,38 @@ async function submitScheduleFollowup2(leadId) {
       snooze_minutes: snooze,
       priority,
     })
-    toast('Follow-up scheduled', 'success')
+
+    // If the user picked "Meeting", also create a real meeting tied to
+    // this lead. Failures here are surfaced as a warning but don't roll
+    // back the follow-up — that part already succeeded.
+    let suffix = ''
+    let toastKind = 'success'
+    if (type === 'Meeting') {
+      const meetingLink = (document.getElementById('fu2-link')?.value || '').trim()
+      const durationRaw = Number(document.getElementById('fu2-duration')?.value)
+      const duration_mins = Number.isFinite(durationRaw) ? Math.max(5, Math.min(600, Math.round(durationRaw))) : 30
+      const meetingTitle = note.length > 80 ? `${note.slice(0, 77)}…` : (note || 'Meeting with lead')
+      try {
+        const res = await API.post('/meetings', {
+          title: meetingTitle,
+          lead_id: leadId,
+          scheduled_at: due.toISOString(),
+          duration_mins,
+          meeting_link: meetingLink,
+          agenda: note,
+          attendees: Array.from(_fu2State.attendees || []),
+        })
+        const inv = res?.invites
+        if (inv?.skipped) { suffix = ' · meeting created (SMTP off, no emails)'; toastKind = 'warning' }
+        else if (inv?.sent && inv.failed) { suffix = ` · meeting created (${inv.sent} sent, ${inv.failed} failed)`; toastKind = 'warning' }
+        else if (inv?.sent) suffix = ` · meeting created, invite sent to ${inv.sent}`
+        else suffix = ' · meeting created'
+      } catch (e) {
+        suffix = ` · meeting create failed: ${e.message || 'check permissions'}`
+        toastKind = 'warning'
+      }
+    }
+    toast(`Follow-up scheduled${suffix}`, toastKind)
     closeModal()
     refreshLeadDetailPage(leadId)
   } catch (e) {

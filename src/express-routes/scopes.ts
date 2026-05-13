@@ -17,21 +17,33 @@ function lower(value: any): string {
   return String(value || '').toLowerCase().trim()
 }
 
-// Permission source: Settings → Roles & Permissions (capability key
-// `scopes.manage`). Admin always passes. Legacy per-user grants still
-// pass for backward compat with old installs.
-async function canManageScopes(models: MongoModels, user: any): Promise<boolean> {
+// Permission source: Settings → Roles & Permissions. Granular keys are
+// `scopes.create | edit | delete`. Legacy `scopes.manage` is still honored
+// as a superset for older role docs. Admin always passes. Legacy per-user
+// grants in scopePermissions also still pass for backward compat with old
+// installs.
+async function getScopePerms(models: MongoModels, user: any): Promise<{
+  canCreate: boolean; canEdit: boolean; canDelete: boolean;
+}> {
   const role = lower(user?.role)
-  if (role === 'admin') return true
+  if (role === 'admin') {
+    return { canCreate: true, canEdit: true, canDelete: true }
+  }
+  let perms: string[] = []
   if (role) {
     const roleDoc = (await models.roles.findOne({ key: role })) as any
-    const perms = Array.isArray(roleDoc?.permissions) ? roleDoc.permissions : []
-    if (perms.includes('scopes.manage')) return true
+    perms = Array.isArray(roleDoc?.permissions) ? roleDoc.permissions : []
   }
   const userId = String(user?.sub || user?.id || '')
-  if (!userId) return false
-  const grant = (await models.scopePermissions.findOne({ user_id: userId })) as any
-  return !!grant
+  const legacyGrant = userId
+    ? !!(await models.scopePermissions.findOne({ user_id: userId }))
+    : false
+  const hasManage = perms.includes('scopes.manage') || legacyGrant
+  return {
+    canCreate: hasManage || perms.includes('scopes.create'),
+    canEdit:   hasManage || perms.includes('scopes.edit'),
+    canDelete: hasManage || perms.includes('scopes.delete'),
+  }
 }
 
 type ScopeBlock =
@@ -324,7 +336,8 @@ export function createScopesRouter(
       }))
 
       const user = req.user as any
-      const canManage = await canManageScopes(models, user)
+      const perms = await getScopePerms(models, user)
+      const canManage = perms.canCreate || perms.canEdit || perms.canDelete
       return res.json({ data: enriched, scopes: enriched, can_manage: canManage })
     } catch (error: any) {
       return respondWithError(res, error, 500)
@@ -399,7 +412,8 @@ export function createScopesRouter(
   router.post('/', async (req, res) => {
     try {
       const user = req.user as any
-      if (!(await canManageScopes(models, user))) {
+      const perms = await getScopePerms(models, user)
+      if (!perms.canCreate) {
         return res.status(403).json({ error: 'Not allowed to add scopes' })
       }
       const payload = normalizeScopePayload(req.body || {})
@@ -428,8 +442,8 @@ export function createScopesRouter(
 
       const isAdmin = lower(user?.role) === 'admin'
       const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      const canManage = await canManageScopes(models, user)
-      if (!isAdmin && !isOwner && !canManage) {
+      const perms = await getScopePerms(models, user)
+      if (!isAdmin && !isOwner && !perms.canEdit) {
         return res.status(403).json({ error: 'Not allowed to edit this scope' })
       }
 
@@ -450,7 +464,8 @@ export function createScopesRouter(
       if (!existing) return res.status(404).json({ error: 'Scope not found' })
       const isAdmin = lower(user?.role) === 'admin'
       const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      if (!isAdmin && !isOwner) {
+      const perms = await getScopePerms(models, user)
+      if (!isAdmin && !isOwner && !perms.canDelete) {
         return res.status(403).json({ error: 'Not allowed to delete this scope' })
       }
       await models.scopes.deleteOne({ id })

@@ -5314,7 +5314,8 @@ async function renderScopeLibrary(el) {
           <p class="page-subtitle">${list.length} scope${list.length === 1 ? '' : 's'} · build a structured deliverable doc and email it to any lead.</p>
         </div>
         <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
-          ${_scopeCanManage ? `<button class="btn btn-primary btn-sm" onclick="openScopeEditor()"><i class="fas fa-plus"></i> New Scope</button>` : ''}
+          ${_scopeCanManage ? `<button class="btn btn-secondary btn-sm" onclick="openScopeUploadModal()"><i class="fas fa-upload"></i> Upload SOW</button>
+          <button class="btn btn-primary btn-sm" onclick="openScopeEditor()"><i class="fas fa-plus"></i> New Scope</button>` : ''}
         </div>
       </div>
 
@@ -5384,11 +5385,23 @@ function onScopeSearch(value) {
 
 let _scopeDraft = null
 
+// A scope is "file-only" when it was created via the Upload SOW shortcut —
+// no structured sections and overview is empty. Edit/View on those should
+// stay in upload-style modals instead of opening the structured editor.
+function _isScopeFileOnly(s) {
+  if (!s || !s.file?.url) return false
+  const sections = Array.isArray(s.sections) ? s.sections : []
+  return sections.length === 0
+}
+
 async function openScopeEditor(scopeId) {
   if (scopeId) {
     try {
       const res = await API.get('/scopes/' + scopeId)
-      _scopeDraft = _scopeNormalizeDraft(res.data)
+      const data = res.data
+      // Route file-only entries to the simpler upload modal in edit mode.
+      if (_isScopeFileOnly(data)) return openScopeUploadModal(data)
+      _scopeDraft = _scopeNormalizeDraft(data)
     } catch (e) { toast('Failed to load scope', 'error'); return }
   } else {
     _scopeDraft = {
@@ -5460,19 +5473,6 @@ function _renderScopeEditorModal(scopeId) {
       <div class="form-group">
         <label class="form-label">Overview / Introduction</label>
         <textarea class="form-input" rows="3" placeholder="Short summary that appears as the SOW intro paragraph" oninput="_scopeDraft.overview=this.value">${escapeHtml(d.overview || '')}</textarea>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Upload SOW file (optional)</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="scope-file-input" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" class="form-input" style="flex:1;padding:6px" onchange="uploadScopeFile(this.files[0])"/>
-          ${d.file?.url ? `<button class="btn btn-outline btn-xs" onclick="removeScopeFile()" type="button"><i class="fas fa-times"></i> Remove</button>` : ''}
-        </div>
-        <div id="scope-file-meta" class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">
-          ${d.file?.url
-            ? `<i class="fas fa-paperclip" style="color:#3b82f6"></i> Attached: <a href="${escapeHtml(d.file.url)}" target="_blank" rel="noopener" style="color:#3b82f6">${escapeHtml(d.file.name)}</a> · ${formatBytes(d.file.size || 0)}`
-            : 'PDF/DOCX/image up to 10 MB. The file will be attached to the email alongside the rendered SOW.'}
-        </div>
       </div>
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px">
@@ -5821,6 +5821,110 @@ function _scopeDraftToPayload(d) {
   }
 }
 
+// "Upload SOW" — quick file-only entry. Pass an existing entry to edit it
+// (title / client / description / replace file). Empty arg = create mode.
+let _scopeUploadState = { id: '', title: '', client_name: '', overview: '', file: null }
+
+function openScopeUploadModal(existing) {
+  const e = existing || {}
+  _scopeUploadState = {
+    id: e.id || '',
+    title: e.title || '',
+    client_name: e.client_name || '',
+    overview: e.overview || '',
+    file: e.file || null,
+  }
+  const isEdit = !!e.id
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-upload" style="color:#3b82f6;margin-right:6px"></i>${isEdit ? 'Edit SOW' : 'Upload SOW'}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Title *</label>
+          <input id="scope-up-title" class="form-input" placeholder="e.g. Klicpic Web Platform SOW" value="${escapeHtml(_scopeUploadState.title)}" oninput="_scopeUploadState.title=this.value"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client (optional)</label>
+          <input id="scope-up-client" class="form-input" placeholder="e.g. KLICPIC" value="${escapeHtml(_scopeUploadState.client_name)}" oninput="_scopeUploadState.client_name=this.value"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Short description (optional)</label>
+        <textarea id="scope-up-overview" class="form-input" rows="2" placeholder="One-line summary shown on the card and as the email intro" oninput="_scopeUploadState.overview=this.value">${escapeHtml(_scopeUploadState.overview)}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">SOW file ${isEdit ? '(leave blank to keep current)' : '*'}</label>
+        <input id="scope-up-file" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" class="form-input" style="padding:6px"/>
+        <div id="scope-up-file-meta" class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">
+          ${_scopeUploadState.file?.url
+            ? `<i class="fas fa-paperclip" style="color:#3b82f6"></i> Current: <a href="${escapeHtml(_scopeUploadState.file.url)}" target="_blank" rel="noopener" style="color:#3b82f6">${escapeHtml(_scopeUploadState.file.name)}</a> · ${formatBytes(_scopeUploadState.file.size || 0)}`
+            : 'PDF / DOCX / image up to 10 MB. Attached to the email when you send this SOW to a lead.'}
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="scope-up-save-btn" onclick="submitScopeUpload()"><i class="fas fa-save"></i> Save</button>
+    </div>
+  `, 'modal-lg')
+}
+
+async function submitScopeUpload() {
+  const id = _scopeUploadState.id
+  const isEdit = !!id
+  const title = (_scopeUploadState.title || '').trim()
+  const fileInput = document.getElementById('scope-up-file')
+  const newFile = fileInput?.files?.[0]
+  const btn = document.getElementById('scope-up-save-btn')
+  if (!title || title.length < 2) { toast('Title is required', 'error'); return }
+  if (!isEdit && !newFile) { toast('Please choose a file', 'error'); return }
+  if (newFile && newFile.size > 10 * 1024 * 1024) { toast('File exceeds 10 MB', 'error'); return }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
+  try {
+    // Only re-upload when the user picked a new file; otherwise reuse the
+    // existing file metadata from the entry.
+    let fileMeta = _scopeUploadState.file
+    if (newFile) {
+      const form = new FormData()
+      form.append('file', newFile)
+      const upRes = await fetch('/api/uploads', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + _token },
+        body: form,
+      })
+      const data = await upRes.json().catch(() => ({}))
+      if (!upRes.ok) throw new Error(data.error || 'Upload failed')
+      fileMeta = {
+        url: data.url || data.file_url,
+        name: data.original_name || newFile.name,
+        mime: data.mime_type || newFile.type,
+        size: data.size || newFile.size,
+      }
+    }
+    const payload = {
+      title,
+      client_name: (_scopeUploadState.client_name || '').trim(),
+      overview: (_scopeUploadState.overview || '').trim(),
+      sections: [],
+      deliverables: [],
+      file: fileMeta,
+    }
+    if (isEdit) await API.put('/scopes/' + id, payload)
+    else        await API.post('/scopes', payload)
+    toast(isEdit ? 'SOW updated' : 'SOW uploaded', 'success')
+    closeModal()
+    const el = document.getElementById('page-scope-library')
+    if (el) { el.dataset.loaded = ''; loadPage('scope-library', el) }
+  } catch (e) {
+    toast('Save failed: ' + (e.message || 'unknown'), 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save' }
+  }
+}
+
 async function uploadScopeFile(file) {
   if (!file) return
   if (file.size > 10 * 1024 * 1024) { toast('File exceeds 10 MB', 'error'); return }
@@ -5973,8 +6077,45 @@ async function deleteScopeEntry(id, title) {
 async function openScopePreview(id) {
   try {
     const res = await API.get('/scopes/' + id)
-    _openScopePreviewFromObject(res.data)
+    const data = res.data
+    if (_isScopeFileOnly(data)) return _openScopeFileViewer(data)
+    _openScopePreviewFromObject(data)
   } catch (e) { toast('Failed to load scope', 'error') }
+}
+
+// File viewer for SOWs that were created via the Upload flow — embeds PDFs
+// and images inline so the user can read them without leaving the page.
+function _openScopeFileViewer(s) {
+  const f = s?.file || {}
+  const url = f.url || ''
+  const mime = String(f.mime || '').toLowerCase()
+  const name = String(f.name || 'file')
+  const isPdf = /pdf/.test(mime) || /\.pdf$/i.test(name)
+  const isImg = /^image\//.test(mime) || /\.(png|jpe?g|gif|webp)$/i.test(name)
+  const viewerHtml = url
+    ? (isPdf
+        ? `<iframe src="${escapeHtml(url)}" style="width:100%;height:65vh;border:1px solid var(--border);border-radius:10px;background:#0f172a"></iframe>`
+        : isImg
+          ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:65vh;border-radius:10px;border:1px solid var(--border);display:block;margin:0 auto"/>`
+          : `<div style="padding:30px;text-align:center;color:#94a3b8;border:1px dashed var(--border);border-radius:10px"><i class="fas fa-file" style="font-size:32px;color:#3b82f6;margin-bottom:10px;display:block"></i>${escapeHtml(name)}<div style="margin-top:14px"><a class="btn btn-primary btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener"><i class="fas fa-download"></i> Open / Download</a></div></div>`)
+    : `<div style="padding:30px;text-align:center;color:#FF8866">No file attached on this entry.</div>`
+
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-eye" style="color:#3b82f6;margin-right:6px"></i>${escapeHtml(s.title || 'SOW')}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12.5px;color:#94a3b8;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap">
+        ${s.client_name ? `<span><i class="fas fa-user" style="margin-right:4px;color:#64748b"></i>${escapeHtml(s.client_name)}</span>` : ''}
+        ${f.size ? `<span><i class="fas fa-paperclip" style="margin-right:4px;color:#64748b"></i>${escapeHtml(name)} · ${formatBytes(f.size)}</span>` : ''}
+        ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:#3b82f6"><i class="fas fa-up-right-from-square"></i> Open in new tab</a>` : ''}
+      </div>
+      ${s.overview ? `<div style="font-size:13px;color:#cbd5e1;line-height:1.6;padding:10px 12px;background:rgba(59,130,246,0.06);border-left:3px solid #3b82f6;border-radius:0 8px 8px 0;margin-bottom:12px;white-space:pre-wrap">${escapeHtml(s.overview)}</div>` : ''}
+      ${viewerHtml}
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+  `, 'modal-xl')
 }
 
 function _renderScopeBlockPreviewHtml(b) {
@@ -6233,7 +6374,8 @@ async function renderQuotationLibrary(el) {
           <p class="page-subtitle">${list.length} quotation${list.length === 1 ? '' : 's'} · structured quotes with line items, tax, and totals.</p>
         </div>
         <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
-          ${_quoteCanManage ? `<button class="btn btn-primary btn-sm" onclick="openQuoteEditor()"><i class="fas fa-plus"></i> New Quotation</button>` : ''}
+          ${_quoteCanManage ? `<button class="btn btn-secondary btn-sm" onclick="openQuoteUploadModal()"><i class="fas fa-upload"></i> Upload Quotation</button>
+          <button class="btn btn-primary btn-sm" onclick="openQuoteEditor()"><i class="fas fa-plus"></i> New Quotation</button>` : ''}
         </div>
       </div>
 
@@ -6303,9 +6445,22 @@ function onQuoteSearch(value) {
   if (el) { el.dataset.loaded = ''; loadPage('quotation-library', el) }
 }
 
+// A quotation is "file-only" when it was created via Upload Quotation —
+// no line items. Edit/View on those should stay in upload-style modals.
+function _isQuoteFileOnly(q) {
+  if (!q || !q.file?.url) return false
+  const items = Array.isArray(q.line_items) ? q.line_items : []
+  return items.length === 0
+}
+
 async function openQuoteEditor(quotationId) {
   if (quotationId) {
-    try { const res = await API.get('/quotations/' + quotationId); _quoteDraft = res.data }
+    try {
+      const res = await API.get('/quotations/' + quotationId)
+      const data = res.data
+      if (_isQuoteFileOnly(data)) return openQuoteUploadModal(data)
+      _quoteDraft = data
+    }
     catch { toast('Failed to load quotation', 'error'); return }
   } else {
     _quoteDraft = {
@@ -6348,19 +6503,6 @@ function _renderQuoteEditorModal(quotationId) {
       <div class="form-group">
         <label class="form-label">Intro / Heading paragraph</label>
         <textarea class="form-input" rows="3" placeholder="Short message that appears above the line items" oninput="_quoteDraft.intro_text=this.value">${escapeHtml(d.intro_text || '')}</textarea>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Upload quotation file (optional)</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="quote-file-input" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xls,.xlsx" class="form-input" style="flex:1;padding:6px" onchange="uploadQuoteFile(this.files[0])"/>
-          ${d.file?.url ? `<button class="btn btn-outline btn-xs" onclick="removeQuoteFile()" type="button"><i class="fas fa-times"></i> Remove</button>` : ''}
-        </div>
-        <div id="quote-file-meta" class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">
-          ${d.file?.url
-            ? `<i class="fas fa-paperclip" style="color:#22c55e"></i> Attached: <a href="${escapeHtml(d.file.url)}" target="_blank" rel="noopener" style="color:#22c55e">${escapeHtml(d.file.name)}</a> · ${formatBytes(d.file.size || 0)}`
-            : 'PDF/DOCX/XLS/image up to 10 MB. The file will be attached to the email alongside the rendered quote.'}
-        </div>
       </div>
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 6px">
@@ -6483,6 +6625,151 @@ async function submitQuoteEditor(quotationId) {
   }
 }
 
+// File viewer for quotations created via the Upload flow — embeds the PDF
+// or image inline and offers an "Open in new tab" link.
+function _openQuoteFileViewer(q) {
+  const f = q?.file || {}
+  const url = f.url || ''
+  const mime = String(f.mime || '').toLowerCase()
+  const name = String(f.name || 'file')
+  const isPdf = /pdf/.test(mime) || /\.pdf$/i.test(name)
+  const isImg = /^image\//.test(mime) || /\.(png|jpe?g|gif|webp)$/i.test(name)
+  const viewerHtml = url
+    ? (isPdf
+        ? `<iframe src="${escapeHtml(url)}" style="width:100%;height:65vh;border:1px solid var(--border);border-radius:10px;background:#0f172a"></iframe>`
+        : isImg
+          ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:65vh;border-radius:10px;border:1px solid var(--border);display:block;margin:0 auto"/>`
+          : `<div style="padding:30px;text-align:center;color:#94a3b8;border:1px dashed var(--border);border-radius:10px"><i class="fas fa-file" style="font-size:32px;color:#22c55e;margin-bottom:10px;display:block"></i>${escapeHtml(name)}<div style="margin-top:14px"><a class="btn btn-primary btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener"><i class="fas fa-download"></i> Open / Download</a></div></div>`)
+    : `<div style="padding:30px;text-align:center;color:#FF8866">No file attached on this entry.</div>`
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-eye" style="color:#22c55e;margin-right:6px"></i>${escapeHtml(q.title || 'Quotation')}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12.5px;color:#94a3b8;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap">
+        ${q.quote_number ? `<span><i class="fas fa-hashtag" style="margin-right:4px;color:#64748b"></i>${escapeHtml(q.quote_number)}</span>` : ''}
+        ${q.client_name ? `<span><i class="fas fa-user" style="margin-right:4px;color:#64748b"></i>${escapeHtml(q.client_name)}</span>` : ''}
+        ${f.size ? `<span><i class="fas fa-paperclip" style="margin-right:4px;color:#64748b"></i>${escapeHtml(name)} · ${formatBytes(f.size)}</span>` : ''}
+        ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:#22c55e"><i class="fas fa-up-right-from-square"></i> Open in new tab</a>` : ''}
+      </div>
+      ${q.intro_text ? `<div style="font-size:13px;color:#cbd5e1;line-height:1.6;padding:10px 12px;background:rgba(34,197,94,0.06);border-left:3px solid #22c55e;border-radius:0 8px 8px 0;margin-bottom:12px;white-space:pre-wrap">${escapeHtml(q.intro_text)}</div>` : ''}
+      ${viewerHtml}
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+  `, 'modal-xl')
+}
+
+// "Upload Quotation" — pass an existing entry to edit it, no arg to create.
+let _quoteUploadState = { id: '', title: '', quote_number: '', client_name: '', intro_text: '', file: null }
+
+function openQuoteUploadModal(existing) {
+  const e = existing || {}
+  _quoteUploadState = {
+    id: e.id || '',
+    title: e.title || '',
+    quote_number: e.quote_number || '',
+    client_name: e.client_name || '',
+    intro_text: e.intro_text || '',
+    file: e.file || null,
+  }
+  const isEdit = !!e.id
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-upload" style="color:#22c55e;margin-right:6px"></i>${isEdit ? 'Edit Uploaded Quotation' : 'Upload Quotation'}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Title *</label>
+          <input id="quote-up-title" class="form-input" placeholder="e.g. Website Build Quotation" value="${escapeHtml(_quoteUploadState.title)}" oninput="_quoteUploadState.title=this.value"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Quote Number (optional)</label>
+          <input id="quote-up-num" class="form-input" placeholder="e.g. Q-2026-014" value="${escapeHtml(_quoteUploadState.quote_number)}" oninput="_quoteUploadState.quote_number=this.value"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client (optional)</label>
+          <input id="quote-up-client" class="form-input" placeholder="e.g. Acme Corp" value="${escapeHtml(_quoteUploadState.client_name)}" oninput="_quoteUploadState.client_name=this.value"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Short description (optional)</label>
+        <textarea id="quote-up-intro" class="form-input" rows="2" placeholder="Email intro paragraph" oninput="_quoteUploadState.intro_text=this.value">${escapeHtml(_quoteUploadState.intro_text)}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Quotation file ${isEdit ? '(leave blank to keep current)' : '*'}</label>
+        <input id="quote-up-file" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xls,.xlsx" class="form-input" style="padding:6px"/>
+        <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">
+          ${_quoteUploadState.file?.url
+            ? `<i class="fas fa-paperclip" style="color:#22c55e"></i> Current: <a href="${escapeHtml(_quoteUploadState.file.url)}" target="_blank" rel="noopener" style="color:#22c55e">${escapeHtml(_quoteUploadState.file.name)}</a> · ${formatBytes(_quoteUploadState.file.size || 0)}`
+            : 'PDF / DOCX / XLS / image up to 10 MB. Attached when you send this quote.'}
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="quote-up-save-btn" onclick="submitQuoteUpload()"><i class="fas fa-save"></i> Save</button>
+    </div>
+  `, 'modal-lg')
+}
+
+async function submitQuoteUpload() {
+  const id = _quoteUploadState.id
+  const isEdit = !!id
+  const title = (_quoteUploadState.title || '').trim()
+  const fileInput = document.getElementById('quote-up-file')
+  const newFile = fileInput?.files?.[0]
+  const btn = document.getElementById('quote-up-save-btn')
+  if (!title || title.length < 2) { toast('Title is required', 'error'); return }
+  if (!isEdit && !newFile) { toast('Please choose a file', 'error'); return }
+  if (newFile && newFile.size > 10 * 1024 * 1024) { toast('File exceeds 10 MB', 'error'); return }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
+  try {
+    let fileMeta = _quoteUploadState.file
+    if (newFile) {
+      const form = new FormData()
+      form.append('file', newFile)
+      const upRes = await fetch('/api/uploads', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + _token },
+        body: form,
+      })
+      const data = await upRes.json().catch(() => ({}))
+      if (!upRes.ok) throw new Error(data.error || 'Upload failed')
+      fileMeta = {
+        url: data.url || data.file_url,
+        name: data.original_name || newFile.name,
+        mime: data.mime_type || newFile.type,
+        size: data.size || newFile.size,
+      }
+    }
+    const payload = {
+      title,
+      quote_number: (_quoteUploadState.quote_number || '').trim(),
+      client_name: (_quoteUploadState.client_name || '').trim(),
+      intro_text: (_quoteUploadState.intro_text || '').trim(),
+      currency: 'INR',
+      line_items: [],
+      tax_percent: 0,
+      validity_date: '',
+      terms_text: '',
+      file: fileMeta,
+    }
+    if (isEdit) await API.put('/quotations/' + id, payload)
+    else        await API.post('/quotations', payload)
+    toast(isEdit ? 'Quotation updated' : 'Quotation uploaded', 'success')
+    closeModal()
+    const el = document.getElementById('page-quotation-library')
+    if (el) { el.dataset.loaded = ''; loadPage('quotation-library', el) }
+  } catch (e) {
+    toast('Save failed: ' + (e.message || 'unknown'), 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save' }
+  }
+}
+
 async function uploadQuoteFile(file) {
   if (!file) return
   if (file.size > 10 * 1024 * 1024) { toast('File exceeds 10 MB', 'error'); return }
@@ -6536,6 +6823,7 @@ async function openQuotePreview(id) {
   try {
     const res = await API.get('/quotations/' + id)
     const q = res.data
+    if (_isQuoteFileOnly(q)) return _openQuoteFileViewer(q)
     const cur = q.currency || 'INR'
     const rowsHtml = (q.line_items || []).map((it, i) => `
       <tr>
@@ -7177,6 +7465,545 @@ async function submitSalesIncentiveMarkPaidFromHistory(userId, period) {
     const el = document.getElementById('page-sales-incentive')
     if (el) { el.dataset.loaded = ''; loadPage('sales-incentive', el) }
     openSalesIncentiveHistory(userId)
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MEET SETUP — Sales CRM tab. Schedule meetings against leads,
+   pick internal attendees, paste a Meet/Zoom link, and email
+   the invite to the lead. Reminders 5 min before the start fire
+   from the server-side tick (see meetings.ts).
+   ═══════════════════════════════════════════════════════════ */
+
+let _meetingsState = {
+  list: [],
+  canManage: false,
+  perms: { canCreate: false, canEdit: false, canDelete: false },
+  statusFilter: 'all',        // all | scheduled | completed | cancelled
+  leadFilter: '',
+  search: '',
+}
+let _meetingLeadsCache = null
+let _meetingUsersCache = null
+let _meetingDraft = null     // {id?, title, lead_id, scheduled_at, duration_mins, meeting_link, location, agenda, attendees:[], status}
+
+function _meetStatusBadge(s) {
+  const map = {
+    scheduled: { c: '#3b82f6', l: 'Scheduled' },
+    completed: { c: '#22c55e', l: 'Completed' },
+    cancelled: { c: '#ef4444', l: 'Cancelled' },
+  }
+  const v = map[s] || map.scheduled
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:${v.c}22;color:${v.c};font-size:11px;font-weight:600">${v.l}</span>`
+}
+
+function _fmtMeetingTime(iso) {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+  } catch { return iso }
+}
+
+function _isoToLocalInput(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+async function _ensureMeetingLeads() {
+  if (_meetingLeadsCache) return _meetingLeadsCache
+  try {
+    const res = await API.get('/leads')
+    _meetingLeadsCache = res.data || res.leads || []
+  } catch { _meetingLeadsCache = [] }
+  return _meetingLeadsCache
+}
+
+async function _ensureMeetingUsers() {
+  if (_meetingUsersCache) return _meetingUsersCache
+  try {
+    const res = await API.get('/users')
+    _meetingUsersCache = (res.users || res.data || []).filter((u) => Number(u.is_active || 0) === 1)
+  } catch { _meetingUsersCache = [] }
+  return _meetingUsersCache
+}
+
+async function renderMeetSetup(el) {
+  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading meetings…</div>`
+  try {
+    const params = []
+    if (_meetingsState.statusFilter && _meetingsState.statusFilter !== 'all') params.push(`status=${encodeURIComponent(_meetingsState.statusFilter)}`)
+    if (_meetingsState.leadFilter) params.push(`lead_id=${encodeURIComponent(_meetingsState.leadFilter)}`)
+    const res = await API.get('/meetings' + (params.length ? `?${params.join('&')}` : ''))
+    _meetingsState.list = res.data || res.meetings || []
+    _meetingsState.canManage = !!res.can_manage
+    _meetingsState.perms = res.perms || _meetingsState.perms
+    await _ensureMeetingLeads()
+
+    const q = (_meetingsState.search || '').toLowerCase()
+    const filtered = q
+      ? _meetingsState.list.filter((m) =>
+          `${m.title || ''} ${m.lead_name || ''} ${m.agenda || ''} ${m.location || ''}`.toLowerCase().includes(q),
+        )
+      : _meetingsState.list
+
+    const total = _meetingsState.list.length
+    const counts = { scheduled: 0, completed: 0, cancelled: 0 }
+    for (const m of _meetingsState.list) { if (counts[m.status] != null) counts[m.status]++ }
+
+    const filterBtn = (key, label, icon, count) => `
+      <button class="btn btn-sm ${_meetingsState.statusFilter === key ? 'btn-primary' : 'btn-outline'}"
+        onclick="setMeetingStatusFilter('${key}')">
+        <i class="fas ${icon}"></i> ${label}${count != null ? ` <span style="opacity:.7">(${count})</span>` : ''}
+      </button>`
+
+    el.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title"><i class="fas fa-video" style="color:#a78bfa;margin-right:8px"></i>Meet Setup</h1>
+          <p class="page-subtitle">${total} meeting${total === 1 ? '' : 's'} · Schedule and track lead meetings. Reminder fires 5 min before each start.</p>
+        </div>
+        <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+          ${_meetingsState.perms.canCreate ? `<button class="btn btn-primary btn-sm" onclick="openMeetingEditor()"><i class="fas fa-plus"></i> New Meeting</button>` : ''}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:12px 16px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${filterBtn('all', 'All', 'fa-list', total)}
+            ${filterBtn('scheduled', 'Scheduled', 'fa-clock', counts.scheduled)}
+            ${filterBtn('completed', 'Completed', 'fa-check', counts.completed)}
+            ${filterBtn('cancelled', 'Cancelled', 'fa-ban', counts.cancelled)}
+          </div>
+          <div class="search-wrap" style="flex:1;min-width:240px">
+            <i class="fas fa-search"></i>
+            <input class="search-bar" placeholder="Search by title, lead, or agenda…" value="${escapeHtml(_meetingsState.search)}" oninput="onMeetingSearch(this.value)"/>
+          </div>
+        </div>
+      </div>
+
+      ${filtered.length ? `
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <table style="width:100%;border-collapse:collapse">
+              <thead>
+                <tr style="background:rgba(255,255,255,0.04);text-transform:uppercase;font-size:11px;color:#94a3b8;letter-spacing:.5px">
+                  <th style="padding:10px 14px;text-align:left">Title</th>
+                  <th style="padding:10px 14px;text-align:left">Lead</th>
+                  <th style="padding:10px 14px;text-align:left">When</th>
+                  <th style="padding:10px 14px;text-align:left">Duration</th>
+                  <th style="padding:10px 14px;text-align:left">Attendees</th>
+                  <th style="padding:10px 14px;text-align:left">Status</th>
+                  <th style="padding:10px 14px;text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filtered.map(_meetingRow).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ` : `<div class="empty-state"><i class="fas fa-video"></i><p>${total ? 'No meetings match your filters.' : 'No meetings scheduled yet — click "New Meeting" to set one up.'}</p></div>`}
+    `
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message || 'Failed to load meetings')}</p></div>`
+  }
+}
+
+function _meetingRow(m) {
+  const userId = String(_user?.sub || _user?.id || '')
+  const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
+  const isOwner = String(m.created_by || '') === userId
+  const canEdit = isAdmin || isOwner || _meetingsState.perms.canEdit
+  const canDelete = isAdmin || isOwner || _meetingsState.perms.canDelete
+  const attendees = (m.attendee_details || []).map((a) => a.name || a.email || a.id).filter(Boolean)
+  const attendeesHtml = attendees.length
+    ? attendees.slice(0, 2).map((n) => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(167,139,250,0.18);color:#c4b5fd;font-size:11px;margin-right:4px">${escapeHtml(n)}</span>`).join('') +
+      (attendees.length > 2 ? `<span style="font-size:11px;color:#94a3b8">+${attendees.length - 2}</span>` : '')
+    : '<span style="font-size:12px;color:#64748b">—</span>'
+  const inviteSent = m.invite_sent_at ? `<span style="font-size:10px;color:#22c55e;margin-left:6px" title="Invite sent ${_fmtMeetingTime(m.invite_sent_at)}"><i class="fas fa-paper-plane"></i></span>` : ''
+  return `<tr style="border-top:1px solid rgba(255,255,255,0.06)">
+    <td style="padding:12px 14px">
+      <div style="font-weight:600;color:#e2e8f0;font-size:13.5px">${escapeHtml(m.title)}${inviteSent}</div>
+      ${m.meeting_link && m.status === 'scheduled' ? `<a href="${escapeHtml(m.meeting_link)}" target="_blank" rel="noopener" style="font-size:11px;color:#a78bfa"><i class="fas fa-link"></i> Open link</a>` : ''}
+    </td>
+    <td style="padding:12px 14px;font-size:12.5px;color:#cbd5e1">
+      ${escapeHtml(m.lead_name || '—')}
+      ${m.lead_email ? `<div style="font-size:11px;color:#64748b">${escapeHtml(m.lead_email)}</div>` : ''}
+    </td>
+    <td style="padding:12px 14px;font-size:12.5px;color:#cbd5e1">${_fmtMeetingTime(m.scheduled_at)}</td>
+    <td style="padding:12px 14px;font-size:12.5px;color:#cbd5e1">${m.duration_mins} min</td>
+    <td style="padding:12px 14px">${attendeesHtml}</td>
+    <td style="padding:12px 14px">${_meetStatusBadge(m.status)}</td>
+    <td style="padding:12px 14px;text-align:right;white-space:nowrap">
+      ${m.status === 'scheduled' ? `<button class="btn btn-outline btn-xs" onclick="openMeetingInviteModal('${m.id}')" title="Re-send invite to lead + attendees"><i class="fas fa-paper-plane"></i></button>` : ''}
+      ${m.status === 'scheduled' && canEdit ? `<button class="btn btn-outline btn-xs" style="color:#3b82f6" onclick="openMeetingRescheduleModal('${m.id}')" title="Reschedule"><i class="fas fa-calendar-day"></i></button>` : ''}
+      ${m.status === 'scheduled' && canEdit ? `<button class="btn btn-outline btn-xs" style="color:#22c55e" onclick="markMeetingStatus('${m.id}','completed')" title="Mark completed"><i class="fas fa-check"></i></button>` : ''}
+      ${m.status === 'scheduled' && canEdit ? `<button class="btn btn-outline btn-xs" style="color:#f59e0b" onclick="markMeetingStatus('${m.id}','cancelled')" title="Cancel"><i class="fas fa-ban"></i></button>` : ''}
+      ${canEdit ? `<button class="btn btn-outline btn-xs" onclick="openMeetingEditor('${m.id}')" title="Edit"><i class="fas fa-edit"></i></button>` : ''}
+      ${canDelete ? `<button class="btn btn-outline btn-xs" style="color:#FF5E3A" onclick="deleteMeeting('${m.id}','${escapeHtml(m.title).replace(/'/g, "\\'")}')" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
+    </td>
+  </tr>`
+}
+
+function onMeetingSearch(v) {
+  _meetingsState.search = v || ''
+  const el = document.getElementById('page-meet-setup')
+  if (el) { el.dataset.loaded = ''; loadPage('meet-setup', el) }
+}
+
+function setMeetingStatusFilter(key) {
+  _meetingsState.statusFilter = key
+  const el = document.getElementById('page-meet-setup')
+  if (el) { el.dataset.loaded = ''; loadPage('meet-setup', el) }
+}
+
+async function openMeetingEditor(meetingId) {
+  let existing = null
+  if (meetingId) {
+    try {
+      const r = await API.get(`/meetings/${meetingId}`)
+      existing = r.data || null
+    } catch { toast('Meeting not found', 'error'); return }
+    if (!existing) { toast('Meeting not found', 'error'); return }
+  }
+  const [leads, users] = await Promise.all([_ensureMeetingLeads(), _ensureMeetingUsers()])
+  _meetingDraft = existing ? {
+    id: existing.id,
+    title: existing.title || '',
+    lead_id: existing.lead_id || '',
+    scheduled_at: _isoToLocalInput(existing.scheduled_at),
+    duration_mins: existing.duration_mins || 30,
+    meeting_link: existing.meeting_link || '',
+    agenda: existing.agenda || '',
+    attendees: Array.isArray(existing.attendees) ? existing.attendees.slice() : [],
+    status: existing.status || 'scheduled',
+  } : {
+    title: '',
+    lead_id: '',
+    scheduled_at: '',
+    duration_mins: 30,
+    meeting_link: '',
+    agenda: '',
+    attendees: [],
+    status: 'scheduled',
+  }
+
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-video" style="color:#a78bfa;margin-right:6px"></i>${existing ? 'Edit' : 'New'} Meeting</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Title *</label>
+        <input id="mtg-title" class="form-input" placeholder="e.g. Discovery call with Acme" value="${escapeHtml(_meetingDraft.title)}" oninput="_meetingDraft.title=this.value"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Lead *</label>
+        <select id="mtg-lead" class="form-input" onchange="_meetingDraft.lead_id=this.value">
+          <option value="">Select a lead…</option>
+          ${leads.map((l) => `<option value="${escapeHtml(l.id)}" ${String(l.id) === String(_meetingDraft.lead_id) ? 'selected' : ''}>${escapeHtml(l.name || l.id)}${l.email ? ' · ' + escapeHtml(l.email) : ''}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 140px;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Date &amp; time *</label>
+          <input id="mtg-when" type="datetime-local" class="form-input" value="${escapeHtml(_meetingDraft.scheduled_at)}" oninput="_meetingDraft.scheduled_at=this.value"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duration (min)</label>
+          <input id="mtg-duration" type="number" min="5" max="600" class="form-input" value="${Number(_meetingDraft.duration_mins) || 30}" oninput="_meetingDraft.duration_mins=Number(this.value)||30"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Meeting link</label>
+        <div style="display:flex;gap:8px;align-items:stretch">
+          <input id="mtg-link" class="form-input" style="flex:1" placeholder="https://meet.jit.si/… or paste Google Meet / Zoom URL" value="${escapeHtml(_meetingDraft.meeting_link)}" oninput="_meetingDraft.meeting_link=this.value"/>
+          <button type="button" class="btn btn-outline btn-sm" onclick="generateMeetingLink()" title="Generate a free Jitsi Meet link"><i class="fas fa-wand-magic-sparkles"></i> Generate</button>
+        </div>
+        <div class="form-hint">Click "Generate" for a free Jitsi Meet link, or paste your own Google Meet / Zoom / Teams URL. Leave blank for an offline meeting.<br/><strong style="color:#f59e0b">Jitsi note:</strong> when starting the meeting, click "Log-in" on Jitsi and sign in with your Google account once — that makes you the moderator and the lead can join.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Agenda / notes</label>
+        <textarea id="mtg-agenda" class="form-input" rows="3" placeholder="What will you discuss?" oninput="_meetingDraft.agenda=this.value">${escapeHtml(_meetingDraft.agenda)}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Internal attendees</label>
+        <input class="form-input" placeholder="Filter team members…" oninput="filterMeetingAttendees(this.value)" style="margin-bottom:8px"/>
+        <div id="mtg-attendees-list" style="max-height:180px;overflow:auto;border:1px solid rgba(255,255,255,0.10);border-radius:8px;padding:6px 8px">
+          ${_renderAttendeeOptions(users, '')}
+        </div>
+        <div class="form-hint">All selected users get an in-app notification on create and a reminder 5 min before the meeting.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitMeetingEditor()"><i class="fas fa-save"></i> ${existing ? 'Save' : 'Schedule'}</button>
+    </div>
+  `, 'modal-lg')
+}
+
+function _renderAttendeeOptions(users, filter) {
+  const f = (filter || '').toLowerCase()
+  const selected = new Set((_meetingDraft?.attendees || []).map(String))
+  const filtered = users.filter((u) => {
+    if (!f) return true
+    return `${u.full_name || ''} ${u.email || ''} ${u.designation || ''}`.toLowerCase().includes(f)
+  })
+  if (!filtered.length) return '<div style="padding:10px;color:#64748b;font-size:12px">No matches</div>'
+  return filtered.map((u) => {
+    const id = String(u.id)
+    const checked = selected.has(id) ? 'checked' : ''
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)">
+      <input type="checkbox" value="${escapeHtml(id)}" ${checked} onchange="toggleMeetingAttendee('${escapeHtml(id)}', this.checked)"/>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;color:#e2e8f0">${escapeHtml(u.full_name || u.email || id)}</div>
+        ${u.email ? `<div style="font-size:11px;color:#64748b">${escapeHtml(u.email)}${u.designation ? ' · ' + escapeHtml(u.designation) : ''}</div>` : ''}
+      </div>
+    </label>`
+  }).join('')
+}
+
+function filterMeetingAttendees(v) {
+  const box = document.getElementById('mtg-attendees-list')
+  if (!box || !_meetingUsersCache) return
+  box.innerHTML = _renderAttendeeOptions(_meetingUsersCache, v || '')
+}
+
+// Generate a free Jitsi Meet room URL. Jitsi's public server (meet.jit.si)
+// needs no signup or API key — any unguessable room name yields a working
+// meeting. We mix in a sanitized title slug for human readability plus a
+// cryptographically random suffix so the URL can't be guessed from the title.
+function generateMeetingLink() {
+  let rand = ''
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      rand = crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+    } else if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const bytes = new Uint8Array(12)
+      crypto.getRandomValues(bytes)
+      rand = Array.from(bytes).map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 16)
+    }
+  } catch {}
+  if (!rand) rand = Math.random().toString(36).slice(2, 14) + Math.random().toString(36).slice(2, 6)
+  const slug = (_meetingDraft?.title || '').trim().replace(/[^a-zA-Z0-9]+/g, '').slice(0, 20) || 'Meeting'
+  const room = `Mariox-${slug}-${rand}`
+  const url = `https://meet.jit.si/${room}`
+  if (_meetingDraft) _meetingDraft.meeting_link = url
+  const input = document.getElementById('mtg-link')
+  if (input) input.value = url
+  toast('Jitsi Meet link generated', 'success')
+}
+
+function toggleMeetingAttendee(userId, checked) {
+  if (!_meetingDraft) return
+  const set = new Set((_meetingDraft.attendees || []).map(String))
+  if (checked) set.add(String(userId))
+  else set.delete(String(userId))
+  _meetingDraft.attendees = Array.from(set)
+}
+
+async function submitMeetingEditor() {
+  if (!_meetingDraft) return
+  const d = _meetingDraft
+  if (!d.title || d.title.trim().length < 2) { toast('Title is required', 'error'); return }
+  if (!d.lead_id) { toast('Pick a lead', 'error'); return }
+  if (!d.scheduled_at) { toast('Pick a date & time', 'error'); return }
+  // datetime-local has no timezone — convert through Date so we send a proper ISO.
+  const isoWhen = new Date(d.scheduled_at)
+  if (Number.isNaN(isoWhen.getTime())) { toast('Invalid date/time', 'error'); return }
+  const payload = {
+    title: d.title.trim(),
+    lead_id: d.lead_id,
+    scheduled_at: isoWhen.toISOString(),
+    duration_mins: Number(d.duration_mins) || 30,
+    meeting_link: d.meeting_link || '',
+    agenda: d.agenda || '',
+    attendees: Array.isArray(d.attendees) ? d.attendees : [],
+    status: d.status || 'scheduled',
+  }
+  try {
+    const res = d.id
+      ? await API.put(`/meetings/${d.id}`, payload)
+      : await API.post('/meetings', payload)
+    const inv = res?.invites || null
+    const base = d.id ? 'Meeting updated' : 'Meeting scheduled'
+    if (inv) {
+      if (inv.skipped) {
+        toast(`${base} — invite emails skipped (SMTP not configured)`, 'warning')
+      } else if (inv.sent > 0 && inv.failed === 0) {
+        toast(`${base} — invite sent to ${inv.sent} recipient${inv.sent === 1 ? '' : 's'}`, 'success')
+      } else if (inv.sent > 0 && inv.failed > 0) {
+        toast(`${base} — ${inv.sent} sent, ${inv.failed} failed`, 'warning')
+      } else if (inv.failed > 0) {
+        toast(`${base} — invite emails failed (${inv.failed_details?.[0]?.error || 'check SMTP'})`, 'warning')
+      } else {
+        toast(base, 'success')
+      }
+    } else {
+      toast(base, 'success')
+    }
+    closeModal()
+    const el = document.getElementById('page-meet-setup')
+    if (el) { el.dataset.loaded = ''; loadPage('meet-setup', el) }
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function markMeetingStatus(meetingId, status) {
+  if (!meetingId) return
+  if (status === 'cancelled' && !confirm('Cancel this meeting?')) return
+  try {
+    await API.post(`/meetings/${meetingId}/status`, { status })
+    toast(status === 'completed' ? 'Marked completed' : status === 'cancelled' ? 'Meeting cancelled' : 'Status updated', 'success')
+    const el = document.getElementById('page-meet-setup')
+    if (el) { el.dataset.loaded = ''; loadPage('meet-setup', el) }
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function deleteMeeting(meetingId, title) {
+  if (!meetingId) return
+  if (!confirm(`Delete meeting "${title}"? This cannot be undone.`)) return
+  try {
+    await API.delete(`/meetings/${meetingId}`)
+    toast('Meeting deleted', 'success')
+    const el = document.getElementById('page-meet-setup')
+    if (el) { el.dataset.loaded = ''; loadPage('meet-setup', el) }
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function openMeetingRescheduleModal(meetingId) {
+  if (!meetingId) return
+  let m = null
+  try {
+    const r = await API.get(`/meetings/${meetingId}`)
+    m = r.data || null
+  } catch {}
+  if (!m) { toast('Meeting not found', 'error'); return }
+  const currentLocal = _isoToLocalInput(m.scheduled_at)
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-calendar-day" style="color:#3b82f6;margin-right:6px"></i>Reschedule Meeting</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="padding:10px 12px;background:rgba(59,130,246,0.10);border-left:3px solid #3b82f6;border-radius:0 6px 6px 0;margin-bottom:14px">
+        <div style="font-weight:600;color:#e2e8f0;font-size:13px">${escapeHtml(m.title)}</div>
+        <div style="font-size:12px;color:#94a3b8;margin-top:2px"><i class="fas fa-clock"></i> Current: ${_fmtMeetingTime(m.scheduled_at)} · ${m.duration_mins} min</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 140px;gap:10px">
+        <div class="form-group">
+          <label class="form-label">New date &amp; time *</label>
+          <input id="resch-when" type="datetime-local" class="form-input" value="${escapeHtml(currentLocal)}"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duration (min)</label>
+          <input id="resch-duration" type="number" min="5" max="600" class="form-input" value="${Number(m.duration_mins) || 30}"/>
+        </div>
+      </div>
+      <div class="form-hint">Lead and all attendees get a "Rescheduled" email + in-app notification. The 5-min reminder re-fires for the new time.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitMeetingReschedule('${m.id}')"><i class="fas fa-calendar-day"></i> Reschedule</button>
+    </div>
+  `)
+}
+
+async function submitMeetingReschedule(meetingId) {
+  const whenLocal = (document.getElementById('resch-when')?.value || '').trim()
+  const durationRaw = (document.getElementById('resch-duration')?.value || '').trim()
+  if (!whenLocal) { toast('Pick a new date & time', 'error'); return }
+  const iso = new Date(whenLocal)
+  if (Number.isNaN(iso.getTime())) { toast('Invalid date/time', 'error'); return }
+  const payload = { scheduled_at: iso.toISOString() }
+  if (durationRaw) {
+    const n = Number(durationRaw)
+    if (Number.isFinite(n) && n >= 5) payload.duration_mins = Math.min(600, n)
+  }
+  try {
+    const res = await API.post(`/meetings/${meetingId}/reschedule`, payload)
+    const inv = res?.invites || null
+    if (inv?.skipped) toast('Rescheduled — invite emails skipped (SMTP not configured)', 'warning')
+    else if (inv?.sent && inv.failed) toast(`Rescheduled — ${inv.sent} sent, ${inv.failed} failed`, 'warning')
+    else if (inv?.sent) toast(`Rescheduled — re-invite sent to ${inv.sent} recipient${inv.sent === 1 ? '' : 's'}`, 'success')
+    else toast('Meeting rescheduled', 'success')
+    closeModal()
+    const el = document.getElementById('page-meet-setup')
+    if (el) { el.dataset.loaded = ''; loadPage('meet-setup', el) }
+  } catch (e) {
+    toast('Failed: ' + (e.message || 'unknown'), 'error')
+  }
+}
+
+async function openMeetingInviteModal(meetingId) {
+  if (!meetingId) return
+  let m = null
+  try {
+    const r = await API.get(`/meetings/${meetingId}`)
+    m = r.data || null
+  } catch {}
+  if (!m) { toast('Meeting not found', 'error'); return }
+  const leads = await _ensureMeetingLeads()
+  const lead = leads.find((l) => String(l.id) === String(m.lead_id))
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-paper-plane" style="color:#a78bfa;margin-right:6px"></i>Send Meeting Invite</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="padding:10px 12px;background:rgba(167,139,250,0.10);border-left:3px solid #a78bfa;border-radius:0 6px 6px 0;margin-bottom:12px">
+        <div style="font-weight:600;color:#e2e8f0;font-size:13px">${escapeHtml(m.title)}</div>
+        <div style="font-size:12px;color:#94a3b8;margin-top:2px">${_fmtMeetingTime(m.scheduled_at)} · ${m.duration_mins} min</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">To *</label>
+        <input id="mtg-invite-to" class="form-input" value="${escapeHtml(lead?.email || '')}" placeholder="lead@example.com"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">CC (comma-separated)</label>
+        <input id="mtg-invite-cc" class="form-input" placeholder="cc@example.com, another@example.com"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Subject</label>
+        <input id="mtg-invite-subject" class="form-input" value="Meeting Invitation — ${escapeHtml(m.title)}"/>
+      </div>
+      <div class="form-hint">The lead receives an email with the meeting details and the link you saved. This is logged on the lead timeline.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitMeetingInvite('${m.id}')"><i class="fas fa-paper-plane"></i> Send invite</button>
+    </div>
+  `)
+}
+
+async function submitMeetingInvite(meetingId) {
+  const to = (document.getElementById('mtg-invite-to')?.value || '').trim()
+  const ccRaw = (document.getElementById('mtg-invite-cc')?.value || '').trim()
+  const subject = (document.getElementById('mtg-invite-subject')?.value || '').trim()
+  if (!to) { toast('Recipient email is required', 'error'); return }
+  const cc = ccRaw ? ccRaw.split(',').map((s) => s.trim()).filter(Boolean) : []
+  try {
+    const res = await API.post(`/meetings/${meetingId}/send-invite`, { to, cc, subject })
+    const sent = Number(res?.sent || 0)
+    const failed = Number(res?.failed || 0)
+    if (sent && failed) toast(`Invites: ${sent} sent, ${failed} failed`, 'warning')
+    else if (sent) toast(`Invite sent to ${sent} recipient${sent === 1 ? '' : 's'}`, 'success')
+    else toast('Invite sent', 'success')
+    closeModal()
+    const el = document.getElementById('page-meet-setup')
+    if (el) { el.dataset.loaded = ''; loadPage('meet-setup', el) }
   } catch (e) {
     toast('Failed: ' + (e.message || 'unknown'), 'error')
   }

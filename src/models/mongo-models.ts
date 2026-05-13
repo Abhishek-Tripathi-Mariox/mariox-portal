@@ -310,6 +310,7 @@ export class MongoModels {
   readonly quotationSends: MongoRepository
   readonly quotationPermissions: MongoRepository
   readonly salesIncentives: MongoRepository
+  readonly meetings: MongoRepository
 
   constructor(private readonly db: Db) {
     this.users = new UserModel(db.collection<UserRecord>('users'))
@@ -360,6 +361,7 @@ export class MongoModels {
     this.quotationSends = new MongoRepository(db.collection('quotation_sends'))
     this.quotationPermissions = new MongoRepository(db.collection('quotation_permissions'))
     this.salesIncentives = new MongoRepository(db.collection('sales_incentives'))
+    this.meetings = new MongoRepository(db.collection('meetings'))
   }
 
   get rawDb() {

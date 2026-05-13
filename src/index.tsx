@@ -120,15 +120,15 @@ app.get('*', (c) => {
 </head>
 <body>
   <div id="app"></div>
-  <script src="/static/app.js?v=incent5"></script>
-  <script src="/static/pages.js?v=incent5"></script>
-  <script src="/static/pages2.js?v=incent5"></script>
-  <script src="/static/enterprise.js?v=incent5"></script>
-  <script src="/static/enterprise2.js?v=incent5"></script>
-  <script src="/static/client-portal.js?v=incent5"></script>
-  <script src="/static/project-extensions.js?v=incent5"></script>
-  <script src="/static/support.js?v=incent5"></script>
-  <script src="/static/leads.js?v=incent5"></script>
+  <script src="/static/app.js?v=incent7"></script>
+  <script src="/static/pages.js?v=incent7"></script>
+  <script src="/static/pages2.js?v=incent7"></script>
+  <script src="/static/enterprise.js?v=incent7"></script>
+  <script src="/static/enterprise2.js?v=incent7"></script>
+  <script src="/static/client-portal.js?v=incent7"></script>
+  <script src="/static/project-extensions.js?v=incent7"></script>
+  <script src="/static/support.js?v=incent7"></script>
+  <script src="/static/leads.js?v=incent7"></script>
 </body>
 </html>`)
 })

@@ -66,6 +66,7 @@ const PAGE_PERMISSIONS = {
   'scope-library':     ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'quotation-library': ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'sales-incentive':   ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'meet-setup':        ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'project-team':    ['admin', 'pm', 'pc'],
   'dev-team':        ['admin', 'pm', 'pc', 'developer', 'team'],
   // PM Dashboard is the operational view for PM/PC only — admins land on
@@ -90,10 +91,43 @@ const PAGE_PERMISSIONS = {
   'settings-view':   ['admin', 'pm', 'pc', 'developer', 'team'],
 }
 
+// Pages that are additionally gated by granular permissions (Settings →
+// Roles & Permissions). A user must have AT LEAST ONE of the listed
+// permission keys to see the page — even if their role is in
+// PAGE_PERMISSIONS. Admins bypass this and see everything.
+//
+// Pages not listed here keep pure role-based gating (e.g. Leads, Tasks,
+// PM Dashboard) — the user explicitly wanted the role-driven defaults
+// to stay for lead-side actions.
+const NAV_PERMISSION_MAP = {
+  'portfolio-library': ['portfolios.create', 'portfolios.edit', 'portfolios.delete', 'portfolios.manage'],
+  'scope-library':     ['scopes.create', 'scopes.edit', 'scopes.delete', 'scopes.manage'],
+  'quotation-library': ['quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.manage'],
+  'meet-setup':        ['meetings.create', 'meetings.edit', 'meetings.delete'],
+  'sales-incentive':   ['sales_incentive.view_all', 'sales_incentive.set_target', 'sales_incentive.override', 'sales_incentive.mark_paid'],
+}
+
+function hasAnyPermission(keys) {
+  if (!Array.isArray(keys) || !keys.length) return true
+  // Legacy sessions (logged in before this feature shipped) won't have a
+  // permissions array until the next /verify call refreshes it. Don't
+  // hide the tab in that gap — the sidebar will re-render with the right
+  // filter as soon as /verify lands.
+  if (!_user || _user.permissions == null) return true
+  const perms = Array.isArray(_user.permissions) ? _user.permissions : []
+  for (const k of keys) if (perms.includes(k)) return true
+  return false
+}
+
 function canSeePage(page) {
   const allowed = PAGE_PERMISSIONS[page]
-  if (!allowed) return true
-  return allowed.includes(String(_user?.role || '').toLowerCase())
+  if (allowed && !allowed.includes(String(_user?.role || '').toLowerCase())) return false
+  // Admin sees everything once the role check passes — granular perms are
+  // an additional filter for non-admins only.
+  if (String(_user?.role || '').toLowerCase() === 'admin') return true
+  const perms = NAV_PERMISSION_MAP[page]
+  if (perms && !hasAnyPermission(perms)) return false
+  return true
 }
 
 const SIDEBAR_GROUP_STORAGE_KEY = 'devportal_sidebar_groups'
@@ -112,6 +146,7 @@ const SIDEBAR_PAGE_GROUPS = {
   'scope-library': 'sales',
   'quotation-library': 'sales',
   'sales-incentive': 'sales',
+  'meet-setup': 'sales',
   'project-team': 'pm',
   'dev-team': 'dev',
   'pm-dashboard': 'pm',
@@ -561,6 +596,7 @@ function buildShell() {
       navItem('portfolio-library','fa-briefcase',     'Portfolio'),
       navItem('scope-library',    'fa-file-lines',    'Scope of Work'),
       navItem('quotation-library','fa-file-invoice-dollar', 'Quotation'),
+      navItem('meet-setup',      'fa-video',       'Meet Setup'),
       navItem('sales-incentive', 'fa-money-bill-trend-up', 'Sale Incentive'),
     ],
   })
@@ -705,6 +741,7 @@ function buildShell() {
     <div id="page-scope-library"    class="page"></div>
     <div id="page-quotation-library" class="page"></div>
     <div id="page-sales-incentive"  class="page"></div>
+    <div id="page-meet-setup"       class="page"></div>
     <div id="page-support-tickets"  class="page"></div>
     <div id="page-settings-view"    class="page"></div>
   </div>
@@ -739,7 +776,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','support-tickets':'Support Tickets','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','settings-view':'Settings'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -1572,6 +1609,7 @@ function loadPage(page, el) {
     case 'scope-library':     renderScopeLibrary(el); break
     case 'quotation-library': renderQuotationLibrary(el); break
     case 'sales-incentive':   renderSalesIncentivePage(el); break
+    case 'meet-setup':        renderMeetSetup(el); break
     case 'support-tickets':  renderSupportTickets(el); break
     case 'settings-view':    renderSettingsView(el); break
     default: el.innerHTML = `<div class="page-header"><h1 class="page-title">${breadcrumbMap[page]||page}</h1></div><div class="empty-state"><i class="fas fa-hammer"></i><p>Module coming soon…</p></div>`

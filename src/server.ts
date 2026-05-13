@@ -32,6 +32,7 @@ import { createPortfoliosRouter } from './express-routes/portfolios'
 import { createScopesRouter } from './express-routes/scopes'
 import { createQuotationsRouter } from './express-routes/quotations'
 import { createSalesIncentivesRouter } from './express-routes/sales-incentives'
+import { createMeetingsRouter, startMeetingReminderTick } from './express-routes/meetings'
 import { bootstrapSeed } from './seeds/bootstrap'
 import { loadRuntimeEnv } from './utils/runtime-env'
 
@@ -156,6 +157,11 @@ server.use('/api/portfolios', createPortfoliosRouter(models, jwtSecret, runtimeE
 server.use('/api/scopes', createScopesRouter(models, jwtSecret, runtimeEnv as any))
 server.use('/api/quotations', createQuotationsRouter(models, jwtSecret, runtimeEnv as any))
 server.use('/api/sales-incentives', createSalesIncentivesRouter(models, jwtSecret))
+server.use('/api/meetings', createMeetingsRouter(models, jwtSecret, runtimeEnv as any))
+
+// Fire in-app reminders for meetings starting in the next 5 minutes.
+// Runs every minute and claims rows atomically via reminder_sent flag.
+const meetingTick = startMeetingReminderTick(models)
 
 server.use('/static', express.static(path.resolve(process.cwd(), 'public/static')))
 
@@ -226,6 +232,7 @@ const httpServer = server.listen(port, host, () => {
 })
 
 const shutdown = async () => {
+  meetingTick.stop()
   await new Promise<void>((resolve) => httpServer.close(() => resolve()))
   await client.close()
   process.exit(0)
