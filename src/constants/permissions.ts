@@ -306,6 +306,41 @@ const SALES_AGENT_PERMS: PermissionKey[] = [
   'leaves.create_own',
 ]
 
+// Sales Manager — top of the sales hierarchy. Owns the whole pipeline:
+// cross-team lead visibility, library admin (portfolios / scopes /
+// quotations), meeting scheduler, and FULL incentive control (set targets,
+// override achieved, mark paid). Has the same self-service basics (tasks
+// on own work, timesheets, leave) as everyone else.
+const SALES_MANAGER_PERMS: PermissionKey[] = [
+  'users.view_all',
+  'clients.view_all',
+  'portfolios.create', 'portfolios.edit', 'portfolios.delete',
+  'scopes.create', 'scopes.edit', 'scopes.delete',
+  'quotations.create', 'quotations.edit', 'quotations.delete',
+  'meetings.create', 'meetings.edit', 'meetings.delete',
+  'sales_incentive.view_all', 'sales_incentive.set_target',
+  'sales_incentive.override', 'sales_incentive.mark_paid',
+  'tasks.edit_own', 'tasks.move', 'tasks.comment',
+  'timesheets.log_own',
+  'leaves.create_own',
+]
+
+// Sales Team Lead — between Manager and Agent. Creates / edits sales
+// artefacts but can't delete or set targets / mark payouts. Sees the team's
+// incentive tracker read-only.
+const SALES_TL_PERMS: PermissionKey[] = [
+  'users.view_all',
+  'clients.view_all',
+  'portfolios.create', 'portfolios.edit',
+  'scopes.create', 'scopes.edit',
+  'quotations.create', 'quotations.edit',
+  'meetings.create', 'meetings.edit',
+  'sales_incentive.view_all',
+  'tasks.edit_own', 'tasks.move', 'tasks.comment',
+  'timesheets.log_own',
+  'leaves.create_own',
+]
+
 const CLIENT_PERMS: PermissionKey[] = [
   'tickets.create',
 ]
@@ -340,6 +375,18 @@ export const SYSTEM_ROLE_SEEDS: SystemRoleSeed[] = [
     name: 'External Team',
     description: 'External collaborator on assigned projects',
     permissions: TEAM_PERMS,
+  },
+  {
+    key: 'sales_manager',
+    name: 'Sales Manager',
+    description: 'Owns the sales pipeline — manages TLs, agents, targets and incentives',
+    permissions: SALES_MANAGER_PERMS,
+  },
+  {
+    key: 'sales_tl',
+    name: 'Sales Team Lead',
+    description: 'Leads a sales pod — creates/edits quotations & scopes, views the team incentive tracker',
+    permissions: SALES_TL_PERMS,
   },
   {
     key: 'sales_agent',
