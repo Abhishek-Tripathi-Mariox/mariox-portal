@@ -370,7 +370,7 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
       let mail: { sent: boolean; error?: string } = { sent: false }
       try {
         const loginUrl =
-          String(runtimeEnv.LOGIN_URL || runtimeEnv.APP_URL || runtimeEnv.PUBLIC_BASE_URL || '').trim() ||
+          String(runtimeEnv.CLIENT_LOGIN_URL || runtimeEnv.APP_URL || runtimeEnv.PUBLIC_BASE_URL || '').trim() ||
           'http://localhost:3000/'
         const { subject, html, text } = buildStaffWelcomeEmail({
           fullName, email, password, role, loginUrl,
