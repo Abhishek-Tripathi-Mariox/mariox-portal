@@ -489,6 +489,39 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
     }
   })
 
+  // Hard-delete a user. The Hono legacy handler was a no-op shim (used the
+  // SQL stub that never actually deletes), so the frontend's "Delete team
+  // member" button would silently appear to succeed while leaving the row
+  // intact. This Express handler does the real Mongo deletion.
+  //
+  // Notes:
+  //   * Admin only — matches the legacy intent.
+  //   * Self-delete is refused so an admin can't lock themselves out.
+  //   * We check deletedCount on the result so a missing/already-gone user
+  //     surfaces as 404 instead of a misleading success toast.
+  router.delete('/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const actor = req.user as any
+      const actorId = String(actor?.sub || actor?.id || '')
+      if (actorId && actorId === id) {
+        return res.status(400).json({ error: 'You cannot delete your own account' })
+      }
+      const existing = await models.users.findById(id) as any
+      if (!existing) return res.status(404).json({ error: 'User not found' })
+      const result: any = await models.users.deleteById(id)
+      // MongoDB driver returns { acknowledged, deletedCount }. If the row was
+      // gone between the find and the delete, we still report 404 so the UI
+      // can refresh without leaving a phantom row.
+      if (result && Number(result.deletedCount) === 0) {
+        return res.status(404).json({ error: 'User not found' })
+      }
+      return res.json({ message: 'User deleted successfully' })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to delete user' })
+    }
+  })
+
   router.get('/:id/utilization', async (req, res) => {
     try {
       const id = String(req.params.id)

@@ -231,16 +231,25 @@ server.use(async (req, res, next) => {
   }
 })
 
-server.use((error: any, _req: Request, res: Response, _next: NextFunction) => {
+server.use((error: any, req: Request, res: Response, _next: NextFunction) => {
   console.error('Express proxy error:', error)
-  if (!res.headersSent) {
-    const message = String(error?.message || error || '')
-    if (message.includes('Legacy SQL layer removed') || message.includes('Use MODELS directly')) {
-      res.status(200).json({ results: [], data: [], success: true })
-      return
-    }
-    res.status(500).json({ error: 'Internal server error' })
+  if (res.headersSent) return
+  const message = String(error?.message || error || '')
+  const isLegacyStub = message.includes('Legacy SQL layer removed') || message.includes('Use MODELS directly')
+  // Legacy-stub errors used to be silently converted to 200 success across
+  // the board — which masked broken DELETE routes (the frontend showed a
+  // "Deleted" toast while the row stayed put). Now we ONLY return the empty
+  // fallback for safe/read methods, and surface mutations as real 500s so
+  // a missing Express handler is immediately visible.
+  if (isLegacyStub && (req.method === 'GET' || req.method === 'HEAD')) {
+    res.status(200).json({ results: [], data: [], success: true })
+    return
   }
+  if (isLegacyStub) {
+    res.status(500).json({ error: 'This endpoint is not implemented in the Express layer yet. Please report this bug.' })
+    return
+  }
+  res.status(500).json({ error: 'Internal server error' })
 })
 
 const httpServer = server.listen(port, host, () => {
