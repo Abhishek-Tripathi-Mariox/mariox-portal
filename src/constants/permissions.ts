@@ -78,10 +78,12 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     label: 'Clients',
     icon: 'fa-building',
     permissions: [
-      { key: 'clients.create',  label: 'Create clients' },
-      { key: 'clients.view_all',label: 'View all clients' },
-      { key: 'clients.edit',    label: 'Edit clients' },
-      { key: 'clients.delete',  label: 'Delete clients' },
+      { key: 'clients.create',     label: 'Create clients' },
+      { key: 'clients.view_all',   label: 'View all clients' },
+      { key: 'clients.edit',       label: 'Edit clients' },
+      { key: 'clients.delete',     label: 'Delete clients' },
+      { key: 'clients.view_price', label: 'View client deal price',
+        description: 'See and edit the price/value on each client. Admin and PM see it by default.' },
     ],
   },
   {
@@ -202,6 +204,21 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     ],
   },
   {
+    module: 'hr',
+    label: 'HR',
+    icon: 'fa-id-badge',
+    permissions: [
+      { key: 'hr.attendance.manage',     label: 'Manage attendance',     description: 'Mark attendance for any employee and view the full attendance log.' },
+      { key: 'hr.calendar.manage',       label: 'Manage HR calendar',    description: 'Create / delete company calendar events (holidays, training, etc.).' },
+      { key: 'hr.warnings.manage',       label: 'Issue warnings',        description: 'Issue, view and delete disciplinary warnings for any employee.' },
+      { key: 'hr.pips.manage',           label: 'Manage PIPs',           description: 'Create, update and close Performance Improvement Plans.' },
+      { key: 'hr.salary_slips.manage',   label: 'Generate salary slips', description: 'Generate, view and delete monthly salary slips for any employee.' },
+      { key: 'hr.terminations.manage',   label: 'Manage terminations',   description: 'Record offboarding details and deactivate users on completion.' },
+      { key: 'hr.documents.manage',      label: 'Manage HR documents',   description: 'Generate offer letters, experience certificates, salary certificates for any employee.' },
+      { key: 'hr.assets.manage',         label: 'Manage assets',         description: 'Assign / return company assets (laptops, phones, ID cards) and view the asset register.' },
+    ],
+  },
+  {
     module: 'sales_incentive',
     label: 'Sales Incentive',
     icon: 'fa-money-bill-trend-up',
@@ -249,6 +266,9 @@ const PM_PERMS: PermissionKey[] = [
   'scopes.create', 'scopes.edit', 'scopes.delete',
   'quotations.create', 'quotations.edit', 'quotations.delete',
   'meetings.create', 'meetings.edit', 'meetings.delete',
+  'hr.attendance.manage', 'hr.calendar.manage', 'hr.warnings.manage',
+  'hr.pips.manage', 'hr.salary_slips.manage', 'hr.terminations.manage',
+  'hr.documents.manage', 'hr.assets.manage',
 ]
 
 const PC_PERMS: PermissionKey[] = [

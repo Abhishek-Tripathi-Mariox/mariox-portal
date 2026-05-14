@@ -33,6 +33,14 @@ import { createScopesRouter } from './express-routes/scopes'
 import { createQuotationsRouter } from './express-routes/quotations'
 import { createSalesIncentivesRouter } from './express-routes/sales-incentives'
 import { createMeetingsRouter, startMeetingReminderTick } from './express-routes/meetings'
+import { createAttendanceRouter } from './express-routes/attendance'
+import { createCalendarRouter } from './express-routes/calendar'
+import { createWarningsRouter } from './express-routes/warnings'
+import { createPipsRouter } from './express-routes/pips'
+import { createSalarySlipsRouter } from './express-routes/salary-slips'
+import { createTerminationsRouter } from './express-routes/terminations'
+import { createHrDocumentsRouter } from './express-routes/hr-documents'
+import { createHrAssetsRouter } from './express-routes/hr-assets'
 import { bootstrapSeed } from './seeds/bootstrap'
 import { loadRuntimeEnv } from './utils/runtime-env'
 
@@ -158,6 +166,14 @@ server.use('/api/scopes', createScopesRouter(models, jwtSecret, runtimeEnv as an
 server.use('/api/quotations', createQuotationsRouter(models, jwtSecret, runtimeEnv as any))
 server.use('/api/sales-incentives', createSalesIncentivesRouter(models, jwtSecret))
 server.use('/api/meetings', createMeetingsRouter(models, jwtSecret, runtimeEnv as any))
+server.use('/api/attendance', createAttendanceRouter(models, jwtSecret))
+server.use('/api/calendar', createCalendarRouter(models, jwtSecret))
+server.use('/api/warnings', createWarningsRouter(models, jwtSecret))
+server.use('/api/pips', createPipsRouter(models, jwtSecret))
+server.use('/api/salary-slips', createSalarySlipsRouter(models, jwtSecret))
+server.use('/api/terminations', createTerminationsRouter(models, jwtSecret))
+server.use('/api/hr-documents', createHrDocumentsRouter(models, jwtSecret))
+server.use('/api/assets', createHrAssetsRouter(models, jwtSecret))
 
 // Fire in-app reminders for meetings starting in the next 5 minutes.
 // Runs every minute and claims rows atomically via reminder_sent flag.

@@ -951,7 +951,6 @@ async function openCloseLeadModal(id) {
     // Sold By defaults to whoever the lead is assigned to — that's the
     // person who actually closed the deal.
     const defaultSoldBy = lead.assigned_to_name || _user?.full_name || _user?.name || ''
-    const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
     showModal(`
       <div class="modal-header">
         <h3><i class="fas fa-handshake" style="color:#58C68A;margin-right:8px"></i>Close Lead & Convert to Client</h3>
@@ -987,14 +986,14 @@ async function openCloseLeadModal(id) {
 
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">GSTIN</label><input class="form-input" id="close-gstin" placeholder="Enter GSTIN" style="text-transform:uppercase" maxlength="15"/></div>
-          <div class="form-group"><label class="form-label">Country</label><input class="form-input" id="close-country" placeholder="Enter Country" value="India"/></div>
+          <div class="form-group"><label class="form-label">GSTIN *</label><input class="form-input" id="close-gstin" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase" maxlength="15" required/></div>
+          <div class="form-group"><label class="form-label">Country *</label><input class="form-input" id="close-country" placeholder="Enter Country" value="India" required/></div>
         </div>
-        <div class="form-group"><label class="form-label">Company Address</label><textarea class="form-textarea" id="close-address" placeholder="Enter Company Address" style="min-height:50px"></textarea></div>
+        <div class="form-group"><label class="form-label">Company Address *</label><textarea class="form-textarea" id="close-address" placeholder="Building, Street, Locality" style="min-height:50px" required></textarea></div>
         <div style="display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:10px">
-          <div class="form-group" style="margin:0"><label class="form-label">City</label><input class="form-input" id="close-city" placeholder="City"/></div>
-          <div class="form-group" style="margin:0"><label class="form-label">State</label>
-            <select class="form-select" id="close-state" onchange="onCloseStateChange(this)">
+          <div class="form-group" style="margin:0"><label class="form-label">City *</label><input class="form-input" id="close-city" placeholder="Mumbai" required/></div>
+          <div class="form-group" style="margin:0"><label class="form-label">State *</label>
+            <select class="form-select" id="close-state" onchange="onCloseStateChange(this)" required>
               <option value="">Select state…</option>
               ${stateOpts}
             </select>
@@ -1002,7 +1001,7 @@ async function openCloseLeadModal(id) {
           <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="close-state-code" placeholder="" maxlength="3" readonly style="background:rgba(15,23,42,.4)"/></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">PIN Code</label><input class="form-input" id="close-pincode" placeholder="Pincode" maxlength="10"/></div>
+          <div class="form-group"><label class="form-label">PIN Code *</label><input class="form-input" id="close-pincode" placeholder="400001" maxlength="10" required/></div>
           <div class="form-group"></div>
         </div>
 
@@ -1051,14 +1050,6 @@ async function openCloseLeadModal(id) {
                 <option value="consulting">Consulting</option>
               </select>
             </div>
-            <div class="form-group"><label class="form-label">Priority</label>
-              <select class="form-select" id="close-proj-priority">
-                <option value="low">Low</option>
-                <option value="medium" selected>Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
           </div>
           <div class="form-row">
             <div class="form-group"><label class="form-label">Start Date *</label><input class="form-input" id="close-proj-start" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
@@ -1079,7 +1070,7 @@ async function openCloseLeadModal(id) {
             </div>
           </div>
           <div class="form-row">
-            <div class="form-group"><label class="form-label">Project Amount (₹)</label><input class="form-input" id="close-proj-amount" type="number" min="0" step="0.01" placeholder="optional"/></div>
+            <div class="form-group"><label class="form-label">Project Amount (₹) *</label><input class="form-input" id="close-proj-amount" type="number" min="0" step="0.01" placeholder="e.g. 120000" required/></div>
             <div class="form-group"><label class="form-label">Billable</label>
               <select class="form-select" id="close-proj-billable">
                 <option value="1" selected>Yes</option>
@@ -1102,16 +1093,6 @@ async function openCloseLeadModal(id) {
           <div class="form-group"><label class="form-label">Remarks</label>
             <textarea class="form-textarea" id="close-proj-remarks" placeholder="Internal remarks (optional)" style="min-height:50px"></textarea>
           </div>
-
-          ${isAdmin ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.02)">
-            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Commercial visibility (admin only)</div>
-            <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">Admin always sees Project Amount and Sold By. Pick which other roles can see these.</div>
-            <div style="display:flex;gap:14px;flex-wrap:wrap">
-              ${['pm','pc','developer','team','client'].map(r => `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#cbd5e1;cursor:pointer">
-                <input type="checkbox" class="close-proj-commercial-role" value="${r}" style="accent-color:#FF7A45"/>${r.toUpperCase()}
-              </label>`).join('')}
-            </div>
-          </div>` : ''}
 
           <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.02)">
             <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Attachments <span style="color:#94a3b8;text-transform:none;letter-spacing:0">(25 MB / file)</span></div>
@@ -1299,13 +1280,20 @@ async function submitCloseLead(id) {
     toast('Company name, contact name, email and password are required', 'error')
     return
   }
-  if (payload.gstin && !/^[0-9A-Z]{15}$/.test(payload.gstin)) {
-    toast('GSTIN must be 15 alphanumeric characters', 'error')
-    return
+  // Tax & address fields became mandatory — these flow onto every invoice we
+  // generate, so an incomplete client record creates billing pain later.
+  // State Code is intentionally skipped (auto-filled from the State dropdown).
+  if (!payload.gstin) { toast('GSTIN is required', 'error'); return }
+  if (!/^[0-9A-Z]{15}$/.test(payload.gstin)) {
+    toast('GSTIN must be 15 alphanumeric characters', 'error'); return
   }
-  if (payload.pincode && !/^[0-9]{4,8}$/.test(payload.pincode)) {
-    toast('PIN code must be numeric (4–8 digits)', 'error')
-    return
+  if (!payload.country) { toast('Country is required', 'error'); return }
+  if (!payload.address_line) { toast('Company address is required', 'error'); return }
+  if (!payload.city) { toast('City is required', 'error'); return }
+  if (!payload.state) { toast('State is required', 'error'); return }
+  if (!payload.pincode) { toast('PIN code is required', 'error'); return }
+  if (!/^[0-9]{4,8}$/.test(payload.pincode)) {
+    toast('PIN code must be numeric (4–8 digits)', 'error'); return
   }
 
   const wantsProject = document.getElementById('close-create-project')?.checked
@@ -1324,13 +1312,19 @@ async function submitCloseLead(id) {
     const pend = (document.getElementById('close-proj-end')?.value || '').trim()
     if (pend && pend < pstart) { toast('Project end date must be after start date', 'error'); return }
     const amt = (document.getElementById('close-proj-amount')?.value || '').trim()
+    // Project Amount is mandatory — it feeds the sales-incentive achieved
+    // calculation, so closing a lead without it would leave the agent's
+    // attainment at zero for that deal.
+    if (!amt) { toast('Project Amount is required', 'error'); return }
+    const amtNum = Number(amt)
+    if (!Number.isFinite(amtNum) || amtNum <= 0) {
+      toast('Project Amount must be a positive number', 'error'); return
+    }
     // Validate file sizes early so we don't half-create the project before
     // hitting the upload limit.
     for (const f of _closeProjFiles) {
       if (f.size > 25 * 1024 * 1024) { toast(`"${f.name}" exceeds the 25 MB limit`, 'error'); return }
     }
-    const commercialRoles = Array.from(document.querySelectorAll('.close-proj-commercial-role:checked'))
-      .map(el => el.value)
     payload.project = {
       name: pname,
       code: pcode,
@@ -1342,10 +1336,13 @@ async function submitCloseLead(id) {
       expected_end_date: pend || null,
       pm_id: document.getElementById('close-proj-pm')?.value || null,
       pc_id: document.getElementById('close-proj-pc')?.value || null,
-      project_amount: amt ? Number(amt) : null,
+      project_amount: amtNum,
       billable: (document.getElementById('close-proj-billable')?.value || '1') === '1',
       sold_by: readCloseProjSoldBy(),
-      commercial_visible_to: commercialRoles,
+      // Commercial visibility picker removed from the close-lead UI.
+      // Backend defaults `commercial_visible_to` to [] when the field is
+      // absent — i.e. only admin sees Project Amount / Sold By on the new
+      // project, matching the old "admin always sees" guarantee.
       description: (document.getElementById('close-proj-desc')?.value || '').trim() || null,
       remarks: (document.getElementById('close-proj-remarks')?.value || '').trim() || null,
     }

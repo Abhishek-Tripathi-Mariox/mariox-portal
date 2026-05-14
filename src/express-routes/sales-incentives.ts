@@ -122,10 +122,21 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
       const records = (await models.salesIncentives.find({ period })) as any[]
       const recordByUserId = new Map(records.map((r) => [String(r.user_id), r]))
 
+      // Pull every payment row for this period across all agents. We sum by
+      // user to support partial payments: admin can record ₹500 today and
+      // ₹500 next week, with `paid_amount` being the running total.
+      const payments = (await models.salesIncentivePayments.find({ period })) as any[]
+      const paymentsByUser = new Map<string, any[]>()
+      for (const p of payments) {
+        const uid = String(p.user_id)
+        if (!paymentsByUser.has(uid)) paymentsByUser.set(uid, [])
+        paymentsByUser.get(uid)!.push(p)
+      }
+
       const rows = agents.map((u) => {
         const rec = recordByUserId.get(String(u.id)) || null
         // Use the period snapshot if one was frozen at action time (override
-        // or mark-paid), so adjusting the user's target later doesn't
+        // or payment), so adjusting the user's target later doesn't
         // retroactively change past months.
         const target = rec?.target_snapshot ?? num(u.monthly_target, 0)
         const rate = rec?.rate_snapshot ?? num(u.incentive_rate, 0)
@@ -134,7 +145,20 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
           ? Number(rec.achieved_override) : null
         const achieved = achievedOverride !== null ? achievedOverride : achievedAuto
         const above = Math.max(0, achieved - target)
-        const earned = +(above * rate).toFixed(2)
+        // Incentive rate is a PERCENT of the above-target value (e.g. rate=10
+        // on ₹10,000 above-target = ₹1,000 earned). Was previously per-rupee.
+        const earned = +(above * rate / 100).toFixed(2)
+        const userPayments = (paymentsByUser.get(String(u.id)) || []).sort(
+          (a, b) => String(b.paid_at || '').localeCompare(String(a.paid_at || '')),
+        )
+        // Sum of all partial payments + legacy single-amount field on the
+        // sales_incentives row (for months recorded before payments existed).
+        const paidFromPayments = userPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+        const legacyPaid = paidFromPayments === 0 && rec && rec.paid_amount !== undefined && rec.paid_amount !== null
+          ? Number(rec.paid_amount) : 0
+        const paid_amount = +(paidFromPayments + legacyPaid).toFixed(2)
+        const balance = +Math.max(0, earned - paid_amount).toFixed(2)
+        const fully_paid = earned > 0 && paid_amount >= earned
         return {
           user_id: String(u.id),
           user_name: u.full_name,
@@ -148,12 +172,16 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
           achieved_override: achievedOverride,
           achieved,
           earned,
-          paid: !!rec?.paid,
+          paid: fully_paid || !!rec?.paid,
           paid_at: rec?.paid_at || null,
           paid_by: rec?.paid_by || null,
           paid_by_name: rec?.paid_by_name || null,
-          paid_amount: rec && rec.paid_amount !== undefined && rec.paid_amount !== null
-            ? Number(rec.paid_amount) : null,
+          paid_amount,
+          balance,
+          payments: userPayments.map((p) => ({
+            id: p.id, amount: Number(p.amount), paid_at: p.paid_at,
+            paid_by: p.paid_by, paid_by_name: p.paid_by_name, note: p.note || null,
+          })),
           notes: rec?.notes || null,
           record_id: rec?.id || null,
         }
@@ -167,8 +195,8 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
         acc.target += r.target
         acc.achieved += r.achieved
         acc.earned += r.earned
-        if (r.paid) acc.paid_amount += (r.paid_amount ?? r.earned)
-        else        acc.pending_amount += r.earned
+        acc.paid_amount += r.paid_amount
+        acc.pending_amount += r.balance
         return acc
       }, { target: 0, achieved: 0, earned: 0, paid_amount: 0, pending_amount: 0 })
 
@@ -323,6 +351,82 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
     }
   })
 
+  // ── PAYMENTS (partial pay history) ────────────────────────
+  // The earned incentive can be paid out across multiple installments —
+  // e.g. earned ₹10,000 → ₹5,000 today + ₹5,000 next week. Each call to
+  // POST /payments adds one entry; the summary endpoint sums them per
+  // user/period to compute paid_amount and balance.
+  router.post('/:userId/:period/payments', async (req, res) => {
+    try {
+      const actor = req.user as any
+      if (!(await hasPermission(models, actor, 'sales_incentive.mark_paid'))) {
+        return res.status(403).json({ error: 'Not allowed to record payments' })
+      }
+      const userId = String(req.params.userId)
+      const period = String(req.params.period)
+      if (!PERIOD_RE.test(period)) return res.status(400).json({ error: 'period must be YYYY-MM' })
+      const targetUser = (await models.users.findById(userId)) as any
+      if (!targetUser) return res.status(404).json({ error: 'User not found' })
+
+      const body = req.body || {}
+      const amount = Number(body.amount)
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ error: 'amount must be a positive number' })
+      }
+      const note = body.note ? String(body.note).trim().slice(0, 500) : null
+      const paidAt = body.paid_at ? new Date(body.paid_at).toISOString() : new Date().toISOString()
+
+      const id = generateId('sincpay')
+      await models.salesIncentivePayments.insertOne({
+        id,
+        user_id: userId,
+        period,
+        amount,
+        paid_at: paidAt,
+        paid_by: actor?.sub || null,
+        paid_by_name: actor?.full_name || actor?.name || null,
+        note,
+        created_at: new Date().toISOString(),
+      })
+
+      // Snapshot the target/rate onto the sales_incentives row so the
+      // period's earned amount stays stable even if admin tweaks the user's
+      // monthly_target later. Same pattern as the override endpoint.
+      const existing = (await models.salesIncentives.findOne({ user_id: userId, period })) as any
+      if (!existing) {
+        await models.salesIncentives.insertOne({
+          id: generateId('sinc'),
+          user_id: userId,
+          period,
+          achieved_override: null,
+          target_snapshot: num(targetUser.monthly_target, 0),
+          rate_snapshot: num(targetUser.incentive_rate, 0),
+          paid: false,
+          notes: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+      }
+      return res.status(201).json({ message: 'Payment recorded', data: { id, amount } })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  router.delete('/payments/:paymentId', async (req, res) => {
+    try {
+      const actor = req.user as any
+      if (!(await hasPermission(models, actor, 'sales_incentive.mark_paid'))) {
+        return res.status(403).json({ error: 'Not allowed to delete payments' })
+      }
+      const id = String(req.params.paymentId)
+      await models.salesIncentivePayments.deleteById(id)
+      return res.json({ message: 'Payment deleted' })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to delete' })
+    }
+  })
+
   // ── HISTORY (per agent) ───────────────────────────────────
   // Returns every month entry for one agent. The system snapshots each
   // month into sales_incentives as soon as any action is taken (override /
@@ -363,6 +467,16 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
       const liveTarget = num(target.monthly_target, 0)
       const liveRate = num(target.incentive_rate, 0)
 
+      // Pull every payment row for this user and bucket by period so each
+      // history row can report its running paid total + payment timeline.
+      const allPayments = (await models.salesIncentivePayments.find({ user_id: userId })) as any[]
+      const paymentsByPeriod = new Map<string, any[]>()
+      for (const p of allPayments) {
+        const k = String(p.period)
+        if (!paymentsByPeriod.has(k)) paymentsByPeriod.set(k, [])
+        paymentsByPeriod.get(k)!.push(p)
+      }
+
       const rows = Array.from(periodsSet)
         .filter((p) => PERIOD_RE.test(p))
         .sort((a, b) => b.localeCompare(a)) // newest first
@@ -375,7 +489,17 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
           const target_snapshot = rec?.target_snapshot ?? liveTarget
           const rate_snapshot = rec?.rate_snapshot ?? liveRate
           const above = Math.max(0, achieved - target_snapshot)
-          const earned = +(above * rate_snapshot).toFixed(2)
+          // Percentage formula: rate=1 means 1% of above-target value.
+          const earned = +(above * rate_snapshot / 100).toFixed(2)
+          const periodPayments = (paymentsByPeriod.get(period) || []).sort(
+            (a, b) => String(b.paid_at || '').localeCompare(String(a.paid_at || '')),
+          )
+          const paidFromPayments = periodPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+          const legacyPaid = paidFromPayments === 0 && rec && rec.paid_amount !== undefined && rec.paid_amount !== null
+            ? Number(rec.paid_amount) : 0
+          const paid_amount = +(paidFromPayments + legacyPaid).toFixed(2)
+          const balance = +Math.max(0, earned - paid_amount).toFixed(2)
+          const fully_paid = earned > 0 && paid_amount >= earned
           return {
             user_id: userId,
             period,
@@ -385,11 +509,15 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
             achieved_override: achievedOverride,
             achieved,
             earned,
-            paid: !!rec?.paid,
+            paid: fully_paid || !!rec?.paid,
             paid_at: rec?.paid_at || null,
             paid_by_name: rec?.paid_by_name || null,
-            paid_amount: rec && rec.paid_amount !== undefined && rec.paid_amount !== null
-              ? Number(rec.paid_amount) : null,
+            paid_amount,
+            balance,
+            payments: periodPayments.map((p) => ({
+              id: p.id, amount: Number(p.amount), paid_at: p.paid_at,
+              paid_by: p.paid_by, paid_by_name: p.paid_by_name, note: p.note || null,
+            })),
             notes: rec?.notes || null,
             record_id: rec?.id || null,
             has_record: !!rec,
@@ -398,8 +526,8 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
 
       const totals = rows.reduce((acc, r) => {
         acc.earned += r.earned
-        if (r.paid) acc.paid_amount += (r.paid_amount ?? r.earned)
-        else        acc.pending_amount += r.earned
+        acc.paid_amount += r.paid_amount
+        acc.pending_amount += r.balance
         return acc
       }, { earned: 0, paid_amount: 0, pending_amount: 0 })
 

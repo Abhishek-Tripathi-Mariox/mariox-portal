@@ -506,9 +506,6 @@ router.register('projects', async () => {
           <select class="form-select" id="proj-status" style="max-width:160px" onchange="filterProjects()">
             <option value="">All Status</option><option>active</option><option>on_hold</option><option>completed</option><option>archived</option>
           </select>
-          <select class="form-select" id="proj-priority" style="max-width:160px" onchange="filterProjects()">
-            <option value="">All Priority</option><option>critical</option><option>high</option><option>medium</option><option>low</option>
-          </select>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px" id="proj-grid">
           ${projects.map(p => renderProjectCard(p)).join('')}
@@ -523,9 +520,8 @@ function renderProjectCard(p) {
   const tlPct = Math.min(100, Math.max(0, parseFloat(p.timeline_progress || 0)))
   const remaining = Math.max(0, (p.total_allocated_hours || 0) - (p.consumed_hours || 0))
   const color = burnPct >= 100 ? 'red' : burnPct >= 80 ? 'yellow' : 'green'
-  const priorityColors = { critical: '#FF5E3A', high: '#FF7A45', medium: '#FFCB47', low: '#94a3b8' }
   return `
-    <div class="glass-card" style="padding:20px;cursor:pointer;border-top:3px solid ${priorityColors[p.priority]||'#FF7A45'}" onclick="router.navigate('project-detail',{id:'${p.id}'})" id="proj-card-${p.id}">
+    <div class="glass-card" style="padding:20px;cursor:pointer;border-top:3px solid #FF7A45" onclick="router.navigate('project-detail',{id:'${p.id}'})" id="proj-card-${p.id}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -536,7 +532,6 @@ function renderProjectCard(p) {
         </div>
         <div style="text-align:right">
           ${utils.statusBadge(p.status)}
-          ${utils.priorityBadge(p.priority)}
         </div>
       </div>
       <div style="display:flex;gap:16px;margin-bottom:14px">
@@ -575,12 +570,10 @@ function renderProjectCard(p) {
 function filterProjects() {
   const search = document.getElementById('proj-search')?.value.toLowerCase() || ''
   const status = document.getElementById('proj-status')?.value.toLowerCase()
-  const priority = document.getElementById('proj-priority')?.value.toLowerCase()
   document.querySelectorAll('[id^="proj-card-"]').forEach(card => {
     const text = card.textContent.toLowerCase()
     let show = text.includes(search)
     if (status) show = show && text.includes(status)
-    if (priority) show = show && text.includes(priority)
     card.parentElement.style.display = show ? '' : 'none'
   })
 }
@@ -1256,7 +1249,7 @@ router.register('project-detail', async ({ id }) => {
             </div>
           </div>
           <div style="display:flex;gap:10px;align-items:center">
-            ${utils.statusBadge(p.status)} ${utils.priorityBadge(p.priority)}
+            ${utils.statusBadge(p.status)}
             ${['admin','pm'].includes(state.user?.role) ? `<button class="btn btn-secondary btn-sm" onclick="openProjectModal('${p.id}')"><i class="fas fa-edit"></i> Edit</button>` : ''}
           </div>
         </div>

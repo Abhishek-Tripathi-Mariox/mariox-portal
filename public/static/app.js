@@ -83,6 +83,22 @@ const PAGE_PERMISSIONS = {
   'my-tasks':        ['admin', 'pm', 'pc', 'developer', 'team', 'sales_manager', 'sales_tl', 'sales_agent'],
   'timesheets-view': ['admin', 'pm', 'pc', 'developer'],
   'leaves-view':     ['admin', 'pm', 'pc', 'developer'], // team excluded — they don't apply for leave here
+  // HR pages: role-based fallback for users without any permission grants.
+  // Admin always bypasses (canSeePage), and NAV_PERMISSION_MAP below makes
+  // these visible to anyone with the relevant hr.*.manage permission, so
+  // admin can hand HR access to any role (incl. a custom `hr` role) without
+  // editing this list.
+  'hr-attendance':   ['admin'],
+  // Calendar is visible to every authenticated user — they can at least add
+  // personal events (client meetings, follow-ups). HR/admin still own the
+  // "Company" visibility toggle inside the Add Event modal.
+  'hr-calendar':     ['admin', 'pm', 'pc', 'developer', 'team', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'hr-warnings':     ['admin'],
+  'hr-pips':         ['admin'],
+  'hr-salary-slips': ['admin'],
+  'hr-terminations': ['admin'],
+  'hr-documents':    ['admin'],
+  'hr-assets':       ['admin'],
   'bidding-view':    ['admin', 'pm', 'team'],
   'support-tickets': ['admin', 'pm', 'pc', 'developer', 'team'],
   'approval-queue':  ['admin', 'pm', 'pc'],
@@ -129,6 +145,16 @@ const NAV_PERMISSION_MAP = {
   'scope-library':     ['scopes.create', 'scopes.edit', 'scopes.delete', 'scopes.manage'],
   'quotation-library': ['quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.manage'],
   'meet-setup':        ['meetings.create', 'meetings.edit', 'meetings.delete'],
+  // HR module pages — show in sidebar to anyone with the corresponding
+  // manage permission. Calendar is intentionally open to all (handled below
+  // by the role allowlist in PAGE_PERMISSIONS) so the entry isn't mapped here.
+  'hr-attendance':     ['hr.attendance.manage'],
+  'hr-warnings':       ['hr.warnings.manage'],
+  'hr-pips':           ['hr.pips.manage'],
+  'hr-salary-slips':   ['hr.salary_slips.manage'],
+  'hr-terminations':   ['hr.terminations.manage'],
+  'hr-documents':      ['hr.documents.manage'],
+  'hr-assets':         ['hr.assets.manage'],
   'sales-incentive':   ['sales_incentive.view_all', 'sales_incentive.set_target', 'sales_incentive.override', 'sales_incentive.mark_paid'],
   // Settings page — visible if user has ANY settings.* permission.
   'settings-view':     ['settings.manage_company', 'settings.manage_holidays', 'settings.manage_tech_stacks', 'settings.manage_invites', 'settings.manage_roles'],
@@ -208,6 +234,14 @@ const SIDEBAR_PAGE_GROUPS = {
   'reports-view': 'analytics',
   'alerts-view': 'analytics',
   'settings-view': 'settings',
+  'hr-attendance': 'hr',
+  'hr-calendar': 'hr',
+  'hr-warnings': 'hr',
+  'hr-pips': 'hr',
+  'hr-salary-slips': 'hr',
+  'hr-terminations': 'hr',
+  'hr-documents': 'hr',
+  'hr-assets': 'hr',
 }
 const SIDEBAR_GROUP_DEFAULTS = {
   admin: true,
@@ -217,6 +251,7 @@ const SIDEBAR_GROUP_DEFAULTS = {
   sales: true,
   analytics: false,
   settings: true,
+  hr: true,
 }
 let _sidebarGroupState = loadSidebarGroupState()
 
@@ -737,6 +772,22 @@ function buildShell() {
     ],
   }) : ''
 
+  // HR section — admin/PM/PC manage people ops here. Calendar is the only
+  // entry visible to everyone since it just shows company events/holidays.
+  const navHR = navSection({
+    key: 'hr', heading: 'HR', chip: 'People', expanded: true, icon: 'fa-id-badge',
+    items: [
+      navItem('hr-attendance',   'fa-user-clock',      'Attendance'),
+      navItem('hr-calendar',     'fa-calendar-days',   'Calendar'),
+      navItem('hr-warnings',     'fa-triangle-exclamation', 'Warnings'),
+      navItem('hr-pips',         'fa-clipboard-list',  'PIPs'),
+      navItem('hr-salary-slips', 'fa-money-check-dollar', 'Salary Slips'),
+      navItem('hr-terminations', 'fa-user-slash',      'Terminations'),
+      navItem('hr-documents',    'fa-file-signature',  'Documents'),
+      navItem('hr-assets',       'fa-box-archive',     'Assets'),
+    ],
+  })
+
   const navReports = navSection({
     key: 'analytics', heading: 'Analytics', chip: 'Insight', expanded: false, icon: 'fa-wand-magic-sparkles',
     items: [
@@ -763,7 +814,7 @@ function buildShell() {
         <span>Mariox Software</span>
       </div>
     </div>
-    ${navAdmin}${navPm}${navDev}${navTeam}${navSales}${navReports}${navSettings}
+    ${navAdmin}${navPm}${navDev}${navTeam}${navSales}${navHR}${navReports}${navSettings}
     <div class="sidebar-footer">
       <div class="user-card" onclick="showProfileModal()">
         ${avatar(_user.name||_user.full_name, _user.avatar_color||'#FF7A45')}
@@ -826,6 +877,14 @@ function buildShell() {
     <div id="page-sales-incentive"  class="page"></div>
     <div id="page-meet-setup"       class="page"></div>
     <div id="page-support-tickets"  class="page"></div>
+    <div id="page-hr-attendance"    class="page"></div>
+    <div id="page-hr-calendar"      class="page"></div>
+    <div id="page-hr-warnings"      class="page"></div>
+    <div id="page-hr-pips"          class="page"></div>
+    <div id="page-hr-salary-slips"  class="page"></div>
+    <div id="page-hr-terminations"  class="page"></div>
+    <div id="page-hr-documents"     class="page"></div>
+    <div id="page-hr-assets"        class="page"></div>
     <div id="page-settings-view"    class="page"></div>
   </div>
   <div id="drawer-overlay" class="drawer-overlay" onclick="closeDrawer()"></div>
@@ -859,7 +918,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','settings-view':'Settings'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -1694,6 +1753,14 @@ function loadPage(page, el) {
     case 'sales-incentive':   renderSalesIncentivePage(el); break
     case 'meet-setup':        renderMeetSetup(el); break
     case 'support-tickets':  renderSupportTickets(el); break
+    case 'hr-attendance':    renderAttendanceView(el); break
+    case 'hr-calendar':      renderHRCalendarView(el); break
+    case 'hr-warnings':      renderWarningsView(el); break
+    case 'hr-pips':          renderPipsView(el); break
+    case 'hr-salary-slips':  renderSalarySlipsView(el); break
+    case 'hr-terminations':  renderTerminationsView(el); break
+    case 'hr-documents':     renderHrDocumentsView(el); break
+    case 'hr-assets':        renderHrAssetsView(el); break
     case 'settings-view':    renderSettingsView(el); break
     default: el.innerHTML = `<div class="page-header"><h1 class="page-title">${breadcrumbMap[page]||page}</h1></div><div class="empty-state"><i class="fas fa-hammer"></i><p>Module coming soon…</p></div>`
   }

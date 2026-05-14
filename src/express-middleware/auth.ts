@@ -61,3 +61,22 @@ export function requireRole(...roles: string[]) {
     next()
   }
 }
+
+// Permission-based gate. Admin always passes; everyone else needs at least
+// one of the listed permission keys (looked up from their role doc).
+//
+// Async because it reads the roles collection. Used by HR routes so admin
+// can grant module access to any role (e.g. a new `hr` role) without
+// touching code.
+export function requireAnyPermission(models: MongoModels, ...keys: string[]) {
+  return async function permissionMiddleware(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user as any
+      const ok = await userHasAnyPermission(models, user, ...keys)
+      if (!ok) return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
+      return next()
+    } catch {
+      return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
+    }
+  }
+}

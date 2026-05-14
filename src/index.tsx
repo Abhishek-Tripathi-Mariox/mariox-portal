@@ -129,6 +129,16 @@ app.get('*', (c) => {
   <script src="/static/project-extensions.js?v=incent7"></script>
   <script src="/static/support.js?v=incent7"></script>
   <script src="/static/leads.js?v=incent7"></script>
+  <!-- HR module: _shared.js must load first so each per-component file can use its helpers -->
+  <script src="/static/hr/_shared.js?v=hr2"></script>
+  <script src="/static/hr/hr-attendance.js?v=hr2"></script>
+  <script src="/static/hr/hr-calendar.js?v=hr4"></script>
+  <script src="/static/hr/hr-warnings.js?v=hr4"></script>
+  <script src="/static/hr/hr-pips.js?v=hr2"></script>
+  <script src="/static/hr/hr-salary-slips.js?v=hr2"></script>
+  <script src="/static/hr/hr-terminations.js?v=hr2"></script>
+  <script src="/static/hr/hr-documents.js?v=hr3"></script>
+  <script src="/static/hr/hr-assets.js?v=hr3"></script>
 </body>
 </html>`)
 })

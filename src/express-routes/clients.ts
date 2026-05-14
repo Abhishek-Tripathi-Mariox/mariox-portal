@@ -26,6 +26,22 @@ function sum(items: any[], pick: (item: any) => number) {
   return items.reduce((total, item) => total + pick(item), 0)
 }
 
+// Returns the client record with the `price` field removed when the caller
+// lacks `clients.view_price`. Defense-in-depth: the frontend also hides the
+// UI, but stripping at the API edge means a curl-wielding agent without the
+// perm can't read it either. Admin / PM bypass since they always see price.
+async function maskPrice<T extends { price?: number | null } | null | undefined>(
+  models: MongoModels, user: any, record: T,
+): Promise<T> {
+  if (!record) return record
+  const role = String(user?.role || '').toLowerCase()
+  if (role === 'admin' || role === 'pm') return record
+  const ok = await userHasAnyPermission(models, user, 'clients.view_price')
+  if (ok) return record
+  const { price: _omit, ...rest } = record as any
+  return rest as T
+}
+
 export function createClientsRouter(models: MongoModels, jwtSecret: string, passwordSalt = '') {
   const router = Router()
   router.use(createAuthMiddleware(jwtSecret))
@@ -46,12 +62,31 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
       const phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
       const website = body.website ? String(body.website).trim().slice(0, 200) : null
       const industry = validateOptional(body.industry, (v) => validateLength(String(v).trim(), 2, 80, 'Industry'))
-      const gstin = body.gstin ? String(body.gstin).trim().toUpperCase().slice(0, 20) : null
-      const address_line = body.address_line ? String(body.address_line).trim().slice(0, 300) : null
-      const city = body.city ? String(body.city).trim().slice(0, 80) : null
-      const state = body.state ? String(body.state).trim().slice(0, 80) : null
+
+      // GSTIN / address / city / state / pincode / price are MANDATORY on
+      // client creation — they're used on every invoice and quotation we
+      // generate, so accepting incomplete data here just creates billing
+      // pain later. validateLength throws a friendly error if missing.
+      const gstinRaw = String(body.gstin || '').trim().toUpperCase()
+      if (!/^[0-9A-Z]{15}$/.test(gstinRaw)) {
+        return res.status(400).json({ error: 'GSTIN must be 15 alphanumeric characters' })
+      }
+      const gstin = gstinRaw
+      const address_line = validateLength(String(body.address_line || '').trim(), 3, 300, 'Address')
+      const city = validateLength(String(body.city || '').trim(), 2, 80, 'City')
+      const state = validateLength(String(body.state || '').trim(), 2, 80, 'State')
       const state_code = body.state_code ? String(body.state_code).trim().toUpperCase().slice(0, 8) : null
-      const pincode = body.pincode ? String(body.pincode).trim().slice(0, 16) : null
+      const pincodeRaw = String(body.pincode || '').trim()
+      if (!/^[0-9]{4,8}$/.test(pincodeRaw)) {
+        return res.status(400).json({ error: 'PIN code must be numeric (4–8 digits)' })
+      }
+      const pincode = pincodeRaw
+      const priceRaw = body.price
+      const price = Number(priceRaw)
+      if (priceRaw === undefined || priceRaw === null || priceRaw === '' || !Number.isFinite(price) || price < 0) {
+        return res.status(400).json({ error: 'Price is required and must be a non-negative number' })
+      }
+
       const country = body.country ? String(body.country).trim().slice(0, 80) : null
       const avatar_color = body.avatar_color
         ? validateHexColor(body.avatar_color, 'Avatar color')
@@ -82,6 +117,7 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
         pincode,
         country,
         avatar_color,
+        price,
         is_active: 1,
         email_verified: 1,
       })
@@ -110,12 +146,41 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
       if ('phone' in body) patch.phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
       if ('website' in body) patch.website = body.website ? String(body.website).trim().slice(0, 200) : null
       if ('industry' in body) patch.industry = validateOptional(body.industry, (v) => validateLength(String(v).trim(), 2, 80, 'Industry'))
-      if ('gstin' in body) patch.gstin = body.gstin ? String(body.gstin).trim().toUpperCase().slice(0, 20) : null
-      if ('address_line' in body) patch.address_line = body.address_line ? String(body.address_line).trim().slice(0, 300) : null
-      if ('city' in body) patch.city = body.city ? String(body.city).trim().slice(0, 80) : null
-      if ('state' in body) patch.state = body.state ? String(body.state).trim().slice(0, 80) : null
+      // gstin/address/city/state/pincode/price are required fields on the
+      // schema. If admin sends them they must be valid — refuse explicit
+      // blanks. Self-edit by the client never includes them so partial
+      // updates from /api/client-portal still work.
+      if ('gstin' in body) {
+        const v = String(body.gstin || '').trim().toUpperCase()
+        if (!/^[0-9A-Z]{15}$/.test(v)) return res.status(400).json({ error: 'GSTIN must be 15 alphanumeric characters' })
+        patch.gstin = v
+      }
+      if ('address_line' in body) {
+        patch.address_line = validateLength(String(body.address_line || '').trim(), 3, 300, 'Address')
+      }
+      if ('city' in body) {
+        patch.city = validateLength(String(body.city || '').trim(), 2, 80, 'City')
+      }
+      if ('state' in body) {
+        patch.state = validateLength(String(body.state || '').trim(), 2, 80, 'State')
+      }
       if ('state_code' in body) patch.state_code = body.state_code ? String(body.state_code).trim().toUpperCase().slice(0, 8) : null
-      if ('pincode' in body) patch.pincode = body.pincode ? String(body.pincode).trim().slice(0, 16) : null
+      if ('pincode' in body) {
+        const v = String(body.pincode || '').trim()
+        if (!/^[0-9]{4,8}$/.test(v)) return res.status(400).json({ error: 'PIN code must be numeric (4–8 digits)' })
+        patch.pincode = v
+      }
+      if ('price' in body) {
+        // Editing price requires the manage permission AND view permission
+        // — a sales agent without view_price shouldn't be able to overwrite it
+        // blind.
+        const canEditPrice = ['admin', 'pm'].includes(role)
+          || await userHasAnyPermission(models, user, 'clients.view_price')
+        if (!canEditPrice) return res.status(403).json({ error: 'Forbidden: cannot edit price' })
+        const n = Number(body.price)
+        if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: 'Price must be a non-negative number' })
+        patch.price = n
+      }
       if ('country' in body) patch.country = body.country ? String(body.country).trim().slice(0, 80) : null
       if ('avatar_color' in body && body.avatar_color) patch.avatar_color = validateHexColor(body.avatar_color, 'Avatar color')
       if ('is_active' in body) patch.is_active = body.is_active ? 1 : 0
@@ -183,19 +248,24 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
       const projects = await models.projects.find({}) as any[]
       const invoices = await models.invoices.find({}) as any[]
 
+      const canSeePrice = role === 'admin' || role === 'pm'
+        || await userHasAnyPermission(models, user, 'clients.view_price')
+
       const rows = clients.map((client) => {
         const clientProjects = projects.filter((project) => project.client_id === client.id)
         const clientInvoices = invoices.filter((invoice) => invoice.client_id === client.id)
-        return {
+        const base: any = {
           ...client,
           project_count: clientProjects.length,
           active_projects: clientProjects.filter((project) => project.status === 'active').length,
           total_billed: sum(clientInvoices, (invoice) => Number(invoice.total_amount || 0)),
           total_paid: sum(clientInvoices, (invoice) => Number(invoice.paid_amount || 0)),
         }
+        if (!canSeePrice) delete base.price
+        return base
       }).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
 
-      return res.json({ clients: rows })
+      return res.json({ clients: rows, can_view_price: canSeePrice })
     } catch (error: any) {
       return res.json({ clients: [] })
     }
@@ -221,7 +291,8 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
       }))
       const invoices = await models.invoices.find({ client_id: id }) as any[]
       const notifications = await models.notifications.find({ client_id: id }) as any[]
-      return res.json({ client, projects, invoices, notifications })
+      const maskedClient = await maskPrice(models, user, client as any)
+      return res.json({ client: maskedClient, projects, invoices, notifications })
     } catch (error: any) {
       return res.json({ client: null, projects: [], invoices: [], notifications: [] })
     }

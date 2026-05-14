@@ -613,13 +613,25 @@ export function createLeadsRouter(
       const phone = phoneRaw ? phoneRaw.slice(0, 30) : null
       const website = body.website ? String(body.website).trim().slice(0, 200) : null
       const industry = body.industry ? String(body.industry).trim().slice(0, 80) : null
-      const gstin = body.gstin ? String(body.gstin).trim().toUpperCase().slice(0, 20) : null
-      const address_line = body.address_line ? String(body.address_line).trim().slice(0, 300) : null
-      const city = body.city ? String(body.city).trim().slice(0, 80) : null
-      const state = body.state ? String(body.state).trim().slice(0, 80) : null
+      // Tax & address fields are mandatory when closing a lead — they get
+      // baked into every invoice / quotation we later generate against this
+      // client. State Code is intentionally skipped (auto-derived from the
+      // State dropdown on the frontend, can be left blank server-side).
+      const gstinRaw = String(body.gstin || '').trim().toUpperCase()
+      if (!/^[0-9A-Z]{15}$/.test(gstinRaw)) {
+        return res.status(400).json({ error: 'GSTIN must be 15 alphanumeric characters' })
+      }
+      const gstin = gstinRaw
+      const address_line = validateLength(String(body.address_line || '').trim(), 3, 300, 'Address')
+      const city = validateLength(String(body.city || '').trim(), 2, 80, 'City')
+      const state = validateLength(String(body.state || '').trim(), 2, 80, 'State')
       const state_code = body.state_code ? String(body.state_code).trim().toUpperCase().slice(0, 8) : null
-      const pincode = body.pincode ? String(body.pincode).trim().slice(0, 16) : null
-      const country = body.country ? String(body.country).trim().slice(0, 80) : null
+      const pincodeRaw = String(body.pincode || '').trim()
+      if (!/^[0-9]{4,8}$/.test(pincodeRaw)) {
+        return res.status(400).json({ error: 'PIN code must be numeric (4–8 digits)' })
+      }
+      const pincode = pincodeRaw
+      const country = validateLength(String(body.country || '').trim(), 2, 80, 'Country')
       const avatar_color = typeof body.avatar_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.avatar_color.trim())
         ? body.avatar_color.trim()
         : '#6366f1'
@@ -677,9 +689,16 @@ export function createLeadsRouter(
             return res.status(400).json({ error: 'Project end date must be after start date' })
           }
         }
-        if (projectInput.project_amount !== undefined && projectInput.project_amount !== null && projectInput.project_amount !== '') {
+        // Project Amount is mandatory when closing a lead with a project —
+        // it drives the agent's sales-incentive achievement total. Refuse
+        // missing/zero values at the API edge so a stale frontend can't
+        // bypass the new requirement.
+        if (projectInput.project_amount === undefined || projectInput.project_amount === null || projectInput.project_amount === '') {
+          return res.status(400).json({ error: 'Project Amount is required' })
+        }
+        {
           const amt = Number(projectInput.project_amount)
-          if (!Number.isFinite(amt) || amt < 0) return res.status(400).json({ error: 'Invalid project amount' })
+          if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'Project Amount must be a positive number' })
           projectAmount = amt
         }
         if (projectInput.priority) {

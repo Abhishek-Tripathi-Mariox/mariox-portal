@@ -552,7 +552,7 @@ async function renderProjectsList(el) {
     <div class="card">
       <div class="card-body p-0 table-wrap">
         <table class="data-table" id="proj-table">
-          <thead><tr><th>Project</th><th>Client</th><th>PM</th><th>Status</th><th>Priority</th>${_user.role !== 'team' ? '<th>Progress</th><th>Hours</th>' : ''}<th>Due Date</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Project</th><th>Client</th><th>PM</th><th>Status</th>${_user.role !== 'team' ? '<th>Progress</th><th>Hours</th>' : ''}<th>Due Date</th><th>Actions</th></tr></thead>
           <tbody>
             ${visibleProjects.map(p=>{
               const cl = p.client_id ? clientMap[p.client_id] : null
@@ -565,7 +565,6 @@ async function renderProjectsList(el) {
                 <td>${cl ? `<div style="display:flex;align-items:center;gap:6px">${avatar(cl.company_name,cl.avatar_color,'sm')}<span style="font-size:12px">${cl.company_name}</span></div>` : `<span style="color:#475569;font-size:12px">${p.client_name||'—'}</span>`}</td>
                 <td><span style="font-size:12px;color:#94a3b8">${p.pm_name||'—'}</span></td>
                 <td>${statusBadge(p.status)}</td>
-                <td>${priorityBadge(p.priority)}</td>
                 ${_user.role !== 'team' ? `
                 <td style="min-width:120px">
                   <div style="display:flex;align-items:center;gap:8px">
@@ -659,7 +658,7 @@ async function openProjectDetailModal(projectId) {
       </div>
       <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          ${statusBadge(p.status)}${priorityBadge(p.priority)}
+          ${statusBadge(p.status)}
           ${p.client_name ? `<span class="badge badge-blue">${escapeHtml(p.client_name)}</span>` : ''}
           ${p.project_type ? `<span class="badge badge-violet">${escapeHtml(p.project_type)}</span>` : ''}
         </div>
@@ -2979,8 +2978,9 @@ async function renderClientsList(el) {
             </div>
             ${_user.role === 'admin' ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i> Login</button><button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Delete client"><i class="fas fa-trash"></i> Delete</button></div>` : ''}
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+          <div style="display:grid;grid-template-columns:${cl.price !== undefined ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr'};gap:12px;margin-bottom:12px">
             <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#e2e8f0">${cl.project_count||0}</div><div style="font-size:11px;color:#64748b">Projects</div></div>
+            ${cl.price !== undefined ? `<div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#FFB347">₹${cl.price?fmtNum(cl.price):'0'}</div><div style="font-size:11px;color:#64748b">Deal price</div></div>` : ''}
             <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#58C68A">₹${cl.total_paid?fmtNum(cl.total_paid):'0'}</div><div style="font-size:11px;color:#64748b">Paid</div></div>
             <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#FFCB47">₹${cl.total_billed?(fmtNum(cl.total_billed-cl.total_paid)):'0'}</div><div style="font-size:11px;color:#64748b">Pending</div></div>
           </div>
@@ -3031,14 +3031,14 @@ function openCreateClientModal() {
 
       <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">GSTIN</label><input class="form-input" id="client-gstin" placeholder="Enter GSTIN" style="text-transform:uppercase" maxlength="15"/></div>
+        <div class="form-group"><label class="form-label">GSTIN *</label><input class="form-input" id="client-gstin" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase" maxlength="15" required/></div>
         <div class="form-group"><label class="form-label">Country</label><input class="form-input" id="client-country" placeholder="Enter Country" value="India"/></div>
       </div>
-      <div class="form-group"><label class="form-label">Company Address</label><textarea class="form-textarea" id="client-address" placeholder="Enter Company Address" style="min-height:50px"></textarea></div>
+      <div class="form-group"><label class="form-label">Company Address *</label><textarea class="form-textarea" id="client-address" placeholder="Building, street, locality" style="min-height:50px" required></textarea></div>
       <div style="display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:10px">
-        <div class="form-group" style="margin:0"><label class="form-label">City</label><input class="form-input" id="client-city" placeholder="City"/></div>
-        <div class="form-group" style="margin:0"><label class="form-label">State</label>
-          <select class="form-select" id="client-state" onchange="onClientStateChange(this)">
+        <div class="form-group" style="margin:0"><label class="form-label">City *</label><input class="form-input" id="client-city" placeholder="Mumbai" required/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">State *</label>
+          <select class="form-select" id="client-state" onchange="onClientStateChange(this)" required>
             <option value="">Select state…</option>
             ${stateOpts}
           </select>
@@ -3046,8 +3046,8 @@ function openCreateClientModal() {
         <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="client-state-code" placeholder="" maxlength="3" readonly style="background:rgba(15,23,42,.4)"/></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">PIN Code</label><input class="form-input" id="client-pincode" placeholder="Pincode" maxlength="10"/></div>
-        <div class="form-group"></div>
+        <div class="form-group"><label class="form-label">PIN Code *</label><input class="form-input" id="client-pincode" placeholder="400001" maxlength="10" required/></div>
+        <div class="form-group"><label class="form-label">Deal Price * <span style="font-size:11px;color:#94a3b8;font-weight:400">(project value)</span></label><input class="form-input" id="client-price" type="number" min="0" step="0.01" placeholder="e.g. 120000" required/></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -3065,6 +3065,7 @@ function onClientStateChange(sel) {
 }
 
 async function saveClient() {
+  const priceRaw = document.getElementById('client-price')?.value
   const payload = {
     company_name: document.getElementById('client-company').value.trim(),
     contact_name: document.getElementById('client-contact').value.trim(),
@@ -3081,28 +3082,35 @@ async function saveClient() {
     state_code: document.getElementById('client-state-code').value.trim(),
     pincode: document.getElementById('client-pincode').value.trim(),
     country: document.getElementById('client-country').value.trim(),
+    price: priceRaw === '' || priceRaw === undefined ? null : Number(priceRaw),
   }
   if (!payload.company_name || !payload.contact_name || !payload.email || !payload.password) {
     toast('Company name, contact name, email and password are required', 'error')
     return
   }
-  if (payload.gstin && !/^[0-9A-Z]{15}$/.test(payload.gstin)) {
+  // The next batch of fields became mandatory — they're all used on invoices
+  // and quotations, so we refuse incomplete data at submit time instead of
+  // letting the API throw a generic error.
+  if (!payload.gstin) { toast('GSTIN is required', 'error'); return }
+  if (!/^[0-9A-Z]{15}$/.test(payload.gstin)) {
     toast('GSTIN must be 15 alphanumeric characters', 'error')
     return
   }
-  if (payload.pincode && !/^[0-9]{4,8}$/.test(payload.pincode)) {
+  if (!payload.address_line) { toast('Company address is required', 'error'); return }
+  if (!payload.city) { toast('City is required', 'error'); return }
+  if (/^\d+$/.test(payload.city) || !/^[A-Za-z][A-Za-z\s.\-']{1,79}$/.test(payload.city)) {
+    toast('City must be letters only (2–80 characters)', 'error')
+    return
+  }
+  if (!payload.state) { toast('State is required', 'error'); return }
+  if (/^\d+$/.test(payload.state)) { toast('State cannot be number', 'error'); return }
+  if (!payload.pincode) { toast('PIN code is required', 'error'); return }
+  if (!/^[0-9]{4,8}$/.test(payload.pincode)) {
     toast('PIN code must be numeric (4–8 digits)', 'error')
     return
   }
-  if (payload.city) {
-    if (/^\d+$/.test(payload.city)) { toast('City cannot be number', 'error'); return }
-    if (!/^[A-Za-z][A-Za-z\s.\-']{1,79}$/.test(payload.city)) {
-      toast('City must be letters only (2–80 characters)', 'error')
-      return
-    }
-  }
-  if (payload.state && /^\d+$/.test(payload.state)) {
-    toast('State cannot be number', 'error')
+  if (payload.price === null || !Number.isFinite(payload.price) || payload.price < 0) {
+    toast('Deal price is required (non-negative number)', 'error')
     return
   }
   try {
@@ -3151,14 +3159,14 @@ async function openEditClientModal(clientId) {
 
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">GSTIN</label><input class="form-input" id="ec-gstin" value="${escapeHtml(cl.gstin||'')}" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase" maxlength="15"/></div>
+          <div class="form-group"><label class="form-label">GSTIN *</label><input class="form-input" id="ec-gstin" value="${escapeHtml(cl.gstin||'')}" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase" maxlength="15" required/></div>
           <div class="form-group"><label class="form-label">Country</label><input class="form-input" id="ec-country" value="${escapeHtml(cl.country||'India')}"/></div>
         </div>
-        <div class="form-group"><label class="form-label">Company Address</label><textarea class="form-textarea" id="ec-address" placeholder="Building, Street, Locality" style="min-height:50px">${escapeHtml(cl.address_line||'')}</textarea></div>
+        <div class="form-group"><label class="form-label">Company Address *</label><textarea class="form-textarea" id="ec-address" placeholder="Building, Street, Locality" style="min-height:50px" required>${escapeHtml(cl.address_line||'')}</textarea></div>
         <div style="display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:10px">
-          <div class="form-group" style="margin:0"><label class="form-label">City</label><input class="form-input" id="ec-city" value="${escapeHtml(cl.city||'')}" placeholder="Mumbai"/></div>
-          <div class="form-group" style="margin:0"><label class="form-label">State</label>
-            <select class="form-select" id="ec-state" onchange="onEditClientStateChange(this)">
+          <div class="form-group" style="margin:0"><label class="form-label">City *</label><input class="form-input" id="ec-city" value="${escapeHtml(cl.city||'')}" placeholder="Mumbai" required/></div>
+          <div class="form-group" style="margin:0"><label class="form-label">State *</label>
+            <select class="form-select" id="ec-state" onchange="onEditClientStateChange(this)" required>
               <option value="">Select state…</option>
               ${stateOpts}
             </select>
@@ -3166,8 +3174,8 @@ async function openEditClientModal(clientId) {
           <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="ec-state-code" value="${escapeHtml(cl.state_code||'')}" maxlength="3" readonly style="background:rgba(15,23,42,.4)"/></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">PIN Code</label><input class="form-input" id="ec-pincode" value="${escapeHtml(cl.pincode||'')}" maxlength="10"/></div>
-          <div class="form-group"></div>
+          <div class="form-group"><label class="form-label">PIN Code *</label><input class="form-input" id="ec-pincode" value="${escapeHtml(cl.pincode||'')}" maxlength="10" required/></div>
+          ${cl.price !== undefined ? `<div class="form-group"><label class="form-label">Deal Price * <span style="font-size:11px;color:#94a3b8;font-weight:400">(project value)</span></label><input class="form-input" id="ec-price" type="number" min="0" step="0.01" value="${cl.price ?? ''}" placeholder="e.g. 120000" required/></div>` : '<div class="form-group"></div>'}
         </div>
       </div>
       <div class="modal-footer">
@@ -3187,6 +3195,10 @@ function onEditClientStateChange(sel) {
 }
 
 async function saveEditClient(id) {
+  // The Deal Price input only renders when the user can view price; if the
+  // input isn't on the page we DON'T send the field, so the API won't try
+  // to overwrite the existing value with null.
+  const priceInput = document.getElementById('ec-price')
   const payload = {
     company_name: document.getElementById('ec-company').value.trim(),
     contact_name: document.getElementById('ec-contact').value.trim(),
@@ -3203,27 +3215,34 @@ async function saveEditClient(id) {
     pincode: document.getElementById('ec-pincode').value.trim(),
     country: document.getElementById('ec-country').value.trim(),
   }
+  if (priceInput) {
+    const v = priceInput.value
+    payload.price = v === '' || v === null || v === undefined ? null : Number(v)
+  }
   if (!payload.company_name || !payload.contact_name) {
     toast('Company name and contact name are required', 'error')
     return
   }
-  if (payload.gstin && !/^[0-9A-Z]{15}$/.test(payload.gstin)) {
+  if (!payload.gstin) { toast('GSTIN is required', 'error'); return }
+  if (!/^[0-9A-Z]{15}$/.test(payload.gstin)) {
     toast('GSTIN must be 15 alphanumeric characters', 'error')
     return
   }
-  if (payload.pincode && !/^[0-9]{4,8}$/.test(payload.pincode)) {
+  if (!payload.address_line) { toast('Company address is required', 'error'); return }
+  if (!payload.city) { toast('City is required', 'error'); return }
+  if (/^\d+$/.test(payload.city) || !/^[A-Za-z][A-Za-z\s.\-']{1,79}$/.test(payload.city)) {
+    toast('City must be letters only (2–80 characters)', 'error')
+    return
+  }
+  if (!payload.state) { toast('State is required', 'error'); return }
+  if (/^\d+$/.test(payload.state)) { toast('State cannot be number', 'error'); return }
+  if (!payload.pincode) { toast('PIN code is required', 'error'); return }
+  if (!/^[0-9]{4,8}$/.test(payload.pincode)) {
     toast('PIN code must be numeric (4–8 digits)', 'error')
     return
   }
-  if (payload.city) {
-    if (/^\d+$/.test(payload.city)) { toast('City cannot be number', 'error'); return }
-    if (!/^[A-Za-z][A-Za-z\s.\-']{1,79}$/.test(payload.city)) {
-      toast('City must be letters only (2–80 characters)', 'error')
-      return
-    }
-  }
-  if (payload.state && /^\d+$/.test(payload.state)) {
-    toast('State cannot be number', 'error')
+  if (priceInput && (payload.price === null || !Number.isFinite(payload.price) || payload.price < 0)) {
+    toast('Deal price must be a non-negative number', 'error')
     return
   }
   try {
@@ -3367,7 +3386,7 @@ async function showClientDetail(clientId) {
                 <div style="flex:1;min-width:0">
                   <div style="font-weight:500;color:#e2e8f0">${escapeHtml(p.name)}</div>
                   <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
-                    ${statusBadge(p.status)}${priorityBadge(p.priority)}
+                    ${statusBadge(p.status)}
                     <span style="font-size:12px;color:#64748b">PM: ${escapeHtml(p.pm_name || '—')}</span>
                     ${p.expected_end_date ? `<span style="font-size:12px;color:#64748b"><i class="fas fa-calendar"></i> ${fmtDate(p.expected_end_date)}</span>` : ''}
                   </div>
@@ -7090,7 +7109,7 @@ async function renderSalesIncentivePage(el) {
       <div class="page-header">
         <div>
           <h1 class="page-title"><i class="fas fa-money-bill-trend-up" style="color:#22c55e;margin-right:8px"></i>Sale Incentive Tracker</h1>
-          <p class="page-subtitle">Target vs achievement for each sales agent in <strong>${escapeHtml(periodLabel)}</strong>. Earned = (achieved − target) × incentive rate.</p>
+          <p class="page-subtitle">Target vs achievement for each sales agent in <strong>${escapeHtml(periodLabel)}</strong>. Earned = (achieved − target) × rate%. e.g. ₹10,000 above target × 10% = ₹1,000.</p>
         </div>
         <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <input id="si-period" type="month" class="form-input" value="${escapeHtml(_salesIncentivePeriod)}" onchange="onSalesIncentivePeriodChange(this.value)" style="width:170px"/>
@@ -7157,6 +7176,12 @@ function _siRow(r, canOverride, canMarkPaid) {
     : aboveTarget < 0
       ? `<span style="font-size:11px;color:#FF5E3A">${_fmtINR(aboveTarget)}</span>`
       : `<span style="font-size:11px;color:#64748b">on target</span>`
+  // Stash the row in a lookup so the payment modal can render its history
+  // without an extra fetch. Used by openSalesIncentivePayments below.
+  if (!window._siRowsById) window._siRowsById = {}
+  window._siRowsById[r.user_id + ':' + r.period] = r
+  const paidAmt = Number(r.paid_amount || 0)
+  const balance = Number(r.balance || Math.max(0, r.earned - paidAmt))
   return `<tr>
     <td>
       <div style="display:flex;align-items:center;gap:10px">
@@ -7172,20 +7197,24 @@ function _siRow(r, canOverride, canMarkPaid) {
       <div style="font-weight:600;color:#e2e8f0">${_fmtINR(r.achieved)}${overrideTag}</div>
       <div>${aboveBadge}</div>
     </td>
-    <td style="text-align:right;font-size:12px;color:#94a3b8">${_fmtINR(r.incentive_rate)}/₹ over target</td>
-    <td style="text-align:right;font-weight:700;color:#22c55e">${_fmtINR(r.earned)}</td>
+    <td style="text-align:right;font-size:12px;color:#94a3b8" title="Percent of above-target value">${Number(r.incentive_rate || 0)}%</td>
+    <td style="text-align:right">
+      <div style="font-weight:700;color:#22c55e">${_fmtINR(r.earned)}</div>
+      ${(r.payments && r.payments.length) || paidAmt ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">Paid ${_fmtINR(paidAmt)}${(r.payments && r.payments.length > 0) ? ' · ' + r.payments.length + ' txn' : ''}</div>` : ''}
+      ${balance > 0 && r.earned > 0 ? `<div style="font-size:11px;color:#FF8866">Balance ${_fmtINR(balance)}</div>` : ''}
+    </td>
     <td>
       ${r.paid
-        ? `<span class="badge badge-done">Paid${r.paid_at ? ' · ' + fmtDate(r.paid_at) : ''}</span>`
-        : `<span class="badge badge-todo">Pending</span>`}
-      ${r.paid_amount !== null && r.paid_amount !== undefined ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">Paid ${_fmtINR(r.paid_amount)}${r.paid_by_name ? ' by ' + escapeHtml(r.paid_by_name) : ''}</div>` : ''}
+        ? `<span class="badge badge-done" title="${r.paid_at ? 'Last action ' + fmtDate(r.paid_at) : ''}">Paid</span>`
+        : balance > 0 && paidAmt > 0
+          ? `<span class="badge" style="background:rgba(255,180,120,0.15);color:#FFB347">Partial</span>`
+          : `<span class="badge badge-todo">Pending</span>`}
     </td>
     <td>
       <div style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="btn btn-xs btn-outline" title="Show this agent's month-by-month history" onclick="openSalesIncentiveHistory('${r.user_id}')"><i class="fas fa-clock-rotate-left"></i> History</button>
-        ${canOverride ? `<button class="btn btn-xs btn-outline" title="Override achieved" onclick="openSalesIncentiveOverride('${r.user_id}','${r.period}')"><i class="fas fa-pen"></i></button>` : ''}
-        ${canMarkPaid && !r.paid ? `<button class="btn btn-xs btn-primary" title="Mark paid" onclick="openSalesIncentiveMarkPaid('${r.user_id}','${r.period}','${r.earned}')"><i class="fas fa-check"></i> Mark Paid</button>` : ''}
-        ${canMarkPaid && r.paid ? `<button class="btn btn-xs btn-outline" title="Undo paid" onclick="unmarkSalesIncentivePaid('${r.user_id}','${r.period}')"><i class="fas fa-rotate-left"></i> Undo</button>` : ''}
+        ${canOverride ? `<button class="btn btn-xs btn-outline" title="Override achieved / target / rate" onclick="openSalesIncentiveOverride('${r.user_id}','${r.period}')"><i class="fas fa-pen"></i></button>` : ''}
+        ${canMarkPaid ? `<button class="btn btn-xs btn-primary" title="Add a (partial) payment" onclick="openSalesIncentivePayments('${r.user_id}','${r.period}')"><i class="fas fa-indian-rupee-sign"></i> ${(r.payments && r.payments.length) || paidAmt ? 'Payments' : 'Add Payment'}</button>` : ''}
       </div>
     </td>
   </tr>`
@@ -7231,10 +7260,10 @@ function _siEditPeriodModalHtml(opts) {
 
   const rateField = opts.canSetTarget ? `
     <div class="form-group">
-      <label class="form-label">Incentive rate (₹ paid per ₹ above target)</label>
-      <input id="si-edit-rate" type="text" inputmode="decimal" class="form-input" value="${opts.rate}" placeholder="e.g. 0.10"/>
-      <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">e.g. 0.10 = 10% commission on revenue above target.</div>
-    </div>` : `<div class="form-group"><label class="form-label">Incentive rate (read-only)</label><input class="form-input" value="${opts.rate}" disabled/></div>`
+      <label class="form-label">Incentive rate (% of above-target value)</label>
+      <input id="si-edit-rate" type="text" inputmode="decimal" class="form-input" value="${opts.rate}" placeholder="e.g. 10"/>
+      <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">e.g. <strong>10</strong> = 10% commission. On ₹10,000 above target the agent earns ₹1,000.</div>
+    </div>` : `<div class="form-group"><label class="form-label">Incentive rate (read-only)</label><input class="form-input" value="${opts.rate}%" disabled/></div>`
 
   const overrideField = opts.canOverride ? `
     <div class="form-group">
@@ -7309,43 +7338,83 @@ async function submitSalesIncentiveEditPeriod(userId, period, fromHistory) {
   }
 }
 
-function openSalesIncentiveMarkPaid(userId, period, suggestedAmount) {
-  const row = (_salesIncentiveCache?.rows || []).find((r) => r.user_id === userId && r.period === period)
-  showModal(`
-    <div class="modal-header"><h3><i class="fas fa-check-circle" style="color:#22c55e;margin-right:6px"></i>Mark Paid — ${escapeHtml(row?.user_name || '')}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-    <div class="modal-body">
-      <div style="padding:10px 12px;border-radius:8px;background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.22);font-size:12.5px;color:#86efac;margin-bottom:12px">
-        Earned for ${escapeHtml(_formatSalesIncentivePeriodLabel(period))}: <strong>${_fmtINR(row?.earned || 0)}</strong>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Paid amount (₹)</label>
-        <input id="si-paid-amount" type="text" inputmode="decimal" class="form-input" value="${suggestedAmount}" placeholder="0"/>
-        <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Defaults to the computed earned amount. Edit if you paid a different sum.</div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Notes (optional)</label>
-        <textarea id="si-paid-notes" class="form-input" rows="2" placeholder="Payment reference, transfer ID, etc."></textarea>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitSalesIncentiveMarkPaid('${userId}','${period}')"><i class="fas fa-check"></i> Mark Paid</button>
-    </div>
-  `, 'modal-md')
+// Payments modal — list every partial payment recorded for this period and
+// allow adding a new one. Replaces the old "Mark Paid" single-toggle flow so
+// admin can split a ₹10,000 incentive into multiple installments.
+function openSalesIncentivePayments(userId, period) {
+  const cached = (window._siRowsById || {})[userId + ':' + period]
+  const row = cached || (_salesIncentiveCache?.rows || []).find((r) => r.user_id === userId && r.period === period)
+  if (!row) { toast('Row not found — refresh the page', 'error'); return }
+  showModal(_siPaymentsModalHtml(row, userId, period), 'modal-lg')
 }
 
-async function submitSalesIncentiveMarkPaid(userId, period) {
-  const amountRaw = (document.getElementById('si-paid-amount')?.value || '').trim()
-  const notes = (document.getElementById('si-paid-notes')?.value || '').trim()
-  const payload = { notes }
-  if (amountRaw !== '') {
-    const n = Number(amountRaw)
-    if (!Number.isFinite(n) || n < 0) { toast('Enter a non-negative amount', 'error'); return }
-    payload.paid_amount = n
-  }
+function _siPaymentsModalHtml(row, userId, period) {
+  const earned = Number(row.earned || 0)
+  const paid = Number(row.paid_amount || 0)
+  const balance = Number(row.balance || Math.max(0, earned - paid))
+  const payments = Array.isArray(row.payments) ? row.payments : []
+  return `
+    <div class="modal-header"><h3><i class="fas fa-indian-rupee-sign" style="color:#22c55e;margin-right:6px"></i>Incentive Payments — ${escapeHtml(row.user_name || '')} · ${escapeHtml(_formatSalesIncentivePeriodLabel(period))}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+        <div style="padding:10px 12px;border-radius:8px;background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.22)">
+          <div style="font-size:11px;color:#86efac;text-transform:uppercase;letter-spacing:.5px">Earned</div>
+          <div style="font-size:18px;font-weight:700;color:#86efac">${_fmtINR(earned)}</div>
+        </div>
+        <div style="padding:10px 12px;border-radius:8px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.22)">
+          <div style="font-size:11px;color:#cbd5e1;text-transform:uppercase;letter-spacing:.5px">Paid so far</div>
+          <div style="font-size:18px;font-weight:700;color:#cbd5e1">${_fmtINR(paid)}</div>
+        </div>
+        <div style="padding:10px 12px;border-radius:8px;background:${balance > 0 ? 'rgba(255,122,69,0.10);border:1px solid rgba(255,122,69,0.22)' : 'rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.22)'}">
+          <div style="font-size:11px;color:${balance > 0 ? '#FFB347' : '#86efac'};text-transform:uppercase;letter-spacing:.5px">Balance</div>
+          <div style="font-size:18px;font-weight:700;color:${balance > 0 ? '#FFB347' : '#86efac'}">${_fmtINR(balance)}</div>
+        </div>
+      </div>
+
+      ${payments.length ? `
+        <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Payment history (${payments.length})</div>
+        <div style="max-height:220px;overflow-y:auto;border-radius:8px;border:1px solid rgba(255,255,255,0.06);margin-bottom:14px">
+          <table class="data-table" style="margin:0;font-size:12.5px">
+            <thead><tr><th>When</th><th>Amount</th><th>By</th><th>Note</th><th style="width:40px"></th></tr></thead>
+            <tbody>
+              ${payments.map(p => `<tr>
+                <td>${fmtDate(p.paid_at)}</td>
+                <td style="color:#86efac;font-weight:600">${_fmtINR(p.amount)}</td>
+                <td style="color:#cbd5e1">${escapeHtml(p.paid_by_name || '—')}</td>
+                <td style="color:#94a3b8">${escapeHtml(p.note || '')}</td>
+                <td><button class="btn btn-icon btn-xs" title="Delete this payment" onclick="deleteIncentivePayment('${p.id}','${userId}','${period}')"><i class="fas fa-trash"></i></button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : `<div style="padding:14px;text-align:center;color:#94a3b8;font-size:12.5px;margin-bottom:14px"><i class="fas fa-circle-info"></i> No payments yet for this period.</div>`}
+
+      ${balance > 0 ? `
+        <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Record a payment</div>
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Amount (₹) *</label>
+            <input id="si-pay-amount" type="number" min="0" step="0.01" class="form-input" placeholder="e.g. 5000" value="${balance}"/>
+            <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Pre-filled with the balance. Edit to record a partial payment.</div>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Note (optional)</label>
+            <input id="si-pay-note" class="form-input" placeholder="UTR / cheque / transfer reference"/>
+          </div>
+        </div>` : `<div style="padding:10px 12px;border-radius:8px;background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.22);color:#86efac;font-size:12.5px"><i class="fas fa-check-circle"></i> Fully paid. Add more payments only if you need to record an overpayment / correction.</div>`}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      ${earned > 0 ? `<button class="btn btn-primary" onclick="submitIncentivePayment('${userId}','${period}')"><i class="fas fa-plus"></i> Add Payment</button>` : ''}
+    </div>`
+}
+
+async function submitIncentivePayment(userId, period) {
+  const amount = Number(document.getElementById('si-pay-amount')?.value)
+  const note = (document.getElementById('si-pay-note')?.value || '').trim()
+  if (!Number.isFinite(amount) || amount <= 0) { toast('Enter a positive amount', 'error'); return }
   try {
-    await API.post(`/sales-incentives/${userId}/${period}/mark-paid`, payload)
-    toast('Marked paid', 'success')
+    await API.post(`/sales-incentives/${userId}/${period}/payments`, { amount, note })
+    toast('Payment recorded', 'success')
     closeModal()
     const el = document.getElementById('page-sales-incentive')
     if (el) { el.dataset.loaded = ''; loadPage('sales-incentive', el) }
@@ -7354,14 +7423,16 @@ async function submitSalesIncentiveMarkPaid(userId, period) {
   }
 }
 
-async function unmarkSalesIncentivePaid(userId, period) {
-  if (!confirm('Undo the paid status for this period?')) return
+async function deleteIncentivePayment(paymentId, userId, period) {
+  if (!confirm('Delete this payment entry? The balance will go back up.')) return
   try {
-    await API.post(`/sales-incentives/${userId}/${period}/unmark-paid`, {})
-    toast('Marked unpaid', 'success')
+    await API.delete(`/sales-incentives/payments/${paymentId}`)
+    toast('Payment deleted', 'success')
+    closeModal()
     const el = document.getElementById('page-sales-incentive')
     if (el) { el.dataset.loaded = ''; loadPage('sales-incentive', el) }
     if (_salesIncentiveHistoryUserId === userId) await _refreshSalesIncentiveHistoryBody()
+    void period
   } catch (e) {
     toast('Failed: ' + (e.message || 'unknown'), 'error')
   }
@@ -7402,7 +7473,7 @@ async function _refreshSalesIncentiveHistoryBody() {
         </div>
         <div style="text-align:right;font-size:11.5px;color:#94a3b8">
           <div>Current target: <strong style="color:#cbd5e1">${_fmtINR(u.monthly_target || 0)}</strong></div>
-          <div>Current rate: <strong style="color:#cbd5e1">${_fmtINR(u.incentive_rate || 0)}/₹ over target</strong></div>
+          <div>Current rate: <strong style="color:#cbd5e1">${Number(u.incentive_rate || 0)}%</strong> of above-target value</div>
         </div>
       </div>
 
@@ -7437,26 +7508,47 @@ async function _refreshSalesIncentiveHistoryBody() {
 function _siHistoryRow(r, canOverride, canMarkPaid) {
   const overrideTag = r.achieved_override !== null && r.achieved_override !== undefined
     ? ` <span class="badge badge-review" title="Manually overridden by admin">override</span>` : ''
+  const paid = Number(r.paid_amount || 0)
+  const balance = Number(r.balance || Math.max(0, r.earned - paid))
+  const txnCount = Array.isArray(r.payments) ? r.payments.length : 0
   return `<tr>
     <td><strong style="color:#e2e8f0">${escapeHtml(_formatSalesIncentivePeriodLabel(r.period))}</strong>${r.has_record ? '' : ` <span style="font-size:10px;color:#64748b">(no entry yet)</span>`}</td>
     <td style="text-align:right;color:#cbd5e1">${_fmtINR(r.target)}</td>
     <td style="text-align:right">${_fmtINR(r.achieved)}${overrideTag}</td>
-    <td style="text-align:right;font-size:12px;color:#94a3b8">${_fmtINR(r.incentive_rate)}/₹ over target</td>
-    <td style="text-align:right;font-weight:700;color:#22c55e">${_fmtINR(r.earned)}</td>
+    <td style="text-align:right;font-size:12px;color:#94a3b8" title="Percent of above-target value">${Number(r.incentive_rate || 0)}%</td>
+    <td style="text-align:right">
+      <div style="font-weight:700;color:#22c55e">${_fmtINR(r.earned)}</div>
+      ${paid || txnCount ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">Paid ${_fmtINR(paid)}${txnCount ? ' · ' + txnCount + ' txn' : ''}</div>` : ''}
+      ${balance > 0 && r.earned > 0 ? `<div style="font-size:11px;color:#FF8866">Balance ${_fmtINR(balance)}</div>` : ''}
+    </td>
     <td>
       ${r.paid
-        ? `<span class="badge badge-done">Paid${r.paid_at ? ' · ' + fmtDate(r.paid_at) : ''}</span>`
-        : `<span class="badge badge-todo">Pending</span>`}
-      ${r.paid_amount !== null && r.paid_amount !== undefined ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${_fmtINR(r.paid_amount)}${r.paid_by_name ? ' · ' + escapeHtml(r.paid_by_name) : ''}</div>` : ''}
+        ? `<span class="badge badge-done">Paid</span>`
+        : balance > 0 && paid > 0
+          ? `<span class="badge" style="background:rgba(255,180,120,0.15);color:#FFB347">Partial</span>`
+          : `<span class="badge badge-todo">Pending</span>`}
     </td>
     <td>
       <div style="display:flex;gap:4px;flex-wrap:wrap">
         ${canOverride ? `<button class="btn btn-xs btn-outline" title="Override" onclick="openSalesIncentiveOverrideFromHistory('${r.user_id}','${r.period}')"><i class="fas fa-pen"></i></button>` : ''}
-        ${canMarkPaid && !r.paid ? `<button class="btn btn-xs btn-primary" title="Mark paid" onclick="openSalesIncentiveMarkPaidFromHistory('${r.user_id}','${r.period}','${r.earned}')"><i class="fas fa-check"></i></button>` : ''}
-        ${canMarkPaid && r.paid ? `<button class="btn btn-xs btn-outline" title="Undo paid" onclick="unmarkSalesIncentivePaid('${r.user_id}','${r.period}')"><i class="fas fa-rotate-left"></i></button>` : ''}
+        ${canMarkPaid ? `<button class="btn btn-xs btn-primary" title="Payments" onclick="openIncentivePaymentsFromHistory('${r.user_id}','${r.period}')"><i class="fas fa-indian-rupee-sign"></i></button>` : ''}
       </div>
     </td>
   </tr>`
+}
+
+// Open the Payments modal from inside the History modal — stash the row data
+// in the same window cache the main page uses, then call the shared opener.
+function openIncentivePaymentsFromHistory(userId, period) {
+  const row = (_salesIncentiveHistoryCache?.rows || []).find((r) => r.user_id === userId && r.period === period)
+  if (!row) { toast('Period not found', 'error'); return }
+  // Inject the agent's display name from the history user header — the
+  // shared modal expects user_name on the row.
+  const u = _salesIncentiveHistoryCache?.user || {}
+  const enriched = { ...row, user_name: u.full_name, avatar_color: u.avatar_color }
+  if (!window._siRowsById) window._siRowsById = {}
+  window._siRowsById[userId + ':' + period] = enriched
+  openSalesIncentivePayments(userId, period)
 }
 
 // Override / Mark-paid launched from inside the history modal need to re-open

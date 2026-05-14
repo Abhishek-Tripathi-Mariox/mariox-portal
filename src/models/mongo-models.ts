@@ -68,6 +68,10 @@ export interface ClientRecord extends BaseRecord {
   pincode?: string | null
   country?: string | null
   avatar_color?: string
+  // Project / deal price agreed with the client. Read-access gated by the
+  // clients.view_price permission — the API strips it from responses for
+  // users without that key.
+  price?: number | null
   is_active?: number
   email_verified?: number
 }
@@ -241,6 +245,7 @@ export class ClientModel extends MongoRepository<ClientRecord> {
       pincode: input.pincode ?? null,
       country: input.country ?? null,
       avatar_color: input.avatar_color || '#6366f1',
+      price: input.price ?? null,
       is_active: input.is_active ?? 1,
       email_verified: input.email_verified ?? 1,
       created_at: input.created_at || now,
@@ -310,7 +315,16 @@ export class MongoModels {
   readonly quotationSends: MongoRepository
   readonly quotationPermissions: MongoRepository
   readonly salesIncentives: MongoRepository
+  readonly salesIncentivePayments: MongoRepository
   readonly meetings: MongoRepository
+  readonly attendance: MongoRepository
+  readonly calendarEvents: MongoRepository
+  readonly warnings: MongoRepository
+  readonly pips: MongoRepository
+  readonly salarySlips: MongoRepository
+  readonly terminations: MongoRepository
+  readonly hrDocuments: MongoRepository
+  readonly hrAssets: MongoRepository
 
   constructor(private readonly db: Db) {
     this.users = new UserModel(db.collection<UserRecord>('users'))
@@ -361,7 +375,16 @@ export class MongoModels {
     this.quotationSends = new MongoRepository(db.collection('quotation_sends'))
     this.quotationPermissions = new MongoRepository(db.collection('quotation_permissions'))
     this.salesIncentives = new MongoRepository(db.collection('sales_incentives'))
+    this.salesIncentivePayments = new MongoRepository(db.collection('sales_incentive_payments'))
     this.meetings = new MongoRepository(db.collection('meetings'))
+    this.attendance = new MongoRepository(db.collection('attendance'))
+    this.calendarEvents = new MongoRepository(db.collection('calendar_events'))
+    this.warnings = new MongoRepository(db.collection('warnings'))
+    this.pips = new MongoRepository(db.collection('pips'))
+    this.salarySlips = new MongoRepository(db.collection('salary_slips'))
+    this.terminations = new MongoRepository(db.collection('terminations'))
+    this.hrDocuments = new MongoRepository(db.collection('hr_documents'))
+    this.hrAssets = new MongoRepository(db.collection('hr_assets'))
   }
 
   get rawDb() {

@@ -7,7 +7,7 @@ const LEAD_STATUS_SEEDS = [
   { key: 'qualified', label: 'Qualified', badge: 'review',     position: 2 },
   { key: 'converted', label: 'Converted', badge: 'done',       position: 3 },
   { key: 'lost',      label: 'Lost',      badge: 'critical',   position: 4 },
-  { key: 'closed',    label: 'Closed',    badge: 'done',       position: 5 },
+  { key: 'closed',    label: 'Deal Close', badge: 'done',      position: 5 },
 ]
 
 const LEAD_TASK_STATUS_SEEDS = [
@@ -115,8 +115,19 @@ export async function bootstrapSeed(models: MongoModels, runtimeEnv: Record<stri
 async function ensureLeadStatuses(models: MongoModels) {
   const now = new Date().toISOString()
   for (const seed of LEAD_STATUS_SEEDS) {
-    const existing = await models.leadStatuses.findOne({ key: seed.key })
-    if (existing) continue
+    const existing = await models.leadStatuses.findOne({ key: seed.key }) as any
+    if (existing) {
+      // Backfill: if we changed a system label in code (e.g. Closed → Deal
+      // Close), older DBs still have the old label sitting on disk. Update
+      // it in place — but only on system rows so we don't trample over a
+      // label admin renamed via the Settings UI.
+      if (existing.is_system === 1 && existing.label !== seed.label) {
+        await models.leadStatuses.updateById(String(existing.id), {
+          $set: { label: seed.label, updated_at: now },
+        })
+      }
+      continue
+    }
     await models.leadStatuses.insertOne({
       id: `lead-status-${seed.key}`,
       ...seed,
