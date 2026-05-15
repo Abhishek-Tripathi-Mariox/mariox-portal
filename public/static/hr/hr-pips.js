@@ -104,7 +104,7 @@ function openPipModal() {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div class="form-group"><label class="form-label">Employee *</label><select id="pip-user" class="form-select">${hrEmployeeOptions(window._hrEmployees || [])}</select></div>
+      <div class="form-group"><label class="form-label">Employee *</label>${hrEmployeePicker('pip-user', window._hrEmployees || [])}</div>
       <div class="form-group"><label class="form-label">Title *</label><input id="pip-title" class="form-input" placeholder="e.g. Q2 Performance Improvement Plan"/></div>
       <div class="grid-2">
         <div class="form-group"><label class="form-label">Start date *</label><input id="pip-from" class="form-input" type="date" value="${hrTodayISO()}"/></div>

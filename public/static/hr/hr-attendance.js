@@ -140,7 +140,7 @@ function openAttendanceModal() {
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
       <div class="form-group">
         <label class="form-label">Employee *</label>
-        <select id="att-user" class="form-select">${hrEmployeeOptions(users)}</select>
+        ${hrEmployeePicker('att-user', users)}
       </div>
       <div class="grid-2">
         <div class="form-group">

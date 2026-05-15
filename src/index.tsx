@@ -123,14 +123,14 @@ app.get('*', (c) => {
   <script src="/static/app.js?v=incent7"></script>
   <script src="/static/pages.js?v=incent7"></script>
   <script src="/static/pages2.js?v=incent7"></script>
-  <script src="/static/enterprise.js?v=incent7"></script>
+  <script src="/static/enterprise.js?v=incent9"></script>
   <script src="/static/enterprise2.js?v=incent7"></script>
   <script src="/static/client-portal.js?v=incent7"></script>
   <script src="/static/project-extensions.js?v=incent7"></script>
   <script src="/static/support.js?v=incent7"></script>
   <script src="/static/leads.js?v=incent7"></script>
   <!-- HR module: _shared.js must load first so each per-component file can use its helpers -->
-  <script src="/static/hr/_shared.js?v=hr2"></script>
+  <script src="/static/hr/_shared.js?v=hr8"></script>
   <script src="/static/hr/hr-attendance.js?v=hr2"></script>
   <script src="/static/hr/hr-calendar.js?v=hr4"></script>
   <script src="/static/hr/hr-warnings.js?v=hr4"></script>
@@ -139,6 +139,7 @@ app.get('*', (c) => {
   <script src="/static/hr/hr-terminations.js?v=hr2"></script>
   <script src="/static/hr/hr-documents.js?v=hr3"></script>
   <script src="/static/hr/hr-assets.js?v=hr3"></script>
+  <script src="/static/personal-tasks.js?v=pt2"></script>
 </body>
 </html>`)
 })

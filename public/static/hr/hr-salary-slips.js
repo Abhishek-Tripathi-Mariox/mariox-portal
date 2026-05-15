@@ -102,7 +102,7 @@ function openSlipModal() {
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
       <div class="grid-2">
-        <div class="form-group"><label class="form-label">Employee *</label><select id="slip-user" class="form-select">${hrEmployeeOptions(window._hrEmployees || [])}</select></div>
+        <div class="form-group"><label class="form-label">Employee *</label>${hrEmployeePicker('slip-user', window._hrEmployees || [])}</div>
         <div class="form-group"><label class="form-label">Month *</label><input id="slip-month" class="form-input" type="month" value="${hrCurrentMonthISO()}"/></div>
       </div>
       <div class="grid-2">${numberField('slip-basic','Basic')}${numberField('slip-hra','HRA')}</div>

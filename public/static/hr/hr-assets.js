@@ -180,7 +180,7 @@ function openAssignAssetModal(id) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px">
-      <div class="form-group" style="margin-bottom:0"><label class="form-label">Employee *</label><select id="assign-user" class="form-select">${hrEmployeeOptions(window._hrEmployees || [])}</select></div>
+      <div class="form-group" style="margin-bottom:0"><label class="form-label">Employee *</label>${hrEmployeePicker('assign-user', window._hrEmployees || [])}</div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>

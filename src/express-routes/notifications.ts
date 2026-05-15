@@ -1,7 +1,16 @@
 import { Router } from 'express'
+import { EventEmitter } from 'node:events'
+import { jwtVerify } from 'jose'
 import type { MongoModels } from '../models/mongo-models'
 import { createAuthMiddleware } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
+
+// Global bus that every Express worker (single-process here) emits to when
+// a new notification lands. The SSE endpoint subscribes per connected user
+// and forwards matching events down the wire so the bell badge / toast
+// updates with zero lag — no waiting for the 10s frontend poller.
+export const notificationBus = new EventEmitter()
+notificationBus.setMaxListeners(0)
 
 export interface UserNotificationInput {
   user_id: string
@@ -38,6 +47,7 @@ export async function createUserNotification(
       created_at: new Date().toISOString(),
     }
     await models.userNotifications.insertOne(doc)
+    notificationBus.emit('notification', doc)
     return doc
   } catch (e) {
     console.warn('[notifications] failed to create:', e)
@@ -69,6 +79,50 @@ export async function createUserNotifications(
 
 export function createNotificationsRouter(models: MongoModels, jwtSecret: string) {
   const router = Router()
+  const encoder = new TextEncoder()
+
+  // SSE stream — must be declared BEFORE the bearer-token auth middleware
+  // because EventSource can't send custom headers, so we accept the token
+  // as a query param instead. Keeps the stream usable from the browser.
+  router.get('/stream', async (req, res) => {
+    const token = String(req.query.token || '')
+    if (!token) { res.status(401).end(); return }
+    let payload: any
+    try {
+      const result = await jwtVerify(token, encoder.encode(jwtSecret))
+      payload = result.payload
+    } catch {
+      res.status(401).end(); return
+    }
+    const userId = String(payload?.sub || '')
+    if (!userId) { res.status(401).end(); return }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    })
+    res.write(`: connected ${new Date().toISOString()}\n\n`)
+
+    const onNotif = (doc: any) => {
+      if (!doc || String(doc.user_id) !== userId) return
+      try {
+        res.write(`event: notification\ndata: ${JSON.stringify(doc)}\n\n`)
+      } catch { /* writer died — cleanup handled by 'close' */ }
+    }
+    notificationBus.on('notification', onNotif)
+
+    const keepalive = setInterval(() => {
+      try { res.write(`: ping ${Date.now()}\n\n`) } catch { /* ignore */ }
+    }, 25000)
+
+    req.on('close', () => {
+      clearInterval(keepalive)
+      notificationBus.off('notification', onNotif)
+    })
+  })
+
   router.use(createAuthMiddleware(jwtSecret))
 
   // List my notifications (most recent first)

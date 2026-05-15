@@ -117,7 +117,7 @@ function openDocModal() {
       <div class="grid-2">
         <div class="form-group">
           <label class="form-label">Employee *</label>
-          <select id="doc-user" class="form-select">${hrEmployeeOptions(window._hrEmployees || [])}</select>
+          ${hrEmployeePicker('doc-user', window._hrEmployees || [])}
         </div>
         <div class="form-group">
           <label class="form-label">Document type *</label>

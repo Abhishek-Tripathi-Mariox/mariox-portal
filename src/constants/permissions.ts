@@ -341,6 +341,20 @@ const SALES_TL_PERMS: PermissionKey[] = [
   'leaves.create_own',
 ]
 
+// HR — owns the people-ops module. Full HR permissions plus the basic
+// self-service (own tasks, log own time, apply leave) and can approve
+// leaves company-wide.
+const HR_PERMS: PermissionKey[] = [
+  'hr.attendance.manage', 'hr.calendar.manage', 'hr.warnings.manage',
+  'hr.pips.manage', 'hr.salary_slips.manage', 'hr.terminations.manage',
+  'hr.documents.manage', 'hr.assets.manage',
+  'users.view_all',
+  'leaves.create_own', 'leaves.approve', 'leaves.view_all',
+  'tasks.edit_own', 'tasks.move', 'tasks.comment',
+  'timesheets.log_own',
+  'documents.upload', 'documents.view_all',
+]
+
 const CLIENT_PERMS: PermissionKey[] = [
   'tickets.create',
 ]
@@ -393,6 +407,12 @@ export const SYSTEM_ROLE_SEEDS: SystemRoleSeed[] = [
     name: 'Sales Agent',
     description: 'Handles assigned leads and follow-up tasks',
     permissions: SALES_AGENT_PERMS,
+  },
+  {
+    key: 'hr',
+    name: 'HR',
+    description: 'Owns people-ops — attendance, leaves, warnings, PIPs, salary slips, terminations, documents and assets',
+    permissions: HR_PERMS,
   },
   {
     key: 'client',

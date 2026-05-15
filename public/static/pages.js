@@ -117,6 +117,7 @@ async function openDeveloperModal(dev = null) {
     ['pm', 'PM'],
     ['pc', 'PC'],
     ['team', 'Team'],
+    ['hr', 'HR'],
     ...HIERARCHY_OPTIONS,
   ]
   try {

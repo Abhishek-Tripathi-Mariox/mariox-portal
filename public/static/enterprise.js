@@ -3609,12 +3609,16 @@ async function showCreateInvoiceModal() {
   <div class="modal-header"><h3>Create Invoice</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
   <div class="modal-body">
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Client *</label><select class="form-select" id="ci-client" onchange="onCreateInvoiceClientChanged(this.value)"><option value="">— Select a client —</option>${allClients.map(c=>`<option value="${c.id}">${c.company_name}</option>`).join('')}</select></div>
-      <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="ci-project" disabled onchange="onCreateInvoiceProjectChanged(this.value)"><option value="">— Select a client first —</option></select></div>
+      <div class="form-group"><label class="form-label">Client *</label>
+        ${searchableSelect('ci-client', allClients.map(c => ({ value: c.id, label: c.company_name })), '', { placeholder: 'Search a client…', onChange: onCreateInvoiceClientChanged })}
+      </div>
+      <div class="form-group"><label class="form-label">Project *</label>
+        ${searchableSelect('ci-project', [], '', { placeholder: '— Select a client first —', onChange: onCreateInvoiceProjectChanged })}
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Milestone (optional)</label>
-      <select class="form-select" id="ci-milestone" disabled onchange="onCreateInvoiceMilestoneChanged(this.value)"><option value="">No milestone</option></select>
+      ${searchableSelect('ci-milestone', [], '', { placeholder: 'Select a project first', onChange: onCreateInvoiceMilestoneChanged })}
       <div style="font-size:11px;color:#64748b;margin-top:4px">Selecting a billable milestone will prefill the invoice title and amount — both stay editable.</div>
     </div>
     <div class="form-group"><label class="form-label">Invoice Title *</label><input class="form-input" id="ci-title" placeholder="Phase 1 – Delivery Invoice"/></div>
@@ -3635,62 +3639,61 @@ async function showCreateInvoiceModal() {
     <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
     <button class="btn btn-primary" onclick="doCreateInvoice()"><i class="fas fa-file-invoice"></i>Create Invoice</button>
   </div>`, 'modal-lg')
+  // Project + Milestone are dependent dropdowns — disable until parent picked.
+  searchableSelectSetEnabled('ci-project', false)
+  searchableSelectSetEnabled('ci-milestone', false)
 }
 
 function onCreateInvoiceClientChanged(clientId) {
-  const projectSelect = document.getElementById('ci-project')
-  const milestoneSelect = document.getElementById('ci-milestone')
   const projects = window._invoiceProjects || []
-  if (!projectSelect) return
   if (!clientId) {
-    projectSelect.disabled = true
-    projectSelect.innerHTML = '<option value="">— Select a client first —</option>'
-    if (milestoneSelect) {
-      milestoneSelect.disabled = true
-      milestoneSelect.innerHTML = '<option value="">No milestone</option>'
-    }
+    searchableSelectSetItems('ci-project', [], { placeholder: '— Select a client first —' })
+    searchableSelectSetEnabled('ci-project', false)
+    searchableSelectSetItems('ci-milestone', [], { placeholder: 'Select a project first' })
+    searchableSelectSetEnabled('ci-milestone', false)
     return
   }
   const filtered = projects.filter(p => String(p.client_id) === String(clientId))
-  projectSelect.disabled = false
   if (!filtered.length) {
-    projectSelect.innerHTML = '<option value="">No projects for this client</option>'
+    searchableSelectSetItems('ci-project', [], { placeholder: 'No projects for this client' })
+    searchableSelectSetEnabled('ci-project', false)
   } else {
-    projectSelect.innerHTML = `<option value="">— Select a project —</option>${filtered.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}`
+    searchableSelectSetItems('ci-project', filtered.map(p => ({ value: p.id, label: p.name })), { placeholder: 'Search a project…' })
+    searchableSelectSetEnabled('ci-project', true)
   }
-  if (milestoneSelect) {
-    milestoneSelect.disabled = true
-    milestoneSelect.innerHTML = '<option value="">Select a project first</option>'
-  }
+  searchableSelectSetItems('ci-milestone', [], { placeholder: 'Select a project first' })
+  searchableSelectSetEnabled('ci-milestone', false)
 }
 
 function onCreateInvoiceProjectChanged(projectId) {
-  const milestoneSelect = document.getElementById('ci-milestone')
   const milestones = window._invoiceMilestones || []
-  if (!milestoneSelect) return
   if (!projectId) {
-    milestoneSelect.disabled = true
-    milestoneSelect.innerHTML = '<option value="">Select a project first</option>'
+    searchableSelectSetItems('ci-milestone', [], { placeholder: 'Select a project first' })
+    searchableSelectSetEnabled('ci-milestone', false)
     return
   }
   const filtered = milestones.filter(m => String(m.project_id) === String(projectId))
-  milestoneSelect.disabled = false
-  milestoneSelect.innerHTML = `<option value="">No milestone</option>${filtered.map(m => {
+  const items = filtered.map(m => {
     const amt = Number(m.invoice_amount) || 0
     const label = `${m.title}${m.is_billable && amt ? ` — ₹${fmtNum(amt)}` : ''}`
-    return `<option value="${m.id}" data-amount="${amt}" data-billable="${m.is_billable ? 1 : 0}" data-title="${escapeHtml(m.title || '')}">${escapeHtml(label)}</option>`
-  }).join('')}`
+    return { value: m.id, label }
+  })
+  searchableSelectSetItems('ci-milestone', items, { placeholder: filtered.length ? 'Search a milestone…' : 'No milestones for this project' })
+  searchableSelectSetEnabled('ci-milestone', filtered.length > 0)
 }
 
 // Prefill the invoice title + amount from the picked milestone. Both fields
 // remain editable so the PM can override either side before sending.
 function onCreateInvoiceMilestoneChanged(milestoneId) {
-  const select = document.getElementById('ci-milestone')
-  const opt = select?.selectedOptions?.[0]
-  if (!opt || !milestoneId) return
-  const amount = parseFloat(opt.dataset.amount || '0') || 0
-  const isBillable = String(opt.dataset.billable || '0') === '1'
-  const title = opt.dataset.title || ''
+  if (!milestoneId) return
+  // Look up the milestone from the cached list since the picker hidden input
+  // doesn't carry data-* attributes the way a native <select> option did.
+  const milestones = window._invoiceMilestones || []
+  const m = milestones.find(x => String(x.id) === String(milestoneId))
+  if (!m) return
+  const amount = Number(m.invoice_amount) || 0
+  const isBillable = !!m.is_billable
+  const title = m.title || ''
   const titleInput = document.getElementById('ci-title')
   const amountInput = document.getElementById('ci-amount')
   // Only overwrite the title if it's blank — never clobber a user edit.
@@ -3931,6 +3934,7 @@ const TEAM_ROLE_META = {
   sales_manager:  { label: 'Sales Manager',  badge: 'critical'   },
   sales_tl:       { label: 'Sales TL',       badge: 'review'     },
   sales_agent:    { label: 'Sales Agent',    badge: 'inprogress' },
+  hr:             { label: 'HR',             badge: 'inprogress' },
   client:         { label: 'Client',         badge: 'review'     },
 }
 let _teamOverviewRoleFilter = ''
@@ -3966,7 +3970,7 @@ async function renderTeamOverview(el) {
       <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px">
         <div class="search-wrap" style="flex:1;min-width:240px"><i class="fas fa-search"></i><input class="search-bar" placeholder="Search members…" oninput="filterTable(this.value,'team-overview-table')"/></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${['', 'admin', 'pm', 'pc', 'developer', 'team', 'sales_manager', 'sales_tl', 'sales_agent'].map(r => {
+          ${['', 'admin', 'pm', 'pc', 'developer', 'team', 'sales_manager', 'sales_tl', 'sales_agent', 'hr'].map(r => {
             const meta = r ? TEAM_ROLE_META[r] : { label: 'All' }
             const count = r ? (roleCounts[r] || 0) : users.length
             const active = _teamOverviewRoleFilter === r
@@ -4407,6 +4411,16 @@ const TEAM_SECTION_CONFIG = {
     workKind: 'tasks',
     pageId: 'dev-team',
   },
+  'hr-team': {
+    title: 'HR Team',
+    subtitle: 'People-ops team managing attendance, leaves and employee lifecycle.',
+    icon: 'fa-id-badge',
+    iconColor: '#a855f7',
+    roles: ['hr'],
+    defaultCreateRole: 'hr',
+    workKind: 'tasks',
+    pageId: 'hr-team',
+  },
 }
 
 let _teamSectionSearch = {}
@@ -4415,6 +4429,7 @@ let _teamSectionRoleFilter = {}
 async function renderSalesTeamPage(el)   { return _renderTeamSection(el, TEAM_SECTION_CONFIG['sales-team']) }
 async function renderProjectTeamPage(el) { return _renderTeamSection(el, TEAM_SECTION_CONFIG['project-team']) }
 async function renderDevTeamPage(el)     { return _renderTeamSection(el, TEAM_SECTION_CONFIG['dev-team']) }
+async function renderHRTeamPage(el)      { return _renderTeamSection(el, TEAM_SECTION_CONFIG['hr-team']) }
 
 async function _renderTeamSection(el, cfg) {
   el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading ${cfg.title.toLowerCase()}…</div>`
@@ -7855,10 +7870,7 @@ async function openMeetingEditor(meetingId) {
       </div>
       <div class="form-group">
         <label class="form-label">Lead *</label>
-        <select id="mtg-lead" class="form-input" onchange="_meetingDraft.lead_id=this.value">
-          <option value="">Select a lead…</option>
-          ${leads.map((l) => `<option value="${escapeHtml(l.id)}" ${String(l.id) === String(_meetingDraft.lead_id) ? 'selected' : ''}>${escapeHtml(l.name || l.id)}${l.email ? ' · ' + escapeHtml(l.email) : ''}</option>`).join('')}
-        </select>
+        ${searchableSelect('mtg-lead', leads.map((l) => ({ value: l.id, label: l.name || l.id, sub: l.email || '' })), _meetingDraft.lead_id || '', { placeholder: 'Search and select a lead…' })}
       </div>
       <div style="display:grid;grid-template-columns:1fr 140px;gap:10px">
         <div class="form-group">
@@ -7961,6 +7973,11 @@ function toggleMeetingAttendee(userId, checked) {
 async function submitMeetingEditor() {
   if (!_meetingDraft) return
   const d = _meetingDraft
+  // Lead picker is the searchable dropdown; its hidden input is the source
+  // of truth at submit time. _meetingDraft.lead_id isn't kept in sync with
+  // user picks (no onchange wiring on the new picker), so we pull it here.
+  const leadHidden = document.getElementById('mtg-lead')
+  if (leadHidden) d.lead_id = leadHidden.value || ''
   if (!d.title || d.title.trim().length < 2) { toast('Title is required', 'error'); return }
   if (!d.lead_id) { toast('Pick a lead', 'error'); return }
   if (!d.scheduled_at) { toast('Pick a date & time', 'error'); return }

@@ -12,6 +12,7 @@ export const ROLES = {
   SALES_MANAGER: 'sales_manager',
   SALES_TL: 'sales_tl',
   SALES_AGENT: 'sales_agent',
+  HR: 'hr',
   CLIENT: 'client',
 } as const
 
@@ -31,6 +32,7 @@ export const USER_ROLES = [
   ROLES.SALES_MANAGER,
   ROLES.SALES_TL,
   ROLES.SALES_AGENT,
+  ROLES.HR,
   ROLES.CLIENT,
 ] as const
 
@@ -44,6 +46,7 @@ export const STAFF_CREATE_ROLES = [
   ROLES.SALES_MANAGER,
   ROLES.SALES_TL,
   ROLES.SALES_AGENT,
+  ROLES.HR,
 ] as const
 
 // Project Status

@@ -325,6 +325,7 @@ export class MongoModels {
   readonly terminations: MongoRepository
   readonly hrDocuments: MongoRepository
   readonly hrAssets: MongoRepository
+  readonly personalTasks: MongoRepository
 
   constructor(private readonly db: Db) {
     this.users = new UserModel(db.collection<UserRecord>('users'))
@@ -385,6 +386,7 @@ export class MongoModels {
     this.terminations = new MongoRepository(db.collection('terminations'))
     this.hrDocuments = new MongoRepository(db.collection('hr_documents'))
     this.hrAssets = new MongoRepository(db.collection('hr_assets'))
+    this.personalTasks = new MongoRepository(db.collection('personal_tasks'))
   }
 
   get rawDb() {

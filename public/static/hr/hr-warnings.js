@@ -102,7 +102,7 @@ function openWarningModal() {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div class="form-group"><label class="form-label">Employee *</label><select id="warn-user" class="form-select">${hrEmployeeOptions(window._hrEmployees || [])}</select></div>
+      <div class="form-group"><label class="form-label">Employee *</label>${hrEmployeePicker('warn-user', window._hrEmployees || [])}</div>
       <div class="grid-2">
         <div class="form-group">
           <label class="form-label">Severity *</label>

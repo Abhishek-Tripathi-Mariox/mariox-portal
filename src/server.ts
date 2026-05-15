@@ -41,6 +41,7 @@ import { createSalarySlipsRouter } from './express-routes/salary-slips'
 import { createTerminationsRouter } from './express-routes/terminations'
 import { createHrDocumentsRouter } from './express-routes/hr-documents'
 import { createHrAssetsRouter } from './express-routes/hr-assets'
+import { createPersonalTasksRouter } from './express-routes/personal-tasks'
 import { bootstrapSeed } from './seeds/bootstrap'
 import { loadRuntimeEnv } from './utils/runtime-env'
 
@@ -174,6 +175,7 @@ server.use('/api/salary-slips', createSalarySlipsRouter(models, jwtSecret))
 server.use('/api/terminations', createTerminationsRouter(models, jwtSecret))
 server.use('/api/hr-documents', createHrDocumentsRouter(models, jwtSecret))
 server.use('/api/assets', createHrAssetsRouter(models, jwtSecret))
+server.use('/api/personal-tasks', createPersonalTasksRouter(models, jwtSecret))
 
 // Fire in-app reminders for meetings starting in the next 5 minutes.
 // Runs every minute and claims rows atomically via reminder_sent flag.

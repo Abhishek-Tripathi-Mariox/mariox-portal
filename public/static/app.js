@@ -69,6 +69,8 @@ const PAGE_PERMISSIONS = {
   'meet-setup':        ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
   'project-team':    ['admin', 'pm', 'pc'],
   'dev-team':        ['admin', 'pm', 'pc'],
+  'hr-team':         ['admin', 'pm', 'pc', 'hr'],
+  'personal-tasks':  ['admin', 'pm', 'pc', 'developer', 'team', 'sales_manager', 'sales_tl', 'sales_agent', 'hr'],
   // PM Dashboard is the operational view for PM/PC only — admins land on
   // their own Super Admin Overview, so we hide pm-dashboard from them.
   'pm-dashboard':    ['pm', 'pc'],
@@ -92,7 +94,7 @@ const PAGE_PERMISSIONS = {
   // Calendar is visible to every authenticated user — they can at least add
   // personal events (client meetings, follow-ups). HR/admin still own the
   // "Company" visibility toggle inside the Add Event modal.
-  'hr-calendar':     ['admin', 'pm', 'pc', 'developer', 'team', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'hr-calendar':     ['admin', 'pm', 'pc', 'developer', 'team', 'sales_manager', 'sales_tl', 'sales_agent', 'hr'],
   'hr-warnings':     ['admin'],
   'hr-pips':         ['admin'],
   'hr-salary-slips': ['admin'],
@@ -127,6 +129,7 @@ const NAV_PERMISSION_MAP = {
   'sales-team':        ['users.view_all'],
   'project-team':      ['users.view_all'],
   'dev-team':          ['users.view_all'],
+  'hr-team':           ['users.view_all'],
   // PM / work
   'pm-dashboard':      ['reports.view_pm_dashboard'],
   'projects-list':     ['projects.create', 'projects.view_all', 'projects.edit', 'projects.delete'],
@@ -242,6 +245,8 @@ const SIDEBAR_PAGE_GROUPS = {
   'hr-terminations': 'hr',
   'hr-documents': 'hr',
   'hr-assets': 'hr',
+  'hr-team': 'hr',
+  'personal-tasks': 'dev',
 }
 const SIDEBAR_GROUP_DEFAULTS = {
   admin: true,
@@ -706,7 +711,9 @@ function buildShell() {
     items: [
       navItem('leads-view',      'fa-bullseye',       leadsLabel),
       navItem('lead-followups',  'fa-calendar-check', 'Follow-ups'),
-      navItem('lead-tasks',      'fa-list-check',     'Tasks'),
+      navItem('lead-tasks',      'fa-list-check',     'Sales Tasks'),
+      navItem('personal-tasks',  'fa-clipboard-check', 'Tasks'),
+      navItem('hr-calendar',     'fa-calendar-days',  'Calendar'),
       navItem('sales-tracker',   'fa-chart-line',     'Sale Tracker'),
       navItem('sales-team',      'fa-people-group',   'Sales Team'),
       navItem('portfolio-library','fa-briefcase',     'Portfolio'),
@@ -731,6 +738,7 @@ function buildShell() {
       navItem('milestones-view', 'fa-flag',        'Milestones'),
       navItem('documents-center','fa-folder-open', 'Documents'),
       navItem('resources-view',  'fa-users-gear',  'Resources'),
+      navItem('hr-calendar',     'fa-calendar-days', 'Calendar'),
       navItem('project-team',    'fa-people-group','Project Team'),
     ],
   }) : ''
@@ -747,11 +755,13 @@ function buildShell() {
     key: 'dev', heading: devHeading, chip: devChip, expanded: true, icon: 'fa-code',
     items: [
       navItem('dev-dashboard',  'fa-gauge',       'My Dashboard'),
-      navItem('my-tasks',       'fa-list-check',  'Tasks'),
+      navItem('my-tasks',       'fa-list-check',  'Project Tasks'),
+      navItem('personal-tasks', 'fa-clipboard-check', 'Tasks'),
       navItem('timesheets-view','fa-clock',       'Timesheets'),
       navItem('leaves-view',    'fa-umbrella-beach', 'Leaves', ' <span class="nav-badge" id="nb-leaves">0</span>'),
       navItem('support-tickets','fa-life-ring',   'Support Tickets'),
       navItem('approval-queue', 'fa-clipboard-check', 'Approvals', ' <span class="nav-badge" id="nb-approval">0</span>'),
+      navItem('hr-calendar',    'fa-calendar-days', 'Calendar'),
       navItem('dev-team',       'fa-people-group','Dev Team'),
     ],
   }) : ''
@@ -766,8 +776,10 @@ function buildShell() {
       navItem('projects-list',  'fa-layer-group', 'My Projects'),
       navItem('kanban-board',   'fa-columns',     'Kanban Board'),
       navItem('my-tasks',       'fa-list-check',  'My Tasks'),
+      navItem('personal-tasks', 'fa-clipboard-check', 'Tasks'),
       navItem('bidding-view',   'fa-gavel',       'Bidding', ' <span class="nav-badge" id="nb-bids" style="display:none">0</span>'),
       navItem('support-tickets','fa-life-ring',   'Support Tickets'),
+      navItem('hr-calendar',    'fa-calendar-days', 'Calendar'),
       navItem('dev-team',       'fa-people-group','Dev Team'),
     ],
   }) : ''
@@ -785,6 +797,7 @@ function buildShell() {
       navItem('hr-terminations', 'fa-user-slash',      'Terminations'),
       navItem('hr-documents',    'fa-file-signature',  'Documents'),
       navItem('hr-assets',       'fa-box-archive',     'Assets'),
+      navItem('hr-team',         'fa-people-group',    'HR Team'),
     ],
   })
 
@@ -885,6 +898,8 @@ function buildShell() {
     <div id="page-hr-terminations"  class="page"></div>
     <div id="page-hr-documents"     class="page"></div>
     <div id="page-hr-assets"        class="page"></div>
+    <div id="page-hr-team"          class="page"></div>
+    <div id="page-personal-tasks"   class="page"></div>
     <div id="page-settings-view"    class="page"></div>
   </div>
   <div id="drawer-overlay" class="drawer-overlay" onclick="closeDrawer()"></div>
@@ -918,7 +933,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','hr-team':'HR Team','personal-tasks':'Tasks','settings-view':'Settings'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -997,6 +1012,7 @@ const _notifState = {
   recent: [],
   audioCtx: null,
   timer: null,
+  stream: null,
   initialized: false,
 }
 
@@ -1200,12 +1216,40 @@ function startNotificationPoller() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') pollNotifications()
   })
+  startNotificationStream()
+}
+
+// Live push channel — replaces the 10s lag with instant updates when the
+// server emits a notification (e.g. lead assigned). Falls back to polling
+// transparently if EventSource is blocked or the connection fails.
+function startNotificationStream() {
+  if (_notifState.stream) return
+  if (typeof EventSource === 'undefined') return
+  if (!_token) return
+  try {
+    const src = new EventSource('/api/notifications/stream?token=' + encodeURIComponent(_token))
+    _notifState.stream = src
+    src.addEventListener('notification', () => {
+      // We don't trust the pushed payload to update state directly —
+      // pollNotifications() pulls the canonical recent list so toast / sound /
+      // auto-refresh logic stays in one place.
+      pollNotifications()
+    })
+    src.onerror = () => {
+      // Browser auto-reconnects on transient errors. If the channel ends up
+      // permanently broken, the 10s poller keeps the badge correct.
+    }
+  } catch { /* ignore — poller covers us */ }
 }
 
 function stopNotificationPoller() {
   if (_notifState.timer) {
     clearInterval(_notifState.timer)
     _notifState.timer = null
+  }
+  if (_notifState.stream) {
+    try { _notifState.stream.close() } catch {}
+    _notifState.stream = null
   }
   _notifState.initialized = false
   _notifSetBadge(0)
@@ -1761,6 +1805,8 @@ function loadPage(page, el) {
     case 'hr-terminations':  renderTerminationsView(el); break
     case 'hr-documents':     renderHrDocumentsView(el); break
     case 'hr-assets':        renderHrAssetsView(el); break
+    case 'hr-team':          renderHRTeamPage(el); break
+    case 'personal-tasks':   renderPersonalTasksPage(el); break
     case 'settings-view':    renderSettingsView(el); break
     default: el.innerHTML = `<div class="page-header"><h1 class="page-title">${breadcrumbMap[page]||page}</h1></div><div class="empty-state"><i class="fas fa-hammer"></i><p>Module coming soon…</p></div>`
   }

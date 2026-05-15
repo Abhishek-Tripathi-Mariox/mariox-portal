@@ -1986,7 +1986,19 @@ async function renderLeavesView(el) {
     ])
     const leaves = leavesRes.leaves || leavesRes.data || []
     const allUsers = devsRes.users || devsRes.data || []
-    const eligibleAssignees = allUsers.filter(u => ['developer', 'team', 'pm', 'pc'].includes(String(u.role).toLowerCase()))
+    // Every staff role can have leave applied on their behalf — client is the
+    // only excluded role (they don't use this portal). Inactive users are
+    // hidden so admins don't accidentally raise leaves for offboarded staff.
+    // Self is already pinned as "(me)" at the top of the dropdown, so we drop
+    // it from the rest to avoid showing the same person twice.
+    const selfId = String(_user?.sub || _user?.id || '')
+    const eligibleAssignees = allUsers.filter(u => {
+      const r = String(u.role || '').toLowerCase()
+      if (!r || r === 'client') return false
+      if (Number(u.is_active) === 0) return false
+      if (String(u.id) === selfId) return false
+      return true
+    })
 
     const filtered = _leavesFilterStatus
       ? leaves.filter(l => l.status === _leavesFilterStatus)
@@ -2165,11 +2177,8 @@ function goLeavesPage(page) {
 }
 
 function openLeaveApplyModal() {
-  const isManager = !!window._isLeaveManager
-  const assignees = Array.isArray(window._leaveAssignees) ? window._leaveAssignees : []
-  const selfName = _user?.name || _user?.full_name || 'Me'
   // JWT login stores `id`; client/legacy flows store `sub`. Always resolve to a real value
-  // — otherwise the dropdown defaults to the literal string "undefined" and leaves get saved
+  // — otherwise the hidden input gets the literal string "undefined" and leaves get saved
   // against a non-existent user, causing "Unknown employee" in the list.
   const myId = _user?.sub || _user?.id || ''
 
@@ -2179,15 +2188,7 @@ function openLeaveApplyModal() {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      ${isManager ? `
-        <div class="form-group">
-          <label class="form-label">Employee *</label>
-          <select id="lv-user" class="form-select">
-            <option value="${myId}" selected>${escapeInbox(selfName)} (me)</option>
-            ${assignees.map(u => `<option value="${u.id}">${escapeInbox(u.full_name)} (${u.role})</option>`).join('')}
-          </select>
-        </div>
-      ` : `<input type="hidden" id="lv-user" value="${myId}"/>`}
+      <input type="hidden" id="lv-user" value="${myId}"/>
       <div class="grid-2">
         <div class="form-group">
           <label class="form-label">Leave Type *</label>
