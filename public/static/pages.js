@@ -8,7 +8,7 @@ router.register('developers', async () => {
       <div class="animate-fade-in">
         <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
           <div><h1 class="page-title">Developers</h1><p class="page-subtitle">${devs.length} team members</p></div>
-          ${state.user?.role === 'admin' ? '<button class="btn btn-primary" onclick="openAddDeveloperModal()"><i class="fas fa-user-plus"></i> Add User</button>' : ''}
+          ${hasAnyPermission(['users.create']) ? '<button class="btn btn-primary" onclick="openAddDeveloperModal()"><i class="fas fa-user-plus"></i> Add User</button>' : ''}
         </div>
         <div style="display:flex;gap:10px;margin-bottom:16px">
           <input type="text" id="dev-search" class="form-input" style="max-width:280px" placeholder="Search developers..." oninput="filterDevTable()"/>
@@ -64,7 +64,7 @@ function renderDevCard(d) {
       </div>
       <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
         <button class="btn btn-secondary btn-sm" onclick="router.navigate('developer-detail',{id:'${d.id}'})"><i class="fas fa-eye"></i> View</button>
-        ${['admin','pm'].includes(state.user?.role) ? `
+        ${hasAnyPermission(['users.edit']) ? `
           <button class="btn btn-secondary btn-sm" onclick="openEditDeveloperModal('${d.id}')"><i class="fas fa-edit"></i> Edit</button>
           <button class="btn btn-sm ${d.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleDevStatus('${d.id}',${!d.is_active})">
             <i class="fas fa-${d.is_active ? 'ban' : 'check'}"></i> ${d.is_active ? 'Deactivate' : 'Activate'}
@@ -223,6 +223,21 @@ async function openDeveloperModal(dev = null) {
         <div class="form-group"><label class="form-label">Skill Tags (comma separated)</label>
           <input id="dev-skills" class="form-input" value="${Array.isArray(skills) ? skills.join(', ') : ''}" placeholder="Skill Tags" autocomplete="off"/></div>
       </div>
+      <div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px"><i class="fas fa-clock" style="color:#a855f7"></i> Shift Timing (HR)</label>
+        <div class="grid-2">
+          <input id="dev-shift-start" class="form-input" type="time" value="${dev?.shift_start||''}" placeholder="Start"/>
+          <input id="dev-shift-end" class="form-input" type="time" value="${dev?.shift_end||''}" placeholder="End"/>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          ${[['Sun',0],['Mon',1],['Tue',2],['Wed',3],['Thu',4],['Fri',5],['Sat',6]].map(([lbl,n]) => {
+            const sel = Array.isArray(dev?.shift_days) && dev.shift_days.includes(n)
+            return `<label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid #374151;border-radius:6px;cursor:pointer;background:${sel?'rgba(168,85,247,.18)':'transparent'};font-size:12px;color:#e2e8f0">
+              <input type="checkbox" class="dev-shift-day" value="${n}" ${sel?'checked':''} style="margin:0"/> ${lbl}
+            </label>`
+          }).join('')}
+        </div>
+        <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">User apne dashboard se in timings ke according punch-in / punch-out karenge. HR daily summary approve / reject karega.</div>
+      </div>
       <div class="form-group"><label class="form-label">Remarks</label>
         <textarea id="dev-remarks" class="form-textarea" rows="2" placeholder="Remarks">${dev?.remarks||''}</textarea></div>
       ${!isEdit ? `<div class="form-group"><label class="form-label">Password *</label>
@@ -341,6 +356,13 @@ async function saveDeveloper(id) {
       payload.incentive_rate = Number(r) || 0
     }
     if (!id && document.getElementById('dev-password')) payload.password = document.getElementById('dev-password').value
+    // Shift assignment (HR). Send empty string as null so backend clears the field.
+    const shStart = document.getElementById('dev-shift-start')?.value || ''
+    const shEnd = document.getElementById('dev-shift-end')?.value || ''
+    payload.shift_start = shStart || null
+    payload.shift_end = shEnd || null
+    payload.shift_days = Array.from(document.querySelectorAll('.dev-shift-day'))
+      .filter(el => el.checked).map(el => Number(el.value))
     let res
     if (id) res = await API.put(`/users/${id}`, payload)
     else res = await API.post('/users', payload)
@@ -492,15 +514,23 @@ router.register('developer-detail', async ({ id }) => {
 })
 
 // ============ PROJECTS PAGE ============
+function hasProjectPermission(key) {
+  const role = String(state.user?.role || '').toLowerCase()
+  if (role === 'admin') return true
+  return typeof hasAnyPermission === 'function' ? hasAnyPermission([key]) : false
+}
+
 router.register('projects', async () => {
   try {
     const res = await API.get('/projects')
     const projects = res.data?.projects || res.data?.data || []
+    const canCreateProject = hasProjectPermission('projects.create')
+    const canEditProject = hasProjectPermission('projects.edit')
     document.getElementById('page-content').innerHTML = `
       <div class="animate-fade-in">
         <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
           <div><h1 class="page-title">Projects</h1><p class="page-subtitle">${projects.length} projects total</p></div>
-          ${['admin','pm'].includes(state.user?.role) ? `<button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i> New Project</button>` : ''}
+          ${canCreateProject ? `<button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i> New Project</button>` : ''}
         </div>
         <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
           <input type="text" id="proj-search" class="form-input" style="max-width:260px" placeholder="Search projects..." oninput="filterProjects()"/>
@@ -521,6 +551,7 @@ function renderProjectCard(p) {
   const tlPct = Math.min(100, Math.max(0, parseFloat(p.timeline_progress || 0)))
   const remaining = Math.max(0, (p.total_allocated_hours || 0) - (p.consumed_hours || 0))
   const color = burnPct >= 100 ? 'red' : burnPct >= 80 ? 'yellow' : 'green'
+  const canEditProject = hasProjectPermission('projects.edit')
   return `
     <div class="glass-card" style="padding:20px;cursor:pointer;border-top:3px solid #FF7A45" onclick="router.navigate('project-detail',{id:'${p.id}'})" id="proj-card-${p.id}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
@@ -562,7 +593,7 @@ function renderProjectCard(p) {
       </div>
       <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
         <button class="btn btn-secondary btn-sm" onclick="router.navigate('project-detail',{id:'${p.id}'})"><i class="fas fa-eye"></i> View</button>
-        ${['admin','pm'].includes(state.user?.role) ? `<button class="btn btn-secondary btn-sm" onclick="openProjectModal('${p.id}')"><i class="fas fa-edit"></i> Edit</button>` : ''}
+        ${canEditProject ? `<button class="btn btn-secondary btn-sm" onclick="openProjectModal('${p.id}')"><i class="fas fa-edit"></i> Edit</button>` : ''}
       </div>
     </div>
   `
@@ -1238,6 +1269,8 @@ router.register('project-detail', async ({ id }) => {
     const p = res.data
     const burnPct = p.total_allocated_hours > 0 ? Math.round((p.consumed_hours/p.total_allocated_hours)*100) : 0
     const tlPct = Math.min(100, Math.max(0, parseFloat(p.timeline_progress||0)))
+    const canEditProject = hasProjectPermission('projects.edit')
+    const canManageTeam = hasProjectPermission('projects.manage_team')
 
     document.getElementById('page-content').innerHTML = `
       <div class="animate-fade-in">
@@ -1251,7 +1284,7 @@ router.register('project-detail', async ({ id }) => {
           </div>
           <div style="display:flex;gap:10px;align-items:center">
             ${utils.statusBadge(p.status)}
-            ${['admin','pm'].includes(state.user?.role) ? `<button class="btn btn-secondary btn-sm" onclick="openProjectModal('${p.id}')"><i class="fas fa-edit"></i> Edit</button>` : ''}
+            ${canEditProject ? `<button class="btn btn-secondary btn-sm" onclick="openProjectModal('${p.id}')"><i class="fas fa-edit"></i> Edit</button>` : ''}
           </div>
         </div>
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
@@ -1296,7 +1329,7 @@ router.register('project-detail', async ({ id }) => {
             <div class="glass-card" style="padding:20px;margin-bottom:16px">
               <div style="display:flex;justify-content:space-between;margin-bottom:16px">
                 <h3 style="font-size:14px;font-weight:700">Team Assignments</h3>
-                ${['admin','pm'].includes(state.user?.role) ? `<button class="btn btn-primary btn-sm" onclick="openAssignDeveloperModal('${p.id}')"><i class="fas fa-user-plus"></i> Assign Dev</button>` : ''}
+                ${canManageTeam ? `<button class="btn btn-primary btn-sm" onclick="openAssignDeveloperModal('${p.id}')"><i class="fas fa-user-plus"></i> Assign Dev</button>` : ''}
               </div>
               <table class="data-table">
                 <thead><tr><th>Developer</th><th>Role</th><th>Allocated</th><th>Logged</th><th>Progress</th><th>Actions</th></tr></thead>
@@ -1312,7 +1345,7 @@ router.register('project-detail', async ({ id }) => {
                       <td style="font-weight:600">${utils.formatHours(a.allocated_hours)}</td>
                       <td style="color:var(--accent);font-weight:700">${utils.formatHours(a.logged_hours)}</td>
                       <td style="min-width:100px">${utils.progressBar(aPct)}<span style="font-size:10px;color:var(--text-muted)">${aPct}%</span></td>
-                      <td>${['admin','pm'].includes(state.user?.role) ? `<button class="btn btn-danger btn-xs" onclick="removeDevFromProject('${p.id}','${a.user_id}')"><i class="fas fa-times"></i></button>` : ''}</td>
+                      <td>${canManageTeam ? `<button class="btn btn-danger btn-xs" onclick="removeDevFromProject('${p.id}','${a.user_id}')"><i class="fas fa-times"></i></button>` : ''}</td>
                     </tr>`
                   }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">No developers assigned</td></tr>'}
                 </tbody>

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
+import { createAuthMiddleware, userHasAnyPermission } from '../express-middleware/auth'
 import { DEFAULT_KANBAN_COLUMNS } from '../constants'
 import { generateId } from '../utils/helpers'
 import {
@@ -51,6 +51,17 @@ function applyCommercialVisibility<T extends Record<string, any>>(project: T, ro
   return rest as T
 }
 
+function isProjectLinkedToUser(project: any, user: any, assignments: any[]) {
+  const userId = String(user?.sub || '')
+  if (!userId) return false
+  return assignments.some((a) => String(a.user_id || '') === userId) ||
+    String(project.pm_id || '') === userId ||
+    String(project.pc_id || '') === userId ||
+    String(project.team_lead_id || '') === userId ||
+    String(project.external_team_id || '') === userId ||
+    String(project.awarded_to_user_id || '') === userId
+}
+
 export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
   const router = Router()
   router.use(createAuthMiddleware(jwtSecret))
@@ -59,6 +70,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     try {
       const user = req.user as any
       const role = String(user?.role || '').toLowerCase()
+      const canViewAll = await userHasAnyPermission(models, user, 'projects.view_all')
       const status = typeof req.query.status === 'string' ? req.query.status : undefined
       const pmId = typeof req.query.pm_id === 'string' ? req.query.pm_id : undefined
       const filter: any = {}
@@ -80,15 +92,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         assignmentsByProject.set(key, list)
       }
 
-      // Role-scope: team accounts only see projects directly assigned to them
-      // (external assignment) or projects auto-created from a bid they won.
-      // Without this scope, every team head saw the whole company's project
-      // list — fix for "kyu dusre team ke project mere par dikh rahe hain".
-      // Developers see projects they're allocated to; admin/pm/pc see everything.
+      // Role-scope: users without projects.view_all only see projects they are
+      // directly linked to (assignment, PM/PC/lead, or external ownership).
       const myAssignmentProjectIds = new Set(
         assignments.filter((a) => String(a.user_id) === String(user?.sub)).map((a) => String(a.project_id)),
       )
-      const visibleProjects = projects.filter((p) => {
+      const visibleProjects = canViewAll ? projects : projects.filter((p) => {
         if (role === 'team') {
           return p.external_team_id === user?.sub || p.awarded_to_user_id === user?.sub
         }
@@ -98,7 +107,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
           if (p.pm_id === user?.sub || p.pc_id === user?.sub || p.team_lead_id === user?.sub) return true
           return false
         }
-        return true
+        return isProjectLinkedToUser(p, user, assignments)
       })
 
       const enriched = visibleProjects.map((p) => {
@@ -159,6 +168,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     try {
       const user = req.user as any
       const role = String(user?.role || '').toLowerCase()
+      const canViewAll = await userHasAnyPermission(models, user, 'projects.view_all')
       const id = req.params.id
       const project = await models.projects.findById(id) as any
       if (!project) return res.status(404).json({ error: 'Project not found' })
@@ -169,20 +179,10 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         models.timesheets.find({ project_id: id }) as Promise<any[]>,
       ])
 
-      // Same scope as the list endpoint: a team account must be linked to the
-      // project (external assignee or bid winner). Otherwise 403 — keeps the
-      // detail URL from leaking siblings' projects.
-      if (role === 'team' &&
-          project.external_team_id !== user?.sub &&
-          project.awarded_to_user_id !== user?.sub) {
+      // Same scope as the list endpoint: users without projects.view_all can
+      // only open projects they are linked to.
+      if (!canViewAll && !isProjectLinkedToUser(project, user, assignments)) {
         return res.status(403).json({ error: 'You do not have access to this project' })
-      }
-      if (role === 'developer') {
-        const isAllocated = assignments.some((a: any) => String(a.user_id) === String(user?.sub))
-        const isLead = project.pm_id === user?.sub || project.pc_id === user?.sub || project.team_lead_id === user?.sub
-        if (!isAllocated && !isLead) {
-          return res.status(403).json({ error: 'You do not have access to this project' })
-        }
       }
       const usersById = new Map(users.map((u) => [String(u.id), u]))
       const loggedByUser = new Map<string, number>()
@@ -250,6 +250,13 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
   router.get('/:id/developers', async (req, res) => {
     try {
       const id = req.params.id
+      const user = req.user as any
+      const project = await models.projects.findById(id) as any
+      if (!project) return res.status(404).json({ error: 'Project not found' })
+      const assignmentsForScope = await models.projectAssignments.find({ project_id: id, is_active: 1 }) as any[]
+      if (!(await userHasAnyPermission(models, user, 'projects.view_all')) && !isProjectLinkedToUser(project, user, assignmentsForScope)) {
+        return res.status(403).json({ error: 'You do not have access to this project' })
+      }
       const [assignments, users] = await Promise.all([
         models.projectAssignments.find({ project_id: id, is_active: 1 }) as Promise<any[]>,
         models.users.find({}) as Promise<any[]>,
@@ -276,8 +283,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
-  router.post('/', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.post('/', async (req, res) => {
     try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'projects.create'))) {
+        return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
+      }
       const body = req.body || {}
       const name = validateName(body.name, 'Project name', 2, 120)
       const code = validateLength(String(body.code || '').trim(), 2, 40, 'Project code')
@@ -432,8 +443,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     return res.send(sample)
   })
 
-  router.post('/import', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.post('/import', async (req, res) => {
     try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'projects.create'))) {
+        return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
+      }
       const csvText = String(req.body?.csv || '').trim()
       if (!csvText) return res.status(400).json({ error: 'csv is required' })
       const rows = parseCsv(csvText)
@@ -583,9 +598,15 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
-  router.put('/:id', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.put('/:id', async (req, res) => {
     try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'projects.edit'))) {
+        return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
+      }
       const id = String(req.params.id)
+      const project = await models.projects.findById(id) as any
+      if (!project) return res.status(404).json({ error: 'Project not found' })
       const body = req.body || {}
       const name = validateName(body.name, 'Project name', 2, 120)
       const projectType = validateEnum(body.project_type || 'development', PROJECT_TYPES, 'Project type')
@@ -621,6 +642,11 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         ? body.commercial_visible_to.map((r: any) => String(r).trim().toLowerCase()).filter(Boolean)
         : []
 
+      const assignments = await models.projectAssignments.find({ project_id: id, is_active: 1 }) as any[]
+      if (!(await userHasAnyPermission(models, user, 'projects.view_all')) && !isProjectLinkedToUser(project, user, assignments)) {
+        return res.status(403).json({ error: 'You do not have access to this project' })
+      }
+
       const $set: any = {
         name,
         client_name: body.client_name || null,
@@ -655,8 +681,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
-  router.delete('/:id', requireRole('admin'), async (req, res) => {
+  router.delete('/:id', async (req, res) => {
     try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'projects.delete'))) {
+        return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
+      }
       await models.projects.updateById(String(req.params.id), {
         $set: { status: 'archived', updated_at: new Date().toISOString() },
       })
@@ -666,8 +696,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
-  router.post('/:id/assign', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.post('/:id/assign', async (req, res) => {
     try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'projects.manage_team'))) {
+        return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
+      }
       const projectId = req.params.id
       const body = req.body || {}
       if (!body.user_id) return res.status(400).json({ error: 'user_id required' })
@@ -703,8 +737,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
-  router.delete('/:id/assign/:userId', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.delete('/:id/assign/:userId', async (req, res) => {
     try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'projects.manage_team'))) {
+        return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
+      }
       const { id: projectId, userId } = req.params
       await models.projectAssignments.updateMany(
         { project_id: projectId, user_id: userId },
@@ -716,8 +754,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
-  router.patch('/:id/assign/:userId', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.patch('/:id/assign/:userId', async (req, res) => {
     try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'projects.manage_team'))) {
+        return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
+      }
       const { id: projectId, userId } = req.params
       const { allocated_hours, role } = req.body || {}
       await models.projectAssignments.updateMany(
@@ -736,8 +778,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
-  router.post('/:id/assign-bulk', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.post('/:id/assign-bulk', async (req, res) => {
     try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'projects.manage_team'))) {
+        return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
+      }
       const projectId = req.params.id
       const { developers } = req.body || {}
       if (!Array.isArray(developers)) return res.status(400).json({ error: 'developers must be array' })
@@ -788,6 +834,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
       const user = req.user as any
       const { content } = req.body || {}
       if (!content) return res.status(400).json({ error: 'content required' })
+      const project = await models.projects.findById(projectId) as any
+      if (!project) return res.status(404).json({ error: 'Project not found' })
+      const assignments = await models.projectAssignments.find({ project_id: projectId, is_active: 1 }) as any[]
+      if (!(await userHasAnyPermission(models, user, 'projects.view_all')) && !isProjectLinkedToUser(project, user, assignments)) {
+        return res.status(403).json({ error: 'You do not have access to this project' })
+      }
       await models.activityLogs.insertOne({
         id: generateId('note'),
         project_id: projectId,

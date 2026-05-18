@@ -11,6 +11,19 @@ import {
 } from '../validators'
 
 const ATTENDANCE_STATUSES = ['present', 'absent', 'half_day', 'late', 'on_leave', 'holiday'] as const
+const APPROVAL_DECISIONS = ['approved', 'rejected'] as const
+
+// Returns YYYY-MM-DD for today in the server's local TZ.
+function todayISO() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Returns HH:mm in the server's local TZ.
+function nowHHMM() {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 export function createAttendanceRouter(models: MongoModels, jwtSecret: string) {
   const router = Router()
@@ -174,6 +187,108 @@ export function createAttendanceRouter(models: MongoModels, jwtSecret: string) {
       }
       const summary = Array.from(byUser.values()).sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
       return res.json({ data: summary, summary, month })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // User-self punch in/out. Writes (or upserts) today's attendance row for
+  // the calling user. `check_in` is set on the first punch of the day; later
+  // punches update `check_out`. Newly created rows land with approval_status
+  // = 'pending' so HR has to confirm them before they count.
+  router.post('/punch', async (req, res) => {
+    try {
+      const user = req.user as any
+      if (!user?.sub) return res.status(401).json({ error: 'Unauthenticated' })
+      const action = String(req.body?.action || '').toLowerCase()
+      if (action !== 'in' && action !== 'out') {
+        return res.status(400).json({ error: 'action must be "in" or "out"' })
+      }
+      const date = todayISO()
+      const time = nowHHMM()
+      const now = new Date().toISOString()
+      const existing = await models.attendance.findOne({ user_id: user.sub, date }) as any
+      if (action === 'in') {
+        if (existing && existing.check_in) {
+          return res.status(409).json({ error: 'Already punched in today', data: existing })
+        }
+        if (existing) {
+          await models.attendance.updateById(existing.id, {
+            $set: { check_in: time, status: 'present', approval_status: 'pending', updated_at: now },
+          })
+          const updated = await models.attendance.findById(existing.id)
+          return res.json({ message: 'Punched in', data: updated })
+        }
+        const id = generateId('att')
+        const doc = {
+          id,
+          user_id: user.sub,
+          date,
+          status: 'present',
+          check_in: time,
+          check_out: null,
+          note: null,
+          approval_status: 'pending',
+          created_at: now,
+          updated_at: now,
+        }
+        await models.attendance.insertOne(doc)
+        return res.status(201).json({ message: 'Punched in', data: doc })
+      }
+      // action === 'out'
+      if (!existing) {
+        return res.status(400).json({ error: 'No check-in recorded today — punch in first' })
+      }
+      await models.attendance.updateById(existing.id, {
+        $set: { check_out: time, approval_status: 'pending', updated_at: now },
+      })
+      const updated = await models.attendance.findById(existing.id)
+      return res.json({ message: 'Punched out', data: updated })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Calling user's today record — used by the attendance page header to
+  // show current state and toggle the punch-in / punch-out button.
+  router.get('/today', async (req, res) => {
+    try {
+      const user = req.user as any
+      if (!user?.sub) return res.status(401).json({ error: 'Unauthenticated' })
+      const row = await models.attendance.findOne({ user_id: user.sub, date: todayISO() }) as any
+      return res.json({ data: row || null })
+    } catch {
+      return res.json({ data: null })
+    }
+  })
+
+  // HR approves / rejects a daily attendance row. Reason is required for
+  // rejections so the employee gets context.
+  router.patch('/:id/decision', requireAnyPermission(models, 'hr.attendance.manage'), async (req, res) => {
+    try {
+      const user = req.user as any
+      const decision = validateEnum(req.body?.decision, APPROVAL_DECISIONS, 'Decision')
+      let reason: string | null = null
+      if (req.body?.reason !== undefined && req.body?.reason !== null && String(req.body.reason).trim() !== '') {
+        reason = validateLength(String(req.body.reason).trim(), 1, 500, 'Reason')
+      }
+      if (decision === 'rejected' && !reason) {
+        return res.status(400).json({ error: 'Reason is required when rejecting' })
+      }
+      const row = await models.attendance.findById(String(req.params.id)) as any
+      if (!row) return res.status(404).json({ error: 'Attendance row not found' })
+      const now = new Date().toISOString()
+      await models.attendance.updateById(row.id, {
+        $set: {
+          approval_status: decision,
+          decision_reason: reason,
+          decided_by: String(user?.sub || ''),
+          decided_at: now,
+          updated_at: now,
+        },
+      })
+      const updated = await models.attendance.findById(row.id)
+      return res.json({ message: `Attendance ${decision}`, data: updated })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }

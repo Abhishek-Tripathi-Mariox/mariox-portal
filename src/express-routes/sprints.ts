@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware } from '../express-middleware/auth'
+import { createAuthMiddleware, userHasAnyPermission } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
 import {
   validateRequired,
@@ -63,7 +63,7 @@ export function createSprintsRouter(models: MongoModels, jwtSecret: string) {
   router.post('/', async (req, res) => {
     try {
       const user = req.user as any
-      if (!['admin', 'pm', 'pc'].includes(user?.role)) return res.status(403).json({ error: 'Forbidden' })
+      if (!(await userHasAnyPermission(models, user, 'sprints.create'))) return res.status(403).json({ error: 'Forbidden' })
       const body = req.body || {}
       const project_id = validateRequired(body.project_id, 'project_id')
       const name = validateLength(String(body.name || '').trim(), 2, 120, 'Sprint name')
@@ -99,7 +99,7 @@ export function createSprintsRouter(models: MongoModels, jwtSecret: string) {
   router.put('/:id', async (req, res) => {
     try {
       const user = req.user as any
-      if (!['admin', 'pm', 'pc'].includes(user?.role)) return res.status(403).json({ error: 'Forbidden' })
+      if (!(await userHasAnyPermission(models, user, 'sprints.edit'))) return res.status(403).json({ error: 'Forbidden' })
       const id = req.params.id
       const body = req.body || {}
       const patch: any = { updated_at: new Date().toISOString() }
@@ -246,7 +246,7 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
   router.post('/', async (req, res) => {
     try {
       const user = req.user as any
-      if (!['admin', 'pm', 'pc'].includes(user?.role)) return res.status(403).json({ error: 'Forbidden' })
+      if (!(await userHasAnyPermission(models, user, 'milestones.create'))) return res.status(403).json({ error: 'Forbidden' })
       const body = req.body || {}
       const { project_id, title, description, due_date, is_billable = 0, invoice_amount = 0, client_visible = 1, deliverables, tasks, attachments } = body
       if (!project_id || !title || !due_date) return res.status(400).json({ error: 'project_id, title, due_date required' })
@@ -407,7 +407,7 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
   router.put('/:id', async (req, res) => {
     try {
       const user = req.user as any
-      if (!['admin', 'pm', 'pc'].includes(user?.role)) return res.status(403).json({ error: 'Forbidden' })
+      if (!(await userHasAnyPermission(models, user, 'milestones.edit'))) return res.status(403).json({ error: 'Forbidden' })
       const id = req.params.id
       const body = req.body || {}
       const patch: any = { updated_at: new Date().toISOString() }
@@ -426,7 +426,7 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
   router.post('/:id/send-email', async (req, res) => {
     try {
       const user = req.user as any
-      if (!['admin', 'pm', 'pc'].includes(user?.role)) return res.status(403).json({ error: 'Forbidden' })
+      if (!(await userHasAnyPermission(models, user, 'milestones.edit'))) return res.status(403).json({ error: 'Forbidden' })
       const id = req.params.id
       const milestone = await models.milestones.findById(id) as any
       if (!milestone) return res.status(404).json({ error: 'Milestone not found' })

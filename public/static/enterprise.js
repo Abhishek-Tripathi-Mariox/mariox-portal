@@ -530,11 +530,27 @@ async function renderDevDashboard(el) {
 }
 
 /* ── PROJECTS LIST ───────────────────────────────────────── */
+function hasProjectPermission(key) {
+  const role = String(_user?.role || '').toLowerCase()
+  if (role === 'admin') return true
+  return typeof hasAnyPermission === 'function' ? hasAnyPermission([key]) : false
+}
+
+function hasPermission(key) {
+  const role = String(_user?.role || '').toLowerCase()
+  if (role === 'admin') return true
+  return typeof hasAnyPermission === 'function' ? hasAnyPermission([key]) : false
+}
+
 async function renderProjectsList(el) {
   el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading projects…</div>`
   try {
     const [proj, clients] = await Promise.all([API.get('/projects'), API.get('/clients').catch(()=>({clients:[]}))])
     const projects = proj.projects || proj || []
+    const canCreateProject = hasProjectPermission('projects.create')
+    const canEditProject = hasProjectPermission('projects.edit')
+    const canManageKanban = hasProjectPermission('projects.manage_kanban_perms')
+    const canDeleteProject = hasProjectPermission('projects.delete')
     const clientMap = {}
     ;(clients.clients||[]).forEach(c => clientMap[c.id]=c)
     const pagination = paginateClient(projects, _projectsListPage, _projectsPageLimit)
@@ -546,7 +562,7 @@ async function renderProjectsList(el) {
       <div><h1 class="page-title">Projects</h1><p class="page-subtitle">${pagination.total} total projects</p></div>
       <div class="page-actions">
         <div class="search-wrap"><i class="fas fa-search"></i><input class="search-bar" placeholder="Search projects…" oninput="filterTable(this.value,'proj-table')"/></div>
-        ${['admin','pm'].includes(_user.role)?`<button class="btn btn-secondary" onclick="openImportProjectsModal()"><i class="fas fa-file-csv"></i>Import CSV</button><button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i>New Project</button>`:''}
+        ${canCreateProject ? `<button class="btn btn-secondary" onclick="openImportProjectsModal()"><i class="fas fa-file-csv"></i>Import CSV</button><button class="btn btn-primary" onclick="openProjectModal()"><i class="fas fa-plus"></i>New Project</button>` : ''}
       </div>
     </div>
     <div class="card">
@@ -578,9 +594,9 @@ async function renderProjectsList(el) {
                   <div style="display:flex;gap:4px">
                     <button class="btn btn-xs btn-outline" onclick="openProjectDetailModal('${p.id}')" title="View project details"><i class="fas fa-eye"></i></button>
                     <button class="btn btn-xs btn-outline" onclick="openProjectBoard('${p.id}','${p.name}')" title="Open Kanban board"><i class="fas fa-columns"></i></button>
-                    ${['admin','pm'].includes(_user.role)?`<button class="btn btn-xs btn-outline" onclick="openKanbanPermissionsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i></button>`:''}
-                    ${['admin','pm'].includes(_user.role)?`<button class="btn btn-xs btn-outline" onclick="showEditProjectModal('${p.id}')" title="Edit project"><i class="fas fa-edit"></i></button>`:''}
-                    ${_user.role==='admin'?`<button class="btn btn-xs btn-outline" onclick="deleteProject('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Delete project" style="color:#FF5E3A"><i class="fas fa-trash"></i></button>`:''}
+                    ${canManageKanban ? `<button class="btn btn-xs btn-outline" onclick="openKanbanPermissionsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i></button>` : ''}
+                    ${canEditProject ? `<button class="btn btn-xs btn-outline" onclick="showEditProjectModal('${p.id}')" title="Edit project"><i class="fas fa-edit"></i></button>` : ''}
+                    ${canDeleteProject ? `<button class="btn btn-xs btn-outline" onclick="deleteProject('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Delete project" style="color:#FF5E3A"><i class="fas fa-trash"></i></button>` : ''}
                   </div>
                 </td>
               </tr>`
@@ -791,7 +807,7 @@ async function renderKanbanBoard(el) {
         })
       }
     }
-    const canManage = ['admin', 'pm'].includes(_user.role)
+    const canManage = hasProjectPermission('projects.manage_kanban_perms')
     // Task creation is broader: developers and team members can add tasks too,
     // both via the toolbar button and the per-column "Add task" tile.
     const canAddTask = ['admin', 'pm', 'pc', 'developer', 'team'].includes(_user.role)
@@ -1166,13 +1182,13 @@ async function openTaskDrawer(taskId) {
         <div style="font-size:10px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Assignee</div>
         <div id="task-assignee-cell-${t.id}" style="font-size:13px;color:#e2e8f0;display:flex;align-items:center;gap:6px">
           ${t.assignee_name ? `${avatar(t.assignee_name,t.assignee_color||'#FF7A45','sm')} <span>${t.assignee_name}</span>` : '<span style="color:#64748b">Unassigned</span>'}
-          ${['admin','pm'].includes(_user.role) ? `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="showTaskAssigneeEditor('${t.id}','${t.project_id}','${(t.assignee_id||'')}')" title="Change assignee"><i class="fas fa-user-edit"></i></button>` : ''}
+          ${hasPermission('tasks.edit_any') ? `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="showTaskAssigneeEditor('${t.id}','${t.project_id}','${(t.assignee_id||'')}')" title="Change assignee"><i class="fas fa-user-edit"></i></button>` : ''}
         </div>
       </div>
       ${metaItem('Reporter', t.reporter_name||'—')}
       ${metaItem('Project', t.project_name||'—')}
       ${metaItem('Sprint', t.sprint_name||'—')}
-      ${metaItem('Due Date', ['admin','pm','pc','developer','team'].includes(_user.role)
+      ${metaItem('Due Date', hasPermission('tasks.move')
         ? `<input type="date" class="form-input" id="task-due-${t.id}" value="${t.due_date ? String(t.due_date).slice(0,10) : ''}" onchange="saveTaskDueDate('${t.id}', this.value)" style="font-size:12.5px;padding:4px 6px;color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#e2e8f0'}"/>`
         : `<span style="color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#94a3b8'}">${fmtDate(t.due_date)}</span>`)}
       ${_user.role !== 'team' ? metaItem('Hours', `${t.logged_hours||0}h logged / ${t.estimated_hours||0}h est`) : ''}
@@ -1180,7 +1196,7 @@ async function openTaskDrawer(taskId) {
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
       <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Move to</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap" id="task-status-btns-${t.id}">
-        ${['admin','pm'].includes(_user.role) ? 
+        ${hasPermission('tasks.move') ? 
           ['backlog','todo','in_progress','in_review','qa','done','blocked'].map(s=>`<button class="btn btn-xs ${t.status===s?'btn-primary':'btn-outline'}" onclick="updateTaskStatus('${t.id}','${s}')">${s.replace(/_/g,' ')}</button>`).join('')
           : `${statusBadge(t.status)}`}
       </div>
@@ -1216,7 +1232,7 @@ async function openTaskDrawer(taskId) {
         <textarea id="new-comment-${t.id}" placeholder="Add a comment… (type @ to mention)" oninput="onCommentInput(event,'${t.id}','${t.project_id}')" onkeydown="onCommentKeydown(event,'${t.id}')"></textarea>
         <div id="mention-suggest-${t.id}" style="display:none;position:absolute;bottom:100%;left:0;right:0;max-height:180px;overflow-y:auto;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.4);z-index:5;margin-bottom:6px"></div>
         <div class="comment-box-footer">
-          ${['admin','pm'].includes(_user.role)?`<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#64748b;margin-right:auto;cursor:pointer"><input type="checkbox" id="comment-internal-${t.id}" style="accent-color:#FF7A45"/> Internal only</label>`:''}
+          ${hasPermission('tasks.comment') ? `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#64748b;margin-right:auto;cursor:pointer"><input type="checkbox" id="comment-internal-${t.id}" style="accent-color:#FF7A45"/> Internal only</label>` : ''}
           <button class="btn btn-sm btn-primary" onclick="submitComment('${t.id}')"><i class="fas fa-paper-plane"></i>Comment</button>
         </div>
       </div>
@@ -1224,7 +1240,7 @@ async function openTaskDrawer(taskId) {
     openDrawer(drawerHTML)
 
     // Load project-specific status columns for PM/Admin
-    if (['admin','pm'].includes(_user.role) && t.project_id) {
+    if (hasPermission('tasks.move') && t.project_id) {
       API.get('/tasks/columns/' + t.project_id).then(cd => {
         const cols = cd.columns || []
         if (!cols.length) return
@@ -1636,7 +1652,7 @@ async function renderSprintsView(el) {
     <div class="page-header">
       <div><h1 class="page-title">Sprints</h1><p class="page-subtitle">${pagination.total} sprints across all projects</p></div>
       <div class="page-actions">
-        ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="showCreateSprintModal()"><i class="fas fa-plus"></i>New Sprint</button>`:''}
+        ${hasPermission('sprints.create') ? `<button class="btn btn-primary" onclick="showCreateSprintModal()"><i class="fas fa-plus"></i>New Sprint</button>` : ''}
       </div>
     </div>
     ${listSectionHeader(['Sprint', 'Project / Timeline', 'Stats', 'Status / Progress'], '2.1fr 1.2fr 1fr 1.1fr')}
@@ -1656,7 +1672,7 @@ async function renderSprintsView(el) {
           </div>
           <div style="display:flex;gap:8px">
             <button class="btn btn-sm btn-outline" onclick="openProjectBoard('${s.project_id}','')"><i class="fas fa-columns"></i>Board</button>
-            ${['admin','pm'].includes(_user.role)?`<button class="btn btn-sm btn-outline" onclick="editSprint('${s.id}','${s.status}')"><i class="fas fa-edit"></i></button>`:''}
+            ${hasPermission('sprints.edit') ? `<button class="btn btn-sm btn-outline" onclick="editSprint('${s.id}','${s.status}')"><i class="fas fa-edit"></i></button>` : ''}
           </div>
         </div>
         <div class="card-body">
@@ -1787,7 +1803,7 @@ async function renderMilestonesView(el) {
     }
     window._milestonesCache = milestones
     window._projectsCache = projMap
-    const canEdit = ['admin', 'pm'].includes(_user.role)
+    const canEdit = hasPermission('milestones.edit') || hasPermission('sprints.edit')
 
     // Group milestones by project. Project columns are sorted by latest
     // activity so the busiest projects bubble up first; empty projects still
@@ -2335,7 +2351,7 @@ async function showMilestoneDetailsModal(id) {
       : Number(m.completion_pct) || 0
     const pct = m.status === 'completed' ? 100 : Math.min(100, Math.round(derivedPct || 0))
     const overdue = new Date(m.due_date) < new Date() && m.status !== 'completed'
-    const canEdit = ['admin','pm'].includes(_user.role)
+    const canEdit = hasPermission('milestones.edit')
     const rating = m.rating || null
     const attachments = (docsRes.documents || docsRes.data || [])
       .filter(d => String(d.source_milestone_id || '') === String(m.id))
@@ -2591,7 +2607,7 @@ async function renderMyTasks(el) {
           <option value="">All Priority</option>
           ${['critical','high','medium','low'].map(p=>`<option value="${p}">${p}</option>`).join('')}
         </select>
-        ${['admin','pm'].includes(_user.role)?`<button class="btn btn-primary" onclick="showCreateTaskModal()"><i class="fas fa-plus"></i>New Task</button>`:''}
+        ${hasPermission('tasks.create') ? `<button class="btn btn-primary" onclick="showCreateTaskModal()"><i class="fas fa-plus"></i>New Task</button>` : ''}
       </div>
     </div>
     <div class="card">
@@ -2657,7 +2673,7 @@ async function renderResourcesView(el) {
     const utilization = (d.utilization || []).filter(u => devIds.has(String(u.id || u.user_id)))
     const pagination = paginateClient(utilization, _resourcesPage, _resourcesPageLimit)
     _resourcesPage = pagination.page
-    const canManage = ['admin','pm','pc'].includes(_user.role)
+    const canManage = hasPermission('allocations.edit')
 
     el.innerHTML = `
     <div class="page-header">
@@ -2957,7 +2973,7 @@ async function renderClientsList(el) {
     el.innerHTML = `
     <div class="page-header">
       <div><h1 class="page-title">Clients</h1><p class="page-subtitle">${pagination.total} ${filter === 'inactive' ? 'inactive' : filter === 'active' ? 'active' : ''} client companies</p></div>
-      ${_user.role === 'admin' ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="openImportClientsModal()"><i class="fas fa-file-csv"></i>Import CSV</button><button class="btn btn-primary" onclick="openCreateClientModal()"><i class="fas fa-user-plus"></i>Add Client</button></div>` : ''}
+      ${hasPermission('clients.create') ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="openImportClientsModal()"><i class="fas fa-file-csv"></i>Import CSV</button><button class="btn btn-primary" onclick="openCreateClientModal()"><i class="fas fa-user-plus"></i>Add Client</button></div>` : ''}
     </div>
     <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
       ${tabBtn('active', 'Active', activeCount)}
@@ -2976,7 +2992,7 @@ async function renderClientsList(el) {
                 <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.email}</div>
               </div>
             </div>
-            ${_user.role === 'admin' ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i> Login</button><button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Delete client"><i class="fas fa-trash"></i> Delete</button></div>` : ''}
+            ${hasPermission('clients.delete') ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i> Login</button><button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Delete client"><i class="fas fa-trash"></i> Delete</button></div>` : ''}
           </div>
           <div style="display:grid;grid-template-columns:${cl.price !== undefined ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr'};gap:12px;margin-bottom:12px">
             <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#e2e8f0">${cl.project_count||0}</div><div style="font-size:11px;color:#64748b">Projects</div></div>
@@ -3293,7 +3309,7 @@ async function showClientDetail(clientId) {
     const projects = data.projects || []
     const invoices = data.invoices || []
     const projectIds = projects.map(p => String(p.id))
-    const canEdit = ['admin', 'pm', 'pc'].includes(String(_user?.role || '').toLowerCase())
+    const canEdit = hasPermission('clients.edit')
 
     // Pull related entities scoped to this client's projects so admin can see
     // every touchpoint (milestones, docs, tickets) without leaving the modal.
@@ -3954,8 +3970,8 @@ async function renderTeamOverview(el) {
       : users
     const pagination = paginateClient(filtered, _teamOverviewPage, _teamOverviewPageLimit)
     _teamOverviewPage = pagination.page
-    const isAdmin = _user.role === 'admin'
-    const canEdit = ['admin', 'pm'].includes(_user.role)
+    const isAdmin = hasPermission('users.create')
+    const canEdit = hasPermission('users.edit')
 
     el.innerHTML = `
     <div class="page-header">

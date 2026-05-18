@@ -41,8 +41,13 @@ async function renderAttendanceView(el) {
 
     const params = {}
     if (_hrAttFilterDate) params.date = _hrAttFilterDate
-    const rows = await API.get('/attendance', { params })
+    const [rows, todayRes] = await Promise.all([
+      API.get('/attendance', { params }),
+      API.get('/attendance/today').catch(() => ({ data: null })),
+    ])
     const list = rows.attendance || rows.data || []
+    const today = todayRes.data || null
+    window._hrAttToday = today
 
     const filtered = _hrAttFilterStatus ? list.filter(r => r.status === _hrAttFilterStatus) : list
     const pagination = paginateClient(filtered, _hrAttPage, 12)
@@ -63,6 +68,8 @@ async function renderAttendanceView(el) {
           <button class="btn btn-primary" onclick="openAttendanceModal()"><i class="fas fa-plus"></i> Mark Attendance</button>
         </div>` : ''}
       </div>
+
+      ${renderMyPunchCard(today)}
 
       ${canManage ? `<div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:0">
         <button class="btn btn-sm ${_hrAttTab==='log'?'btn-primary':'btn-outline'}" onclick="hrAttSetTab('log')" style="border-radius:6px 6px 0 0"><i class="fas fa-list"></i> Daily Log</button>
@@ -97,11 +104,11 @@ async function renderAttendanceView(el) {
         <table class="data-table">
           <thead><tr>
             ${canManage ? '<th>Employee</th>' : ''}
-            <th>Date</th><th>Status</th><th>Check-in</th><th>Check-out</th><th>Note</th>${canManage ? '<th style="width:80px">Actions</th>' : ''}
+            <th>Date</th><th>Status</th><th>Check-in</th><th>Check-out</th><th>Approval</th><th>Note</th>${canManage ? '<th style="width:120px">Actions</th>' : ''}
           </tr></thead>
           <tbody>
             ${pagination.total === 0
-              ? hrEmptyRow(canManage ? 7 : 5, 'fa-user-clock', 'No attendance records yet.')
+              ? hrEmptyRow(canManage ? 8 : 6, 'fa-user-clock', 'No attendance records yet.')
               : pagination.items.map(r => renderAttendanceRow(r, canManage)).join('')}
           </tbody>
         </table>
@@ -112,17 +119,88 @@ async function renderAttendanceView(el) {
   }
 }
 
+function renderMyPunchCard(today) {
+  const hasIn = today && today.check_in
+  const hasOut = today && today.check_out
+  const approval = today?.approval_status || 'pending'
+  const approvalLabel = !today ? 'No punch yet' : (approval === 'approved' ? 'Approved' : approval === 'rejected' ? 'Rejected' : 'Pending HR approval')
+  const approvalColor = approval === 'approved' ? '#58C68A' : approval === 'rejected' ? '#FF5E3A' : '#FFCB47'
+  const rejectReason = approval === 'rejected' && today?.decision_reason
+    ? `<div style="font-size:11px;color:#FF8866;margin-top:4px"><i class="fas fa-comment-dots"></i> ${escapeInbox(today.decision_reason)}</div>`
+    : ''
+  return `
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 16px">
+      <div>
+        <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">My Shift Today</div>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:4px;flex-wrap:wrap">
+          <div><span style="font-size:11px;color:#94a3b8">In:</span> <span style="font-weight:600;color:${hasIn?'#86E0A8':'#64748b'}">${hasIn ? escapeInbox(today.check_in) : '—'}</span></div>
+          <div><span style="font-size:11px;color:#94a3b8">Out:</span> <span style="font-weight:600;color:${hasOut?'#86E0A8':'#64748b'}">${hasOut ? escapeInbox(today.check_out) : '—'}</span></div>
+          <div><span class="badge" style="background:${approvalColor}20;color:${approvalColor};border:1px solid ${approvalColor}40">${approvalLabel}</span></div>
+        </div>
+        ${rejectReason}
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="hrPunch('in')" ${hasIn ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
+          <i class="fas fa-sign-in-alt"></i> Punch In
+        </button>
+        <button class="btn ${hasIn && !hasOut ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="hrPunch('out')" ${!hasIn || hasOut ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
+          <i class="fas fa-sign-out-alt"></i> Punch Out
+        </button>
+      </div>
+    </div>
+  </div>`
+}
+
+async function hrPunch(action) {
+  try {
+    const res = await API.post('/attendance/punch', { action })
+    toast(action === 'in' ? 'Punched in' : 'Punched out', 'success')
+    hrReloadPage('page-hr-attendance')
+    return res
+  } catch (e) { toast(e.message || 'Failed', 'error') }
+}
+
+function _attApprovalBadge(r) {
+  const s = r.approval_status || 'pending'
+  const color = s === 'approved' ? '#58C68A' : s === 'rejected' ? '#FF5E3A' : '#FFCB47'
+  const label = s === 'approved' ? 'Approved' : s === 'rejected' ? 'Rejected' : 'Pending'
+  const tip = s === 'rejected' && r.decision_reason ? ` title="${escapeInbox(r.decision_reason)}"` : ''
+  return `<span class="badge"${tip} style="background:${color}20;color:${color};border:1px solid ${color}40">${label}</span>`
+}
+
 function renderAttendanceRow(r, canManage) {
   const name = r.full_name || r.email || 'Unknown'
+  const isPending = (r.approval_status || 'pending') === 'pending'
   return `<tr>
     ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, r.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(name)}</span></div></td>` : ''}
     <td style="font-size:12px;color:#9F8678">${fmtDate(r.date)}</td>
     <td>${ATT_STATUS_BADGE[r.status] || `<span class="badge">${escapeInbox(r.status||'')}</span>`}</td>
     <td style="font-size:12px;color:#E8D2BD">${escapeInbox(r.check_in || '—')}</td>
     <td style="font-size:12px;color:#E8D2BD">${escapeInbox(r.check_out || '—')}</td>
+    <td>${_attApprovalBadge(r)}</td>
     <td style="font-size:12px;color:#E8D2BD;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeInbox(r.note || '')}">${escapeInbox(r.note || '—')}</td>
-    ${canManage ? `<td><button class="btn btn-icon btn-xs" onclick="deleteAttendance('${r.id}')" title="Delete"><i class="fas fa-trash"></i></button></td>` : ''}
+    ${canManage ? `<td>
+      <div style="display:flex;gap:4px">
+        ${isPending ? `<button class="btn btn-xs btn-primary" onclick="hrAttDecide('${r.id}','approved')" title="Approve"><i class="fas fa-check"></i></button>
+          <button class="btn btn-xs btn-outline" onclick="hrAttDecide('${r.id}','rejected')" title="Reject" style="color:#FF5E3A"><i class="fas fa-xmark"></i></button>` : ''}
+        <button class="btn btn-icon btn-xs" onclick="deleteAttendance('${r.id}')" title="Delete"><i class="fas fa-trash"></i></button>
+      </div>
+    </td>` : ''}
   </tr>`
+}
+
+async function hrAttDecide(id, decision) {
+  let reason = ''
+  if (decision === 'rejected') {
+    reason = prompt('Reason for rejection (required):') || ''
+    if (!reason.trim()) { toast('Reason is required', 'error'); return }
+  }
+  try {
+    await API.patch(`/attendance/${id}/decision`, { decision, reason: reason || null })
+    toast(`Marked ${decision}`, 'success')
+    hrReloadPage('page-hr-attendance')
+  } catch (e) { toast(e.message || 'Failed', 'error') }
 }
 
 function hrAttSetDate(v) { _hrAttFilterDate = v || ''; _hrAttPage = 1; hrReloadPage('page-hr-attendance') }

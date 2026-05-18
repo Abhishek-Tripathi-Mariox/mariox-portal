@@ -37,6 +37,17 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     ],
   },
   {
+    module: 'sprints',
+    label: 'Sprints & Milestones',
+    icon: 'fa-bolt',
+    permissions: [
+      { key: 'sprints.create',    label: 'Create sprints' },
+      { key: 'sprints.edit',      label: 'Edit sprints' },
+      { key: 'milestones.create', label: 'Create milestones' },
+      { key: 'milestones.edit',   label: 'Edit milestones' },
+    ],
+  },
+  {
     module: 'tasks',
     label: 'Tasks & Kanban',
     icon: 'fa-list-check',
@@ -260,6 +271,7 @@ const PM_PERMS: PermissionKey[] = [
   'tickets.create', 'tickets.view_all', 'tickets.assign', 'tickets.internal_notes',
   'documents.upload', 'documents.view_all',
   'reports.view_pm_dashboard', 'reports.view_resources', 'reports.export',
+  'sprints.create', 'sprints.edit', 'milestones.create', 'milestones.edit',
   'allocations.create', 'allocations.edit', 'allocations.view',
   'leaves.create_own', 'leaves.approve', 'leaves.view_all',
   'portfolios.create', 'portfolios.edit', 'portfolios.delete',
@@ -272,7 +284,7 @@ const PM_PERMS: PermissionKey[] = [
 ]
 
 const PC_PERMS: PermissionKey[] = [
-  'projects.view_all', 'projects.edit',
+  'projects.edit',
   'tasks.create', 'tasks.edit_any', 'tasks.edit_own', 'tasks.move', 'tasks.comment',
   'timesheets.log_own', 'timesheets.view_team',
   'users.view_all',
@@ -280,6 +292,7 @@ const PC_PERMS: PermissionKey[] = [
   'tickets.create', 'tickets.view_all', 'tickets.assign', 'tickets.internal_notes',
   'documents.upload', 'documents.view_all',
   'reports.view_pm_dashboard',
+  'sprints.create', 'sprints.edit', 'milestones.create', 'milestones.edit',
   'allocations.view',
   'leaves.create_own',
 ]

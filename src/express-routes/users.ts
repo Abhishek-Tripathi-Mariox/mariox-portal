@@ -23,6 +23,35 @@ function normalizeRole(role: any): string {
   return String(role || '').toLowerCase().trim()
 }
 
+// Per-user shift assignment (HR sets these directly on the user record).
+// `shift_start` / `shift_end` are HH:mm strings (24h). `shift_days` is an
+// array of weekday indices, 0 = Sunday … 6 = Saturday. Returns nulls when
+// the body doesn't include shift info so PUT can leave the field untouched.
+function parseShift(body: any) {
+  const hhmm = (v: any): string | null => {
+    if (v === undefined || v === null || v === '') return null
+    const s = String(v).trim()
+    if (!/^\d{1,2}:\d{2}$/.test(s)) throw new Error('Shift time must be HH:mm')
+    const [h, m] = s.split(':').map(Number)
+    if (h < 0 || h > 23 || m < 0 || m > 59) throw new Error('Shift time out of range')
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+  const days = (v: any): number[] | null => {
+    if (v === undefined) return null
+    if (!Array.isArray(v)) throw new Error('shift_days must be an array')
+    return v.map((d) => {
+      const n = Number(d)
+      if (!Number.isInteger(n) || n < 0 || n > 6) throw new Error('shift_days entries must be 0..6')
+      return n
+    })
+  }
+  return {
+    shift_start: 'shift_start' in body ? hhmm(body.shift_start) : undefined,
+    shift_end:   'shift_end'   in body ? hhmm(body.shift_end)   : undefined,
+    shift_days:  'shift_days'  in body ? days(body.shift_days)  : undefined,
+  }
+}
+
 // Validate the manager/tl pointer the caller supplied for a sales-role user.
 // Returns { manager_id, tl_id } that should be persisted, or throws an Error.
 async function resolveSalesHierarchy(
@@ -328,6 +357,7 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
       const avatarColor = body.avatar_color
         ? validateHexColor(body.avatar_color, 'Avatar color')
         : '#6366f1'
+      const shift = parseShift(body)
 
       const existing = await models.users.findByEmail(email)
       if (existing) return res.status(409).json({ error: 'Email already registered' })
@@ -362,7 +392,10 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
         tl_id: hierarchy.tl_id,
         avatar_color: avatarColor,
         remarks: body.remarks || null,
-      })
+        shift_start: shift.shift_start ?? null,
+        shift_end: shift.shift_end ?? null,
+        shift_days: shift.shift_days ?? null,
+      } as any)
 
       // Best-effort welcome email with account credentials. We don't block the
       // create response on SMTP — bubble the result back so the UI can warn
@@ -444,28 +477,31 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
         )
       }
 
-      await models.users.updateById(id, {
-        $set: {
-          full_name: fullName,
-          phone,
-          designation,
-          role: nextRole,
-          tech_stack: body.tech_stack ? JSON.stringify(body.tech_stack) : null,
-          skill_tags: body.skill_tags ? JSON.stringify(body.skill_tags) : null,
-          daily_work_hours: dailyHours,
-          working_days_per_week: weeklyDays,
-          hourly_cost: hourlyCost,
-          monthly_available_hours: monthlyHours,
-          monthly_target: monthlyTarget,
-          incentive_rate: incentiveRate,
-          reporting_pm_id: body.reporting_pm_id || null,
-          manager_id: hierarchy.manager_id,
-          tl_id: hierarchy.tl_id,
-          remarks: body.remarks || null,
-          is_active: body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1,
-          updated_at: new Date().toISOString(),
-        },
-      })
+      const shift = parseShift(body)
+      const setPatch: Record<string, unknown> = {
+        full_name: fullName,
+        phone,
+        designation,
+        role: nextRole,
+        tech_stack: body.tech_stack ? JSON.stringify(body.tech_stack) : null,
+        skill_tags: body.skill_tags ? JSON.stringify(body.skill_tags) : null,
+        daily_work_hours: dailyHours,
+        working_days_per_week: weeklyDays,
+        hourly_cost: hourlyCost,
+        monthly_available_hours: monthlyHours,
+        monthly_target: monthlyTarget,
+        incentive_rate: incentiveRate,
+        reporting_pm_id: body.reporting_pm_id || null,
+        manager_id: hierarchy.manager_id,
+        tl_id: hierarchy.tl_id,
+        remarks: body.remarks || null,
+        is_active: body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1,
+        updated_at: new Date().toISOString(),
+      }
+      if (shift.shift_start !== undefined) setPatch.shift_start = shift.shift_start
+      if (shift.shift_end !== undefined) setPatch.shift_end = shift.shift_end
+      if (shift.shift_days !== undefined) setPatch.shift_days = shift.shift_days
+      await models.users.updateById(id, { $set: setPatch })
       const updated = await models.users.findById(id)
       return res.json({ data: updated, message: 'User updated successfully' })
     } catch (error: any) {

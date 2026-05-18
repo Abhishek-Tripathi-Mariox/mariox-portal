@@ -171,12 +171,17 @@ async function ensureSystemRoles(models: MongoModels) {
   for (const seed of SYSTEM_ROLE_SEEDS) {
     const existing = await models.roles.findOne({ key: seed.key }) as any
     if (existing) {
-      // Backfill description / name on system roles, but never overwrite the
-      // permissions admin has tweaked through the UI.
+      // Backfill description / name on system roles. We keep this narrow so
+      // admin-managed custom roles stay untouched, but we do remove the old
+      // projects.view_all grant from the pc system role because project
+      // visibility is now scope-based.
       const patch: Record<string, unknown> = { is_system: 1, updated_at: now }
       if (!existing.name) patch.name = seed.name
       if (!existing.description) patch.description = seed.description
       if (!Array.isArray(existing.permissions)) patch.permissions = seed.permissions
+      if (existing.key === 'pc' && Array.isArray(existing.permissions)) {
+        patch.permissions = Array.from(new Set(existing.permissions.map((p: unknown) => String(p)).filter((p: string) => p && p !== 'projects.view_all')))
+      }
       await models.roles.updateById(existing.id, { $set: patch })
       continue
     }

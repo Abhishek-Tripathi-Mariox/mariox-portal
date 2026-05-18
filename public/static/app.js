@@ -132,7 +132,7 @@ const NAV_PERMISSION_MAP = {
   'hr-team':           ['users.view_all'],
   // PM / work
   'pm-dashboard':      ['reports.view_pm_dashboard'],
-  'projects-list':     ['projects.create', 'projects.view_all', 'projects.edit', 'projects.delete'],
+  'projects-list':     ['projects.create', 'projects.view_all', 'projects.edit', 'projects.delete', 'projects.manage_team', 'projects.manage_kanban_perms'],
   'kanban-board':      ['tasks.create', 'tasks.edit_any', 'tasks.edit_own', 'tasks.move', 'tasks.comment'],
   'documents-center':  ['documents.upload', 'documents.view_all', 'documents.delete'],
   'resources-view':    ['reports.view_resources'],

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware } from '../express-middleware/auth'
+import { createAuthMiddleware, userHasAnyPermission } from '../express-middleware/auth'
 import { DEFAULT_KANBAN_COLUMNS } from '../constants'
 import { generateId } from '../utils/helpers'
 import {
@@ -100,7 +100,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
   router.post('/columns/:project_id', async (req, res) => {
     try {
       const user = req.user as any
-      if (!['admin', 'pm', 'pc'].includes(user?.role)) return res.status(403).json({ error: 'Forbidden' })
+      if (!(await userHasAnyPermission(models, user, 'projects.manage_kanban_perms'))) return res.status(403).json({ error: 'Forbidden' })
       const projectId = req.params.project_id
       const { name, color = '#6366f1', wip_limit = 0, is_done_column = 0 } = req.body || {}
       if (!name) return res.status(400).json({ error: 'name required' })
@@ -119,7 +119,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
   router.put('/columns/:id', async (req, res) => {
     try {
       const user = req.user as any
-      if (!['admin', 'pm', 'pc'].includes(user?.role)) return res.status(403).json({ error: 'Forbidden' })
+      if (!(await userHasAnyPermission(models, user, 'projects.manage_kanban_perms'))) return res.status(403).json({ error: 'Forbidden' })
       const id = req.params.id
       const body = req.body || {}
       const patch: any = {}
@@ -138,7 +138,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
   router.delete('/columns/:id', async (req, res) => {
     try {
       const user = req.user as any
-      if (!['admin', 'pm', 'pc'].includes(user?.role)) return res.status(403).json({ error: 'Forbidden' })
+      if (!(await userHasAnyPermission(models, user, 'projects.manage_kanban_perms'))) return res.status(403).json({ error: 'Forbidden' })
       const id = req.params.id
       const col = await models.kanbanColumns.findById(id) as any
       if (!col) return res.status(404).json({ error: 'Column not found' })
