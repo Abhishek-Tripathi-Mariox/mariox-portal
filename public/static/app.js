@@ -1569,20 +1569,23 @@ function openChangePasswordModal() {
       <div class="form-group" style="margin-bottom:0">
         <label class="form-label">Current Password *</label>
         <div style="position:relative">
-          <input id="cp-current" type="password" class="form-input" autocomplete="current-password" placeholder="••••••••"/>
+          <input id="cp-current" type="password" class="form-input" autocomplete="current-password" placeholder="••••••••" oninput="clearChangePasswordError('cp-current')"/>
           <button type="button" onclick="togglePass('cp-current',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
         </div>
+        <div id="cp-current-err" style="display:none;color:#FF5E3A;font-size:12px;margin-top:6px"></div>
       </div>
       <div class="form-group" style="margin-bottom:0">
         <label class="form-label">New Password *</label>
         <div style="position:relative">
-          <input id="cp-new" type="password" class="form-input" autocomplete="new-password" placeholder="At least 8 characters"/>
+          <input id="cp-new" type="password" class="form-input" autocomplete="new-password" placeholder="At least 8 characters" oninput="clearChangePasswordError('cp-new')"/>
           <button type="button" onclick="togglePass('cp-new',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
         </div>
+        <div id="cp-new-err" style="display:none;color:#FF5E3A;font-size:12px;margin-top:6px"></div>
       </div>
       <div class="form-group" style="margin-bottom:0">
         <label class="form-label">Confirm New Password *</label>
-        <input id="cp-confirm" type="password" class="form-input" autocomplete="new-password" placeholder="Re-type the new password"/>
+        <input id="cp-confirm" type="password" class="form-input" autocomplete="new-password" placeholder="Re-type the new password" oninput="clearChangePasswordError('cp-confirm')"/>
+        <div id="cp-confirm-err" style="display:none;color:#FF5E3A;font-size:12px;margin-top:6px"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -1592,18 +1595,49 @@ function openChangePasswordModal() {
   `, 'modal-md')
 }
 
+function setChangePasswordError(fieldId, msg) {
+  const input = document.getElementById(fieldId)
+  const err = document.getElementById(fieldId + '-err')
+  if (input) input.style.borderColor = '#FF5E3A'
+  if (err) { err.textContent = msg; err.style.display = 'block' }
+}
+
+function clearChangePasswordError(fieldId) {
+  const input = document.getElementById(fieldId)
+  const err = document.getElementById(fieldId + '-err')
+  if (input) input.style.borderColor = ''
+  if (err) { err.textContent = ''; err.style.display = 'none' }
+}
+
+function clearAllChangePasswordErrors() {
+  ;['cp-current', 'cp-new', 'cp-confirm'].forEach(clearChangePasswordError)
+}
+
 async function submitChangePassword() {
   const cur = document.getElementById('cp-current')?.value || ''
   const next = document.getElementById('cp-new')?.value || ''
   const confirm = document.getElementById('cp-confirm')?.value || ''
-  if (!cur || !next || !confirm) { toast('All fields are required', 'error'); return }
-  if (next !== confirm) { toast('New passwords do not match', 'error'); return }
-  if (cur === next) { toast('New password must differ from current', 'error'); return }
+  clearAllChangePasswordErrors()
+  if (!cur) { setChangePasswordError('cp-current', 'Current password is required'); toast('All fields are required', 'error'); return }
+  if (!next) { setChangePasswordError('cp-new', 'New password is required'); toast('All fields are required', 'error'); return }
+  if (!confirm) { setChangePasswordError('cp-confirm', 'Please confirm the new password'); toast('All fields are required', 'error'); return }
+  if (next !== confirm) { setChangePasswordError('cp-confirm', 'New passwords do not match'); toast('New passwords do not match', 'error'); return }
+  if (cur === next) { setChangePasswordError('cp-new', 'New password must differ from current'); toast('New password must differ from current', 'error'); return }
   try {
     await API.post('/auth/change-password', { current_password: cur, new_password: next })
     toast('Password updated', 'success')
     closeModal()
-  } catch (e) { toast(e.message || 'Failed', 'error') }
+  } catch (e) {
+    const msg = e.message || 'Failed'
+    if (/current password/i.test(msg)) {
+      setChangePasswordError('cp-current', msg)
+    } else if (/new password/i.test(msg)) {
+      setChangePasswordError('cp-new', msg)
+    } else {
+      setChangePasswordError('cp-current', msg)
+    }
+    toast(msg, 'error')
+  }
 }
 
 // ── Notifications panel ───────────────────────────────────────
