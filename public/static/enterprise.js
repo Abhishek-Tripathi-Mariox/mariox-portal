@@ -7325,7 +7325,7 @@ async function renderSalesIncentivePage(el) {
       </div>
 
       <div style="padding:10px 14px;border-radius:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.18);color:#86efac;font-size:12.5px;margin-bottom:12px">
-        <i class="fas fa-circle-info"></i> <strong>Achieved</strong> is auto-summed from the <em>project revenue</em> of every project booked this month whose originating lead was assigned to the agent. Set the project amount when closing a lead — it flows here automatically. Admin can still override the value.
+        <i class="fas fa-circle-info"></i> <strong>Achieved</strong> is auto-summed from the <em>project revenue</em> of every project booked this month whose originating lead was assigned to the agent. For a <strong>Sales TL</strong>, achieved rolls up their own bookings plus every agent reporting to them. For a <strong>Sales Manager</strong>, it rolls up all TLs (and transitively their agents) under them. Admin can still override the final value for any user.
       </div>
 
       ${(!canSetTarget && !canOverride && !canMarkPaid) ? `<div style="padding:10px 14px;border-radius:10px;background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.25);color:#93c5fd;font-size:12.5px;margin-bottom:12px"><i class="fas fa-info-circle"></i> View only — admins manage targets, overrides and payouts. Permissions: Settings → Roles & Permissions → Sales Incentive.</div>` : ''}
@@ -7394,6 +7394,9 @@ function _siRow(r, canOverride, canMarkPaid) {
     <td style="text-align:right;font-weight:600;color:#cbd5e1">${_fmtINR(r.target)}</td>
     <td style="text-align:right">
       <div style="font-weight:600;color:#e2e8f0">${_fmtINR(r.achieved)}${overrideTag}</div>
+      ${(r.user_role === 'sales_tl' || r.user_role === 'sales_manager') && r.achieved_override === null && Number(r.team_achieved || 0) > 0
+        ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px" title="Own bookings + team rollup">Own ${_fmtINR(r.own_achieved||0)} + Team ${_fmtINR(r.team_achieved||0)}</div>`
+        : ''}
       <div>${aboveBadge}</div>
     </td>
     <td style="text-align:right;font-size:12px;color:#94a3b8" title="Percent of above-target value">${Number(r.incentive_rate || 0)}%</td>

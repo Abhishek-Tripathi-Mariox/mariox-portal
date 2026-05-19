@@ -81,6 +81,56 @@ function num(v: any, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback
 }
 
+// Returns the effective achieved value for a single user in a single period.
+//   - sales_agent → just their own booked revenue.
+//   - sales_tl    → own + every sales_agent's effective achieved where
+//                   agent.tl_id === tl.id.
+//   - sales_manager → own + every sales_tl's effective achieved (which already
+//                     rolls up the TL's agents) where tl.manager_id === manager.id.
+// An explicit period override (achieved_override) wins and skips the rollup —
+// that's the whole point of admin override: force a fixed number.
+//
+// Returns { achieved, own, team, override }. Frontend uses own/team to show
+// the breakdown for TL/Manager rows.
+function computeEffectiveAchieved(
+  userId: string,
+  period: string,
+  allUsers: any[],
+  revenueByAgentPeriod: Map<string, Map<string, number>>,
+  recordsByUserPeriod: Map<string, any>,
+): { achieved: number; own: number; team: number; override: number | null } {
+  const user = allUsers.find((u) => String(u.id) === String(userId))
+  if (!user) return { achieved: 0, own: 0, team: 0, override: null }
+  const own = revenueByAgentPeriod.get(String(userId))?.get(period) || 0
+  const rec = recordsByUserPeriod.get(`${userId}:${period}`)
+  const override = rec && rec.achieved_override !== undefined && rec.achieved_override !== null
+    ? Number(rec.achieved_override) : null
+  if (override !== null) return { achieved: override, own, team: 0, override }
+
+  const role = lower(user.role)
+  let team = 0
+  if (role === 'sales_tl') {
+    const agents = allUsers.filter((u) =>
+      lower(u.role) === 'sales_agent' &&
+      String(u.tl_id || '') === String(userId) &&
+      Number(u.is_active || 0) === 1,
+    )
+    for (const a of agents) {
+      team += computeEffectiveAchieved(String(a.id), period, allUsers, revenueByAgentPeriod, recordsByUserPeriod).achieved
+    }
+  } else if (role === 'sales_manager') {
+    const tls = allUsers.filter((u) =>
+      lower(u.role) === 'sales_tl' &&
+      String(u.manager_id || '') === String(userId) &&
+      Number(u.is_active || 0) === 1,
+    )
+    for (const tl of tls) {
+      team += computeEffectiveAchieved(String(tl.id), period, allUsers, revenueByAgentPeriod, recordsByUserPeriod).achieved
+    }
+  }
+  return { achieved: own + team, own, team, override: null }
+}
+
 async function hasPermission(models: MongoModels, user: any, key: string): Promise<boolean> {
   const role = lower(user?.role)
   if (role === 'admin') return true
@@ -121,6 +171,8 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
       // Load overrides + paid status for this period.
       const records = (await models.salesIncentives.find({ period })) as any[]
       const recordByUserId = new Map(records.map((r) => [String(r.user_id), r]))
+      // Keyed lookup for computeEffectiveAchieved (it works across periods).
+      const recordsByUserPeriod = new Map(records.map((r) => [`${r.user_id}:${period}`, r]))
 
       // Pull every payment row for this period across all agents. We sum by
       // user to support partial payments: admin can record ₹500 today and
@@ -140,10 +192,13 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
         // retroactively change past months.
         const target = rec?.target_snapshot ?? num(u.monthly_target, 0)
         const rate = rec?.rate_snapshot ?? num(u.incentive_rate, 0)
-        const achievedAuto = revenueByAgentPeriod.get(String(u.id))?.get(period) || 0
-        const achievedOverride = rec && rec.achieved_override !== undefined && rec.achieved_override !== null
-          ? Number(rec.achieved_override) : null
-        const achieved = achievedOverride !== null ? achievedOverride : achievedAuto
+        // Effective achievement — for TL/Manager this rolls up direct reports.
+        // achieved_auto here is the "own" booking value (kept for backward
+        // compat with the override modal which shows the auto baseline).
+        const eff = computeEffectiveAchieved(String(u.id), period, allUsers, revenueByAgentPeriod, recordsByUserPeriod)
+        const achievedAuto = eff.own
+        const achievedOverride = eff.override
+        const achieved = eff.achieved
         const above = Math.max(0, achieved - target)
         // Incentive rate is a PERCENT of the above-target value (e.g. rate=10
         // on ₹10,000 above-target = ₹1,000 earned). Was previously per-rupee.
@@ -171,6 +226,11 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
           achieved_auto: achievedAuto,
           achieved_override: achievedOverride,
           achieved,
+          // Breakdown for TL/Manager rows: own = self-booked revenue,
+          // team = sum rolled up from direct reports. For sales_agent rows,
+          // own equals achieved (when no override) and team is 0.
+          own_achieved: eff.own,
+          team_achieved: eff.team,
           earned,
           paid: fully_paid || !!rec?.paid,
           paid_at: rec?.paid_at || null,
@@ -190,10 +250,13 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
       // Sort by earned desc so the biggest payouts surface first.
       rows.sort((a, b) => b.earned - a.earned)
 
-      // Totals.
+      // Totals. `achieved` sums each row's own_achieved only — otherwise a
+      // TL's rolled-up number plus the manager's rolled-up number would
+      // double/triple-count the same booked revenue. earned/paid/pending are
+      // per-user payouts and remain summable directly.
       const totals = rows.reduce((acc, r) => {
         acc.target += r.target
-        acc.achieved += r.achieved
+        acc.achieved += (r.own_achieved ?? r.achieved)
         acc.earned += r.earned
         acc.paid_amount += r.paid_amount
         acc.pending_amount += r.balance
@@ -463,6 +526,28 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
       const revenueByAgentPeriod = await buildRevenueByAgentPeriod(models)
       const myRevenueByPeriod = revenueByAgentPeriod.get(userId) || new Map<string, number>()
       for (const p of myRevenueByPeriod.keys()) periodsSet.add(p)
+      // Need every user to roll up TL/Manager achievements across history. For
+      // sales_agent rows this is unused; for TL/Manager the rollup walks their
+      // direct reports in the period being rendered.
+      const allUsers = (await models.users.find({})) as any[]
+      // Also surface periods where any descendant booked revenue, so a TL/
+      // Manager with no direct sales still gets a row when their team did.
+      if (lower(target.role) === 'sales_tl') {
+        for (const a of allUsers.filter((u) => lower(u.role) === 'sales_agent' && String(u.tl_id || '') === String(userId))) {
+          const m = revenueByAgentPeriod.get(String(a.id))
+          if (m) for (const p of m.keys()) periodsSet.add(p)
+        }
+      } else if (lower(target.role) === 'sales_manager') {
+        const tls = allUsers.filter((u) => lower(u.role) === 'sales_tl' && String(u.manager_id || '') === String(userId))
+        for (const tl of tls) {
+          const m = revenueByAgentPeriod.get(String(tl.id))
+          if (m) for (const p of m.keys()) periodsSet.add(p)
+          for (const a of allUsers.filter((u) => lower(u.role) === 'sales_agent' && String(u.tl_id || '') === String(tl.id))) {
+            const ma = revenueByAgentPeriod.get(String(a.id))
+            if (ma) for (const p of ma.keys()) periodsSet.add(p)
+          }
+        }
+      }
 
       const liveTarget = num(target.monthly_target, 0)
       const liveRate = num(target.incentive_rate, 0)
@@ -482,10 +567,14 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
         .sort((a, b) => b.localeCompare(a)) // newest first
         .map((period) => {
           const rec = recordByPeriod.get(period) || null
-          const achievedAuto = myRevenueByPeriod.get(period) || 0
-          const achievedOverride = rec && rec.achieved_override !== undefined && rec.achieved_override !== null
-            ? Number(rec.achieved_override) : null
-          const achieved = achievedOverride !== null ? achievedOverride : achievedAuto
+          // computeEffectiveAchieved needs the override record for THIS period
+          // only — pull all records for the user once and key them per period.
+          const recordsByUserPeriod = new Map<string, any>()
+          for (const r of records) recordsByUserPeriod.set(`${userId}:${r.period}`, r)
+          const eff = computeEffectiveAchieved(userId, period, allUsers, revenueByAgentPeriod, recordsByUserPeriod)
+          const achievedAuto = eff.own
+          const achievedOverride = eff.override
+          const achieved = eff.achieved
           const target_snapshot = rec?.target_snapshot ?? liveTarget
           const rate_snapshot = rec?.rate_snapshot ?? liveRate
           const above = Math.max(0, achieved - target_snapshot)
@@ -508,6 +597,8 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
             achieved_auto: achievedAuto,
             achieved_override: achievedOverride,
             achieved,
+            own_achieved: eff.own,
+            team_achieved: eff.team,
             earned,
             paid: fully_paid || !!rec?.paid,
             paid_at: rec?.paid_at || null,
