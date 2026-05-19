@@ -1,9 +1,11 @@
 import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
+// @ts-ignore — compression ships no first-party types
+import compression from 'compression'
 import path from 'node:path'
 import { MongoClient } from 'mongodb'
 import legacyApp from './index'
-import { createMongoModels } from './models/mongo-models'
+import { createMongoModels, ensureIndexes } from './models/mongo-models'
 import { createAuthRouter } from './express-routes/auth'
 import { createAlertsRouter } from './express-routes/alerts'
 import { createClientAuthRouter } from './express-routes/client-auth'
@@ -63,6 +65,10 @@ await client.connect()
 const mongoDb = client.db(mongoDbName)
 const models = createMongoModels(mongoDb)
 await bootstrapSeed(models, runtimeEnv)
+// Create indexes for hot-path queries (kanban board, task drawer, permission
+// checks). Non-blocking failures only warn so a single bad index never breaks
+// boot.
+await ensureIndexes(models)
 
 function createLegacyResult() {
   return {
@@ -133,6 +139,9 @@ const env = {
 const server = express()
 
 server.disable('x-powered-by')
+// gzip API responses and static assets — `enterprise.js` alone is ~300KB
+// uncompressed; with compression it shrinks to well under 100KB on the wire.
+server.use(compression())
 server.use(express.json({ limit: '5mb' }))
 server.use(express.urlencoded({ extended: true }))
 

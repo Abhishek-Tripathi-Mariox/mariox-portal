@@ -159,21 +159,33 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       const sprintId = typeof req.query.sprint_id === 'string' ? req.query.sprint_id : undefined
 
       await ensureColumns(models, projectId)
-      const [columnDefs, users, sprints, tasksList, subtasksAll, comments] = await Promise.all([
+      // tasksList holds the board view (optionally sprint-filtered). projectTasks
+      // is the full project task set we need for subtask counts when a sprint
+      // filter narrows tasksList. When unfiltered they're the same query — reuse
+      // tasksList to avoid a duplicate round-trip.
+      const [columnDefs, users, sprints, tasksList, projectTasksMaybe] = await Promise.all([
         models.kanbanColumns.find({ project_id: projectId }) as Promise<any[]>,
         models.users.find({}) as Promise<any[]>,
         models.sprints.find({ project_id: projectId }) as Promise<any[]>,
         models.tasks.find(sprintId
           ? { project_id: projectId, sprint_id: sprintId }
           : { project_id: projectId }) as Promise<any[]>,
-        models.tasks.find({ project_id: projectId }) as Promise<any[]>,
-        models.comments.find({ entity_type: 'task' }) as Promise<any[]>,
+        sprintId
+          ? (models.tasks.find({ project_id: projectId }) as Promise<any[]>)
+          : Promise.resolve(null),
       ])
+      const projectTasks = projectTasksMaybe || tasksList
+      // Scope the comments query to this project's tasks only — previously we
+      // pulled every task comment in the database for a single count map.
+      const projectTaskIds = projectTasks.map((t: any) => t.id)
+      const comments = projectTaskIds.length
+        ? await (models.comments.find({ entity_type: 'task', entity_id: { $in: projectTaskIds } }) as Promise<any[]>)
+        : []
 
       const usersById = new Map(users.map((u) => [String(u.id), u]))
       const sprintsById = new Map(sprints.map((s) => [String(s.id), s]))
       const subtaskCounts = new Map<string, number>()
-      for (const t of subtasksAll) {
+      for (const t of projectTasks) {
         if (!t.parent_task_id) continue
         subtaskCounts.set(String(t.parent_task_id), (subtaskCounts.get(String(t.parent_task_id)) || 0) + 1)
       }
@@ -259,14 +271,25 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       if (priority) filter.priority = priority
       if (type) filter.task_type = type
 
-      const [tasksList, users, projects, sprints, subtasksAll, comments] = await Promise.all([
+      const hasFilter = Object.keys(filter).length > 0
+      const [tasksList, users, projects, sprints, subtasksAllMaybe] = await Promise.all([
         models.tasks.find(filter) as Promise<any[]>,
         models.users.find({}) as Promise<any[]>,
         models.projects.find({}) as Promise<any[]>,
         models.sprints.find({}) as Promise<any[]>,
-        models.tasks.find({}) as Promise<any[]>,
-        models.comments.find({ entity_type: 'task' }) as Promise<any[]>,
+        hasFilter
+          ? (models.tasks.find({}) as Promise<any[]>)
+          : Promise.resolve(null),
       ])
+      // When no filter, tasksList already contains everything — reuse it for the
+      // parent_task_id → subtask count map instead of issuing a second find({}).
+      const subtasksAll = subtasksAllMaybe || tasksList
+      // Scope comments to the visible task set. Without this we fetch every task
+      // comment in the entire database just to build the count map.
+      const visibleTaskIds = tasksList.map((t) => t.id)
+      const comments = visibleTaskIds.length
+        ? await (models.comments.find({ entity_type: 'task', entity_id: { $in: visibleTaskIds } }) as Promise<any[]>)
+        : []
       const usersById = new Map(users.map((u) => [String(u.id), u]))
       const projectsById = new Map(projects.map((p) => [String(p.id), p]))
       const sprintsById = new Map(sprints.map((s) => [String(s.id), s]))
@@ -610,6 +633,113 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       return res.status(201).json({ comment })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to post comment' })
+    }
+  })
+
+  // Edit a comment. Only the author can edit. Admin/PM with edit_any can also.
+  router.put('/comments/:commentId', async (req, res) => {
+    try {
+      const user = req.user as any
+      const commentId = req.params.commentId
+      const comment = await models.comments.findById(commentId) as any
+      if (!comment || comment.entity_type !== 'task') return res.status(404).json({ error: 'Comment not found' })
+      const isAuthor = (comment.author_user_id && String(comment.author_user_id) === String(user?.sub)) ||
+        (comment.author_client_id && String(comment.author_client_id) === String(user?.sub))
+      const isAdmin = user?.role === 'admin' || user?.role === 'pm'
+      if (!isAuthor && !isAdmin) return res.status(403).json({ error: 'Only the author can edit this comment' })
+      const { content } = req.body || {}
+      if (!content || !String(content).trim()) return res.status(400).json({ error: 'content required' })
+      await models.comments.updateById(commentId, {
+        $set: {
+          content: String(content),
+          updated_at: new Date().toISOString(),
+          edited: 1,
+        },
+      })
+      const updated = await models.comments.findById(commentId)
+      return res.json({ comment: updated })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to edit comment' })
+    }
+  })
+
+  // ── Task attachments ──────────────────────────────────────
+  // Two-step upload flow: the client first POSTs the file to /api/uploads to
+  // get back {url, file_name, file_size, file_type}, then calls this endpoint
+  // with that metadata to link the attachment to the task. Keeping it in two
+  // calls lets us reuse the S3 uploader without coupling routes.
+  router.post('/:id/attachments', async (req, res) => {
+    try {
+      const user = req.user as any
+      const id = req.params.id
+      const task = await models.tasks.findById(id) as any
+      if (!task) return res.status(404).json({ error: 'Task not found' })
+      const isOwner = task.assignee_id === user?.sub
+      const permKey = isOwner ? 'can_edit_own_task' : 'can_edit_any_task'
+      const perm = await checkKanbanPerm(models, task.project_id, user?.role, user?.sub, permKey, task.assignee_id)
+      if (!perm.allowed) return res.status(403).json({ error: 'You do not have permission to attach files to this task' })
+      const { url, file_name, file_size, file_type } = req.body || {}
+      if (!url || !file_name) return res.status(400).json({ error: 'url and file_name required' })
+      const attachment = {
+        id: generateId('att'),
+        url: String(url),
+        file_name: String(file_name),
+        file_size: Number(file_size || 0),
+        file_type: String(file_type || ''),
+        uploaded_by_id: user?.sub || null,
+        uploaded_by_name: user?.name || null,
+        uploaded_at: new Date().toISOString(),
+      }
+      const existing = Array.isArray(task.attachments) ? task.attachments : []
+      await models.tasks.updateById(id, {
+        $set: {
+          attachments: [...existing, attachment],
+          updated_at: new Date().toISOString(),
+        },
+      })
+      return res.status(201).json({ attachment })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to attach file' })
+    }
+  })
+
+  router.delete('/:id/attachments/:attId', async (req, res) => {
+    try {
+      const user = req.user as any
+      const { id, attId } = req.params
+      const task = await models.tasks.findById(id) as any
+      if (!task) return res.status(404).json({ error: 'Task not found' })
+      const attachments = Array.isArray(task.attachments) ? task.attachments : []
+      const att = attachments.find((a: any) => a.id === attId)
+      if (!att) return res.status(404).json({ error: 'Attachment not found' })
+      const isUploader = att.uploaded_by_id && String(att.uploaded_by_id) === String(user?.sub)
+      const isAdmin = user?.role === 'admin' || user?.role === 'pm' || user?.role === 'pc'
+      if (!isUploader && !isAdmin) return res.status(403).json({ error: 'Only the uploader or a manager can delete this attachment' })
+      const next = attachments.filter((a: any) => a.id !== attId)
+      await models.tasks.updateById(id, {
+        $set: { attachments: next, updated_at: new Date().toISOString() },
+      })
+      return res.json({ success: true })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to delete attachment' })
+    }
+  })
+
+  // Delete a comment. Author or admin/PM only.
+  router.delete('/comments/:commentId', async (req, res) => {
+    try {
+      const user = req.user as any
+      const commentId = req.params.commentId
+      const comment = await models.comments.findById(commentId) as any
+      if (!comment || comment.entity_type !== 'task') return res.status(404).json({ error: 'Comment not found' })
+      const isAuthor = (comment.author_user_id && String(comment.author_user_id) === String(user?.sub)) ||
+        (comment.author_client_id && String(comment.author_client_id) === String(user?.sub))
+      const isAdmin = user?.role === 'admin' || user?.role === 'pm'
+      if (!isAuthor && !isAdmin) return res.status(403).json({ error: 'Only the author can delete this comment' })
+      await models.comments.deleteById(commentId)
+      return res.json({ success: true })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to delete comment' })
     }
   })
 

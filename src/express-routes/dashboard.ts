@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware } from '../express-middleware/auth'
+import { createAuthMiddleware, userHasAnyPermission } from '../express-middleware/auth'
 
 function sum(items: any[], pick: (item: any) => number) {
   return items.reduce((total, item) => total + pick(item), 0)
@@ -14,16 +14,63 @@ function toPct(consumed: number, total: number) {
   return total > 0 ? Math.round((consumed / total) * 100) : 0
 }
 
+// Mirrors the visibility rule used by /api/projects: a user without
+// projects.view_all only sees projects they're directly linked to (assignment,
+// PM/PC/lead, or external ownership).
+function isProjectLinkedToUser(project: any, userId: string, assignmentsForProject: any[]) {
+  if (!userId) return false
+  return (
+    String(project.pm_id || '') === userId ||
+    String(project.pc_id || '') === userId ||
+    String(project.team_lead_id || '') === userId ||
+    String(project.external_team_id || '') === userId ||
+    String(project.awarded_to_user_id || '') === userId ||
+    assignmentsForProject.some((a) => String(a.user_id || '') === userId)
+  )
+}
+
 export function createDashboardRouter(models: MongoModels, jwtSecret: string) {
   const router = Router()
   router.use(createAuthMiddleware(jwtSecret))
 
   router.get('/pm', async (req, res) => {
     try {
-      const projects = await models.projects.find({}) as any[]
+      const user = req.user as any
+      const userId = String(user?.sub || '')
+      const canViewAll = await userHasAnyPermission(models, user, 'projects.view_all')
+
+      const allProjects = await models.projects.find({}) as any[]
       const users = await models.users.find({}) as any[]
-      const timesheets = await models.timesheets.find({}) as any[]
-      const assignments = await models.projectAssignments.find({}) as any[]
+      const allTimesheets = await models.timesheets.find({}) as any[]
+      const allAssignments = await models.projectAssignments.find({}) as any[]
+
+      // Scope: admins / PMs (anyone with projects.view_all) see the whole org.
+      // PCs and other scoped roles only see projects they are directly linked
+      // to — same rule as the /api/projects list endpoint.
+      let projects: any[]
+      let timesheets: any[]
+      let assignments: any[]
+      if (canViewAll) {
+        projects = allProjects
+        timesheets = allTimesheets
+        assignments = allAssignments
+      } else {
+        const assignmentsByProject = new Map<string, any[]>()
+        for (const a of allAssignments) {
+          const key = String(a.project_id || '')
+          if (!key) continue
+          const list = assignmentsByProject.get(key) || []
+          list.push(a)
+          assignmentsByProject.set(key, list)
+        }
+        projects = allProjects.filter((p) =>
+          isProjectLinkedToUser(p, userId, assignmentsByProject.get(String(p.id)) || []),
+        )
+        const visibleProjectIds = new Set(projects.map((p) => String(p.id)))
+        timesheets = allTimesheets.filter((t) => visibleProjectIds.has(String(t.project_id)))
+        assignments = allAssignments.filter((a) => visibleProjectIds.has(String(a.project_id)))
+      }
+
       const recentLogs = [...timesheets]
         .sort((a, b) => String(b.created_at || b.date || '').localeCompare(String(a.created_at || a.date || '')))
         .slice(0, 10)
@@ -42,7 +89,15 @@ export function createDashboardRouter(models: MongoModels, jwtSecret: string) {
         delayed: projects.filter((p) => p.status === 'active' && p.expected_end_date && String(p.expected_end_date) < new Date().toISOString().slice(0, 10)).length,
       }
 
-      const devUsers = users.filter((u) => u.role === 'developer')
+      // For scoped users (e.g. PC), restrict the developer roster to people
+      // assigned to their visible projects. Otherwise utilization/dev counts
+      // would still leak the whole org.
+      const visibleDevIds = canViewAll
+        ? null
+        : new Set(assignments.map((a) => String(a.user_id || '')).filter(Boolean))
+      const devUsers = users.filter((u) =>
+        u.role === 'developer' && (visibleDevIds === null || visibleDevIds.has(String(u.id))),
+      )
       const devStats = {
         total: devUsers.length,
         active: devUsers.filter((u) => Number(u.is_active || 0) === 1).length,

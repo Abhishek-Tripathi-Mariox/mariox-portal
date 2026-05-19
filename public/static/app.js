@@ -297,18 +297,23 @@ function scheduleActivePageReload(delay = 120) {
 function reloadActivePage() {
   // Refresh sidebar badges so approval/leave counters reflect the change.
   if (typeof loadBadges === 'function') { try { loadBadges() } catch {} }
+  // Bust every page's cache flag — any page the user navigates to next will
+  // re-fetch instead of showing stale data captured before this mutation.
+  // Without this, moving a kanban task and switching to PM Dashboard would
+  // show pre-move stats until the user manually refreshed.
+  document.querySelectorAll('.page').forEach(p => {
+    if (p.id && p.id.startsWith('page-')) p.dataset.loaded = ''
+  })
   // Active page wins; otherwise fall back to the router's current route.
   const active = document.querySelector('.page.active')
   if (active && active.id?.startsWith('page-')) {
     const page = active.id.replace(/^page-/, '')
-    active.dataset.loaded = ''
     if (typeof loadPage === 'function') loadPage(page, active)
     return
   }
   if (Router?.current?.page) {
     const el = document.getElementById('page-' + Router.current.page)
     if (el && typeof loadPage === 'function') {
-      el.dataset.loaded = ''
       loadPage(Router.current.page, el)
     }
   }
@@ -847,9 +852,14 @@ function buildShell() {
       <span>DevPortal</span><i class="fas fa-chevron-right" style="font-size:10px"></i><span class="current" id="bc-current">Dashboard</span>
     </div>
     <div class="topbar-actions">
-      <div class="search-wrap">
+      <div class="search-wrap" style="position:relative">
         <i class="fas fa-search"></i>
-        <input class="search-bar" placeholder="Search tasks, projects…" id="global-search" oninput="globalSearch(this.value)"/>
+        <input class="search-bar" placeholder="Search tasks, projects…" id="global-search" autocomplete="off"
+          oninput="globalSearch(this.value)"
+          onfocus="globalSearch(this.value)"
+          onblur="setTimeout(()=>{const d=document.getElementById('global-search-results');if(d)d.style.display='none'},180)"
+          onkeydown="if(event.key==='Escape'){this.blur();this.value='';const d=document.getElementById('global-search-results');if(d)d.style.display='none'}"/>
+        <div id="global-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:6px;max-height:380px;overflow-y:auto;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.45);z-index:120"></div>
       </div>
       <button class="icon-btn notif-btn" onclick="showNotifications()" data-tip="Notifications"><i class="fas fa-bell"></i><span class="notif-dot" id="notif-dot" style="display:none"></span><span class="notif-badge" id="notif-badge" style="display:none">0</span></button>
       <button class="icon-btn" onclick="logout()" data-tip="Logout"><i class="fas fa-sign-out-alt"></i></button>
@@ -1742,23 +1752,71 @@ async function markAllNotifsRead() {
 let searchTimeout
 function globalSearch(q) {
   clearTimeout(searchTimeout)
-  if (!q || q.length < 2) return
+  const dd = document.getElementById('global-search-results')
+  if (!dd) return
+  if (!q || q.length < 2) {
+    dd.style.display = 'none'
+    dd.innerHTML = ''
+    return
+  }
+  dd.style.display = 'block'
+  dd.innerHTML = `<div style="padding:14px;color:var(--text-muted);font-size:13px"><i class="fas fa-spinner fa-spin"></i> Searching…</div>`
   searchTimeout = setTimeout(async () => {
     try {
       const [tasks, projects] = await Promise.all([
-        API.get('/tasks?project_id='),
-        API.get('/projects')
+        API.get('/tasks'),
+        API.get('/projects'),
       ])
-      const allTasks = tasks.tasks||[]
-      const allProjects = projects.projects||[]
+      const allTasks = tasks.tasks || tasks.data || []
+      const allProjects = projects.projects || projects.data || []
       const ql = q.toLowerCase()
-      const matchT = allTasks.filter(t=>t.title.toLowerCase().includes(ql)).slice(0,5)
-      const matchP = allProjects.filter(p=>p.name.toLowerCase().includes(ql)||p.code.toLowerCase().includes(ql)).slice(0,3)
-      if (!matchT.length && !matchP.length) return
-      toast(`Found ${matchT.length} tasks, ${matchP.length} projects for "${q}"`, 'info', 2500)
-    } catch {}
-  }, 400)
+      const matchT = allTasks.filter(t => String(t.title || '').toLowerCase().includes(ql)).slice(0, 8)
+      const matchP = allProjects.filter(p => String(p.name || '').toLowerCase().includes(ql) || String(p.code || '').toLowerCase().includes(ql)).slice(0, 5)
+      if (!matchT.length && !matchP.length) {
+        dd.innerHTML = `<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:13px">No matches for "${escapeHtml(q)}"</div>`
+        return
+      }
+      const escapeAttr = (s) => String(s || '').replace(/'/g, "\\'")
+      const rows = []
+      if (matchP.length) {
+        rows.push(`<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px">Projects</div>`)
+        for (const p of matchP) {
+          rows.push(`
+            <div class="search-result-row" onmousedown="event.preventDefault()" onclick="hideGlobalSearch();openProjectBoard('${escapeAttr(p.id)}','${escapeAttr(p.name)}')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.04))">
+              <i class="fas fa-folder" style="color:#FF7A45;font-size:13px;width:18px;text-align:center"></i>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name)}</div>
+                <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(p.code || '')} · ${escapeHtml(p.status || '')}</div>
+              </div>
+            </div>`)
+        }
+      }
+      if (matchT.length) {
+        rows.push(`<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px">Tasks</div>`)
+        for (const t of matchT) {
+          rows.push(`
+            <div class="search-result-row" onmousedown="event.preventDefault()" onclick="hideGlobalSearch();openTaskDrawer('${escapeAttr(t.id)}')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.04))">
+              <i class="fas fa-check-square" style="color:#C56FE6;font-size:13px;width:18px;text-align:center"></i>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.title)}</div>
+                <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(t.project_name || '')} · ${escapeHtml((t.status || '').replace(/_/g,' '))}</div>
+              </div>
+            </div>`)
+        }
+      }
+      dd.innerHTML = rows.join('')
+    } catch (e) {
+      dd.innerHTML = `<div style="padding:14px;color:#FF5E3A;font-size:13px">Search failed: ${escapeHtml(e.message || 'error')}</div>`
+    }
+  }, 300)
 }
+function hideGlobalSearch() {
+  const dd = document.getElementById('global-search-results')
+  const inp = document.getElementById('global-search')
+  if (dd) { dd.style.display = 'none'; dd.innerHTML = '' }
+  if (inp) inp.value = ''
+}
+window.hideGlobalSearch = hideGlobalSearch
 
 // ── Page loader dispatcher ────────────────────────────────────
 function loadPage(page, el) {

@@ -397,3 +397,33 @@ export class MongoModels {
 export function createMongoModels(db: Db) {
   return new MongoModels(db)
 }
+
+// Hot-path indexes for the queries that scan the most rows on the kanban,
+// task drawer, and permission-check paths. Mongo's createIndex is idempotent
+// — re-running on startup is a no-op once the index already exists.
+export async function ensureIndexes(models: MongoModels): Promise<void> {
+  const jobs: Promise<unknown>[] = [
+    models.users.raw().createIndex({ id: 1 }),
+    models.users.raw().createIndex({ email: 1 }),
+    models.projects.raw().createIndex({ id: 1 }),
+    models.tasks.raw().createIndex({ id: 1 }),
+    models.tasks.raw().createIndex({ project_id: 1 }),
+    models.tasks.raw().createIndex({ project_id: 1, sprint_id: 1 }),
+    models.tasks.raw().createIndex({ parent_task_id: 1 }),
+    models.tasks.raw().createIndex({ milestone_id: 1 }),
+    models.tasks.raw().createIndex({ assignee_id: 1, status: 1 }),
+    models.comments.raw().createIndex({ entity_type: 1, entity_id: 1 }),
+    models.kanbanColumns.raw().createIndex({ project_id: 1 }),
+    models.kanbanPermissions.raw().createIndex({ project_id: 1, role: 1 }),
+    models.projectAssignments.raw().createIndex({ project_id: 1, user_id: 1, is_active: 1 }),
+    models.projectAssignments.raw().createIndex({ user_id: 1, is_active: 1 }),
+    models.sprints.raw().createIndex({ project_id: 1 }),
+    models.milestones.raw().createIndex({ project_id: 1 }),
+    models.activityLogs.raw().createIndex({ entity_type: 1, entity_id: 1 }),
+    models.activityLogs.raw().createIndex({ project_id: 1 }),
+  ]
+  const results = await Promise.allSettled(jobs)
+  for (const r of results) {
+    if (r.status === 'rejected') console.warn('[indexes] failed:', (r.reason as any)?.message || r.reason)
+  }
+}

@@ -1202,6 +1202,7 @@ async function openTaskDrawer(taskId) {
       </div>
     </div>
     ${t.description ? `<div style="padding:14px 22px;border-bottom:1px solid var(--border)"><p style="font-size:13px;color:#94a3b8;line-height:1.6">${t.description}</p></div>` : ''}
+    ${buildAttachmentsSection(t)}
     ${subtasks.length ? `
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
       <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Subtasks (${subtasks.length})</div>
@@ -1215,18 +1216,26 @@ async function openTaskDrawer(taskId) {
     <div style="padding:14px 22px">
       <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Comments (${comments.length})</div>
       <div id="task-comments">
-        ${comments.map(cm=>`
-          <div class="comment-item">
+        ${comments.map(cm=>{
+          const canEdit = (cm.author_user_id && String(cm.author_user_id) === String(_user.id)) || _user.role === 'admin' || _user.role === 'pm'
+          return `
+          <div class="comment-item" id="comment-${cm.id}" data-content="${escapeHtml(cm.content||'')}">
             ${avatar(cm.author_name||cm.client_name||'?', cm.author_color||cm.client_color||'#FF7A45','sm')}
-            <div style="flex:1">
+            <div style="flex:1;min-width:0">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                 <span style="font-size:12px;font-weight:600;color:#e2e8f0">${cm.author_name||cm.client_name||'Unknown'}</span>
                 ${cm.is_internal?'<span style="font-size:10px;background:rgba(255,122,69,.15);color:#FFB347;padding:1px 6px;border-radius:4px">Internal</span>':''}
-                <span style="font-size:11px;color:#475569;margin-left:auto">${timeAgo(cm.created_at)}</span>
+                <span style="font-size:11px;color:#475569;margin-left:auto">${timeAgo(cm.created_at)}${cm.edited?' · edited':''}</span>
+                ${canEdit ? `
+                  <button class="comment-action-btn" title="Edit" onclick="startEditComment('${cm.id}','${t.id}')" style="background:none;border:none;color:#64748b;cursor:pointer;padding:2px 4px;font-size:11px"><i class="fas fa-pencil"></i></button>
+                  <button class="comment-action-btn" title="Delete" onclick="deleteComment('${cm.id}','${t.id}')" style="background:none;border:none;color:#64748b;cursor:pointer;padding:2px 4px;font-size:11px"><i class="fas fa-trash"></i></button>
+                ` : ''}
               </div>
-              <p style="font-size:13px;color:#94a3b8;line-height:1.5">${formatCommentMentions(cm.content)}</p>
+              <div id="comment-body-${cm.id}">
+                <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0;white-space:pre-wrap">${formatCommentMentions(cm.content)}</p>
+              </div>
             </div>
-          </div>`).join('') || '<div style="color:#475569;font-size:13px;padding:8px 0">No comments yet.</div>'}
+          </div>`}).join('') || '<div style="color:#475569;font-size:13px;padding:8px 0">No comments yet.</div>'}
       </div>
       <div class="comment-box" style="margin-top:12px;position:relative">
         <textarea id="new-comment-${t.id}" placeholder="Add a comment… (type @ to mention)" oninput="onCommentInput(event,'${t.id}','${t.project_id}')" onkeydown="onCommentKeydown(event,'${t.id}')"></textarea>
@@ -1335,6 +1344,146 @@ async function submitComment(taskId) {
   try {
     await API.post(`/tasks/${taskId}/comment`, { content, is_internal, mention_user_ids })
     toast(mention_user_ids.length ? `Comment added — ${mention_user_ids.length} mentioned` : 'Comment added', 'success', 2000)
+    openTaskDrawer(taskId)
+  } catch(e) { toast(e.message, 'error') }
+}
+
+// ── Comment edit / delete ──────────────────────────────────
+function startEditComment(commentId, taskId) {
+  const wrap = document.getElementById('comment-' + commentId)
+  const body = document.getElementById('comment-body-' + commentId)
+  if (!wrap || !body) return
+  // data-content holds the raw (HTML-decoded) original; the DOM API decodes
+  // entities for us on attribute read.
+  const original = wrap.dataset.content || ''
+  body.innerHTML = `
+    <textarea id="edit-comment-ta-${commentId}" class="form-textarea" rows="3" style="width:100%;font-size:13px">${escapeHtml(original)}</textarea>
+    <div style="display:flex;gap:6px;margin-top:6px;justify-content:flex-end">
+      <button class="btn btn-xs btn-outline" onclick="cancelEditComment('${commentId}')">Cancel</button>
+      <button class="btn btn-xs btn-primary" onclick="saveEditComment('${commentId}','${taskId}')"><i class="fas fa-check"></i> Save</button>
+    </div>`
+  const ta = document.getElementById('edit-comment-ta-' + commentId)
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length) }
+}
+
+function cancelEditComment(commentId) {
+  const wrap = document.getElementById('comment-' + commentId)
+  const body = document.getElementById('comment-body-' + commentId)
+  if (!wrap || !body) return
+  const original = wrap.dataset.content || ''
+  body.innerHTML = `<p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0;white-space:pre-wrap">${formatCommentMentions(original)}</p>`
+}
+
+async function saveEditComment(commentId, taskId) {
+  const ta = document.getElementById('edit-comment-ta-' + commentId)
+  const content = ta?.value?.trim()
+  if (!content) return toast('Comment cannot be empty', 'error')
+  try {
+    await API.put(`/tasks/comments/${commentId}`, { content })
+    toast('Comment updated', 'success', 1500)
+    openTaskDrawer(taskId)
+  } catch(e) { toast(e.message, 'error') }
+}
+
+async function deleteComment(commentId, taskId) {
+  if (!confirm('Delete this comment?')) return
+  try {
+    await API.delete(`/tasks/comments/${commentId}`)
+    toast('Comment deleted', 'success', 1500)
+    openTaskDrawer(taskId)
+  } catch(e) { toast(e.message, 'error') }
+}
+
+// ── Task attachments ───────────────────────────────────────
+function fmtFileSize(bytes) {
+  const n = Number(bytes || 0)
+  if (n < 1024) return n + ' B'
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB'
+  return (n / 1024 / 1024).toFixed(1) + ' MB'
+}
+
+function fileIconClass(fileType, fileName) {
+  const t = String(fileType || '').toLowerCase()
+  const ext = String(fileName || '').split('.').pop().toLowerCase()
+  if (t.startsWith('image/') || ['jpg','jpeg','png','gif','webp','svg'].includes(ext)) return 'fa-file-image'
+  if (t === 'application/pdf' || ext === 'pdf') return 'fa-file-pdf'
+  if (t.startsWith('video/')) return 'fa-file-video'
+  if (t.startsWith('audio/')) return 'fa-file-audio'
+  if (['doc','docx'].includes(ext)) return 'fa-file-word'
+  if (['xls','xlsx','csv'].includes(ext)) return 'fa-file-excel'
+  if (['zip','rar','7z','tar','gz'].includes(ext)) return 'fa-file-archive'
+  return 'fa-file'
+}
+
+function buildAttachmentsSection(t) {
+  const attachments = Array.isArray(t.attachments) ? t.attachments : []
+  const canAttach = ['admin','pm','pc','developer','team'].includes(_user.role)
+  return `
+    <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Attachments (${attachments.length})</div>
+        ${canAttach ? `
+          <label class="btn btn-xs btn-outline" style="cursor:pointer;margin:0">
+            <i class="fas fa-paperclip"></i> Attach
+            <input type="file" style="display:none" onchange="uploadTaskAttachment('${t.id}', this)"/>
+          </label>
+        ` : ''}
+      </div>
+      ${attachments.length ? `
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${attachments.map(a => {
+            const canDelete = (a.uploaded_by_id && String(a.uploaded_by_id) === String(_user.id)) ||
+              ['admin','pm','pc'].includes(_user.role)
+            return `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-input,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:8px">
+              <i class="fas ${fileIconClass(a.file_type, a.file_name)}" style="color:#FF7A45;font-size:16px;width:20px;text-align:center"></i>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.file_name||'file')}</div>
+                <div style="font-size:11px;color:#64748b">${fmtFileSize(a.file_size)}${a.uploaded_by_name ? ' · by ' + escapeHtml(a.uploaded_by_name) : ''}</div>
+              </div>
+              <a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline" title="View" style="text-decoration:none"><i class="fas fa-eye"></i></a>
+              <a href="${escapeHtml(a.url)}" download="${escapeHtml(a.file_name||'file')}" class="btn btn-xs btn-outline" title="Download" style="text-decoration:none"><i class="fas fa-download"></i></a>
+              ${canDelete ? `<button class="btn btn-xs btn-outline" title="Delete" onclick="deleteTaskAttachment('${t.id}','${a.id}')" style="color:#FF5E3A;border-color:#FF5E3A"><i class="fas fa-trash"></i></button>` : ''}
+            </div>`
+          }).join('')}
+        </div>
+      ` : `<div style="color:#475569;font-size:12.5px;padding:6px 0">No attachments yet.</div>`}
+    </div>`
+}
+
+async function uploadTaskAttachment(taskId, inputEl) {
+  const file = inputEl?.files?.[0]
+  if (!file) return
+  inputEl.value = ''
+  const t0 = toast('Uploading ' + file.name + '…', 'info', 6000)
+  try {
+    // Step 1 — upload to S3 via /api/uploads.
+    const fd = new FormData()
+    fd.append('file', file)
+    const upRes = await fetch(BASE + '/uploads', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + _token },
+      body: fd,
+    })
+    const upData = await upRes.json().catch(() => ({}))
+    if (!upRes.ok) throw new Error(upData.error || 'Upload failed')
+    // Step 2 — link to task.
+    await API.post(`/tasks/${taskId}/attachments`, {
+      url: upData.url,
+      file_name: upData.file_name || file.name,
+      file_size: upData.file_size || file.size,
+      file_type: upData.file_type || file.type,
+    })
+    toast('Attached', 'success', 1500)
+    openTaskDrawer(taskId)
+  } catch(e) { toast(e.message || 'Upload failed', 'error') }
+}
+
+async function deleteTaskAttachment(taskId, attId) {
+  if (!confirm('Remove this attachment?')) return
+  try {
+    await API.delete(`/tasks/${taskId}/attachments/${attId}`)
+    toast('Attachment removed', 'success', 1500)
     openTaskDrawer(taskId)
   } catch(e) { toast(e.message, 'error') }
 }
@@ -1490,7 +1639,19 @@ async function getProjectAssignees(projectId, allUsersIndex) {
 
 async function showCreateTaskModal(projectId='', sprintId='', defaultStatus='backlog') {
   try {
-    const [proj, users, sprints] = await Promise.all([API.get('/projects'), API.get('/users'), API.get('/sprints')])
+    // Fire every API call needed for the modal in a single round-trip. Previously
+    // the project/devs/columns calls ran sequentially after the initial fetch,
+    // which made the modal feel sluggish to open.
+    const projectScoped = projectId
+      ? [
+          API.get(`/projects/${projectId}`).catch(() => ({})),
+          API.get(`/projects/${projectId}/developers`).catch(() => ({ developers: [] })),
+          API.get(`/tasks/columns/${projectId}`).catch(() => ({ columns: [] })),
+        ]
+      : [Promise.resolve({}), Promise.resolve({ developers: [] }), Promise.resolve({ columns: [] })]
+    const [proj, users, sprints, projDetail, projDevs, colData] = await Promise.all([
+      API.get('/projects'), API.get('/users'), API.get('/sprints'), ...projectScoped,
+    ])
     const projects = proj.projects || proj.data || []
     const allDevs = users.users || users.data || []
     const allSprints = sprints.sprints || []
@@ -1501,7 +1662,19 @@ async function showCreateTaskModal(projectId='', sprintId='', defaultStatus='bac
     // updateSprintsAndStatusForProject as soon as the user picks a project.
     let assignableDevs = []
     if (projectId) {
-      assignableDevs = await getProjectAssignees(projectId, usersById)
+      const projObj = projDetail.data || projDetail.project || {}
+      const seen = new Set()
+      const push = (id) => {
+        const sId = String(id || '')
+        if (!sId || seen.has(sId)) return
+        const u = usersById.get(sId)
+        if (u) { assignableDevs.push(u); seen.add(sId) }
+      }
+      if (projObj.assignment_type === 'external' && projObj.external_team_id) {
+        push(projObj.external_team_id)
+      } else {
+        for (const d of (projDevs.developers || [])) push(d.user_id)
+      }
     }
 
     // Get custom columns for selected project
@@ -1513,13 +1686,10 @@ async function showCreateTaskModal(projectId='', sprintId='', defaultStatus='bac
       <option value="done" ${defaultStatus==='done'?'selected':''}>Done</option>
       <option value="blocked" ${defaultStatus==='blocked'?'selected':''}>Blocked</option>`
     if (projectId) {
-      try {
-        const colData = await API.get(`/tasks/columns/${projectId}`)
-        const cols = colData.columns || []
-        if (cols.length > 0) {
-          statusOptions = cols.map(c => `<option value="${c.status_key}" ${c.status_key===defaultStatus?'selected':''}>${c.name}</option>`).join('')
-        }
-      } catch(e) {}
+      const cols = (colData && colData.columns) || []
+      if (cols.length > 0) {
+        statusOptions = cols.map(c => `<option value="${c.status_key}" ${c.status_key===defaultStatus?'selected':''}>${c.name}</option>`).join('')
+      }
     }
 
     showModal(`
@@ -1629,11 +1799,9 @@ async function doCreateTask() {
     await API.post('/tasks', body)
     toast('Task created!', 'success')
     closeModal()
-    // Refresh kanban if open
-    const kb = document.getElementById('page-kanban-board')
-    if (kb?.classList.contains('active')) { kb.dataset.loaded=''; loadPage('kanban-board', kb) }
-    const mt = document.getElementById('page-my-tasks')
-    if (mt?.classList.contains('active')) { mt.dataset.loaded=''; loadPage('my-tasks', mt) }
+    // API.post already triggers scheduleActivePageReload() which re-renders the
+    // active page (board/my-tasks). Calling loadPage here as well caused two
+    // back-to-back board fetches per task creation.
   } catch(e) { toast(e.message, 'error') }
 }
 
