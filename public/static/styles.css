@@ -452,6 +452,47 @@ a { text-decoration: none; color: inherit; }
   min-height: 100vh;
   background: transparent;
   min-width: 0;
+  transition: margin-left 0.25s ease;
+}
+
+/* Sidebar-collapsed desktop layout — slide the sidebar off-screen and let
+   the main content + topbar fill the freed width. The hamburger in the
+   topbar (and the floating reopen FAB) brings it back. */
+body.sidebar-collapsed #sidebar { transform: translateX(-100%); }
+body.sidebar-collapsed #main { margin-left: 0; }
+body.sidebar-collapsed #topbar { left: 0; }
+/* Show the floating reopen pill only when the sidebar is hidden. */
+.sidebar-reopen-fab { display: none; }
+body.sidebar-collapsed .sidebar-reopen-fab {
+  display: flex;
+  align-items: center; gap: 6px;
+  position: fixed;
+  left: 10px; top: calc(var(--topbar-h) + 10px);
+  z-index: 210;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--sidebar-bg, #0B1220);
+  color: #FFF1E6;
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 6px 16px rgba(0,0,0,.35);
+  cursor: pointer; font-size: 12px; font-weight: 600;
+}
+.sidebar-reopen-fab:hover { background: #111827; }
+
+/* Kanban fullscreen — both native Fullscreen API and the CSS-only fallback. */
+#page-kanban-board:fullscreen,
+#page-kanban-board.kanban-fs-fallback {
+  background: var(--bg-base, #0B1220);
+  padding: 24px;
+  overflow: auto;
+}
+#page-kanban-board.kanban-fs-fallback {
+  position: fixed; inset: 0;
+  z-index: 1200;
+}
+#page-kanban-board:fullscreen .kanban-board,
+#page-kanban-board.kanban-fs-fallback .kanban-board {
+  min-height: calc(100vh - 120px);
 }
 .page { padding: 24px; display: none; min-width: 0; }
 .page.active { display: block; animation: fadeIn 0.3s ease both; }
@@ -1323,6 +1364,19 @@ a { text-decoration: none; color: inherit; }
   box-shadow: var(--shadow-sm);
 }
 [data-tip]:hover::after { opacity: 1; }
+
+/* Topbar icon-buttons sit at the very top of the viewport, so their default
+   "above" tooltip would render outside the visible area. Flip them to drop
+   below the button, and right-align so the rightmost button (logout) doesn't
+   push the tooltip off-screen. */
+#topbar [data-tip]::after {
+  bottom: auto;
+  top: calc(100% + 7px);
+}
+#topbar .topbar-actions > [data-tip]:last-child::after {
+  left: auto; right: 0;
+  transform: none;
+}
 
 /* ── DOCUMENT CENTER ─────────────────────────────────────── */
 .doc-card {
@@ -3094,13 +3148,94 @@ body::before, body::after { display: none !important; }
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.2px;
-  display: inline-flex !important;
+  /* No !important on display: the JS toggles this between '' (inline-flex)
+     and 'none' depending on unread count — !important would freeze the
+     badge on screen even at 0 unread. */
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 2px solid rgba(26,15,10,0.85);
   box-shadow: 0 2px 8px rgba(255,106,44,0.55);
   pointer-events: none;
 }
+.notif-badge[hidden] { display: none !important; }
+
+/* ── My Task tabs ─────────────────────────────────────────── */
+.ptask-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 4px;
+  background: var(--bg-card, rgba(255,255,255,.03));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.ptask-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.ptask-tab:hover { background: rgba(168, 85, 247, .08); color: #e2e8f0; }
+.ptask-tab.active {
+  background: linear-gradient(135deg, rgba(168,85,247,.18), rgba(255,122,69,.10));
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.25);
+}
+.ptask-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  font-size: 11px;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+.ptask-tab.active .ptask-tab-count {
+  background: rgba(255,255,255,.18);
+  color: #fff;
+}
+
+/* Inline-edit controls on the My Task table — invisible chrome until the
+   user focuses or hovers, so the table still reads like a list at a glance. */
+.ptask-inline-select {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: #e2e8f0;
+  cursor: pointer;
+  min-width: 110px;
+  transition: background .15s, border-color .15s;
+}
+.ptask-inline-select:hover {
+  border-color: rgba(168,85,247,.25);
+}
+.ptask-inline-select:focus {
+  outline: none;
+  background: rgba(168,85,247,.10);
+  border-color: rgba(168,85,247,.45);
+}
+.ptask-inline-select option { background: #1a1230; color: #e2e8f0; }
+.ptask-inline-input { font-family: inherit; }
+.ptask-inline-input:focus { outline: none; }
 
 /* ── Notification panel rows ────────────────────────────── */
 .notif-list {
@@ -4430,3 +4565,451 @@ body::before {
    container should stay hidden. The .modal class only exists once
    showModal injects content. */
 #modal-root:empty { display: none !important; }
+
+/* ════════════════════════════════════════════════════════════
+   AMOLED LAVENDER — Final theme pass.
+   Re-skins the entire UI to a near-black AMOLED canvas with
+   electric lavender accents. Appended last so it wins against
+   every earlier theme block (Oranji, Aurora, Obsidian, Liquid
+   Glass). Removing this block reverts to the previous look.
+   ════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg-base:         #050505;
+  --bg-surface:      #0B0B0D;
+  --bg-card:         #121216;
+  --bg-elev:         #1A1A22;
+  --bg-input:        #20202A;
+  --bg-card-subtle:  rgba(255,255,255,0.02);
+
+  --primary:         #A970FF !important;
+  --primary-dark:    #7B4DFF !important;
+  --primary-light:   rgba(169,112,255,0.18) !important;
+  --primary-rgb:     169,112,255 !important;
+  --accent:          #C9A7FF !important;
+
+  --sidebar-bg:          #0B0B0D !important;
+  --sidebar-hover:       rgba(179,136,255,0.10) !important;
+  --sidebar-active:      #A970FF !important;
+  --sidebar-text:        #B8B8C7 !important;
+  --sidebar-text-active: #FFFFFF !important;
+  --sidebar-border:      rgba(179,136,255,0.10) !important;
+
+  --bg:            transparent !important;
+  --surface:       rgba(255,255,255,0.03) !important;
+  --surface-2:     rgba(255,255,255,0.02) !important;
+  --surface-glass: rgba(18,18,22,0.65) !important;
+  --border:        rgba(179,136,255,0.12) !important;
+  --border-dark:   rgba(179,136,255,0.25) !important;
+  --border-soft:   rgba(255,255,255,0.04) !important;
+
+  --text-primary:   #FFFFFF !important;
+  --text-secondary: #B8B8C7 !important;
+  --text-muted:     #7E7E8F !important;
+  --text-disabled:  #5A5A66 !important;
+
+  --success:        #45FFB2 !important;
+  --success-light:  rgba(69,255,178,0.16) !important;
+  --warning:        #FFC857 !important;
+  --warning-light:  rgba(255,200,87,0.16) !important;
+  --danger:         #FF5C7A !important;
+  --danger-light:   rgba(255,92,122,0.16) !important;
+  --info:           #6CCBFF !important;
+  --info-light:     rgba(108,203,255,0.16) !important;
+  --violet:         #B388FF !important;
+  --violet-light:   rgba(179,136,255,0.18) !important;
+
+  --topbar-bg:    rgba(11,11,13,0.72) !important;
+
+  --shadow-sm:    0 2px 8px rgba(0,0,0,0.45) !important;
+  --shadow-md:    0 10px 28px rgba(0,0,0,0.55) !important;
+  --shadow-lg:    0 22px 56px rgba(0,0,0,0.70) !important;
+  --shadow-card:  0 10px 30px rgba(0,0,0,0.55) !important;
+  --shadow-glow:  0 0 25px rgba(169,112,255,0.35) !important;
+  --shadow-glow-soft: 0 0 50px rgba(201,167,255,0.15) !important;
+}
+
+/* Body — pure AMOLED with a faint lavender ambient glow at the corners. */
+body {
+  background:
+    radial-gradient(ellipse 900px 600px at 15% -10%, rgba(169,112,255,0.10), transparent 60%),
+    radial-gradient(ellipse 800px 600px at 95% 110%, rgba(123,77,255,0.08), transparent 60%),
+    #050505 !important;
+  background-attachment: fixed !important;
+  color: #FFFFFF !important;
+}
+body::before, body::after { display: none !important; }
+
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+::-webkit-scrollbar-thumb { background: rgba(179,136,255,0.18); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #A970FF; }
+::selection { background: rgba(169,112,255,0.45); color: #FFFFFF; }
+
+/* Sidebar — pure black AMOLED with subtle purple ambient at top/bottom. */
+#sidebar {
+  background:
+    radial-gradient(ellipse 320px 240px at top, rgba(169,112,255,0.16), transparent 60%),
+    radial-gradient(ellipse 280px 320px at bottom, rgba(123,77,255,0.10), transparent 60%),
+    #0B0B0D !important;
+  border-right: 1px solid rgba(179,136,255,0.10) !important;
+  box-shadow:
+    4px 0 22px rgba(0,0,0,0.55),
+    inset -1px 0 0 rgba(179,136,255,0.06) !important;
+}
+.sidebar-logo-mark,
+.login-logo-mark {
+  background: linear-gradient(135deg, #7B4DFF, #B388FF) !important;
+  box-shadow: 0 10px 22px rgba(169,112,255,0.45) !important;
+}
+.nav-item { color: #B8B8C7 !important; }
+.nav-item:hover { background: rgba(179,136,255,0.10) !important; color: #FFFFFF !important; }
+.nav-item.active {
+  background: linear-gradient(135deg, #7B4DFF 0%, #A970FF 100%) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 8px 22px rgba(169,112,255,0.45), 0 0 0 1px rgba(201,167,255,0.20) inset !important;
+}
+.nav-item.active .nav-icon i { color: #FFFFFF !important; }
+.nav-section-toggle {
+  background: linear-gradient(135deg, rgba(179,136,255,0.10), rgba(123,77,255,0.04)) !important;
+  border-color: rgba(179,136,255,0.16) !important;
+  color: #C9A7FF !important;
+}
+.nav-section-heading i { color: #C9A7FF !important; }
+.nav-section-chip {
+  background: rgba(179,136,255,0.14) !important;
+  color: #C9A7FF !important;
+  border-color: rgba(179,136,255,0.20) !important;
+}
+.nav-badge {
+  background: linear-gradient(135deg, #A970FF, #B388FF) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 0 12px rgba(169,112,255,0.45) !important;
+}
+
+/* Topbar — frosted near-black */
+#topbar {
+  background: linear-gradient(180deg, rgba(11,11,13,0.78), rgba(5,5,5,0.68)) !important;
+  border-bottom: 1px solid rgba(179,136,255,0.14) !important;
+  backdrop-filter: blur(22px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(160%) !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.40) !important;
+}
+.topbar-btn,
+.icon-btn {
+  background: rgba(255,255,255,0.03) !important;
+  border: 1px solid rgba(179,136,255,0.18) !important;
+  color: #B8B8C7 !important;
+}
+.topbar-btn:hover,
+.icon-btn:hover {
+  background: rgba(169,112,255,0.18) !important;
+  border-color: rgba(169,112,255,0.55) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 0 18px rgba(169,112,255,0.35) !important;
+}
+.topbar-hamburger {
+  background: rgba(255,255,255,0.03) !important;
+  border-color: rgba(179,136,255,0.18) !important;
+  color: #B8B8C7 !important;
+}
+.topbar-user {
+  background: rgba(255,255,255,0.03) !important;
+  border: 1px solid rgba(179,136,255,0.18) !important;
+}
+.topbar-user:hover { border-color: rgba(169,112,255,0.55) !important; }
+.topbar-notif-dot, .notif-dot { border-color: #0B0B0D !important; }
+.notif-badge {
+  background: linear-gradient(135deg, #FF5C7A, #FF8AA0) !important;
+  box-shadow: 0 0 12px rgba(255,92,122,0.45) !important;
+}
+.breadcrumb { color: #B8B8C7 !important; }
+.breadcrumb .current { color: #FFFFFF !important; }
+
+/* Search bar */
+.search-bar,
+.search-wrap input {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(179,136,255,0.18) !important;
+  color: #FFFFFF !important;
+}
+.search-bar:focus { border-color: #A970FF !important; box-shadow: 0 0 0 3px rgba(169,112,255,0.22) !important; }
+.search-bar::placeholder { color: #7E7E8F !important; }
+
+/* Page headers */
+.page-title { color: #FFFFFF !important; }
+.page-subtitle { color: #B8B8C7 !important; }
+
+/* Cards / glass surfaces */
+.card,
+.glass-card,
+.modal,
+.drawer {
+  background: linear-gradient(180deg, #121216 0%, #0E0E12 100%) !important;
+  border: 1px solid rgba(179,136,255,0.12) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55), 0 0 0 1px rgba(179,136,255,0.04) inset !important;
+}
+.card:hover {
+  border-color: rgba(179,136,255,0.25) !important;
+}
+.card-header {
+  background: linear-gradient(180deg, rgba(179,136,255,0.04), transparent) !important;
+  border-bottom: 1px solid rgba(179,136,255,0.10) !important;
+}
+.card-header h3, .card-header h2 { color: #FFFFFF !important; }
+
+/* Tables */
+.data-table { background: transparent !important; }
+.data-table thead th {
+  background: rgba(179,136,255,0.06) !important;
+  color: #C9A7FF !important;
+  border-bottom: 1px solid rgba(179,136,255,0.16) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.data-table tbody td { border-bottom: 1px solid rgba(179,136,255,0.08) !important; color: #B8B8C7 !important; }
+.data-table tbody tr:hover { background: rgba(169,112,255,0.06) !important; }
+
+/* Forms */
+.form-input,
+.form-select,
+.form-textarea {
+  background: #20202A !important;
+  border: 1px solid rgba(179,136,255,0.18) !important;
+  color: #FFFFFF !important;
+}
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  border-color: #A970FF !important;
+  box-shadow: 0 0 0 3px rgba(169,112,255,0.22), 0 0 18px rgba(169,112,255,0.18) !important;
+  outline: none !important;
+}
+.form-input::placeholder, .form-textarea::placeholder { color: #7E7E8F !important; }
+.form-label { color: #C9A7FF !important; font-size: 11px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; }
+.form-select option { background: #1A1A22 !important; color: #FFFFFF !important; }
+
+/* Buttons */
+.btn { transition: all .18s ease !important; }
+.btn-primary {
+  background: linear-gradient(135deg, #7B4DFF 0%, #A970FF 100%) !important;
+  border: 1px solid rgba(201,167,255,0.40) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 8px 22px rgba(169,112,255,0.45), 0 0 0 1px rgba(201,167,255,0.20) inset !important;
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #8B5CFF 0%, #B388FF 100%) !important;
+  box-shadow: 0 10px 28px rgba(169,112,255,0.55), 0 0 24px rgba(201,167,255,0.30) !important;
+  transform: translateY(-1px);
+}
+.btn-outline,
+.btn-secondary {
+  background: #1A1A22 !important;
+  border: 1px solid rgba(179,136,255,0.30) !important;
+  color: #C9A7FF !important;
+}
+.btn-outline:hover,
+.btn-secondary:hover {
+  background: rgba(169,112,255,0.14) !important;
+  border-color: #A970FF !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 0 18px rgba(169,112,255,0.35) !important;
+}
+.btn-danger,
+.btn-danger:hover {
+  background: linear-gradient(135deg, #FF5C7A, #FF8AA0) !important;
+  border-color: rgba(255,92,122,0.55) !important;
+  color: #FFFFFF !important;
+}
+.btn-success {
+  background: linear-gradient(135deg, #19D88D, #45FFB2) !important;
+  border-color: rgba(69,255,178,0.45) !important;
+  color: #0B0B0D !important;
+}
+.btn-success:hover { box-shadow: 0 0 18px rgba(69,255,178,0.45) !important; }
+
+/* Badges */
+.badge { font-weight: 700 !important; letter-spacing: 0.3px !important; }
+.badge-done, .badge-success {
+  background: rgba(69,255,178,0.14) !important;
+  color: #45FFB2 !important;
+  border: 1px solid rgba(69,255,178,0.30) !important;
+}
+.badge-inprogress, .badge-info {
+  background: rgba(108,203,255,0.14) !important;
+  color: #6CCBFF !important;
+  border: 1px solid rgba(108,203,255,0.30) !important;
+}
+.badge-medium, .badge-warning {
+  background: rgba(255,200,87,0.14) !important;
+  color: #FFC857 !important;
+  border: 1px solid rgba(255,200,87,0.30) !important;
+}
+.badge-critical, .badge-danger {
+  background: rgba(255,92,122,0.14) !important;
+  color: #FF5C7A !important;
+  border: 1px solid rgba(255,92,122,0.30) !important;
+}
+.badge-todo {
+  background: rgba(179,136,255,0.14) !important;
+  color: #C9A7FF !important;
+  border: 1px solid rgba(179,136,255,0.30) !important;
+}
+
+/* Modals */
+.modal-overlay { background: rgba(0,0,0,0.72) !important; backdrop-filter: blur(8px); }
+.modal-header { border-bottom: 1px solid rgba(179,136,255,0.12) !important; }
+.modal-header h3 { color: #FFFFFF !important; }
+.modal-footer { border-top: 1px solid rgba(179,136,255,0.12) !important; background: rgba(11,11,13,0.30) !important; }
+.close-btn { color: #B8B8C7 !important; }
+.close-btn:hover { color: #FFFFFF !important; background: rgba(169,112,255,0.18) !important; }
+
+/* Toast */
+.toast {
+  background: linear-gradient(180deg, #1A1A22 0%, #121216 100%) !important;
+  border: 1px solid rgba(179,136,255,0.20) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 14px 36px rgba(0,0,0,0.60), 0 0 22px rgba(169,112,255,0.20) !important;
+}
+
+/* Kanban */
+.kanban-col, .kanban-tasks {
+  background: rgba(18,18,22,0.65) !important;
+  border: 1px solid rgba(179,136,255,0.10) !important;
+}
+.task-card {
+  background: linear-gradient(180deg, #15151D 0%, #101015 100%) !important;
+  border: 1px solid rgba(179,136,255,0.14) !important;
+  color: #FFFFFF !important;
+}
+.task-card:hover {
+  border-color: #A970FF !important;
+  box-shadow: 0 8px 22px rgba(169,112,255,0.30) !important;
+  transform: translateY(-1px);
+}
+
+/* Empty / inline */
+.empty-state {
+  background: linear-gradient(135deg, rgba(169,112,255,0.06), rgba(201,167,255,0.04)) !important;
+  border: 1px dashed rgba(179,136,255,0.30) !important;
+}
+.empty-state i { color: #C9A7FF !important; }
+.empty-state p { color: #FFFFFF !important; }
+.empty-inline {
+  background: rgba(169,112,255,0.06) !important;
+  border: 1px dashed rgba(179,136,255,0.28) !important;
+  color: #B8B8C7 !important;
+}
+.empty-inline i { color: #C9A7FF !important; }
+
+/* Tooltip */
+[data-tip]::after {
+  background: #1A1A22 !important;
+  color: #FFFFFF !important;
+  border: 1px solid rgba(179,136,255,0.30) !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.60), 0 0 18px rgba(169,112,255,0.22) !important;
+}
+
+/* My Task tabs */
+.ptask-tabs {
+  background: #121216 !important;
+  border: 1px solid rgba(179,136,255,0.14) !important;
+}
+.ptask-tab { color: #B8B8C7 !important; }
+.ptask-tab:hover { background: rgba(169,112,255,0.10) !important; color: #FFFFFF !important; }
+.ptask-tab.active {
+  background: linear-gradient(135deg, #7B4DFF 0%, #A970FF 100%) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 6px 18px rgba(169,112,255,0.45) !important;
+}
+.ptask-tab-count { background: rgba(255,255,255,0.10) !important; color: #C9A7FF !important; }
+.ptask-tab.active .ptask-tab-count { background: rgba(255,255,255,0.20) !important; color: #FFFFFF !important; }
+
+/* Inline-edit dropdowns on My Task table */
+.ptask-inline-select option { background: #1A1A22 !important; color: #FFFFFF !important; }
+.ptask-inline-select:focus { background: rgba(169,112,255,0.14) !important; border-color: #A970FF !important; }
+
+/* Sidebar floating reopen FAB */
+.sidebar-reopen-fab {
+  background: #1A1A22 !important;
+  border: 1px solid rgba(179,136,255,0.30) !important;
+  color: #C9A7FF !important;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.55), 0 0 18px rgba(169,112,255,0.22) !important;
+}
+.sidebar-reopen-fab:hover {
+  background: rgba(169,112,255,0.20) !important;
+  color: #FFFFFF !important;
+}
+
+/* Impersonation banner (purple keeps it visible without looking warning-red) */
+.impersonation-banner,
+.impersonate-banner {
+  background: linear-gradient(135deg, rgba(123,77,255,0.85), rgba(179,136,255,0.85)) !important;
+  color: #FFFFFF !important;
+  border-bottom: 1px solid rgba(255,255,255,0.18) !important;
+}
+
+/* Kanban gallery card — re-paint the previous orange hover ring in lavender */
+.kanban-gallery-card {
+  background: linear-gradient(180deg, #121216 0%, #0E0E12 100%) !important;
+  border: 1px solid rgba(179,136,255,0.14) !important;
+}
+.kanban-gallery-card:hover {
+  box-shadow: 0 10px 28px rgba(169,112,255,0.30), 0 0 0 1px rgba(201,167,255,0.20) inset !important;
+}
+
+/* Progress bars */
+.progress-bar { background: rgba(255,255,255,0.06) !important; }
+.progress-fill,
+.progress-fill.purple,
+.progress-fill.green,
+.progress-fill.amber,
+.progress-fill.red {
+  background: linear-gradient(90deg, #7B4DFF, #B388FF) !important;
+}
+.progress-fill.green { background: linear-gradient(90deg, #19D88D, #45FFB2) !important; }
+.progress-fill.amber { background: linear-gradient(90deg, #F59E0B, #FFC857) !important; }
+.progress-fill.red   { background: linear-gradient(90deg, #FF5C7A, #FF8AA0) !important; }
+
+/* Sidebar groups — soften every group accent toward lavender so the warm
+   orange/cyan/pink mix from the old Oranji theme doesn't bleed through. */
+.nav-group-admin .nav-section-toggle,
+.nav-group-pm .nav-section-toggle,
+.nav-group-dev .nav-section-toggle,
+.nav-group-sales .nav-section-toggle,
+.nav-group-team .nav-section-toggle,
+.nav-group-hr .nav-section-toggle,
+.nav-group-analytics .nav-section-toggle,
+.nav-group-settings .nav-section-toggle {
+  background: linear-gradient(135deg, rgba(179,136,255,0.10), rgba(123,77,255,0.04)) !important;
+  border-color: rgba(179,136,255,0.18) !important;
+}
+
+/* ── Kanban scrollbars — slim & dimmed ──────────────────────
+   The kanban board uses an inner overflow-x:auto wrapper to scroll
+   columns sideways. That, plus the page wrapper, was rendering two
+   prominent lavender lines at the bottom of the board area. Make
+   them razor-thin and only show on hover so they don't read as
+   decorative bars. */
+.kanban-board { scrollbar-width: thin; scrollbar-color: rgba(179,136,255,0.18) transparent; }
+.kanban-board::-webkit-scrollbar,
+#page-kanban-board ::-webkit-scrollbar { height: 4px; width: 4px; }
+.kanban-board::-webkit-scrollbar-track,
+#page-kanban-board ::-webkit-scrollbar-track { background: transparent !important; }
+.kanban-board::-webkit-scrollbar-thumb,
+#page-kanban-board ::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 999px;
+  transition: background .2s ease;
+}
+#page-kanban-board > div:hover > div::-webkit-scrollbar-thumb,
+.kanban-board:hover::-webkit-scrollbar-thumb {
+  background: rgba(179,136,255,0.30) !important;
+}
+
+/* Same trick for the main page scrollbar so it doesn't read as a
+   stripe across the bottom either. */
+::-webkit-scrollbar { height: 6px; width: 8px; }
+::-webkit-scrollbar-thumb { background: transparent; }
+body:hover::-webkit-scrollbar-thumb,
+#main:hover::-webkit-scrollbar-thumb { background: rgba(179,136,255,0.22); }

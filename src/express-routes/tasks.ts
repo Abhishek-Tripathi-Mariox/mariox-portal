@@ -18,6 +18,31 @@ import { createUserNotifications } from './notifications'
 const TASK_TYPES = ['task', 'bug', 'feature', 'epic', 'story', 'subtask'] as const
 const TASK_PRIORITIES = ['critical', 'high', 'medium', 'low'] as const
 
+// Resolve the set of user ids that should be notified about activity on a
+// given project: everyone with an active assignment + the project's PM, PC,
+// reporter, and the current assignee/reporter on the task itself. De-duped
+// by createUserNotifications.
+async function gatherProjectAudience(models: MongoModels, projectId: string, extras: Array<string | null | undefined> = []) {
+  const audience = new Set<string>()
+  for (const id of extras) if (id) audience.add(String(id))
+  try {
+    const project = await models.projects.findById(projectId) as any
+    if (project) {
+      for (const k of ['pm_id', 'pc_id', 'created_by', 'reporter_id', 'manager_id']) {
+        if (project[k]) audience.add(String(project[k]))
+      }
+    }
+    const assignments = await models.projectAssignments.find({ project_id: projectId, is_active: 1 }) as any[]
+    for (const a of assignments) {
+      if (a.user_id) audience.add(String(a.user_id))
+    }
+  } catch {
+    // best-effort — the caller wraps this in createUserNotifications which
+    // also swallows individual insert failures.
+  }
+  return Array.from(audience)
+}
+
 async function ensureColumns(models: MongoModels, projectId: string) {
   const count = await models.kanbanColumns.countDocuments({ project_id: projectId })
   if (count > 0) return
@@ -459,6 +484,23 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
         new_value: title,
         created_at: now,
       })
+      // Broadcast a "new task" notification to the project audience so the
+      // whole team sees what got added — not just the assignee. Author is
+      // skipped automatically (they did the action).
+      try {
+        const audience = await gatherProjectAudience(models, project_id, [task.assignee_id, task.reporter_id])
+        await createUserNotifications(models, audience, {
+          type: 'task_created',
+          title: `New task: ${title}`,
+          body: (description || '').slice(0, 200),
+          link: `task:${id}`,
+          actor_id: user?.sub || null,
+          actor_name: user?.name || user?.full_name || null,
+          meta: { task_id: id, project_id },
+        })
+      } catch (e) {
+        console.warn('[tasks] new-task notify failed:', e)
+      }
       return res.status(201).json({ task })
     } catch (error: any) {
       return respondWithError(res, error, 500)
@@ -553,6 +595,26 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
           new_value: body.status,
           created_at: new Date().toISOString(),
         })
+        // Notify the project team about the status change so updates flow
+        // through the whole group, not just the assignee.
+        try {
+          const audience = await gatherProjectAudience(
+            models,
+            String(oldTask.project_id),
+            [oldTask.assignee_id, oldTask.reporter_id, body.assignee_id],
+          )
+          await createUserNotifications(models, audience, {
+            type: 'task_status_changed',
+            title: `Task moved → ${String(body.status).replace(/_/g, ' ')}: ${oldTask.title || ''}`,
+            body: `${user?.name || 'Someone'} changed status from ${String(oldTask.status || '').replace(/_/g, ' ')} to ${String(body.status).replace(/_/g, ' ')}`,
+            link: `task:${id}`,
+            actor_id: user?.sub || null,
+            actor_name: user?.name || user?.full_name || null,
+            meta: { task_id: id, project_id: oldTask.project_id, from: oldTask.status, to: body.status },
+          })
+        } catch (e) {
+          console.warn('[tasks] status-change notify failed:', e)
+        }
       }
       const updated = await models.tasks.findById(id)
       return res.json({ task: updated })
@@ -603,6 +665,26 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
           new_value: status,
           created_at: new Date().toISOString(),
         })
+        // Same broadcast as PUT — drag-drop on the board is the most common
+        // way status changes, so this is where the team really expects pings.
+        try {
+          const audience = await gatherProjectAudience(
+            models,
+            String(oldTask.project_id),
+            [oldTask.assignee_id, oldTask.reporter_id],
+          )
+          await createUserNotifications(models, audience, {
+            type: 'task_status_changed',
+            title: `Task moved → ${String(status).replace(/_/g, ' ')}: ${oldTask.title || ''}`,
+            body: `${user?.name || 'Someone'} changed status from ${String(oldTask.status || '').replace(/_/g, ' ')} to ${String(status).replace(/_/g, ' ')}`,
+            link: `task:${id}`,
+            actor_id: user?.sub || null,
+            actor_name: user?.name || user?.full_name || null,
+            meta: { task_id: id, project_id: oldTask.project_id, from: oldTask.status, to: status },
+          })
+        } catch (e) {
+          console.warn('[tasks] move notify failed:', e)
+        }
       }
       return res.json({ success: true, status, position })
     } catch (error: any) {

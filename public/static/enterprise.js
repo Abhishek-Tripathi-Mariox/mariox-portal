@@ -410,10 +410,10 @@ async function renderPMDashboard(el) {
         <div style="max-height:300px;overflow-y:auto;padding:12px 16px">
           ${(d.recent_logs||[]).slice(0,6).map(log=>`
             <div class="feed-item">
-              ${avatar(log.full_name||'?', log.avatar_color||'#FF7A45','sm')}
+              ${avatar(log.full_name||'?', log.avatar_color||'#A970FF','sm')}
               <div class="feed-content">
-                <div class="feed-title"><strong>${log.full_name}</strong> logged ${log.hours_consumed}h on ${tc(log.project_name)}</div>
-                <div class="feed-time">${log.module_name} • ${fmtDate(log.date)}</div>
+                <div class="feed-title"><strong>${escapeHtml(log.full_name || 'Unknown user')}</strong> logged ${escapeHtml(String(log.hours_consumed ?? 0))}h on ${escapeHtml(tc(log.project_name) || '—')}</div>
+                <div class="feed-time">${escapeHtml(log.module_name || 'General')} • ${fmtDate(log.date)}</div>
               </div>
             </div>`).join('') || '<div class="empty-state" style="padding:20px"><p>No recent activity</p></div>'}
         </div>
@@ -744,7 +744,9 @@ async function renderKanbanBoard(el) {
   el.innerHTML = `<div style="padding:24px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Loading board…</div>`
   try {
     const [proj, spData, msData] = await Promise.all([API.get('/projects'), API.get('/sprints'), API.get('/milestones').catch(() => ({ milestones: [] }))])
-    const projects = proj.projects || proj.data || []
+    // `let` here because the gallery branch re-orders the list by last
+    // activity before rendering. Other branches just read it.
+    let projects = proj.projects || proj.data || []
     const allSprints = spData.sprints || []
     const allMilestones = msData.milestones || []
 
@@ -760,33 +762,81 @@ async function renderKanbanBoard(el) {
       selProject = ''
     }
 
-    // No project chosen yet → render a friendly empty state with the project
-    // picker and bail before any board data fetch.
+    // No project chosen yet → render the gallery of role-scoped projects as
+    // searchable cards. Clicking any card jumps straight into that board.
     if (!selProject) {
+      // Best-effort task-count fetch so each tile can show "X tasks" /
+      // "Y done". /api/tasks already role-scopes server-side, so the count
+      // matches what each user can actually see. We also use the per-task
+      // updated_at to compute "last activity" per project for sorting.
+      let taskCountByProject = new Map()
+      let doneCountByProject = new Map()
+      let lastActivityByProject = new Map()
+      try {
+        const tasksRes = await API.get('/tasks')
+        const allTasks = tasksRes.tasks || tasksRes.data || []
+        for (const t of allTasks) {
+          const pid = String(t.project_id || '')
+          if (!pid) continue
+          taskCountByProject.set(pid, (taskCountByProject.get(pid) || 0) + 1)
+          if (t.status === 'done') doneCountByProject.set(pid, (doneCountByProject.get(pid) || 0) + 1)
+          const ts = String(t.updated_at || t.created_at || '')
+          const cur = lastActivityByProject.get(pid) || ''
+          if (ts > cur) lastActivityByProject.set(pid, ts)
+        }
+      } catch {}
+
+      // Sort by "last modification" — the freshest of (project.updated_at,
+      // newest task touched on the project) wins. Falls back to created_at
+      // so brand-new projects with no tasks still slot in chronologically.
+      // Most-recently-active project ends up at the top.
+      const lastTouch = (p) => {
+        const projTs = String(p.updated_at || p.created_at || '')
+        const taskTs = lastActivityByProject.get(String(p.id)) || ''
+        return projTs > taskTs ? projTs : taskTs
+      }
+      projects = [...projects].sort((a, b) => String(lastTouch(b)).localeCompare(String(lastTouch(a))))
+
+      // Stash for the search input — re-rendering on every keystroke would
+      // force re-fetch otherwise.
+      window._kanbanGalleryProjects = projects
+      window._kanbanGalleryCounts = { tasks: Object.fromEntries(taskCountByProject), done: Object.fromEntries(doneCountByProject) }
+
       el.innerHTML = `
-      <div style="display:flex;flex-direction:column;height:100%;gap:0">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 0 16px 0;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
           <div style="display:flex;align-items:center;gap:12px">
             <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#FF7A45,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <i class="fas fa-columns" style="color:#fff;font-size:15px"></i>
             </div>
             <div>
               <h1 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0">Kanban Board</h1>
-              <p style="font-size:12px;color:var(--text-muted);margin:0">Pick a project to load its board</p>
+              <p style="font-size:12px;color:var(--text-muted);margin:0">${projects.length} project${projects.length === 1 ? '' : 's'} you can open. Click any card to load its board.</p>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <select class="form-select" style="min-width:240px;max-width:300px" onchange="switchBoardProject(this.value)">
-              <option value="" selected>— Select a project —</option>
+            <div style="position:relative">
+              <i class="fas fa-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text-muted)"></i>
+              <input id="kanban-gallery-search" class="form-input" placeholder="Search projects by name or code…" oninput="filterKanbanGallery(this.value)"
+                style="padding-left:32px;min-width:260px;max-width:340px" autocomplete="off"/>
+            </div>
+            <select class="form-select" style="min-width:200px;max-width:240px" onchange="switchBoardProject(this.value)">
+              <option value="" selected>— Or pick from list —</option>
               ${projects.map(p => `<option value="${p.id}">${tc(p.name)}</option>`).join('')}
             </select>
           </div>
         </div>
-        <div class="empty-state" style="border:1px dashed var(--border);border-radius:14px;padding:48px 24px;text-align:center;background:var(--bg-card-subtle,rgba(255,255,255,.02))">
-          <i class="fas fa-folder-open" style="font-size:34px;color:var(--text-muted);margin-bottom:10px"></i>
-          <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:4px">Choose a project first</div>
-          <div style="font-size:12px;color:var(--text-muted)">Select a project from the dropdown above to see its tasks on the board.</div>
+
+        <div id="kanban-gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+          ${projects.length ? projects.map(p => _kanbanProjectCard(p, taskCountByProject.get(String(p.id)) || 0, doneCountByProject.get(String(p.id)) || 0, lastTouch(p))).join('') : ''}
         </div>
+
+        ${projects.length ? '' : `
+          <div class="empty-state" style="border:1px dashed var(--border);border-radius:14px;padding:48px 24px;text-align:center">
+            <i class="fas fa-folder-open" style="font-size:34px;color:var(--text-muted);margin-bottom:10px"></i>
+            <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:4px">No projects yet</div>
+            <div style="font-size:12px;color:var(--text-muted)">You don't have access to any projects. Ask an admin to add you to one.</div>
+          </div>`}
       </div>`
       return
     }
@@ -858,6 +908,9 @@ async function renderKanbanBoard(el) {
           <button class="btn btn-outline btn-sm" onclick="manageBoardColumns('${selProject}')" title="Configure board columns"><i class="fas fa-sliders-h"></i> Columns</button>
           <button class="btn btn-outline btn-sm" onclick="openKanbanPermissionsModal('${selProject}','${projName.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i> Permissions</button>` : ''}
           ${canAddTask ? `<button class="btn btn-primary btn-sm" onclick="showCreateTaskModal('${selProject}','${selSprint}','backlog')"><i class="fas fa-plus"></i> Add Task</button>` : ''}
+          <button class="btn btn-outline btn-sm" onclick="toggleKanbanZoom(-1)" title="Zoom out"><i class="fas fa-search-minus"></i></button>
+          <button class="btn btn-outline btn-sm" onclick="toggleKanbanZoom(1)" title="Zoom in"><i class="fas fa-search-plus"></i></button>
+          <button class="btn btn-outline btn-sm" id="kanban-fs-btn" onclick="toggleKanbanFullscreen()" title="Toggle full screen"><i class="fas fa-expand"></i></button>
         </div>
       </div>
 
@@ -1038,6 +1091,142 @@ function setupKanbanDragDrop() {
       toast('Failed: ' + err.message, 'error')
     }
   })
+}
+
+// Kanban viewport helpers.
+//   toggleKanbanFullscreen → uses the native Fullscreen API on the kanban
+//     page container; falls back to a CSS `kanban-fs-fallback` class when the
+//     API isn't allowed (some embedded contexts disable it).
+//   toggleKanbanZoom → scales the column track via CSS transform so users can
+//     fit more columns on screen or zoom in on dense boards.
+window._kanbanZoom = window._kanbanZoom || 1
+function toggleKanbanFullscreen() {
+  const el = document.getElementById('page-kanban-board') || document.querySelector('.kanban-board')?.closest('.page')
+  const btn = document.getElementById('kanban-fs-btn')
+  if (!el) return
+  const native = document.fullscreenElement || document.webkitFullscreenElement
+  const isFs = !!native || el.classList.contains('kanban-fs-fallback')
+  if (isFs) {
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {})
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen()
+    }
+    el.classList.remove('kanban-fs-fallback')
+    if (btn) btn.innerHTML = '<i class="fas fa-expand"></i>'
+  } else {
+    const req = el.requestFullscreen || el.webkitRequestFullscreen
+    if (req) {
+      req.call(el).catch(() => { el.classList.add('kanban-fs-fallback') })
+    } else {
+      el.classList.add('kanban-fs-fallback')
+    }
+    if (btn) btn.innerHTML = '<i class="fas fa-compress"></i>'
+  }
+}
+
+function toggleKanbanZoom(direction) {
+  const step = 0.1
+  const min = 0.6, max = 1.4
+  window._kanbanZoom = Math.max(min, Math.min(max, (window._kanbanZoom || 1) + (direction > 0 ? step : -step)))
+  const board = document.getElementById('kanban-board')
+  if (!board) return
+  board.style.transformOrigin = 'top left'
+  board.style.transform = `scale(${window._kanbanZoom})`
+  // Counter-stretch the parent so the scaled board still scrolls properly.
+  board.style.width = `${100 / window._kanbanZoom}%`
+}
+
+// ── Kanban project gallery (the "pick a project" landing) ─────────────
+// One card per project the user can see. Status + role + headcount + task
+// progress are surfaced so the user can pick by context, not just name.
+function _kanbanProjectCard(p, taskCount, doneCount, lastActivity) {
+  const statusColors = {
+    active: '#58C68A', on_track: '#58C68A', healthy: '#58C68A',
+    at_risk: '#F59E0B', warning: '#FFCB47', delayed: '#F59E0B',
+    critical: '#FF5E3A', blocked: '#FF5E3A',
+    completed: '#3b82f6', done: '#3b82f6',
+    paused: '#94a3b8', on_hold: '#94a3b8',
+  }
+  const statusColor = statusColors[String(p.status || '').toLowerCase()] || '#a78bfa'
+  const progress = taskCount ? Math.round((doneCount / taskCount) * 100) : 0
+  const safeName = String(p.name || '').replace(/'/g, "\\'")
+  const initials = String(p.name || '?').split(/\s+/).map(s => s[0]).join('').slice(0, 2).toUpperCase()
+  const myRole =
+    String(p.pm_id || '') === String(_user?.sub) ? 'PM' :
+    String(p.pc_id || '') === String(_user?.sub) ? 'PC' :
+    String(p.team_lead_id || '') === String(_user?.sub) ? 'Team Lead' :
+    null
+  return `
+  <div class="kanban-gallery-card" data-name="${escapeHtml(String(p.name || '').toLowerCase())}" data-code="${escapeHtml(String(p.code || '').toLowerCase())}"
+       onclick="switchBoardProject('${escapeHtml(p.id)}')"
+       style="background:var(--bg-card,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;display:flex;flex-direction:column;gap:12px"
+       onmouseover="this.style.borderColor='${statusColor}';this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 22px rgba(0,0,0,.25)'"
+       onmouseout="this.style.borderColor='var(--border)';this.style.transform='translateY(0)';this.style.boxShadow='none'">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,${statusColor}33,${statusColor}11);border:1px solid ${statusColor}44;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:${statusColor};flex-shrink:0">${escapeHtml(initials)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;color:var(--text-primary);line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${escapeHtml(tc(p.name))}</div>
+        <div style="font-size:11px;color:var(--text-muted);font-family:monospace;margin-top:2px">${escapeHtml(p.code || '—')}</div>
+      </div>
+      <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;background:${statusColor}22;color:${statusColor};text-transform:uppercase;letter-spacing:.4px;white-space:nowrap">${escapeHtml(String(p.status || 'active').replace(/_/g, ' '))}</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+      ${p.pm_name ? `<div style="display:flex;align-items:center;gap:6px;color:#94a3b8"><i class="fas fa-user-tie" style="width:14px;color:#FF7A45"></i>PM · ${escapeHtml(p.pm_name)}</div>` : ''}
+      ${p.team_lead_name ? `<div style="display:flex;align-items:center;gap:6px;color:#94a3b8"><i class="fas fa-user-shield" style="width:14px;color:#C56FE6"></i>Lead · ${escapeHtml(p.team_lead_name)}</div>` : ''}
+      ${typeof p.developer_count === 'number' ? `<div style="display:flex;align-items:center;gap:6px;color:#94a3b8"><i class="fas fa-users" style="width:14px;color:#58C68A"></i>${p.developer_count} dev${p.developer_count === 1 ? '' : 's'}</div>` : ''}
+      ${p.expected_end_date ? `<div style="display:flex;align-items:center;gap:6px;color:${new Date(p.expected_end_date) < new Date() ? '#FF5E3A' : '#94a3b8'}"><i class="fas fa-flag-checkered" style="width:14px"></i>Due ${fmtDate(p.expected_end_date)}</div>` : ''}
+    </div>
+
+    ${taskCount ? `
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:4px">
+          <span>${doneCount} / ${taskCount} tasks done</span>
+          <span style="font-weight:600;color:${progress >= 100 ? '#58C68A' : progress >= 60 ? '#FFCB47' : '#94a3b8'}">${progress}%</span>
+        </div>
+        <div style="height:5px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden">
+          <div style="height:100%;width:${progress}%;background:linear-gradient(90deg,${statusColor},${statusColor}cc);transition:width .3s"></div>
+        </div>
+      </div>` : `<div style="font-size:11px;color:var(--text-muted);font-style:italic">No tasks yet</div>`}
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      ${myRole ? `<div style="font-size:10px;font-weight:700;color:#FFB347;background:rgba(255,179,71,.12);padding:3px 8px;border-radius:999px"><i class="fas fa-star" style="font-size:9px"></i> You are ${myRole}</div>` : '<span></span>'}
+      ${lastActivity ? `<div style="font-size:10px;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px" title="${escapeHtml(new Date(lastActivity).toLocaleString())}"><i class="fas fa-clock-rotate-left" style="font-size:9px"></i>Updated ${typeof timeAgo === 'function' ? timeAgo(lastActivity) : fmtDate(lastActivity)}</div>` : ''}
+    </div>
+  </div>`
+}
+
+// Live filter for the gallery — operates on the rendered DOM so we don't
+// re-fetch / re-build cards on every keystroke.
+function filterKanbanGallery(query) {
+  const q = String(query || '').trim().toLowerCase()
+  const cards = document.querySelectorAll('#kanban-gallery-grid .kanban-gallery-card')
+  let shown = 0
+  cards.forEach(card => {
+    const name = card.dataset.name || ''
+    const code = card.dataset.code || ''
+    const match = !q || name.includes(q) || code.includes(q)
+    card.style.display = match ? '' : 'none'
+    if (match) shown++
+  })
+  // Toggle a "no matches" line so the user knows the search ran.
+  let noMatch = document.getElementById('kanban-gallery-nomatch')
+  if (shown === 0 && q) {
+    if (!noMatch) {
+      noMatch = document.createElement('div')
+      noMatch.id = 'kanban-gallery-nomatch'
+      noMatch.className = 'empty-inline'
+      noMatch.style.gridColumn = '1 / -1'
+      noMatch.innerHTML = `<i class="fas fa-search"></i><span>No projects match "${escapeHtml(q)}".</span>`
+      document.getElementById('kanban-gallery-grid')?.appendChild(noMatch)
+    } else {
+      noMatch.style.display = ''
+      noMatch.querySelector('span').textContent = `No projects match "${q}".`
+    }
+  } else if (noMatch) {
+    noMatch.style.display = 'none'
+  }
 }
 
 function switchBoardProject(id) {

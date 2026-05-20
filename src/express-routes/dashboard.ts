@@ -71,9 +71,26 @@ export function createDashboardRouter(models: MongoModels, jwtSecret: string) {
         assignments = allAssignments.filter((a) => visibleProjectIds.has(String(a.project_id)))
       }
 
+      // Enrich each timesheet row with the user's name/colour + project name
+      // before sending it to the dashboard widget. Without this the front-end
+      // renders "undefined logged Xh on undefined" — which is what the team
+      // flagged on the "Recent Activity" feed.
+      const usersById = new Map(users.map((u) => [String(u.id), u]))
+      const projectsByIdLocal = new Map(projects.map((p) => [String(p.id), p]))
       const recentLogs = [...timesheets]
         .sort((a, b) => String(b.created_at || b.date || '').localeCompare(String(a.created_at || a.date || '')))
         .slice(0, 10)
+        .map((t) => {
+          const u = usersById.get(String(t.user_id)) as any
+          const p = projectsByIdLocal.get(String(t.project_id)) as any
+          return {
+            ...t,
+            full_name: u?.full_name || u?.email || 'Unknown user',
+            avatar_color: u?.avatar_color || '#A970FF',
+            project_name: p?.name || 'Unknown project',
+            module_name: t.module_name || 'General',
+          }
+        })
 
       const projectStats = {
         total: projects.length,

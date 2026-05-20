@@ -1133,7 +1133,7 @@ router.register('leaves', async () => {
                 <td style="font-size:12px;color:var(--text-secondary);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.reason||'-'}</td>
                 <td><span class="badge ${l.status==='approved'?'badge-green':l.status==='rejected'?'badge-red':'badge-yellow'}">${l.status}</span></td>
                 <td>
-                  ${l.status === 'pending' ? `
+                  ${(l.status === 'pending' && String(l.user_id) !== String(_user?.sub || _user?.id || '')) ? `
                   <button class="btn btn-success btn-xs" onclick="approveLeave('${l.id}','approved')"><i class="fas fa-check"></i></button>
                   <button class="btn btn-danger btn-xs" onclick="approveLeave('${l.id}','rejected')"><i class="fas fa-times"></i></button>` : ''}
                   <button class="btn btn-danger btn-xs" onclick="deleteLeave('${l.id}')"><i class="fas fa-trash"></i></button>

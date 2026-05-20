@@ -153,13 +153,13 @@ function renderSupportRow(t) {
           <div style="font-size:14px;font-weight:700;color:var(--text-primary)">${_supEsc(t.subject)}</div>
           <div style="font-size:12px;color:var(--text-muted);margin-top:3px">
             #${_supEsc(String(t.id).slice(-6))}${subTitle ? ` · ${_supEsc(subTitle)}` : ''}
-            ${t.created_by_name ? ` · by ${_supEsc(t.created_by_name)}` : ''}
           </div>
         </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           ${_supBadge(t.priority || 'medium', pColor)}
           ${_supBadge(_supStatusLabel(t.status), sColor)}
-          ${t.assigned_to_name ? `<span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-user-check"></i> ${_supEsc(t.assigned_to_name)}</span>` : `<span style="font-size:11px;color:#94a3b8"><i class="fas fa-user-slash"></i> Unassigned</span>`}
+          ${t.created_by_name ? `<span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-user-tag"></i> Assigned by ${_supEsc(t.created_by_name)}</span>` : ''}
+          ${t.assigned_to_name ? `<span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-user-check"></i> Assigned to ${_supEsc(t.assigned_to_name)}</span>` : `<span style="font-size:11px;color:#94a3b8"><i class="fas fa-user-slash"></i> Unassigned</span>`}
         </div>
       </div>
     </div>`
@@ -247,13 +247,25 @@ async function openSupportCreateModal() {
           </select>
         </div>
       ` : ''}
-      ${canAssign ? `
-        <div class="form-group" id="sup-new-assignee-wrap">
-          <label class="form-label">Assign to</label>
-          <select id="sup-new-assignee" class="form-select"><option value="">Loading…</option></select>
-          <div id="sup-new-assignee-hint" style="font-size:11px;color:var(--text-muted);margin-top:4px">Pick a project above to scope the assignee list to its team.</div>
+      <div class="grid-2" style="gap:12px">
+        <div class="form-group">
+          <label class="form-label">Assigned By</label>
+          <input class="form-input" value="${_supEsc(_user?.full_name || _user?.name || '—')}" disabled style="opacity:.85" data-modal-dirty-ignore="1"/>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Recorded automatically as the ticket creator.</div>
         </div>
-      ` : ''}
+        ${canAssign ? `
+          <div class="form-group" id="sup-new-assignee-wrap">
+            <label class="form-label">Assigned To</label>
+            <select id="sup-new-assignee" class="form-select"><option value="">Loading…</option></select>
+            <div id="sup-new-assignee-hint" style="font-size:11px;color:var(--text-muted);margin-top:4px">Pick a project above to scope the assignee list to its team.</div>
+          </div>
+        ` : `
+          <div class="form-group">
+            <label class="form-label">Assigned To</label>
+            <input class="form-input" value="A manager will assign this ticket" disabled style="opacity:.7" data-modal-dirty-ignore="1"/>
+          </div>
+        `}
+      </div>
       <div class="form-group">
         <label class="form-label">Description *</label>
         <textarea id="sup-new-description" class="form-textarea" rows="5" maxlength="5000" placeholder="Provide steps, context, screenshots links, etc."></textarea>
@@ -553,8 +565,8 @@ function paintSupportDetail() {
         <div class="card">
           <div class="card-header"><h3><i class="fas fa-circle-info" style="margin-right:6px;color:var(--text-muted)"></i>Details</h3></div>
           <div class="card-body" style="font-size:12px;color:var(--text-muted);display:grid;gap:6px">
-            <div><strong>Requester:</strong> ${_supEsc(t.created_by_name||'—')} <span style="opacity:.6">(${_supEsc(t.created_by_role||'')})</span></div>
-            <div><strong>Assigned:</strong> ${_supEsc(t.assigned_to_name||'Unassigned')}</div>
+            <div><strong>Assigned By:</strong> ${_supEsc(t.created_by_name||'—')} <span style="opacity:.6">(${_supEsc(t.created_by_role||'')})</span></div>
+            <div><strong>Assigned To:</strong> ${_supEsc(t.assigned_to_name||'Unassigned')}</div>
             <div><strong>Project:</strong> ${_supEsc(t.project_name||'—')}</div>
             <div><strong>Client:</strong> ${_supEsc(t.client_name||'—')}</div>
             <div><strong>Category:</strong> ${_supEsc(t.category||'—')}</div>

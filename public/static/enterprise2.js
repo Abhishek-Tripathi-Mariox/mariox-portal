@@ -98,7 +98,8 @@ async function renderDocumentsCenter(el) {
     el.innerHTML = `
     <div class="page-header">
       <div><h1 class="page-title">Document Center</h1><p class="page-subtitle">${docs.length} documents across all projects</p></div>
-      <div class="page-actions">
+      <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+        ${(['admin','pm','pc'].includes(_user.role) || (typeof hasAnyPermission === 'function' && hasAnyPermission(['documents.upload']))) ? `<button class="btn btn-outline" onclick="openManageDocCategories()" title="Add or remove custom categories"><i class="fas fa-tags"></i> Manage Categories</button>` : ''}
         ${(['admin','pm','pc'].includes(_user.role) || (typeof hasAnyPermission === 'function' && hasAnyPermission(['documents.upload']))) ? `<button class="btn btn-primary" onclick="showUploadDocModal()"><i class="fas fa-upload"></i>Upload Document</button>` : ''}
       </div>
     </div>
@@ -299,6 +300,138 @@ function udOpenCategoryPrompt() {
 // the dropdown with the new entry pre-selected. Called from both the "+ New
 // category" button and the sentinel "__new__" option at the bottom of the
 // dropdown — whichever the user clicks first.
+// ── Manage Document Categories ────────────────────────────────
+// Two-pane modal: built-in categories (read-only) on top, custom ones
+// underneath with delete buttons + an inline add row. Mirrors the same
+// pattern used for personal-task statuses.
+async function openManageDocCategories() {
+  let cats = []
+  try {
+    const r = await API.get('/documents/categories')
+    cats = [
+      ...(r.builtin_categories || []).map(v => ({ value: v, label: window._docCategoryLabels?.[v] || v, builtin: true })),
+      ...(r.custom_categories || []).map(c => ({ value: c.value, label: c.label || c.value, builtin: false, id: c.id })),
+    ]
+  } catch (e) { toast('Failed to load categories: ' + (e.message || e), 'error'); return }
+  const builtin = cats.filter(c => c.builtin)
+  const custom = cats.filter(c => !c.builtin)
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-tags" style="color:#FF7A45;margin-right:6px"></i> Manage Categories</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:18px">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Built-in (cannot be removed)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${builtin.map(c => `<span class="badge badge-todo">${escapeInbox(c.label)}</span>`).join('')}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Custom categories (${custom.length})</div>
+        <div id="doc-cat-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+          ${custom.length ? custom.map(c => `
+            <div id="doc-cat-row-${escapeInbox(c.id)}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,122,69,.06);border:1px solid rgba(255,122,69,.18);border-radius:8px">
+              <i class="fas fa-folder" style="color:#FF7A45"></i>
+              <div id="doc-cat-body-${escapeInbox(c.id)}" style="flex:1;min-width:0">
+                <div style="font-size:13px;color:#e2e8f0">${escapeInbox(c.label)}</div>
+                <div style="font-size:10px;color:#94a3b8;font-family:monospace">${escapeInbox(c.value)}</div>
+              </div>
+              <button class="btn btn-xs btn-outline" title="Rename" onclick="startEditDocCategory('${escapeInbox(c.id)}','${escapeInbox(c.label).replace(/'/g, "\\'")}')"><i class="fas fa-pencil"></i></button>
+              <button class="btn btn-xs btn-outline" style="color:#FF5E3A;border-color:#FF5E3A" title="Delete" onclick="deleteDocCategory('${escapeInbox(c.id)}','${escapeInbox(c.label).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>
+            </div>`).join('') : '<div class="empty-inline"><i class="fas fa-circle-plus"></i><span>No custom categories yet. Add one below.</span></div>'}
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:200px;margin:0">
+            <label class="form-label">Category name</label>
+            <input id="doc-cat-new-label" class="form-input" placeholder='e.g. "Design Review", "QA Sign-off"' maxlength="60" autocomplete="off"/>
+          </div>
+          <button class="btn btn-primary" onclick="addDocCategoryFromManager()"><i class="fas fa-plus"></i> Add</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Removing a category is allowed only if no documents are using it server-side.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+    </div>
+  `, 'modal-lg')
+}
+
+async function addDocCategoryFromManager() {
+  const label = (document.getElementById('doc-cat-new-label')?.value || '').trim()
+  if (!label) { toast('Enter a category name', 'error'); return }
+  try {
+    await API.post('/documents/categories', { label })
+    toast('Category added', 'success', 1200)
+    // Re-render the manager so the new entry shows up immediately, and bust
+    // the docs list cache so its filter chip refreshes on next load.
+    await openManageDocCategories()
+    const docEl = document.getElementById('page-documents-center')
+    if (docEl) docEl.dataset.loaded = ''
+  } catch (e) { toast(e.message || 'Failed to add', 'error') }
+}
+
+// Swap the row's body for an inline input + Save/Cancel. The slug is kept
+// (server enforces this) so only the human label changes.
+function startEditDocCategory(id, currentLabel) {
+  const body = document.getElementById('doc-cat-body-' + id)
+  const row = document.getElementById('doc-cat-row-' + id)
+  if (!body || !row) return
+  body.innerHTML = `
+    <input id="doc-cat-edit-input-${id}" class="form-input" value="${escapeInbox(currentLabel)}" maxlength="60" autocomplete="off"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();saveEditDocCategory('${id}')} else if(event.key==='Escape'){event.preventDefault();cancelEditDocCategory()}"
+      style="font-size:13px;padding:4px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,122,69,.45);border-radius:6px;color:#e2e8f0;width:100%"/>
+  `
+  // Swap the trailing buttons too — replace edit/delete with save/cancel.
+  const actions = row.querySelectorAll('button')
+  actions.forEach(b => b.remove())
+  const save = document.createElement('button')
+  save.className = 'btn btn-xs btn-primary'
+  save.title = 'Save'
+  save.innerHTML = '<i class="fas fa-check"></i>'
+  save.onclick = () => saveEditDocCategory(id)
+  const cancel = document.createElement('button')
+  cancel.className = 'btn btn-xs btn-outline'
+  cancel.title = 'Cancel'
+  cancel.innerHTML = '<i class="fas fa-times"></i>'
+  cancel.onclick = () => cancelEditDocCategory()
+  row.appendChild(save)
+  row.appendChild(cancel)
+  setTimeout(() => {
+    const inp = document.getElementById('doc-cat-edit-input-' + id)
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length) }
+  }, 30)
+}
+
+function cancelEditDocCategory() {
+  // Easiest path: just re-open the manager so the cancelled row reverts.
+  openManageDocCategories()
+}
+
+async function saveEditDocCategory(id) {
+  const inp = document.getElementById('doc-cat-edit-input-' + id)
+  const label = (inp?.value || '').trim()
+  if (!label) { toast('Name cannot be empty', 'error'); return }
+  try {
+    await API.put('/documents/categories/' + id, { label })
+    toast('Category renamed', 'success', 1200)
+    await openManageDocCategories()
+    const docEl = document.getElementById('page-documents-center')
+    if (docEl) docEl.dataset.loaded = ''
+  } catch (e) { toast(e.message || 'Failed to rename', 'error') }
+}
+
+async function deleteDocCategory(id, label) {
+  if (!confirm(`Remove "${label}" category?`)) return
+  try {
+    await API.delete('/documents/categories/' + id)
+    toast('Category removed', 'success', 1200)
+    await openManageDocCategories()
+    const docEl = document.getElementById('page-documents-center')
+    if (docEl) docEl.dataset.loaded = ''
+  } catch (e) { toast(e.message || 'Failed to remove', 'error') }
+}
+
 async function udAddDocCategory() {
   const sel = document.getElementById('ud-category')
   // If the change came from the sentinel option, restore the previous choice
@@ -2203,7 +2336,12 @@ function openLeaveDetailModal(id) {
   if (!l) { toast('Leave not found', 'error'); return }
   const role = String(_user?.role || '').toLowerCase()
   const isManager = ['admin', 'pm', 'pc'].includes(role)
-  const canApprove = isManager && l.status === 'pending'
+    || (typeof hasAnyPermission === 'function' && hasAnyPermission(['leaves.approve']))
+  // Self-approval is blocked at every layer (backend + table buttons + this
+  // modal) — a manager can't sign off on their own leave application.
+  const myId = String(_user?.sub || _user?.id || '')
+  const isOwnLeave = String(l.user_id || '') === myId
+  const canApprove = isManager && l.status === 'pending' && !isOwnLeave
   const employeeName = l.full_name || l.email || 'Unknown employee'
   const statusBadge = l.status === 'approved'
     ? '<span class="badge badge-green">Approved</span>'
@@ -2240,6 +2378,9 @@ function openLeaveDetailModal(id) {
           <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Manager note${l.approved_by_name ? ' · ' + escapeInbox(l.approved_by_name) : ''}</div>
           <div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,122,69,0.05);border:1px solid rgba(255,122,69,0.18)">${escapeInbox(l.decision_reason)}</div>
         </div>` : ''}
+      ${isOwnLeave && isManager && l.status === 'pending' ? `
+        <div class="empty-inline"><i class="fas fa-circle-info"></i><span>This is your own leave request — ask another manager to approve or reject it.</span></div>
+      ` : ''}
       ${canApprove ? `
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Decision reason <span style="color:#9F8678;font-weight:400">(optional)</span></label>
@@ -2384,6 +2525,13 @@ async function submitLeaveApply() {
 }
 
 async function approveLeaveAction(id, status) {
+  // Belt-and-braces self-approval guard. The backend rejects this 403 too,
+  // but checking client-side keeps the UX feedback instant.
+  const leave = (window._leavesById || {})[id]
+  if (leave && String(leave.user_id || '') === String(_user?.sub || _user?.id || '')) {
+    toast('You cannot approve or reject your own leave. Ask another manager.', 'error')
+    return
+  }
   if (status === 'rejected') {
     return showRejectLeaveModal(id)
   }

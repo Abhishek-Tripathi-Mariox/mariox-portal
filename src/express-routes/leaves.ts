@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
+import { createAuthMiddleware, requireRole, userHasAnyPermission } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
 import {
   validateEnum,
@@ -136,9 +136,15 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
-  router.patch('/:id/approve', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.patch('/:id/approve', async (req, res) => {
     try {
       const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
+      // Approver must be admin/PM/PC OR have leaves.approve explicitly granted.
+      const isManager = ['admin', 'pm', 'pc'].includes(role)
+        || await userHasAnyPermission(models, user, 'leaves.approve')
+      if (!isManager) return res.status(403).json({ error: 'You do not have permission to approve leaves' })
+
       const status = validateEnum(req.body?.status, LEAVE_APPROVAL_STATUSES, 'Status')
       const rawReason = typeof req.body?.decision_reason === 'string' ? req.body.decision_reason.trim() : ''
       const decisionReason = rawReason
@@ -146,6 +152,13 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
         : null
       const leave = await models.leaves.findById(String(req.params.id)) as any
       if (!leave) return res.status(404).json({ error: 'Leave not found' })
+
+      // Hard block on self-approval — even an admin shouldn't sign off on
+      // their own leave application. They have to ask someone else.
+      if (String(leave.user_id || '') === String(user?.sub || '')) {
+        return res.status(403).json({ error: 'You cannot approve or reject your own leave. Ask another manager.' })
+      }
+
       await models.leaves.updateById(leave.id, {
         $set: {
           status,
@@ -180,6 +193,21 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
 
   router.delete('/:id', async (req, res) => {
     try {
+      const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
+      const leave = await models.leaves.findById(String(req.params.id)) as any
+      if (!leave) return res.status(404).json({ error: 'Leave not found' })
+      // Owner can withdraw their own (still-pending) application; admins
+      // can delete any leave record. Nobody else gets to clean up someone
+      // else's history.
+      const isOwner = String(leave.user_id || '') === String(user?.sub || '')
+      const isAdmin = role === 'admin'
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ error: 'You do not have permission to delete this leave' })
+      }
+      if (isOwner && !isAdmin && leave.status && leave.status !== 'pending') {
+        return res.status(403).json({ error: 'You can only withdraw a leave that is still pending' })
+      }
       await models.leaves.deleteById(String(req.params.id))
       return res.json({ message: 'Leave deleted' })
     } catch (error: any) {

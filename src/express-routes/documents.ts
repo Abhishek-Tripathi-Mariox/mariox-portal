@@ -194,6 +194,29 @@ export function createDocumentsRouter(models: MongoModels, jwtSecret: string, ru
     }
   })
 
+  router.put('/categories/:id', async (req, res) => {
+    try {
+      const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
+      const allowed = ['admin', 'pm', 'pc'].includes(role)
+        || await userHasAnyPermission(models, user, 'documents.upload')
+      if (!allowed) return res.status(403).json({ error: 'Forbidden' })
+      const cat = await models.docCategories.findById(String(req.params.id)) as any
+      if (!cat) return res.status(404).json({ error: 'Category not found' })
+
+      const body = req.body || {}
+      const label = validateLength(String(body.label || body.name || '').trim(), 2, 60, 'Category name')
+      // Keep the existing slug (value) so any existing documents tagged with
+      // this category stay tagged. Only the human label is editable.
+      const patch: any = { label, updated_at: new Date().toISOString() }
+      await models.docCategories.updateById(cat.id, { $set: patch })
+      const updated = await models.docCategories.findById(cat.id)
+      return res.json({ category: updated, message: 'Category renamed' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
   router.delete('/categories/:id', async (req, res) => {
     try {
       const user = req.user as any

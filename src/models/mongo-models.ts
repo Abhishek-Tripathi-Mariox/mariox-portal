@@ -291,6 +291,7 @@ export class MongoModels {
   readonly sprints: MongoRepository
   readonly documents: MongoRepository
   readonly docCategories: MongoRepository
+  readonly personalTaskStatuses: MongoRepository
   readonly leaves: MongoRepository
   readonly holidays: MongoRepository
   readonly techStacks: MongoRepository
@@ -353,6 +354,7 @@ export class MongoModels {
     this.sprints = new MongoRepository(db.collection('sprints'))
     this.documents = new MongoRepository(db.collection('documents'))
     this.docCategories = new MongoRepository(db.collection('doc_categories'))
+    this.personalTaskStatuses = new MongoRepository(db.collection('personal_task_statuses'))
     this.leaves = new MongoRepository(db.collection('leaves'))
     this.holidays = new MongoRepository(db.collection('holidays'))
     this.techStacks = new MongoRepository(db.collection('tech_stacks'))

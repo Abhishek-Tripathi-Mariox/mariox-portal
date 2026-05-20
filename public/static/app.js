@@ -84,17 +84,21 @@ const PAGE_PERMISSIONS = {
   'clients-list':    ['admin'],
   'billing-admin':   ['admin'],
   'team-overview':   ['admin', 'pm'],
-  'leads-view':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
-  'lead-detail':     ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
-  'lead-followups':  ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
-  'lead-tasks':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
-  'sales-tracker':   ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
-  'sales-team':      ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'],
-  'portfolio-library': ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
-  'scope-library':     ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
-  'quotation-library': ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
-  'sales-incentive':   ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
-  'meet-setup':        ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'],
+  // Sales CRM pages — defaulted to admin + sales family. PM/PC don't get
+  // these by default any more; admin can still grant them via the granular
+  // permission keys (leads.*, portfolios.*, scopes.*, quotations.*,
+  // meetings.*, sales_incentive.*) which canSeePage honours via NAV_PERMISSION_MAP.
+  'leads-view':      ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'lead-detail':     ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'lead-followups':  ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'lead-tasks':      ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'sales-tracker':   ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'sales-team':      ['admin', 'sales_manager', 'sales_tl'],
+  'portfolio-library': ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'scope-library':     ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'quotation-library': ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'sales-incentive':   ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'meet-setup':        ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
   'project-team':    ['admin', 'pm', 'pc'],
   'dev-team':        ['admin', 'pm', 'pc'],
   'hr-team':         ['admin', 'pm', 'pc', 'hr'],
@@ -195,6 +199,10 @@ const NAV_PERMISSION_MAP = {
   'lead-detail':    ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
   'lead-followups': ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
   'lead-tasks':     ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
+  // Sprint / Milestone pages: visible to PM/PC by role (PAGE_PERMISSIONS) plus
+  // anyone admin granted a sprints.* / milestones.* permission to.
+  'sprints-view':    ['sprints.create', 'sprints.edit'],
+  'milestones-view': ['milestones.create', 'milestones.edit'],
   // Pages intentionally NOT mapped (role-based only):
   //   sales-tracker
   //   → role-bound to sales family; no granular catalog entry yet
@@ -218,19 +226,14 @@ function canSeePage(page) {
   const role = String(_user?.role || '').toLowerCase()
   // Admin bypasses every gate — they see and do everything.
   if (role === 'admin') return true
-  // Permission-first: if the page is mapped to granular keys, the
-  // hardcoded role list is ignored. This is what lets admin grant
-  // `clients.view_all` to a sales agent and have the Clients tab
-  // actually appear, even though sales_agent isn't in
-  // PAGE_PERMISSIONS['clients-list'].
+  // Permission OR role: a granular-permission grant unlocks the page even if
+  // the role isn't in the default list. Conversely, the built-in role list
+  // still applies so PM/PC don't lose their default tabs the moment a page
+  // gets added to NAV_PERMISSION_MAP.
   const perms = NAV_PERMISSION_MAP[page]
-  if (perms && perms.length) {
-    return hasAnyPermission(perms)
-  }
-  // Unmapped pages stay role-based (lead pages, role-specific dashboards,
-  // settings, etc.).
+  if (perms && perms.length && hasAnyPermission(perms)) return true
   const allowed = PAGE_PERMISSIONS[page]
-  if (!allowed) return true
+  if (!allowed) return !!(perms && perms.length) ? false : true
   return allowed.includes(role)
 }
 
@@ -643,6 +646,7 @@ function renderApp() {
     app.innerHTML = buildShell()
     bindNav()
     if (app) app.dataset.shellUser = currentUserKey
+    applyStoredSidebarState()
   }
   const pg = Router.current?.page || defaultPage()
   ensureSidebarGroupOpen(pg)
@@ -751,8 +755,9 @@ function buildShell() {
       navItem('leads-view',      'fa-bullseye',       leadsLabel),
       navItem('lead-followups',  'fa-calendar-check', 'Follow-ups'),
       navItem('lead-tasks',      'fa-list-check',     'Sales Tasks'),
-      navItem('personal-tasks',  'fa-clipboard-check', 'Tasks'),
-      navItem('hr-calendar',     'fa-calendar-days',  'Calendar'),
+      // Calendar lives in the HR section now — listing it here led to 3-4
+      // duplicate "Calendar" entries in every sidebar. Same applies to
+      // "My Task" which has its own home under My Workspace.
       navItem('sales-tracker',   'fa-chart-line',     'Sale Tracker'),
       navItem('sales-team',      'fa-people-group',   'Sales Team'),
       navItem('portfolio-library','fa-briefcase',     'Portfolio'),
@@ -777,7 +782,6 @@ function buildShell() {
       navItem('milestones-view', 'fa-flag',        'Milestones'),
       navItem('documents-center','fa-folder-open', 'Documents'),
       navItem('resources-view',  'fa-users-gear',  'Resources'),
-      navItem('hr-calendar',     'fa-calendar-days', 'Calendar'),
       navItem('project-team',    'fa-people-group','Project Team'),
     ],
   }) : ''
@@ -795,12 +799,11 @@ function buildShell() {
     items: [
       navItem('dev-dashboard',  'fa-gauge',       'My Dashboard'),
       navItem('my-tasks',       'fa-list-check',  'Project Tasks'),
-      navItem('personal-tasks', 'fa-clipboard-check', 'Tasks'),
+      navItem('personal-tasks', 'fa-clipboard-check', 'My Task'),
       navItem('timesheets-view','fa-clock',       'Timesheets'),
       navItem('leaves-view',    'fa-umbrella-beach', 'Leaves', ' <span class="nav-badge" id="nb-leaves">0</span>'),
       navItem('support-tickets','fa-life-ring',   'Support Tickets'),
       navItem('approval-queue', 'fa-clipboard-check', 'Approvals', ' <span class="nav-badge" id="nb-approval">0</span>'),
-      navItem('hr-calendar',    'fa-calendar-days', 'Calendar'),
       navItem('dev-team',       'fa-people-group','Dev Team'),
     ],
   }) : ''
@@ -815,10 +818,9 @@ function buildShell() {
       navItem('projects-list',  'fa-layer-group', 'My Projects'),
       navItem('kanban-board',   'fa-columns',     'Kanban Board'),
       navItem('my-tasks',       'fa-list-check',  'My Tasks'),
-      navItem('personal-tasks', 'fa-clipboard-check', 'Tasks'),
+      navItem('personal-tasks', 'fa-clipboard-check', 'My Task'),
       navItem('bidding-view',   'fa-gavel',       'Bidding', ' <span class="nav-badge" id="nb-bids" style="display:none">0</span>'),
       navItem('support-tickets','fa-life-ring',   'Support Tickets'),
-      navItem('hr-calendar',    'fa-calendar-days', 'Calendar'),
       navItem('dev-team',       'fa-people-group','Dev Team'),
     ],
   }) : ''
@@ -879,8 +881,9 @@ function buildShell() {
     </div>
   </div>
   <div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
+  <button class="sidebar-reopen-fab" onclick="toggleSidebar()" title="Show sidebar"><i class="fas fa-bars"></i><span>Menu</span></button>
   <div id="topbar">
-    <button class="topbar-hamburger" onclick="toggleSidebar()" id="menu-toggle" aria-label="Toggle sidebar"><i class="fas fa-bars"></i></button>
+    <button class="topbar-hamburger" onclick="toggleSidebar()" id="menu-toggle" aria-label="Toggle sidebar" style="display:flex"><i class="fas fa-bars"></i></button>
     <button class="icon-btn" id="back-btn" onclick="Router.back()" style="display:none" data-tip="Go Back"><i class="fas fa-arrow-left"></i></button>
     <div class="breadcrumb" id="breadcrumb">
       <span>DevPortal</span><i class="fas fa-chevron-right" style="font-size:10px"></i><span class="current" id="bc-current">Dashboard</span>
@@ -888,14 +891,14 @@ function buildShell() {
     <div class="topbar-actions">
       <div class="search-wrap" style="position:relative">
         <i class="fas fa-search"></i>
-        <input class="search-bar" placeholder="Search tasks, projects…" id="global-search" autocomplete="off"
+        <input class="search-bar" placeholder="Search projects, tasks, clients, leads, invoices…" id="global-search" autocomplete="off"
           oninput="globalSearch(this.value)"
           onfocus="globalSearch(this.value)"
           onblur="setTimeout(()=>{const d=document.getElementById('global-search-results');if(d)d.style.display='none'},180)"
           onkeydown="if(event.key==='Escape'){this.blur();this.value='';const d=document.getElementById('global-search-results');if(d)d.style.display='none'}"/>
         <div id="global-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:6px;max-height:380px;overflow-y:auto;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.45);z-index:120"></div>
       </div>
-      <button class="icon-btn notif-btn" onclick="showNotifications()" data-tip="Notifications"><i class="fas fa-bell"></i><span class="notif-dot" id="notif-dot" style="display:none"></span><span class="notif-badge" id="notif-badge" style="display:none">0</span></button>
+      <button class="icon-btn notif-btn" onclick="showNotifications()" data-tip="Notifications"><i class="fas fa-bell"></i><span class="notif-dot" id="notif-dot" hidden style="display:none"></span><span class="notif-badge" id="notif-badge" hidden style="display:none"></span></button>
       <button class="icon-btn" onclick="logout()" data-tip="Logout"><i class="fas fa-sign-out-alt"></i></button>
     </div>
   </div>
@@ -977,7 +980,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','hr-team':'HR Team','personal-tasks':'Tasks','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','hr-team':'HR Team','personal-tasks':'My Task','settings-view':'Settings'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -1146,8 +1149,15 @@ function _notifSetBadge(count) {
   _notifState.unreadCount = count
   const dot = document.getElementById('notif-dot')
   const badge = document.getElementById('notif-badge')
-  if (dot) dot.style.display = count > 0 ? '' : 'none'
+  if (dot) {
+    dot.style.display = count > 0 ? '' : 'none'
+    dot.hidden = !(count > 0)
+  }
   if (badge) {
+    // Belt + braces: drive both the `hidden` attribute (CSS handles via
+    // `[hidden]`) and the inline display so a 0-count badge never lingers
+    // even if some other rule sets display via !important.
+    badge.hidden = !(count > 0)
     if (count > 0) {
       badge.style.display = ''
       badge.textContent = count > 99 ? '99+' : String(count)
@@ -1299,14 +1309,33 @@ function stopNotificationPoller() {
   _notifSetBadge(0)
 }
 
+// Sidebar visibility toggle.
+//   Mobile (≤768px): slides the sidebar in/out via the `mobile-open` class.
+//   Desktop (>768px): collapses the sidebar fully via body.sidebar-collapsed,
+//   the floating "Menu" FAB brings it back. Choice is persisted to
+//   localStorage so the layout sticks across navigations / reloads.
+const SIDEBAR_COLLAPSED_KEY = 'devportal_sidebar_collapsed'
+function applyStoredSidebarState() {
+  try {
+    if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1' && window.innerWidth > 768) {
+      document.body.classList.add('sidebar-collapsed')
+    }
+  } catch {}
+}
+
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar')
   const overlay = document.getElementById('sidebar-overlay')
   if (!sidebar) return
-  sidebar.classList.toggle('mobile-open')
-  const isOpen = sidebar.classList.contains('mobile-open')
-  if (overlay) overlay.classList.toggle('show', isOpen)
-  document.body.style.overflow = isOpen ? 'hidden' : ''
+  if (window.innerWidth <= 768) {
+    sidebar.classList.toggle('mobile-open')
+    const isOpen = sidebar.classList.contains('mobile-open')
+    if (overlay) overlay.classList.toggle('show', isOpen)
+    document.body.style.overflow = isOpen ? 'hidden' : ''
+    return
+  }
+  const collapsed = document.body.classList.toggle('sidebar-collapsed')
+  try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0') } catch {}
 }
 
 function closeSidebar() {
@@ -1318,8 +1347,21 @@ function closeSidebar() {
 }
 
 window.addEventListener('resize', () => {
-  if (window.innerWidth > 768) closeSidebar()
+  // Coming back to desktop from mobile: drop the mobile drawer state but
+  // restore the user's desktop collapse preference.
+  if (window.innerWidth > 768) {
+    closeSidebar()
+    applyStoredSidebarState()
+  } else {
+    // Mobile shouldn't show the desktop collapsed mode (the sidebar would
+    // never be reachable). Clear the class but keep the stored preference.
+    document.body.classList.remove('sidebar-collapsed')
+  }
 })
+
+// Apply the saved collapse state on every shell rebuild.
+applyStoredSidebarState()
+window.addEventListener('DOMContentLoaded', applyStoredSidebarState)
 
 function logout() {
   clearAuth()
@@ -1748,13 +1790,19 @@ function _notifEsc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
+// Notification panel default: show ONLY unread items so the bell isn't a
+// graveyard of old "meeting starting soon" pings the user already saw.
+// `window._notifShowAll` flips to true when the user clicks "View history".
+window._notifShowAll = window._notifShowAll || false
+
 async function showNotifications() {
   try {
     // Wake the audio context (browsers require a user gesture before sound plays)
     if (_notifState.audioCtx?.state === 'suspended') _notifState.audioCtx.resume().catch(() => {})
 
     const data = await API.get('/notifications/me?limit=50')
-    const items = data.notifications || data.data || []
+    const all = data.notifications || data.data || []
+    const items = window._notifShowAll ? all : all.filter((n) => !n.is_read)
     const itemsHtml = items.map((n) => {
       const ic = _notifIcon(n.type)
       const unread = !n.is_read
@@ -1770,25 +1818,37 @@ async function showNotifications() {
         </div>`
     }).join('')
 
+    const readCount = all.filter((n) => n.is_read).length
+    const summary = window._notifShowAll
+      ? `${data.unread_count || 0} unread · ${all.length} total`
+      : `${data.unread_count || 0} unread`
+    const toggleLabel = window._notifShowAll
+      ? '<i class="fas fa-bell"></i> Show unread only'
+      : `<i class="fas fa-clock-rotate-left"></i> View history${readCount ? ' (' + readCount + ')' : ''}`
+    const emptyMsg = window._notifShowAll ? 'No notifications yet.' : 'You are all caught up — no unread notifications.'
+
     showModal(`
       <div class="modal-header">
         <h3><i class="fas fa-bell" style="margin-right:6px"></i> Notifications</h3>
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body" style="padding:0">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted)">
-          <span id="notif-panel-summary">${data.unread_count || 0} unread · ${items.length} recent</span>
-          ${items.some((n) => !n.is_read) ? '<button id="notif-mark-all-btn" class="btn btn-xs btn-outline" onclick="markAllNotifsRead()"><i class="fas fa-check-double"></i> Mark all read</button>' : ''}
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted);flex-wrap:wrap">
+          <span id="notif-panel-summary">${summary}</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button class="btn btn-xs btn-outline" onclick="toggleNotifHistory()">${toggleLabel}</button>
+            ${items.some((n) => !n.is_read) ? '<button id="notif-mark-all-btn" class="btn btn-xs btn-outline" onclick="markAllNotifsRead()"><i class="fas fa-check-double"></i> Mark all read</button>' : ''}
+          </div>
         </div>
         <div class="notif-list">
-          ${items.length ? itemsHtml : '<div class="empty-state" style="padding:36px 18px"><i class="fas fa-bell-slash"></i><p>No notifications yet</p></div>'}
+          ${items.length ? itemsHtml : `<div class="empty-state" style="padding:36px 18px"><i class="fas fa-bell-slash"></i><p>${emptyMsg}</p></div>`}
         </div>
       </div>
     `, 'modal-lg')
 
-    // Auto-mark-all-read when the panel opens (Slack/Freshdesk pattern):
-    // user has now "seen" them. Update both badges immediately and
-    // strip the unread visuals from the rows so the panel matches state.
+    // Auto-mark-all-read on open: same Slack-style pattern as before, but
+    // the panel now shows only unread by default so they vanish after
+    // the read flip — no more lingering "you already saw this" rows.
     const hasUnread = items.some((n) => !n.is_read)
     if (hasUnread) {
       API.post('/notifications/read-all', {}).catch(() => {})
@@ -1797,13 +1857,24 @@ async function showNotifications() {
         row.classList.remove('is-unread')
         row.querySelector('.notif-row-dot')?.remove()
       })
-      const summary = document.getElementById('notif-panel-summary')
-      if (summary) summary.textContent = '0 unread · ' + items.length + ' recent'
       document.getElementById('notif-mark-all-btn')?.remove()
+      // Don't strip the rows from the DOM while the panel is open — the user
+      // may still want to click them to navigate. Just update the count.
+      const summaryEl = document.getElementById('notif-panel-summary')
+      if (summaryEl) summaryEl.textContent = window._notifShowAll
+        ? `0 unread · ${all.length} total`
+        : '0 unread'
     }
   } catch (e) {
     toast('Failed to load notifications: ' + e.message, 'error')
   }
+}
+
+// Flip between "unread only" (default) and "history" views, then re-open
+// the panel so the new filter takes effect.
+function toggleNotifHistory() {
+  window._notifShowAll = !window._notifShowAll
+  showNotifications()
 }
 
 async function onNotifClick(id, link) {
@@ -1817,14 +1888,59 @@ async function onNotifClick(id, link) {
   // Update badges immediately
   if (_notifState.unreadCount > 0) _notifSetBadge(Math.max(0, _notifState.unreadCount - 1))
   pollNotifications()
-  if (link && typeof link === 'string' && link.startsWith('ticket:')) {
-    closeModal()
-    const ticketId = link.slice('ticket:'.length)
-    if (typeof openSupportDetail === 'function') {
-      openSupportDetail(ticketId)
-    } else if (window.Router?.navigate) {
-      Router.navigate('support-tickets')
-    }
+  if (!(link && typeof link === 'string')) return
+  // Route by link prefix → open the right page/drawer.
+  // Format: "<kind>:<id>" e.g. "task:abc123", "lead:xyz".
+  const [kind, ...rest] = link.split(':')
+  const entityId = rest.join(':')
+  if (!kind || !entityId) return
+  closeModal()
+  switch (kind) {
+    case 'task':
+      if (typeof openTaskDrawer === 'function') openTaskDrawer(entityId)
+      else Router.navigate('my-tasks')
+      break
+    case 'ptask': // personal task
+      Router.navigate('personal-tasks')
+      break
+    case 'lead':
+      if (window.Router?.navigate) Router.navigate('lead-detail', { id: entityId })
+      break
+    case 'ticket':
+      if (typeof openSupportDetail === 'function') openSupportDetail(entityId)
+      else Router.navigate('support-tickets')
+      break
+    case 'meeting':
+      Router.navigate('meet-setup')
+      break
+    case 'project':
+      if (typeof openProjectBoard === 'function') openProjectBoard(entityId, '')
+      else Router.navigate('projects-list')
+      break
+    case 'leave':
+      Router.navigate('leaves-view')
+      break
+    case 'invoice':
+      Router.navigate('billing-admin')
+      break
+    case 'bid':
+      Router.navigate('bidding-view')
+      break
+    case 'pip':
+      Router.navigate('hr-pips')
+      break
+    case 'warning':
+      Router.navigate('hr-warnings')
+      break
+    case 'salary':
+      Router.navigate('hr-salary-slips')
+      break
+    case 'user':
+      Router.navigate('team-overview')
+      break
+    default:
+      // Unknown link type — leave the panel closed; user can navigate manually.
+      break
   }
 }
 
@@ -1865,45 +1981,117 @@ function globalSearch(q) {
   dd.innerHTML = `<div style="padding:14px;color:var(--text-muted);font-size:13px"><i class="fas fa-spinner fa-spin"></i> Searching…</div>`
   searchTimeout = setTimeout(async () => {
     try {
-      const [tasks, projects] = await Promise.all([
-        API.get('/tasks'),
-        API.get('/projects'),
+      // Fan out across every entity type that's worth jumping to. Each call
+      // is tolerant of permission denials (gated endpoints just return empty).
+      const [tasks, projects, clients, leads, invoices, documents, tickets, ptasks] = await Promise.all([
+        API.get('/tasks').catch(() => ({ tasks: [] })),
+        API.get('/projects').catch(() => ({ projects: [] })),
+        API.get('/clients').catch(() => ({ clients: [] })),
+        API.get('/leads').catch(() => ({ leads: [] })),
+        API.get('/invoices').catch(() => ({ invoices: [] })),
+        API.get('/documents').catch(() => ({ documents: [] })),
+        API.get('/support').catch(() => ({ tickets: [] })),
+        API.get('/personal-tasks').catch(() => ({ tasks: [] })),
       ])
-      const allTasks = tasks.tasks || tasks.data || []
-      const allProjects = projects.projects || projects.data || []
       const ql = q.toLowerCase()
-      const matchT = allTasks.filter(t => String(t.title || '').toLowerCase().includes(ql)).slice(0, 8)
-      const matchP = allProjects.filter(p => String(p.name || '').toLowerCase().includes(ql) || String(p.code || '').toLowerCase().includes(ql)).slice(0, 5)
-      if (!matchT.length && !matchP.length) {
+      const matchT = (tasks.tasks || tasks.data || []).filter(t => String(t.title || '').toLowerCase().includes(ql) || String(t.id || '').toLowerCase().includes(ql)).slice(0, 6)
+      const matchP = (projects.projects || projects.data || []).filter(p => String(p.name || '').toLowerCase().includes(ql) || String(p.code || '').toLowerCase().includes(ql)).slice(0, 5)
+      const matchC = (clients.clients || clients.data || []).filter(c => String(c.company_name || '').toLowerCase().includes(ql) || String(c.contact_name || '').toLowerCase().includes(ql) || String(c.email || '').toLowerCase().includes(ql)).slice(0, 5)
+      const matchL = (leads.leads || leads.data || []).filter(l => String(l.name || '').toLowerCase().includes(ql) || String(l.email || '').toLowerCase().includes(ql) || String(l.phone || '').toLowerCase().includes(ql)).slice(0, 5)
+      const matchI = (invoices.invoices || invoices.data || []).filter(i => String(i.invoice_number || '').toLowerCase().includes(ql) || String(i.title || '').toLowerCase().includes(ql) || String(i.company_name || '').toLowerCase().includes(ql)).slice(0, 5)
+      const matchD = (documents.documents || documents.data || []).filter(d => String(d.title || '').toLowerCase().includes(ql) || String(d.file_name || '').toLowerCase().includes(ql)).slice(0, 5)
+      const matchTk = (tickets.tickets || tickets.data || []).filter(t => String(t.title || t.subject || '').toLowerCase().includes(ql) || String(t.id || '').toLowerCase().includes(ql)).slice(0, 5)
+      const matchPT = (ptasks.tasks || ptasks.data || []).filter(t => String(t.title || '').toLowerCase().includes(ql)).slice(0, 5)
+
+      const totalMatches = matchT.length + matchP.length + matchC.length + matchL.length + matchI.length + matchD.length + matchTk.length + matchPT.length
+      if (!totalMatches) {
         dd.innerHTML = `<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:13px">No matches for "${escapeHtml(q)}"</div>`
         return
       }
+
       const escapeAttr = (s) => String(s || '').replace(/'/g, "\\'")
+      const ttl = (kind, count) => `<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;display:flex;justify-content:space-between"><span>${kind}</span><span style="color:#FF7A45">${count}</span></div>`
+      const row = (icon, color, primary, secondary, onClickAttr) => `
+        <div class="search-result-row" onmousedown="event.preventDefault()" onclick="hideGlobalSearch();${onClickAttr}" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.04))">
+          <i class="fas ${icon}" style="color:${color};font-size:13px;width:18px;text-align:center"></i>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${primary}</div>
+            <div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${secondary}</div>
+          </div>
+        </div>`
+
       const rows = []
       if (matchP.length) {
-        rows.push(`<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px">Projects</div>`)
+        rows.push(ttl('Projects', matchP.length))
         for (const p of matchP) {
-          rows.push(`
-            <div class="search-result-row" onmousedown="event.preventDefault()" onclick="hideGlobalSearch();openProjectBoard('${escapeAttr(p.id)}','${escapeAttr(p.name)}')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.04))">
-              <i class="fas fa-folder" style="color:#FF7A45;font-size:13px;width:18px;text-align:center"></i>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name)}</div>
-                <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(p.code || '')} · ${escapeHtml(p.status || '')}</div>
-              </div>
-            </div>`)
+          rows.push(row('fa-folder', '#FF7A45',
+            escapeHtml((typeof tc==='function'?tc(p.name):p.name) || ''),
+            `${escapeHtml(p.code || '')} · ${escapeHtml(p.status || '')}`,
+            `openProjectBoard('${escapeAttr(p.id)}','${escapeAttr(p.name)}')`))
         }
       }
       if (matchT.length) {
-        rows.push(`<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px">Tasks</div>`)
+        rows.push(ttl('Project Tasks', matchT.length))
         for (const t of matchT) {
-          rows.push(`
-            <div class="search-result-row" onmousedown="event.preventDefault()" onclick="hideGlobalSearch();openTaskDrawer('${escapeAttr(t.id)}')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.04))">
-              <i class="fas fa-check-square" style="color:#C56FE6;font-size:13px;width:18px;text-align:center"></i>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.title)}</div>
-                <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(t.project_name || '')} · ${escapeHtml((t.status || '').replace(/_/g,' '))}</div>
-              </div>
-            </div>`)
+          rows.push(row('fa-check-square', '#C56FE6',
+            escapeHtml(t.title || ''),
+            `${escapeHtml((typeof tc==='function'?tc(t.project_name||''):t.project_name) || '')} · ${escapeHtml((t.status || '').replace(/_/g,' '))}`,
+            `openTaskDrawer('${escapeAttr(t.id)}')`))
+        }
+      }
+      if (matchPT.length) {
+        rows.push(ttl('My Task', matchPT.length))
+        for (const t of matchPT) {
+          rows.push(row('fa-clipboard-check', '#a855f7',
+            escapeHtml(t.title || ''),
+            `${escapeHtml(t.assigned_to_name || 'Unassigned')} · ${escapeHtml((t.status || '').replace(/_/g,' '))}`,
+            `Router.navigate('personal-tasks')`))
+        }
+      }
+      if (matchC.length) {
+        rows.push(ttl('Clients', matchC.length))
+        for (const c of matchC) {
+          rows.push(row('fa-building', '#58C68A',
+            escapeHtml(c.company_name || c.contact_name || ''),
+            `${escapeHtml(c.email || '')} · ${escapeHtml(c.city || '')}`,
+            `Router.navigate('clients-list')`))
+        }
+      }
+      if (matchL.length) {
+        rows.push(ttl('Leads', matchL.length))
+        for (const l of matchL) {
+          rows.push(row('fa-bullseye', '#FFB347',
+            escapeHtml(l.name || ''),
+            `${escapeHtml(l.email || '')} · ${escapeHtml(l.phone || '')} · ${escapeHtml(l.status || '')}`,
+            `Router.navigate('lead-detail', { id: '${escapeAttr(l.id)}' })`))
+        }
+      }
+      if (matchI.length) {
+        rows.push(ttl('Invoices', matchI.length))
+        for (const i of matchI) {
+          rows.push(row('fa-file-invoice-dollar', '#58C68A',
+            escapeHtml(i.invoice_number || i.title || ''),
+            `${escapeHtml(i.company_name || '')} · ${escapeHtml((i.status || '').replace(/_/g,' '))}`,
+            `Router.navigate('billing-admin')`))
+        }
+      }
+      if (matchD.length) {
+        rows.push(ttl('Documents', matchD.length))
+        for (const d of matchD) {
+          rows.push(row('fa-file-lines', '#A8C8FF',
+            escapeHtml(d.title || d.file_name || ''),
+            `${escapeHtml((typeof tc==='function'?tc(d.project_name||''):d.project_name) || '')} · ${escapeHtml(d.category || '')}`,
+            `Router.navigate('documents-center')`))
+        }
+      }
+      if (matchTk.length) {
+        rows.push(ttl('Support Tickets', matchTk.length))
+        for (const t of matchTk) {
+          const tid = escapeAttr(t.id)
+          rows.push(row('fa-life-ring', '#FF5E3A',
+            escapeHtml(t.title || t.subject || ''),
+            `${escapeHtml((t.status || '').replace(/_/g,' '))} · #${escapeHtml(String(t.id || '').slice(-6))}`,
+            `(typeof openSupportDetail==='function'?openSupportDetail('${tid}'):Router.navigate('support-tickets'))`))
         }
       }
       dd.innerHTML = rows.join('')
