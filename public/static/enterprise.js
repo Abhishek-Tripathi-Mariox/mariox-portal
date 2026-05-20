@@ -166,7 +166,7 @@ async function renderSuperDashboard(el) {
             <thead><tr><th>Project</th><th>Client</th><th>Status</th><th>Burn</th><th>Health</th></tr></thead>
             <tbody>${(d.top_projects||[]).map(p=>`
               <tr>
-                <td><div style="font-weight:500;color:#e2e8f0">${p.name}</div><div style="font-size:11px;color:#64748b">${p.code}</div></td>
+                <td><div style="font-weight:500;color:#e2e8f0">${tc(p.name)}</div><div style="font-size:11px;color:#64748b">${p.code}</div></td>
                 <td><span style="font-size:12px;color:#94a3b8">—</span></td>
                 <td>${statusBadge(p.status)}</td>
                 <td>
@@ -385,7 +385,7 @@ async function renderPMDashboard(el) {
                 ${t.status==='blocked'?'<span style="color:#FF5E3A;font-size:11px"><i class="fas fa-ban"></i> Blocked</span>':''}
               </div>
               <div style="font-size:13px;color:#e2e8f0;font-weight:500">${t.title}</div>
-              <div style="font-size:11px;color:#64748b;margin-top:2px">${t.project_name||'—'} • ${t.assignee_name||'Unassigned'}</div>
+              <div style="font-size:11px;color:#64748b;margin-top:2px">${tc(t.project_name)||'—'} • ${t.assignee_name||'Unassigned'}</div>
             </div>`).join('') || '<div class="empty-state"><i class="fas fa-check-circle"></i><p>No open tasks</p></div>'}
         </div>
       </div>
@@ -397,7 +397,7 @@ async function renderPMDashboard(el) {
           ${(d.top_projects||[]).map(p=>`
             <div style="padding:12px 16px;border-bottom:1px solid rgba(30,30,69,.5)">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <div><span style="font-size:13px;font-weight:500;color:#e2e8f0">${p.name}</span> <span style="font-size:11px;color:#475569">${p.code}</span></div>
+                <div><span style="font-size:13px;font-weight:500;color:#e2e8f0">${tc(p.name)}</span> <span style="font-size:11px;color:#475569">${p.code}</span></div>
                 <span style="font-size:12px;font-weight:600;color:${pctColor(p.burn_pct)}">${p.burn_pct?.toFixed(0)}%</span>
               </div>
               <div class="progress-bar"><div class="progress-fill ${p.burn_pct>=90?'rose':p.burn_pct>=70?'amber':'green'}" style="width:${Math.min(p.burn_pct,100)}%"></div></div>
@@ -412,7 +412,7 @@ async function renderPMDashboard(el) {
             <div class="feed-item">
               ${avatar(log.full_name||'?', log.avatar_color||'#FF7A45','sm')}
               <div class="feed-content">
-                <div class="feed-title"><strong>${log.full_name}</strong> logged ${log.hours_consumed}h on ${log.project_name}</div>
+                <div class="feed-title"><strong>${log.full_name}</strong> logged ${log.hours_consumed}h on ${tc(log.project_name)}</div>
                 <div class="feed-time">${log.module_name} • ${fmtDate(log.date)}</div>
               </div>
             </div>`).join('') || '<div class="empty-state" style="padding:20px"><p>No recent activity</p></div>'}
@@ -485,7 +485,7 @@ async function renderDevDashboard(el) {
                 ${taskTypeIcon(t.task_type)}${priorityBadge(t.priority)}${statusBadge(t.status)}
               </div>
               <div style="font-size:13px;font-weight:500;color:#e2e8f0">${t.title}</div>
-              <div style="font-size:11px;color:#64748b;margin-top:2px">${t.project_name||'—'} • Due: ${fmtDate(t.due_date)}</div>
+              <div style="font-size:11px;color:#64748b;margin-top:2px">${tc(t.project_name)||'—'} • Due: ${fmtDate(t.due_date)}</div>
               <div style="margin-top:6px">
                 <div class="progress-bar"><div class="progress-fill blue" style="width:${Math.min(((t.logged_hours||0)/(t.estimated_hours||1))*100,100)}%"></div></div>
               </div>
@@ -499,7 +499,7 @@ async function renderDevDashboard(el) {
             <thead><tr><th>Project</th><th>Allocated</th><th>Consumed</th><th>Left</th></tr></thead>
             <tbody>${allocs.map(a=>`
               <tr>
-                <td><div style="font-weight:500;color:#e2e8f0">${a.project_name||a.project_id}</div><span class="badge ${a.role==='lead'?'badge-inprogress':'badge-todo'}">${a.role}</span></td>
+                <td><div style="font-weight:500;color:#e2e8f0">${tc(a.project_name)||a.project_id}</div><span class="badge ${a.role==='lead'?'badge-inprogress':'badge-todo'}">${a.role}</span></td>
                 <td>${a.allocated_hours}h</td>
                 <td>${a.consumed_hours}h</td>
                 <td style="color:${(a.allocated_hours-a.consumed_hours)<=8?'#FF5E3A':'#58C68A'}">${a.allocated_hours-a.consumed_hours}h</td>
@@ -517,7 +517,7 @@ async function renderDevDashboard(el) {
           <tbody>${(Array.isArray(logs)?logs:logs.timesheets||[]).slice(0,8).map(l=>`
             <tr>
               <td>${fmtDate(l.date)}</td>
-              <td>${l.project_name||l.project_id}</td>
+              <td>${tc(l.project_name)||l.project_id}</td>
               <td><div style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.task_description}</div></td>
               <td><strong>${l.hours_consumed}h</strong></td>
               <td>${statusBadge(l.approval_status)}</td>
@@ -575,7 +575,7 @@ async function renderProjectsList(el) {
               const burnPct = p.total_allocated_hours>0 ? Math.round((p.consumed_hours/p.total_allocated_hours)*100) : 0
               return `<tr>
                 <td>
-                  <div style="font-weight:600;color:#e2e8f0">${p.name}</div>
+                  <div style="font-weight:600;color:#e2e8f0">${tc(p.name)}</div>
                   <div style="font-size:11px;color:#475569;font-family:monospace">${p.code}</div>
                 </td>
                 <td>${cl ? `<div style="display:flex;align-items:center;gap:6px">${avatar(cl.company_name,cl.avatar_color,'sm')}<span style="font-size:12px">${cl.company_name}</span></div>` : `<span style="color:#475569;font-size:12px">${p.client_name||'—'}</span>`}</td>
@@ -669,7 +669,7 @@ async function openProjectDetailModal(projectId) {
     closeModal()
     showModal(`
       <div class="modal-header">
-        <h3><i class="fas fa-folder-open" style="color:var(--accent);margin-right:6px"></i>${escapeHtml(p.name || '')} <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:6px">${escapeHtml(p.code || '')}</span></h3>
+        <h3><i class="fas fa-folder-open" style="color:var(--accent);margin-right:6px"></i>${escapeHtml(tc(p.name || ''))} <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:6px">${escapeHtml(p.code || '')}</span></h3>
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
@@ -778,7 +778,7 @@ async function renderKanbanBoard(el) {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <select class="form-select" style="min-width:240px;max-width:300px" onchange="switchBoardProject(this.value)">
               <option value="" selected>— Select a project —</option>
-              ${projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+              ${projects.map(p => `<option value="${p.id}">${tc(p.name)}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -795,7 +795,7 @@ async function renderKanbanBoard(el) {
     const selMilestone = window._kanbanMilestoneId || ''
     const projectSprints = allSprints.filter(s => s.project_id === selProject)
     const projectMilestones = allMilestones.filter(m => String(m.project_id) === String(selProject))
-    const projName = (projects.find(p => p.id === selProject)?.name || '')
+    const projName = tc(projects.find(p => p.id === selProject)?.name || '')
     window._kanbanProjectName = projName
 
     // Standard column layout used for the aggregated view. When a specific
@@ -852,7 +852,7 @@ async function renderKanbanBoard(el) {
           <!-- Project Switcher -->
           <select class="form-select" style="min-width:180px;max-width:240px" onchange="switchBoardProject(this.value)">
             <option value="">— Select a project —</option>
-            ${projects.map(p => `<option value="${p.id}" ${p.id === selProject ? 'selected' : ''}>${p.name}</option>`).join('')}
+            ${projects.map(p => `<option value="${p.id}" ${p.id === selProject ? 'selected' : ''}>${tc(p.name)}</option>`).join('')}
           </select>
           ${canManage ? `
           <button class="btn btn-outline btn-sm" onclick="manageBoardColumns('${selProject}')" title="Configure board columns"><i class="fas fa-sliders-h"></i> Columns</button>
@@ -946,7 +946,7 @@ function buildTaskCard(t) {
       <span style="font-size:10px;color:var(--text-muted);margin-left:auto;font-family:monospace">#${String(t.id).split('-').pop()}</span>
     </div>
     <div style="font-size:13px;font-weight:500;color:var(--text-primary);line-height:1.4;margin-bottom:8px">${t.title}</div>
-    ${(!window._kanbanProjectId && t.project_name) ? `<div style="font-size:10px;color:#FF7A45;background:rgba(255,122,69,.1);padding:2px 7px;border-radius:4px;display:inline-block;margin-bottom:6px"><i class="fas fa-folder"></i> ${t.project_name}</div>` : ''}
+    ${(!window._kanbanProjectId && t.project_name) ? `<div style="font-size:10px;color:#FF7A45;background:rgba(255,122,69,.1);padding:2px 7px;border-radius:4px;display:inline-block;margin-bottom:6px"><i class="fas fa-folder"></i> ${tc(t.project_name)}</div>` : ''}
     ${t.description ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${t.description}</div>` : ''}
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">
       ${isOverdue ? `<span style="font-size:10px;color:#FF5E3A;background:#3A1A14;padding:1px 6px;border-radius:4px;font-weight:600"><i class="fas fa-exclamation-circle"></i> Overdue</span>` : ''}
@@ -1065,7 +1065,7 @@ async function manageBoardColumns(projectId) {
     const data = await API.get(`/tasks/columns/${projectId}`)
     const cols = data.columns || []
     const projData = await API.get('/projects')
-    const projName = (projData.projects || projData.data || []).find(p => p.id === projectId)?.name || projectId
+    const projName = tc((projData.projects || projData.data || []).find(p => p.id === projectId)?.name || projectId)
     showModal(`
     <div class="modal-header">
       <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-columns" style="color:#FF7A45"></i> Board Columns — ${projName}</h3>
@@ -1209,7 +1209,7 @@ async function openTaskDrawer(taskId) {
         </div>
       </div>
       ${metaItem('Assigned By', t.reporter_name ? `<span style="display:inline-flex;align-items:center;gap:6px">${avatar(t.reporter_name, t.reporter_color||'#94a3b8','sm')}<span>${t.reporter_name}</span></span>` : '—')}
-      ${metaItem('Project', t.project_name||'—')}
+      ${metaItem('Project', t.project_name ? tc(t.project_name) : '—')}
       ${metaItem('Sprint', t.sprint_name||'—')}
       ${metaItem('Due Date', hasPermission('tasks.move')
         ? `<input type="date" class="form-input" id="task-due-${t.id}" value="${t.due_date ? String(t.due_date).slice(0,10) : ''}" onchange="saveTaskDueDate('${t.id}', this.value)" style="font-size:12.5px;padding:4px 6px;color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#e2e8f0'}"/>`
@@ -1274,6 +1274,17 @@ async function openTaskDrawer(taskId) {
               </div>
               <div id="comment-body-${cm.id}">
                 <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0;white-space:pre-wrap">${formatCommentMentions(cm.content)}</p>
+                ${(Array.isArray(cm.attachments) && cm.attachments.length) ? `
+                  <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+                    ${cm.attachments.map(a => `
+                      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-input,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:6px;font-size:12px">
+                        <i class="fas ${fileIconClass(a.file_type, a.file_name)}" style="color:#FF7A45"></i>
+                        <span style="flex:1;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.file_name||'file')}</span>
+                        <span style="color:#64748b;font-size:11px">${fmtFileSize(a.file_size)}</span>
+                        <a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline" title="View" style="text-decoration:none;padding:2px 6px"><i class="fas fa-eye"></i></a>
+                        <a href="${escapeHtml(a.url)}" download="${escapeHtml(a.file_name||'file')}" class="btn btn-xs btn-outline" title="Download" style="text-decoration:none;padding:2px 6px"><i class="fas fa-download"></i></a>
+                      </div>`).join('')}
+                  </div>` : ''}
               </div>
             </div>
           </div>`}).join('') || '<div class="empty-inline"><i class="fas fa-comment-slash"></i><span>No comments yet — be the first to chime in.</span></div>'}
@@ -1281,8 +1292,13 @@ async function openTaskDrawer(taskId) {
       <div class="comment-box" style="margin-top:12px;position:relative">
         <textarea id="new-comment-${t.id}" placeholder="Add a comment… (type @ to mention)" oninput="onCommentInput(event,'${t.id}','${t.project_id}')" onkeydown="onCommentKeydown(event,'${t.id}')"></textarea>
         <div id="mention-suggest-${t.id}" style="display:none;position:absolute;bottom:100%;left:0;right:0;max-height:180px;overflow-y:auto;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.4);z-index:5;margin-bottom:6px"></div>
+        <div id="comment-attachments-${t.id}" style="display:none;flex-direction:column;gap:6px;margin-top:8px"></div>
         <div class="comment-box-footer">
           ${hasPermission('tasks.comment') ? `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#64748b;margin-right:auto;cursor:pointer"><input type="checkbox" id="comment-internal-${t.id}" style="accent-color:#FF7A45"/> Internal only</label>` : ''}
+          <label class="btn btn-sm btn-outline" style="cursor:pointer;margin:0" title="Attach a file to this comment">
+            <i class="fas fa-paperclip"></i> Attach
+            <input type="file" multiple style="display:none" onchange="onCommentAttachPick('${t.id}', this)"/>
+          </label>
           <button class="btn btn-sm btn-primary" onclick="submitComment('${t.id}')"><i class="fas fa-paper-plane"></i>Comment</button>
         </div>
       </div>
@@ -1426,15 +1442,77 @@ async function saveTaskDueDate(taskId, value) {
   } catch (e) { toast(e.message, 'error') }
 }
 
+// Pending comment-attachment buffer. Keyed by taskId so different open
+// drawers don't interfere. Each entry is { url, file_name, file_size,
+// file_type } populated after upload to S3 via /api/uploads.
+window._pendingCommentAttachments = window._pendingCommentAttachments || {}
+
+async function onCommentAttachPick(taskId, inputEl) {
+  const files = Array.from(inputEl?.files || [])
+  inputEl.value = ''
+  if (!files.length) return
+  window._pendingCommentAttachments[taskId] = window._pendingCommentAttachments[taskId] || []
+  for (const file of files) {
+    const t0 = toast('Uploading ' + file.name + '…', 'info', 6000)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const upRes = await fetch(BASE + '/uploads', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + _token },
+        body: fd,
+      })
+      const upData = await upRes.json().catch(() => ({}))
+      if (!upRes.ok) throw new Error(upData.error || 'Upload failed')
+      window._pendingCommentAttachments[taskId].push({
+        url: upData.url,
+        file_name: upData.file_name || file.name,
+        file_size: upData.file_size || file.size,
+        file_type: upData.file_type || file.type,
+      })
+    } catch (e) { toast(e.message || 'Upload failed', 'error') }
+  }
+  renderPendingCommentAttachments(taskId)
+}
+
+function renderPendingCommentAttachments(taskId) {
+  const wrap = document.getElementById('comment-attachments-' + taskId)
+  if (!wrap) return
+  const list = window._pendingCommentAttachments[taskId] || []
+  if (!list.length) { wrap.style.display = 'none'; wrap.innerHTML = ''; return }
+  wrap.style.display = 'flex'
+  wrap.innerHTML = list.map((a, idx) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-input,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:6px;font-size:12px">
+      <i class="fas ${fileIconClass(a.file_type, a.file_name)}" style="color:#FF7A45"></i>
+      <span style="flex:1;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.file_name)}</span>
+      <span style="color:#64748b;font-size:11px">${fmtFileSize(a.file_size)}</span>
+      <button class="btn btn-xs btn-outline" title="Remove" onclick="removePendingCommentAttachment('${taskId}',${idx})" style="color:#FF5E3A;border-color:#FF5E3A;padding:2px 6px"><i class="fas fa-times"></i></button>
+    </div>`).join('')
+}
+
+function removePendingCommentAttachment(taskId, idx) {
+  const list = window._pendingCommentAttachments[taskId] || []
+  list.splice(idx, 1)
+  renderPendingCommentAttachments(taskId)
+}
+
 async function submitComment(taskId) {
   const ta = document.getElementById('new-comment-'+taskId)
-  const content = ta?.value?.trim()
-  if (!content) return toast('Write a comment first', 'error')
+  const content = ta?.value?.trim() || ''
+  const attachments = (window._pendingCommentAttachments[taskId] || []).slice()
+  if (!content && !attachments.length) return toast('Write a comment or attach a file first', 'error')
   const is_internal = document.getElementById('comment-internal-'+taskId)?.checked ? 1 : 0
   const mention_user_ids = extractMentionedUserIds(content)
   try {
-    await API.post(`/tasks/${taskId}/comment`, { content, is_internal, mention_user_ids })
-    toast(mention_user_ids.length ? `Comment added — ${mention_user_ids.length} mentioned` : 'Comment added', 'success', 2000)
+    await API.post(`/tasks/${taskId}/comment`, { content, is_internal, mention_user_ids, attachments })
+    toast(
+      attachments.length
+        ? `Comment added with ${attachments.length} file${attachments.length>1?'s':''}`
+        : (mention_user_ids.length ? `Comment added — ${mention_user_ids.length} mentioned` : 'Comment added'),
+      'success', 2000,
+    )
+    // Reset the pending buffer so the next comment starts clean.
+    delete window._pendingCommentAttachments[taskId]
     openTaskDrawer(taskId)
   } catch(e) { toast(e.message, 'error') }
 }
@@ -1793,7 +1871,7 @@ async function showCreateTaskModal(projectId='', sprintId='', defaultStatus='bac
         <div class="form-group">
           <label class="form-label">Project *</label>
           <select class="form-select" id="ct-project" onchange="updateSprintsAndStatusForProject(this.value)">
-            ${projects.map(p=>`<option value="${p.id}" ${p.id===projectId?'selected':''}>${p.name}</option>`).join('')}
+            ${projects.map(p=>`<option value="${p.id}" ${p.id===projectId?'selected':''}>${tc(p.name)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
@@ -1957,7 +2035,7 @@ async function showCreateSprintModal() {
   showModal(`
   <div class="modal-header"><h3>Create Sprint</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
   <div class="modal-body">
-    <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="csp-project">${projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select></div>
+    <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="csp-project">${projects.map(p=>`<option value="${p.id}">${tc(p.name)}</option>`).join('')}</select></div>
     <div class="form-group"><label class="form-label">Sprint Name *</label><input class="form-input" id="csp-name" placeholder="Sprint 1 – Feature X"/></div>
     <div class="form-group"><label class="form-label">Sprint Goal</label><textarea class="form-textarea" id="csp-goal" placeholder="What does this sprint aim to deliver?"></textarea></div>
     <div class="form-row">
@@ -1996,7 +2074,7 @@ async function editSprint(id, currentStatus) {
         <div class="modal-body">
           <div class="form-group"><label class="form-label">Project</label>
             <select class="form-select" id="esp-project">
-              ${projects.map(p => `<option value="${p.id}" ${sprint.project_id === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+              ${projects.map(p => `<option value="${p.id}" ${sprint.project_id === p.id ? 'selected' : ''}>${escapeHtml(tc(p.name))}</option>`).join('')}
             </select>
           </div>
           <div class="form-group"><label class="form-label">Sprint Name *</label><input class="form-input" id="esp-name" value="${escapeHtml(sprint.name || '')}"/></div>
@@ -2103,7 +2181,7 @@ async function renderMilestonesView(el) {
           <div style="width:320px;flex-shrink:0;background:rgba(15,23,42,.4);border:1px solid rgba(148,163,184,.15);border-radius:10px;padding:12px">
             <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(148,163,184,.15)">
               <div style="flex:1;min-width:0">
-                <div style="font-size:13px;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.name)}</div>
+                <div style="font-size:13px;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(tc(p.name))}</div>
                 <div style="font-size:11px;color:#64748b;margin-top:2px">${escapeHtml(p.code || '')}${p.client_name ? ' · ' + escapeHtml(p.client_name) : ''}</div>
                 <div style="font-size:10px;color:#94a3b8;margin-top:6px">${ms.length} milestone${ms.length === 1 ? '' : 's'}${completedCount ? ` · ${completedCount} done` : ''}${totalBillable ? ` · ₹${fmtNum(totalBillable)}` : ''}</div>
               </div>
@@ -2194,7 +2272,7 @@ async function showCreateMilestoneModal(prefilledProjectId) {
     showModal(`
     <div class="modal-header"><h3><i class="fas fa-flag" style="color:#FF7A45"></i> Create Milestone</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
-      <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="cms-project" onchange="cmsOnProjectChange(this.value)"><option value="">Select a project…</option>${projects.map(p=>`<option value="${p.id}" ${p.id===initialProject?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}</select>
+      <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="cms-project" onchange="cmsOnProjectChange(this.value)"><option value="">Select a project…</option>${projects.map(p=>`<option value="${p.id}" ${p.id===initialProject?'selected':''}>${escapeHtml(tc(p.name))}</option>`).join('')}</select>
         <div id="cms-assign-info" style="font-size:11px;color:#64748b;margin-top:6px"></div>
       </div>
       <div class="form-group"><label class="form-label">Milestone Title *</label><input class="form-input" id="cms-title" placeholder="Phase 1 – Delivery"/></div>
@@ -2624,7 +2702,7 @@ async function showMilestoneDetailsModal(id) {
       <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:12px;margin-bottom:14px">
         <div style="padding:12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
           <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Project</div>
-          <div style="font-size:14px;color:#e2e8f0;font-weight:600">${escapeHtml(project.name || '—')}</div>
+          <div style="font-size:14px;color:#e2e8f0;font-weight:600">${escapeHtml(tc(project.name) || '—')}</div>
           <div style="font-size:11px;color:#64748b;margin-top:6px">Assignment: <strong style="color:#cbd5e1;text-transform:capitalize">${escapeHtml(project.assignment_type || '—')}</strong></div>
         </div>
         <div style="padding:12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
@@ -2880,7 +2958,7 @@ async function renderMyTasks(el) {
                 <div style="display:flex;align-items:center;gap:6px">${taskTypeIcon(t.task_type)}<span style="font-weight:500;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.title}</span></div>
                 ${t.sprint_name?`<div style="font-size:10px;color:#475569;margin-top:2px"><i class="fas fa-bolt"></i> ${t.sprint_name}</div>`:''}
               </td>
-              <td><span style="font-size:12px;color:#94a3b8">${t.project_name||'—'}</span></td>
+              <td><span style="font-size:12px;color:#94a3b8">${tc(t.project_name)||'—'}</span></td>
               <td><span style="font-size:11px;text-transform:capitalize;color:#64748b">${t.task_type}</span></td>
               <td>${priorityBadge(t.priority)}</td>
               <td>${statusBadge(t.status)}</td>
@@ -3115,7 +3193,7 @@ async function renderApprovalQueue(el) {
             <tr id="log-row-${l.id}">
               <td><input type="checkbox" class="log-check table-check" value="${l.id}" onchange="updateApprovalSelectionState()"/></td>
               <td><div style="display:flex;align-items:center;gap:8px">${avatar(l.full_name||'?',l.avatar_color||'#FF7A45','sm')}<span>${l.full_name||l.user_id}</span></div></td>
-              <td><span style="font-size:12px;color:#94a3b8">${l.project_name||l.project_id}</span></td>
+              <td><span style="font-size:12px;color:#94a3b8">${tc(l.project_name)||l.project_id}</span></td>
               <td style="font-size:12px">${fmtDate(l.date)}</td>
               <td style="max-width:200px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${l.task_description}</div></td>
               <td><strong>${l.hours_consumed}h</strong></td>
@@ -3659,7 +3737,7 @@ async function showClientDetail(clientId) {
             <div style="padding:10px 0;border-bottom:1px solid var(--border)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
                 <div style="flex:1;min-width:0">
-                  <div style="font-weight:500;color:#e2e8f0">${escapeHtml(p.name)}</div>
+                  <div style="font-weight:500;color:#e2e8f0">${escapeHtml(tc(p.name))}</div>
                   <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
                     ${statusBadge(p.status)}
                     <span style="font-size:12px;color:#64748b">PM: ${escapeHtml(p.pm_name || '—')}</span>
@@ -3685,7 +3763,7 @@ async function showClientDetail(clientId) {
                   <span style="font-size:12px;color:${pct >= 100 ? '#58C68A' : '#FFCB47'};font-weight:600">${pct}%</span>
                 </div>
               </div>
-              <div style="font-size:12px;color:#64748b">${escapeHtml(m.project_name || projects.find(p => p.id === m.project_id)?.name || '—')} · Due ${fmtDate(m.due_date)}${m.is_billable ? ` · ₹${fmtNum(m.invoice_amount)}` : ''}</div>
+              <div style="font-size:12px;color:#64748b">${escapeHtml(tc(m.project_name || projects.find(p => p.id === m.project_id)?.name || '—'))} · Due ${fmtDate(m.due_date)}${m.is_billable ? ` · ₹${fmtNum(m.invoice_amount)}` : ''}</div>
               <div class="progress-bar" style="margin-top:6px"><div class="progress-fill ${pct >= 100 ? 'green' : pct >= 70 ? 'blue' : 'amber'}" style="width:${pct}%"></div></div>
             </div>`
           }).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No milestones</p>'}
@@ -3714,7 +3792,7 @@ async function showClientDetail(clientId) {
               <i class="fas fa-file" style="color:#FF7A45;width:24px;text-align:center"></i>
               <div style="flex:1;min-width:0">
                 <div style="font-size:13px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(d.title || d.file_name || 'Document')}</div>
-                <div style="font-size:11px;color:#64748b">${escapeHtml(d.project_name || '—')}${d.category ? ' · ' + escapeHtml(d.category) : ''}${d.uploaded_by_name ? ' · by ' + escapeHtml(d.uploaded_by_name) : ''}</div>
+                <div style="font-size:11px;color:#64748b">${escapeHtml(tc(d.project_name) || '—')}${d.category ? ' · ' + escapeHtml(d.category) : ''}${d.uploaded_by_name ? ' · by ' + escapeHtml(d.uploaded_by_name) : ''}</div>
               </div>
               ${d.file_url ? `<a href="${escapeHtml(d.file_url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline"><i class="fas fa-external-link-alt"></i></a>` : ''}
             </div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No documents</p>'}
@@ -3728,7 +3806,7 @@ async function showClientDetail(clientId) {
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
                 <div style="flex:1;min-width:0">
                   <div style="font-size:13px;color:#e2e8f0;font-weight:500">${escapeHtml(t.subject)}</div>
-                  <div style="font-size:11px;color:#64748b">#${String(t.id).slice(-6)} · ${escapeHtml(t.project_name || '—')} · ${fmtDate(t.created_at)}</div>
+                  <div style="font-size:11px;color:#64748b">#${String(t.id).slice(-6)} · ${escapeHtml(tc(t.project_name) || '—')} · ${fmtDate(t.created_at)}</div>
                 </div>
                 <span class="badge" style="background:${pColor}22;color:${pColor};border:1px solid ${pColor}44;font-size:10px">${escapeHtml(t.status)}</span>
               </div>
@@ -3784,7 +3862,7 @@ async function renderBillingAdmin(el) {
             </select>
             <select id="bill-project" class="form-select" style="width:180px" onchange="applyBillingFilters()">
               <option value="">All Projects</option>
-              ${Array.from(new Map(invoices.filter(i=>i.project_id).map(i=>[String(i.project_id), i.project_name||i.project_code||i.project_id])).entries())
+              ${Array.from(new Map(invoices.filter(i=>i.project_id).map(i=>[String(i.project_id), tc(i.project_name)||i.project_code||i.project_id])).entries())
                 .sort((a,b)=>String(a[1]).localeCompare(String(b[1])))
                 .map(([id,name])=>`<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('')}
             </select>
@@ -3806,7 +3884,7 @@ async function renderBillingAdmin(el) {
               <tr data-status="${i.status||''}" data-project-id="${escapeHtml(i.project_id||'')}" data-paid-date="${i.paid_date||''}" data-paid-by="${escapeHtml(i.paid_marked_by_name||'')}" data-search="${escapeHtml(((i.invoice_number||'')+' '+(i.company_name||'')+' '+(i.project_name||'')+' '+(i.title||'')).toLowerCase())}">
                 <td><div style="font-weight:600;font-size:12px;font-family:monospace;color:#FFB347">${i.invoice_number}</div><div style="font-size:11px;color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.title}</div></td>
                 <td><div style="display:flex;align-items:center;gap:6px">${avatar(i.company_name||'?',i.client_color||'#FF7A45','sm')}<span style="font-size:12px">${i.company_name||'—'}</span></div></td>
-                <td><span style="font-size:12px;color:#94a3b8">${i.project_name||'—'}</span></td>
+                <td><span style="font-size:12px;color:#94a3b8">${tc(i.project_name)||'—'}</span></td>
                 <td><strong style="color:#58C68A">${fmtCurrency(i.total_amount)}</strong>${i.paid_amount>0&&i.paid_amount<i.total_amount?`<div style="font-size:11px;color:#94a3b8">Paid: ${fmtCurrency(i.paid_amount)}</div>`:''}</td>
                 <td><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></td>
                 <td style="font-size:12px">${fmtDate(i.issue_date)}</td>
@@ -4040,7 +4118,7 @@ async function showSendInvoiceModal(id) {
     const defaultSubject = escapeHtml(`Invoice ${inv.invoice_number} for ${inv.company_name || inv.contact_name || 'Client'}`)
     const previewAmount = fmtCurrency(inv.total_amount || 0)
     const previewDue = fmtDate(inv.due_date)
-    const previewProject = escapeHtml(inv.project_name || '—')
+    const previewProject = escapeHtml(tc(inv.project_name) || '—')
     const previewClient = escapeHtml(inv.company_name || '—')
 
     showModal(`
@@ -5123,7 +5201,7 @@ function _renderMemberWorkList(items, cfg, isActive) {
           : 'todo'
         return `<tr>
           <td><div style="font-weight:600;color:#e2e8f0">${escapeHtml(t.title || t.name || '—')}</div></td>
-          <td style="font-size:12px;color:#94a3b8">${escapeHtml(t.project_name || t.project_code || '—')}</td>
+          <td style="font-size:12px;color:#94a3b8">${escapeHtml(tc(t.project_name) || t.project_code || '—')}</td>
           <td><span class="badge badge-${statusBadge}">${escapeHtml(t.status_label || t.status || '—')}</span></td>
           <td style="font-size:12px;color:#94a3b8">${escapeHtml(t.priority || '—')}</td>
           <td style="font-size:12px;color:#94a3b8">${t.due_date ? fmtDate(t.due_date) : '—'}</td>
@@ -5139,7 +5217,7 @@ function _renderMemberActivity(items, cfg) {
     ${items.map((it) => {
       const title = cfg.workKind === 'leads' ? (it.name || '—') : (it.title || it.name || '—')
       const when = it.updated_at || it.created_at
-      const subtitle = cfg.workKind === 'leads' ? `Status: ${it.status || 'new'} · Source: ${it.source || '—'}` : `${it.project_name || it.project_code || '—'} · ${it.status || '—'}`
+      const subtitle = cfg.workKind === 'leads' ? `Status: ${it.status || 'new'} · Source: ${it.source || '—'}` : `${tc(it.project_name) || it.project_code || '—'} · ${it.status || '—'}`
       return `<div style="display:flex;gap:12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
         <div style="width:32px;height:32px;border-radius:50%;background:${cfg.iconColor}22;color:${cfg.iconColor};display:flex;align-items:center;justify-content:center"><i class="fas ${cfg.workKind === 'leads' ? 'fa-bullseye' : 'fa-list-check'}"></i></div>
         <div style="flex:1;min-width:0">

@@ -93,9 +93,14 @@ function renderCalendarGrid(cells, monthEvents) {
           <div style="font-size:11px;font-weight:700;color:${isToday ? '#FFB347' : '#FFF1E6'};margin-bottom:4px">${d}</div>
           ${dayEvents.slice(0,3).map(ev => {
             const v = ev.visibility || 'company'
-            const icon = v === 'personal' ? '<i class="fas fa-user-lock" style="font-size:9px;margin-right:3px;opacity:.7"></i>' : ''
+            const icon = ev.is_project_deadline
+              ? '<i class="fas fa-flag-checkered" style="font-size:9px;margin-right:3px;opacity:.85;color:#FF8A6A"></i>'
+              : (v === 'personal' ? '<i class="fas fa-user-lock" style="font-size:9px;margin-right:3px;opacity:.7"></i>' : '')
             const time = ev.start_time ? `<span style="opacity:.7;margin-right:3px">${ev.start_time}</span>` : ''
-            return `<div style="font-size:10.5px;padding:2px 5px;border-radius:6px;background:${ev.color || '#FF7A45'}22;color:#FFE5D2;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeInbox(ev.title)}${ev.start_time ? ' @ ' + ev.start_time : ''}">${icon}${time}${escapeInbox(ev.title)}</div>`
+            const bg = ev.is_project_deadline ? 'rgba(255,94,58,0.18)' : ((ev.color || '#FF7A45') + '22')
+            const textColor = ev.is_project_deadline ? '#FFC9BD' : '#FFE5D2'
+            const displayTitle = ev.is_project_deadline && typeof tc === 'function' ? tc(ev.title) : ev.title
+            return `<div style="font-size:10.5px;padding:2px 5px;border-radius:6px;background:${bg};color:${textColor};margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:${ev.is_project_deadline ? '1px solid rgba(255,94,58,.4)' : '1px solid transparent'}" title="${escapeInbox(displayTitle)}${ev.start_time ? ' @ ' + ev.start_time : ''}">${icon}${time}${escapeInbox(displayTitle)}</div>`
           }).join('')}
           ${dayEvents.length > 3 ? `<div style="font-size:10px;color:#9F8678">+${dayEvents.length - 3} more</div>` : ''}
         </div>`
@@ -104,6 +109,9 @@ function renderCalendarGrid(cells, monthEvents) {
 }
 
 function _hrCalCanDelete(ev, canManage) {
+  // Project deadlines come from the projects feed — they aren't real events
+  // so deletion has to go through the project page itself.
+  if (ev.read_only || ev.is_project_deadline) return false
   const myId = _user?.sub || _user?.id
   const visibility = ev.visibility || 'company'
   if (visibility === 'personal') return ev.created_by === myId
@@ -111,6 +119,9 @@ function _hrCalCanDelete(ev, canManage) {
 }
 
 function _hrCalVisibilityBadge(ev) {
+  if (ev.is_project_deadline) {
+    return '<span class="badge" style="background:rgba(255,94,58,.15);color:#FF8A6A"><i class="fas fa-flag-checkered"></i> Deadline</span>'
+  }
   const v = ev.visibility || 'company'
   return v === 'personal'
     ? '<span class="badge" style="background:rgba(100,160,255,.15);color:#A8C8FF"><i class="fas fa-user-lock"></i> Personal</span>'
@@ -132,8 +143,11 @@ function _hrCalWhenLabel(ev) {
 
 function renderCalendarRow(ev, canManage) {
   const canDelete = _hrCalCanDelete(ev, canManage)
+  // Title-case project deadline titles (only) so "demo project — deadline"
+  // displays as "Demo Project — Deadline" without touching free-text events.
+  const displayTitle = ev.is_project_deadline && typeof tc === 'function' ? tc(ev.title) : ev.title
   return `<tr>
-    <td style="color:#FFF1E6;font-weight:600">${escapeInbox(ev.title)}</td>
+    <td style="color:#FFF1E6;font-weight:600">${escapeInbox(displayTitle)}</td>
     <td>${_hrCalVisibilityBadge(ev)}</td>
     <td><span class="badge badge-blue">${escapeInbox(ev.event_type || '')}</span></td>
     <td style="font-size:12px;color:#9F8678;white-space:nowrap">${_hrCalWhenLabel(ev)}</td>

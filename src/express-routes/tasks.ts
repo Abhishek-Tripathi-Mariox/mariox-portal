@@ -618,12 +618,29 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       if (!task) return res.status(404).json({ error: 'Task not found' })
       const perm = await checkKanbanPerm(models, task.project_id, user?.role, user?.sub, 'can_comment')
       if (!perm.allowed) return res.status(403).json({ error: 'You do not have permission to comment on this board' })
-      const { content, is_internal = 0, mention_user_ids } = req.body || {}
-      if (!content) return res.status(400).json({ error: 'content required' })
+      const { content, is_internal = 0, mention_user_ids, attachments } = req.body || {}
+      if (!content && !(Array.isArray(attachments) && attachments.length)) {
+        return res.status(400).json({ error: 'content or attachment required' })
+      }
       const now = new Date().toISOString()
       const id = generateId('cmt')
       const mentionIds: string[] = Array.isArray(mention_user_ids)
         ? Array.from(new Set(mention_user_ids.map((v: any) => String(v || '').trim()).filter(Boolean)))
+        : []
+      // Normalise the attachment list. Each entry must have at least `url` +
+      // `file_name`; anything else (size/type) is best-effort metadata used
+      // for the UI's file-icon + size label.
+      const safeAttachments = Array.isArray(attachments)
+        ? attachments
+            .map((a: any) => ({
+              id: generateId('att'),
+              url: String(a?.url || '').trim(),
+              file_name: String(a?.file_name || a?.name || 'file').trim(),
+              file_size: Number(a?.file_size || 0) || 0,
+              file_type: String(a?.file_type || a?.mime || '').trim(),
+              uploaded_at: now,
+            }))
+            .filter((a) => a.url)
         : []
       const comment = {
         id,
@@ -631,9 +648,10 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
         entity_id: taskId,
         author_user_id: user?.role !== 'client' ? user?.sub : null,
         author_client_id: user?.role === 'client' ? user?.sub : null,
-        content,
+        content: content || '',
         is_internal: Number(is_internal || 0),
         mention_user_ids: mentionIds,
+        attachments: safeAttachments,
         created_at: now,
       }
       await models.comments.insertOne(comment)

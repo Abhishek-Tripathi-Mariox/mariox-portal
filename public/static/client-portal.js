@@ -493,7 +493,7 @@ async function renderCpDashboard(el) {
             <tbody>${projects.map(p => {
               const burn = p.total_allocated_hours > 0 ? Math.round((p.consumed_hours / p.total_allocated_hours) * 100) : 0
               return `<tr>
-                <td><div style="font-weight:500;color:#e2e8f0;font-size:13px">${p.name}</div><div style="font-size:11px;color:#64748b">${p.code}</div></td>
+                <td><div style="font-weight:500;color:#e2e8f0;font-size:13px">${tc(p.name)}</div><div style="font-size:11px;color:#64748b">${p.code}</div></td>
                 <td>${cpStatusBadge(p.status)}</td>
                 <td>
                   <div style="display:flex;align-items:center;gap:8px">
@@ -517,7 +517,7 @@ async function renderCpDashboard(el) {
           <tbody>${invoices.slice(0,4).map(i => `
             <tr>
               <td><div style="font-weight:500;color:#e2e8f0;font-size:13px">${i.invoice_number}</div><div style="font-size:11px;color:#64748b">${i.title||''}</div></td>
-              <td style="font-size:12px;color:#94a3b8">${i.project_name||'—'}</td>
+              <td style="font-size:12px;color:#94a3b8">${tc(i.project_name)||'—'}</td>
               <td style="font-weight:600;color:#58C68A">${fmtCurrency(i.total_amount)}</td>
               <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#94a3b8'}">${fmtDate(i.due_date)}</td>
               <td><span class="badge ${cpInvoiceBadge(i.status)}">${i.status}</span></td>
@@ -552,7 +552,7 @@ async function renderCpProjects(el) {
         return `<div class="card" style="padding:20px;cursor:pointer;transition:.2s" onclick="cpViewProject('${p.id}')" onmouseover="this.style.borderColor='#FF7A45'" onmouseout="this.style.borderColor='#2A1812'">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
             <div>
-              <div style="font-size:15px;font-weight:600;color:#e2e8f0">${p.name}</div>
+              <div style="font-size:15px;font-weight:600;color:#e2e8f0">${tc(p.name)}</div>
               <div style="font-size:11px;color:#64748b;margin-top:2px">${p.code}</div>
             </div>
             ${cpStatusBadge(p.status)}
@@ -624,7 +624,7 @@ async function renderCpKanban(el) {
       <div><h1 class="page-title">Task Board</h1><p class="page-subtitle">${totalTasks} client-visible task${totalTasks===1?'':'s'} for your projects</p></div>
       <div class="page-actions">
         <select class="form-select" style="min-width:200px" onchange="_cpKanbanProject=this.value;renderCpKanban(document.getElementById('cp-main'))">
-          ${projects.map(p => `<option value="${p.id}" ${p.id === _cpKanbanProject ? 'selected' : ''}>${p.name}</option>`).join('')}
+          ${projects.map(p => `<option value="${p.id}" ${p.id === _cpKanbanProject ? 'selected' : ''}>${tc(p.name)}</option>`).join('')}
         </select>
       </div>
     </div>
@@ -768,7 +768,7 @@ async function renderCpMilestones(el) {
               ${isOverdue ? '<span class="badge badge-blocked"><i class="fas fa-exclamation-triangle"></i>Overdue</span>' : ''}
               ${ratingOverall ? `<span style="font-size:11px;background:rgba(255,203,71,.15);color:#FFCB47;padding:2px 8px;border-radius:10px;font-weight:600"><i class="fas fa-star"></i> ${ratingOverall.toFixed(1)}/10</span>` : ''}
             </div>
-            <div style="font-size:12px;color:#64748b;margin-top:4px">${m.project_name || ''} ${m.due_date ? `• Due: ${fmtDate(m.due_date)}` : ''}</div>
+            <div style="font-size:12px;color:#64748b;margin-top:4px">${tc(m.project_name) || ''} ${m.due_date ? `• Due: ${fmtDate(m.due_date)}` : ''}</div>
           </div>
           <div style="text-align:right;flex-shrink:0;margin-left:16px">
             <div style="font-size:22px;font-weight:700;color:${pct>=100?'#58C68A':pct>=60?'#FFCB47':'#FFB347'}">${pct}%</div>
@@ -905,7 +905,7 @@ async function renderCpDocuments(el) {
       <div class="page-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap">
         <select class="form-select" style="min-width:160px;flex:0 1 auto" onchange="cpReloadDocs(this.value)">
           <option value="" ${!selectedProject ? 'selected' : ''}>All Projects</option>
-          ${projects.map(p => `<option value="${p.id}" ${p.id === selectedProject ? 'selected' : ''}>${p.name}</option>`).join('')}
+          ${projects.map(p => `<option value="${p.id}" ${p.id === selectedProject ? 'selected' : ''}>${tc(p.name)}</option>`).join('')}
         </select>
         <button class="btn btn-primary" style="white-space:nowrap;flex:0 0 auto" onclick="openCpUploadModal()"><i class="fas fa-upload"></i> Upload</button>
       </div>
@@ -931,7 +931,7 @@ async function renderCpDocuments(el) {
                 </div>
                 <div style="flex:1;min-width:0">
                   <div style="font-size:13px;font-weight:500;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${doc.title}</div>
-                  <div style="font-size:11px;color:#64748b;margin-top:2px">${doc.project_name||''} • v${doc.version||'1.0'}</div>
+                  <div style="font-size:11px;color:#64748b;margin-top:2px">${tc(doc.project_name)||''} • v${doc.version||'1.0'}</div>
                   ${doc.description ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4">${doc.description.substring(0,60)}${doc.description.length>60?'…':''}</div>` : ''}
                   <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
                     <span style="font-size:10px;color:#64748b"><i class="fas fa-user" style="margin-right:3px"></i>${doc.uploaded_by_name||'—'}</span>

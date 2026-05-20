@@ -21,11 +21,16 @@ async function renderDocumentsCenter(el) {
     const categories = docsData.categories || ['sow','brd','frd','uiux','wireframes','meeting_notes','technical','test_report','release','billing','contract','bid','other']
     _documentsCenterPage = 1
 
+    // Built-in label table — merged with any admin-added custom categories
+    // so filter chips and section headers show their friendly names.
     const categoryLabels = {
       sow:'Statement of Work', brd:'Business Requirements', frd:'Functional Requirements',
       uiux:'UI/UX Design', wireframes:'Wireframes', meeting_notes:'Meeting Notes',
       technical:'Technical Docs', test_report:'Test Reports', release:'Release Notes',
       billing:'Billing', contract:'Contracts', bid:'Bid Attachments', other:'Other'
+    }
+    for (const c of (docsData.custom_categories || [])) {
+      if (c && c.value && !categoryLabels[c.value]) categoryLabels[c.value] = c.label || c.value
     }
 
     let filterProject = '', filterCategory = '', filterSearch = ''
@@ -154,15 +159,31 @@ function docFTypeIcon(type) {
   return 'fa-file-alt'
 }
 
+// Built-in category labels — used to render the dropdown when no custom
+// label is available. Custom categories supply their own label.
+window._docCategoryLabels = {
+  sow: 'Statement of Work', brd: 'Business Requirements', frd: 'Functional Requirements',
+  uiux: 'UI/UX Design', wireframes: 'Wireframes', meeting_notes: 'Meeting Notes',
+  technical: 'Technical Docs', test_report: 'Test Reports', release: 'Release Notes',
+  billing: 'Billing', contract: 'Contracts', bid: 'Bids', other: 'Other',
+}
+
+async function fetchDocCategories() {
+  try {
+    const r = await API.get('/documents/categories')
+    const builtin = (r.builtin_categories || []).map(v => ({ v, l: window._docCategoryLabels[v] || v, builtin: true }))
+    const custom = (r.custom_categories || []).map(c => ({ v: c.value, l: c.label || c.value, builtin: false, id: c.id }))
+    return [...builtin, ...custom]
+  } catch {
+    // Fall back to the static built-in list if the endpoint is unavailable.
+    return Object.entries(window._docCategoryLabels).map(([v, l]) => ({ v, l, builtin: true }))
+  }
+}
+
 async function showUploadDocModal() {
-  const projData = await API.get('/projects')
+  const [projData, catOpts] = await Promise.all([API.get('/projects'), fetchDocCategories()])
   const projects = projData.projects || projData || []
-  const catOpts = [
-    {v:'sow',l:'Statement of Work'}, {v:'brd',l:'Business Requirements'}, {v:'frd',l:'Functional Requirements'},
-    {v:'uiux',l:'UI/UX Design'}, {v:'wireframes',l:'Wireframes'}, {v:'meeting_notes',l:'Meeting Notes'},
-    {v:'technical',l:'Technical Docs'}, {v:'test_report',l:'Test Reports'}, {v:'release',l:'Release Notes'},
-    {v:'billing',l:'Billing'}, {v:'contract',l:'Contracts'}, {v:'other',l:'Other'}
-  ]
+  window._udCatOpts = catOpts
   window._udFiles = []
   showModal(`
   <div class="modal-header"><h3><i class="fas fa-upload" style="color:#FF7A45"></i> Upload Documents</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
@@ -170,8 +191,11 @@ async function showUploadDocModal() {
     <div class="form-row">
       <div class="form-group"><label class="form-label">Project *</label>
         <select class="form-select" id="ud-project"><option value="">Select…</option>${projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select></div>
-      <div class="form-group"><label class="form-label">Category *</label>
-        <select class="form-select" id="ud-category">${catOpts.map(c=>`<option value="${c.v}">${c.l}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Category *</span>
+          <button type="button" class="btn btn-xs btn-outline" onclick="udAddDocCategory()" title="Add a new category" style="padding:2px 8px;font-size:11px"><i class="fas fa-plus"></i> New category</button>
+        </label>
+        <select class="form-select" id="ud-category" onchange="if(this.value==='__new__'){udAddDocCategory()}">${catOpts.map(c=>`<option value="${c.v}">${c.l}</option>`).join('')}<option value="__new__" style="font-style:italic;color:#FFB347">＋ Add new category…</option></select></div>
     </div>
 
     <div class="form-group">
@@ -215,6 +239,88 @@ async function showUploadDocModal() {
     dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.background = 'rgba(255,122,69,.12)' })
     dz.addEventListener('dragleave', () => { dz.style.background = 'rgba(255,122,69,.04)' })
     dz.addEventListener('drop', e => { e.preventDefault(); dz.style.background = 'rgba(255,122,69,.04)'; if (e.dataTransfer?.files) udOnFilesPicked(e.dataTransfer.files) })
+  }
+}
+
+// In-app prompt overlay — replaces the ugly native window.prompt for adding
+// a new document category. Returns a Promise that resolves to the typed
+// string (trimmed) or null if the user cancelled. Stacked above the existing
+// Upload modal without disturbing it (separate root, higher z-index).
+function udOpenCategoryPrompt() {
+  return new Promise(resolve => {
+    let root = document.getElementById('ud-cat-prompt-root')
+    if (root) root.remove()
+    root = document.createElement('div')
+    root.id = 'ud-cat-prompt-root'
+    root.innerHTML = `
+      <div class="modal-overlay" style="z-index:1100;background:rgba(0,0,0,.55)">
+        <div class="modal" style="max-width:420px;width:90%">
+          <div class="modal-header">
+            <h3 style="display:flex;align-items:center;gap:8px;margin:0"><i class="fas fa-folder-plus" style="color:#FF7A45"></i> New Category</h3>
+            <button class="close-btn" id="ud-cat-prompt-x" type="button">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Category name</label>
+              <input class="form-input" id="ud-cat-prompt-input" placeholder='e.g. "Design Review", "QA Sign-off"' autocomplete="off"/>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Once added, this category will be available to everyone in the workspace.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline" id="ud-cat-prompt-cancel" type="button">Cancel</button>
+            <button class="btn btn-primary" id="ud-cat-prompt-ok" type="button"><i class="fas fa-plus"></i> Add Category</button>
+          </div>
+        </div>
+      </div>`
+    document.body.appendChild(root)
+
+    const input = root.querySelector('#ud-cat-prompt-input')
+    const cleanup = (value) => { root.remove(); resolve(value) }
+    root.querySelector('#ud-cat-prompt-x').onclick = () => cleanup(null)
+    root.querySelector('#ud-cat-prompt-cancel').onclick = () => cleanup(null)
+    root.querySelector('#ud-cat-prompt-ok').onclick = () => {
+      const v = (input.value || '').trim()
+      if (!v) { input.focus(); return }
+      cleanup(v)
+    }
+    // Outside-click on this nested overlay cancels (no draft to preserve).
+    root.querySelector('.modal-overlay').addEventListener('click', e => {
+      if (e.target === e.currentTarget) cleanup(null)
+    })
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); root.querySelector('#ud-cat-prompt-ok').click() }
+      else if (e.key === 'Escape') { e.preventDefault(); cleanup(null) }
+    })
+    setTimeout(() => input.focus(), 30)
+  })
+}
+
+// Prompt the user for a new category name, POST it to the server and re-render
+// the dropdown with the new entry pre-selected. Called from both the "+ New
+// category" button and the sentinel "__new__" option at the bottom of the
+// dropdown — whichever the user clicks first.
+async function udAddDocCategory() {
+  const sel = document.getElementById('ud-category')
+  // If the change came from the sentinel option, restore the previous choice
+  // before opening the prompt so cancelling leaves the dropdown unchanged.
+  const fallback = sel && sel.options.length > 1 ? sel.options[0].value : 'other'
+  if (sel && sel.value === '__new__') sel.value = fallback
+  const name = await udOpenCategoryPrompt()
+  if (!name) return
+  try {
+    const r = await API.post('/documents/categories', { label: name })
+    const created = r.category || r
+    if (typeof toast === 'function') toast('Category added', 'success', 1500)
+    // Refresh the dropdown so the next picker shows the new option, and select
+    // it automatically for this upload.
+    window._udCatOpts = await fetchDocCategories()
+    if (sel) {
+      sel.innerHTML = window._udCatOpts.map(c => `<option value="${c.v}">${c.l}</option>`).join('')
+        + `<option value="__new__" style="font-style:italic;color:#FFB347">＋ Add new category…</option>`
+      sel.value = created.value
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast(e.message || 'Failed to add category', 'error')
   }
 }
 

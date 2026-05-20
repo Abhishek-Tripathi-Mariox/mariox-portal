@@ -117,9 +117,96 @@ export function createDocumentsRouter(models: MongoModels, jwtSecret: string, ru
         enriched.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
       }
 
-      return res.json({ documents: enriched, categories: DOC_CATEGORIES, data: enriched })
+      // Surface built-in + admin-defined categories so the modal can offer
+      // them in the dropdown. Custom categories are stored in their own
+      // collection (`doc_categories`) — slug + label.
+      const customCats = await models.docCategories.find({}) as any[]
+      const customValues = customCats.map((c) => String(c.value || '').toLowerCase()).filter(Boolean)
+      const allCategories = Array.from(new Set([...DOC_CATEGORIES, ...customValues]))
+
+      return res.json({
+        documents: enriched,
+        categories: allCategories,
+        builtin_categories: DOC_CATEGORIES,
+        custom_categories: customCats,
+        data: enriched,
+      })
     } catch {
-      return res.json({ documents: [], categories: DOC_CATEGORIES, data: [] })
+      return res.json({ documents: [], categories: DOC_CATEGORIES, builtin_categories: DOC_CATEGORIES, custom_categories: [], data: [] })
+    }
+  })
+
+  // List custom doc categories (built-in ones are static and exposed via
+  // the constants module; the front-end merges both lists).
+  router.get('/categories', async (_req, res) => {
+    try {
+      const customCats = await models.docCategories.find({}) as any[]
+      customCats.sort((a, b) => String(a.label || a.value || '').localeCompare(String(b.label || b.value || '')))
+      const customValues = customCats.map((c) => String(c.value || '').toLowerCase()).filter(Boolean)
+      const allCategories = Array.from(new Set([...DOC_CATEGORIES, ...customValues]))
+      return res.json({
+        categories: allCategories,
+        builtin_categories: DOC_CATEGORIES,
+        custom_categories: customCats,
+      })
+    } catch {
+      return res.json({ categories: DOC_CATEGORIES, builtin_categories: DOC_CATEGORIES, custom_categories: [] })
+    }
+  })
+
+  router.post('/categories', async (req, res) => {
+    try {
+      const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
+      const allowed = ['admin', 'pm', 'pc'].includes(role)
+        || await userHasAnyPermission(models, user, 'documents.upload')
+      if (!allowed) return res.status(403).json({ error: 'Forbidden' })
+
+      const body = req.body || {}
+      const label = validateLength(String(body.label || body.name || '').trim(), 2, 60, 'Category name')
+      // slug: lowercase, alphanumerics + underscores, derived from label unless
+      // the caller passes an explicit value.
+      const explicitValue = String(body.value || '').trim().toLowerCase()
+      const slug = (explicitValue || label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''))
+        .slice(0, 40)
+      if (!slug) return res.status(400).json({ error: 'Category name must contain letters or numbers' })
+      // Reject duplicates against built-in + existing custom categories.
+      if ((DOC_CATEGORIES as readonly string[]).includes(slug)) {
+        return res.status(409).json({ error: 'A built-in category with this name already exists' })
+      }
+      const existing = await models.docCategories.findOne({ value: slug })
+      if (existing) return res.status(409).json({ error: 'This category already exists' })
+
+      const id = generateId('doccat')
+      const now = new Date().toISOString()
+      const record = {
+        id,
+        value: slug,
+        label,
+        created_by: user?.sub || null,
+        created_by_name: user?.name || user?.full_name || null,
+        created_at: now,
+      }
+      await models.docCategories.insertOne(record)
+      return res.status(201).json({ category: record, message: 'Category added' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  router.delete('/categories/:id', async (req, res) => {
+    try {
+      const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
+      const allowed = ['admin', 'pm', 'pc'].includes(role)
+        || await userHasAnyPermission(models, user, 'documents.upload')
+      if (!allowed) return res.status(403).json({ error: 'Forbidden' })
+      const cat = await models.docCategories.findById(String(req.params.id)) as any
+      if (!cat) return res.status(404).json({ error: 'Category not found' })
+      await models.docCategories.deleteById(cat.id)
+      return res.json({ message: 'Category removed' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
     }
   })
 
@@ -138,7 +225,19 @@ export function createDocumentsRouter(models: MongoModels, jwtSecret: string, ru
       const title = validateLength(String(body.title || '').trim(), 2, 200, 'Title')
       const file_name = validateLength(String(body.file_name || '').trim(), 1, 255, 'File name')
       const file_url = validateUrl(body.file_url, 'File URL')
-      const category = validateEnum(body.category || 'other', DOC_CATEGORIES, 'Category')
+
+      // Accept built-in categories OR any admin-defined custom category.
+      const rawCategory = String(body.category || 'other').trim().toLowerCase()
+      let category: string
+      if ((DOC_CATEGORIES as readonly string[]).includes(rawCategory)) {
+        category = rawCategory
+      } else {
+        const customCat = await models.docCategories.findOne({ value: rawCategory })
+        if (!customCat) {
+          return res.status(400).json({ error: `Unknown category "${rawCategory}"` })
+        }
+        category = rawCategory
+      }
       const fileSize = body.file_size !== undefined
         ? validatePositiveNumber(body.file_size, 'File size')
         : 0

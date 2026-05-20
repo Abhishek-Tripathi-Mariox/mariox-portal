@@ -120,19 +120,19 @@ app.get('*', (c) => {
 </head>
 <body>
   <div id="app"></div>
-  <script src="/static/app.js?v=fixes10"></script>
+  <script src="/static/app.js?v=fixes13"></script>
   <script src="/static/pages.js?v=incent9"></script>
   <script src="/static/pages2.js?v=incent7"></script>
-  <script src="/static/enterprise.js?v=fixes10"></script>
-  <script src="/static/enterprise2.js?v=fixes10"></script>
-  <script src="/static/client-portal.js?v=incent7"></script>
+  <script src="/static/enterprise.js?v=fixes13"></script>
+  <script src="/static/enterprise2.js?v=fixes15"></script>
+  <script src="/static/client-portal.js?v=fixes13"></script>
   <script src="/static/project-extensions.js?v=incent7"></script>
   <script src="/static/support.js?v=incent7"></script>
   <script src="/static/leads.js?v=fixes10"></script>
   <!-- HR module: _shared.js must load first so each per-component file can use its helpers -->
   <script src="/static/hr/_shared.js?v=hr8"></script>
   <script src="/static/hr/hr-attendance.js?v=hr5"></script>
-  <script src="/static/hr/hr-calendar.js?v=hr4"></script>
+  <script src="/static/hr/hr-calendar.js?v=fixes13"></script>
   <script src="/static/hr/hr-warnings.js?v=hr4"></script>
   <script src="/static/hr/hr-pips.js?v=hr2"></script>
   <script src="/static/hr/hr-salary-slips.js?v=hr2"></script>

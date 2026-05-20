@@ -38,6 +38,8 @@ export function createCalendarRouter(models: MongoModels, jwtSecret: string) {
   router.get('/', async (req, res) => {
     try {
       const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
+
       const events = await models.calendarEvents.find({
         $or: [
           { visibility: 'company' },
@@ -45,7 +47,47 @@ export function createCalendarRouter(models: MongoModels, jwtSecret: string) {
           { visibility: 'personal', created_by: user.sub },
         ],
       }) as any[]
-      const sorted = events.sort((a, b) =>
+
+      // Surface every project's expected end-date as a read-only "deadline"
+      // event so the calendar shows when projects are due. Visibility scoping
+      // mirrors the rest of the app: clients only see their own projects;
+      // admin/pm see all; everyone else sees projects they're assigned to.
+      let projectFilter: any = null
+      if (role === 'client') {
+        projectFilter = { client_id: user.sub }
+      } else if (role !== 'admin' && role !== 'pm' && role !== 'pc') {
+        try {
+          const assignments = await models.projectAssignments.find({ user_id: user.sub }) as any[]
+          const projectIds = Array.from(new Set(assignments.map((a) => String(a.project_id || ''))))
+          projectFilter = projectIds.length ? { id: { $in: projectIds } } : { id: { $in: ['__none__'] } }
+        } catch {
+          projectFilter = null
+        }
+      }
+      const visibleProjects = (projectFilter
+        ? await models.projects.find(projectFilter)
+        : await models.projects.find({})) as any[]
+
+      const projectDeadlines = visibleProjects
+        .filter((p) => p && p.expected_end_date)
+        .map((p) => ({
+          id: `project-deadline:${p.id}`,
+          title: `${p.name || 'Project'} — deadline`,
+          event_type: 'deadline',
+          visibility: 'company',
+          start_date: String(p.expected_end_date).slice(0, 10),
+          end_date: String(p.expected_end_date).slice(0, 10),
+          start_time: null,
+          end_time: null,
+          color: '#FF5E3A',
+          description: `Expected delivery for ${p.name}${p.code ? ` (${p.code})` : ''}`,
+          project_id: p.id,
+          is_project_deadline: true,
+          read_only: true,
+        }))
+
+      const combined = [...events, ...projectDeadlines]
+      const sorted = combined.sort((a, b) =>
         String(a.start_date || '').localeCompare(String(b.start_date || '')),
       )
       return res.json({ data: sorted, events: sorted })

@@ -48,6 +48,34 @@ const utils = {
 const BASE = '/api'
 let _token = null, _user = null
 
+// Project-name display helper — normalises whatever the user typed (UPPER,
+// lower, mixedCase, snake_case…) into "Title Case With Words Capitalised".
+// Acronyms shorter than 3 chars are left as-is so "API"/"SDK"/"CRM" survive.
+// Used everywhere a raw project name is shown to humans.
+function toTitleCase(value) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return raw
+  return raw
+    .split(/(\s+)/) // keep original spacing
+    .map(token => {
+      if (!token || /^\s+$/.test(token)) return token
+      // Preserve all-caps short acronyms (API, SDK, CRM, …).
+      if (token.length <= 4 && token === token.toUpperCase() && /^[A-Z0-9]+$/.test(token)) return token
+      // Title-case dashed/underscored chunks too: "my_cool-app" → "My Cool App".
+      return token
+        .split(/([_-]+)/)
+        .map(part => {
+          if (/^[_-]+$/.test(part)) return ' '
+          if (!part) return part
+          return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+        })
+        .join('')
+    })
+    .join('')
+}
+// Short alias for inline use in templates.
+const tc = (v) => toTitleCase(v)
+
 // Role → page allow-list. Sidebar items, page dispatcher and the router all
 // consult this so a single source of truth controls who-sees-what. Pages not
 // listed here are open to every authenticated user.
