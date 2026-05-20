@@ -126,6 +126,13 @@ export interface InlineImage {
   base64: string
 }
 
+// Regular file attachment shown in the mail client's attachments tray.
+export interface MailAttachment {
+  filename: string
+  contentType: string
+  base64: string
+}
+
 // Resolve a signature image. Three sources, in order:
 // 1. INVOICE_SIGNATURE_URL env → absolute URL embedded directly in the HTML.
 // 2. Local file at public/static/images/mariox-sign.{png,jpg,jpeg} → attach
@@ -386,10 +393,12 @@ function buildMime(opts: {
   html: string
   text: string
   inlineImages?: InlineImage[]
+  attachments?: MailAttachment[]
 }) {
   const ts = Date.now()
   const altBoundary = `----devportal-alt-${ts}`
   const inline = opts.inlineImages || []
+  const attachments = opts.attachments || []
 
   const altPart = [
     `--${altBoundary}`,
@@ -414,36 +423,67 @@ function buildMime(opts: {
     `Date: ${new Date().toUTCString()}`,
   ].filter(Boolean)
 
+  // Build the "body part" (alternative or related-with-inline-images) first;
+  // file attachments wrap whatever that is in a multipart/mixed envelope.
+  let bodyPartHeaderLine: string
+  let bodyPartContent: string
+
   if (inline.length === 0) {
-    const headers = [...baseHeaders, `Content-Type: multipart/alternative; boundary="${altBoundary}"`].join('\r\n')
-    return headers + '\r\n\r\n' + altPart + '\r\n'
+    bodyPartHeaderLine = `Content-Type: multipart/alternative; boundary="${altBoundary}"`
+    bodyPartContent = altPart
+  } else {
+    const relBoundary = `----devportal-rel-${ts}`
+    bodyPartHeaderLine = `Content-Type: multipart/related; boundary="${relBoundary}"`
+    const relParts: string[] = [
+      `--${relBoundary}`,
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+      '',
+      altPart,
+    ]
+    for (const img of inline) {
+      relParts.push(
+        `--${relBoundary}`,
+        `Content-Type: ${img.contentType}; name="${img.filename}"`,
+        'Content-Transfer-Encoding: base64',
+        `Content-ID: <${img.cid}>`,
+        `Content-Disposition: inline; filename="${img.filename}"`,
+        '',
+        wrapBase64(img.base64),
+      )
+    }
+    relParts.push(`--${relBoundary}--`, '')
+    bodyPartContent = relParts.join('\r\n')
   }
 
-  // Inline images: wrap the alternative part in multipart/related so HTML
-  // can reference each via `cid:<Content-ID>`. Required for Gmail to render.
-  const relBoundary = `----devportal-rel-${ts}`
-  const headers = [...baseHeaders, `Content-Type: multipart/related; boundary="${relBoundary}"`].join('\r\n')
+  if (attachments.length === 0) {
+    const headers = [...baseHeaders, bodyPartHeaderLine].join('\r\n')
+    return headers + '\r\n\r\n' + bodyPartContent + '\r\n'
+  }
 
-  const parts: string[] = [
-    `--${relBoundary}`,
-    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+  // Real attachments → wrap in multipart/mixed so the mail client surfaces
+  // them in its attachments tray instead of dropping them silently.
+  const mixedBoundary = `----devportal-mixed-${ts}`
+  const headers = [...baseHeaders, `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`].join('\r\n')
+
+  const mixedParts: string[] = [
+    `--${mixedBoundary}`,
+    bodyPartHeaderLine,
     '',
-    altPart,
+    bodyPartContent,
   ]
-  for (const img of inline) {
-    parts.push(
-      `--${relBoundary}`,
-      `Content-Type: ${img.contentType}; name="${img.filename}"`,
+  for (const att of attachments) {
+    mixedParts.push(
+      `--${mixedBoundary}`,
+      `Content-Type: ${att.contentType}; name="${att.filename}"`,
       'Content-Transfer-Encoding: base64',
-      `Content-ID: <${img.cid}>`,
-      `Content-Disposition: inline; filename="${img.filename}"`,
+      `Content-Disposition: attachment; filename="${att.filename}"`,
       '',
-      wrapBase64(img.base64),
+      wrapBase64(att.base64),
     )
   }
-  parts.push(`--${relBoundary}--`, '')
+  mixedParts.push(`--${mixedBoundary}--`, '')
 
-  return headers + '\r\n\r\n' + parts.join('\r\n')
+  return headers + '\r\n\r\n' + mixedParts.join('\r\n')
 }
 
 function dotStuff(message: string) {
@@ -459,6 +499,7 @@ export async function sendInvoiceViaSmtp(opts: {
   text: string
   brandName?: string
   inlineImages?: InlineImage[]
+  attachments?: MailAttachment[]
 }) {
   const env = opts.env
   const host = String(env.SMTP_HOST || '').trim()
@@ -564,7 +605,7 @@ export async function sendInvoiceViaSmtp(opts: {
     }
     await cmd('DATA', [354], 'DATA')
 
-    const mime = buildMime({ from: `${brandName} <${from}>`, to: opts.to, cc: opts.cc, subject: opts.subject, html: opts.html, text: opts.text, inlineImages: opts.inlineImages })
+    const mime = buildMime({ from: `${brandName} <${from}>`, to: opts.to, cc: opts.cc, subject: opts.subject, html: opts.html, text: opts.text, inlineImages: opts.inlineImages, attachments: opts.attachments })
     await send(dotStuff(mime) + '\r\n.')
     reply = await readReply()
     if (reply.code !== 250) throw new Error(`Message delivery failed: ${reply.lines.join(' | ')}`)
@@ -573,6 +614,42 @@ export async function sendInvoiceViaSmtp(opts: {
   } finally {
     cleanup()
   }
+}
+
+// Wrap the invoice email HTML in a minimal <html> document with embedded
+// signature so it can be saved standalone (download link or mail attachment).
+// Inline images are converted to data: URIs so the file works offline.
+export function buildStandaloneInvoiceHtml(opts: {
+  inv: any
+  client: any
+  project: any
+  env: InvoiceEmailEnv
+}): { html: string; filename: string } {
+  const { html, inlineImages } = buildInvoiceEmailGST(opts)
+  let body = html
+  for (const img of (inlineImages || [])) {
+    const dataUrl = `data:${img.contentType};base64,${img.base64}`
+    body = body.split(`cid:${img.cid}`).join(dataUrl)
+  }
+  const doc = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Invoice ${escapeHtml(opts.inv?.invoice_number || '')}</title>
+<style>
+  body { margin: 0; background: #f7f8fa; }
+  @media print { body { background: #fff; } }
+</style>
+</head>
+<body>${body}
+<script>
+  // Auto-prompt the print dialog when opened in a browser tab via ?print=1.
+  if (location.search.includes('print=1')) { setTimeout(() => window.print(), 350) }
+</script>
+</body>
+</html>`
+  const safeNumber = String(opts.inv?.invoice_number || opts.inv?.id || 'invoice').replace(/[^A-Za-z0-9._-]+/g, '_')
+  return { html: doc, filename: `invoice-${safeNumber}.html` }
 }
 
 export function parseEmailList(input: any): string[] {

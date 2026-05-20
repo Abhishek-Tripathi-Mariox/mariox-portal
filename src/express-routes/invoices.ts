@@ -13,6 +13,7 @@ import {
 } from '../validators'
 import {
   buildInvoiceEmailGST,
+  buildStandaloneInvoiceHtml,
   sendInvoiceViaSmtp,
   parseEmailList,
   type InvoiceEmailEnv,
@@ -305,6 +306,47 @@ export function createInvoicesRouter(models: MongoModels, jwtSecret: string, run
     }
   })
 
+  // Stream the invoice as a stand-alone HTML page.
+  //   - GET …/download  → Content-Disposition: attachment (browser saves it)
+  //   - GET …/preview   → inline (opens in tab; ?print=1 auto-prints)
+  // Both reuse the same template the mail attachment uses so what the user
+  // downloads matches what the client receives.
+  router.get('/:id/preview', async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const invoice = await models.invoices.findById(id) as any
+      if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+      const [project, client] = await Promise.all([
+        invoice.project_id ? models.projects.findById(String(invoice.project_id)) : null,
+        invoice.client_id ? models.clients.findById(String(invoice.client_id)) : null,
+      ]) as any[]
+      const { html, filename } = buildStandaloneInvoiceHtml({ inv: invoice, client, project, env: runtimeEnv })
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`)
+      return res.send(html)
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  router.get('/:id/download', async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const invoice = await models.invoices.findById(id) as any
+      if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+      const [project, client] = await Promise.all([
+        invoice.project_id ? models.projects.findById(String(invoice.project_id)) : null,
+        invoice.client_id ? models.clients.findById(String(invoice.client_id)) : null,
+      ]) as any[]
+      const { html, filename } = buildStandaloneInvoiceHtml({ inv: invoice, client, project, env: runtimeEnv })
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+      return res.send(html)
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
   router.post('/:id/send-email', requireRole('admin'), async (req, res) => {
     try {
       const id = String(req.params.id)
@@ -324,7 +366,18 @@ export function createInvoicesRouter(models: MongoModels, jwtSecret: string, run
       const subject = String(body.subject || `Invoice ${invoice.invoice_number} from ${runtimeEnv.COMPANY_NAME || 'Mariox Software'}`).trim()
       const { html, text, inlineImages } = buildInvoiceEmailGST({ inv: invoice, client, project, env: runtimeEnv })
 
-      await sendInvoiceViaSmtp({ env: runtimeEnv, to, cc, subject, html, text, inlineImages })
+      // Attach a stand-alone HTML copy of the invoice so the recipient can
+      // download / print it directly from the mail client (no portal login
+      // needed). Browsers open the .html attachment and the recipient can
+      // Ctrl+P → Save as PDF if they want a PDF copy.
+      const standalone = buildStandaloneInvoiceHtml({ inv: invoice, client, project, env: runtimeEnv })
+      const attachments = [{
+        filename: standalone.filename,
+        contentType: 'text/html; charset=utf-8',
+        base64: Buffer.from(standalone.html, 'utf8').toString('base64'),
+      }]
+
+      await sendInvoiceViaSmtp({ env: runtimeEnv, to, cc, subject, html, text, inlineImages, attachments })
 
       const nextStatus = ['paid', 'partially_paid', 'cancelled'].includes(invoice.status) ? invoice.status : 'sent'
       const now = new Date().toISOString()

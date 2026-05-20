@@ -120,7 +120,11 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
         price,
         is_active: 1,
         email_verified: 1,
-      })
+        // Track who created this client so we can scope the default list view
+        // to "clients I created" for users without clients.view_all.
+        created_by: user?.sub || null,
+        created_by_name: user?.name || user?.full_name || null,
+      } as any)
 
       return res.status(201).json({ client: created, data: created, message: 'Client created successfully' })
     } catch (error: any) {
@@ -244,7 +248,16 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
         || await userHasAnyPermission(models, user, 'clients.view_all', 'clients.create', 'clients.edit', 'clients.delete')
       if (!allowed) return res.status(403).json({ error: 'Forbidden' })
 
-      const clients = await models.clients.find({}) as any[]
+      // Admin + PM always see every client. Anyone else only sees the clients
+      // they personally created — unless admin has explicitly granted them
+      // `clients.view_all`, which unlocks the full directory.
+      const canViewAll = ['admin', 'pm'].includes(role)
+        || await userHasAnyPermission(models, user, 'clients.view_all')
+
+      const allClients = await models.clients.find({}) as any[]
+      const clients = canViewAll
+        ? allClients
+        : allClients.filter((c) => String(c.created_by || '') === String(user?.sub || ''))
       const projects = await models.projects.find({}) as any[]
       const invoices = await models.invoices.find({}) as any[]
 
@@ -275,12 +288,22 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
     try {
       const user = req.user as any
       const id = req.params.id
-      if (String(user.role || '').toLowerCase() === 'client' && String(user.sub) !== id) {
+      const role = String(user.role || '').toLowerCase()
+      if (role === 'client' && String(user.sub) !== id) {
         return res.status(403).json({ error: 'Forbidden' })
       }
 
-      const client = await models.clients.findById(id)
+      const client = await models.clients.findById(id) as any
       if (!client) return res.status(404).json({ error: 'Client not found' })
+
+      // Same scoping rule as the list endpoint: non-admins/PMs without
+      // `clients.view_all` can only open clients they themselves created.
+      if (!['admin', 'pm', 'client'].includes(role)) {
+        const canViewAll = await userHasAnyPermission(models, user, 'clients.view_all')
+        if (!canViewAll && String(client.created_by || '') !== String(user?.sub || '')) {
+          return res.status(403).json({ error: 'Forbidden' })
+        }
+      }
 
       const projects = (await models.projects.find({ client_id: id }) as any[]).map((project) => ({
         ...project,

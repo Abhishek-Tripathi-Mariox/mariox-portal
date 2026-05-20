@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware } from '../express-middleware/auth'
+import { createAuthMiddleware, userHasAnyPermission } from '../express-middleware/auth'
 import { DOC_CATEGORIES } from '../constants'
 import { generateId } from '../utils/helpers'
 import { extractS3Key, getS3Object, type S3Env } from '../utils/s3-upload'
@@ -128,7 +128,10 @@ export function createDocumentsRouter(models: MongoModels, jwtSecret: string, ru
       const user = req.user as any
       const role = String(user?.role || '').toLowerCase()
       const isClient = role === 'client'
-      if (!['admin', 'pm', 'pc', 'client'].includes(role)) {
+      // Built-in roles + anyone admin has granted documents.upload to.
+      const allowed = ['admin', 'pm', 'pc', 'client'].includes(role)
+        || await userHasAnyPermission(models, user, 'documents.upload')
+      if (!allowed) {
         return res.status(403).json({ error: 'Forbidden' })
       }
       const body = req.body || {}

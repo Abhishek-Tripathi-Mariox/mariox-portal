@@ -139,7 +139,21 @@ function resolveLeadSource() {
 }
 
 function leadsCanManage() {
-  return ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'].includes(String(_user?.role || '').toLowerCase())
+  const role = String(_user?.role || '').toLowerCase()
+  if (['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'].includes(role)) return true
+  // Anyone admin has explicitly granted a leads.* permission to (sales agents,
+  // custom roles, etc.) can also create / manage leads from the UI. Backend
+  // still enforces the same check, so missing the permission only hides UI
+  // affordances.
+  if (typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.create', 'leads.edit', 'leads.delete'])) return true
+  return false
+}
+
+function leadsCanCreate() {
+  const role = String(_user?.role || '').toLowerCase()
+  if (['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'].includes(role)) return true
+  if (typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.create'])) return true
+  return false
 }
 
 async function fetchSalesAssignees() {

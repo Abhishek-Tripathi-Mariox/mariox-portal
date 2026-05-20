@@ -203,16 +203,24 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
         .filter((t) => !t.parent_task_id)
         .sort((a, b) => (Number(a.position || 0) - Number(b.position || 0)) || String(a.created_at || '').localeCompare(String(b.created_at || '')))
 
+      // Project-wide client lookup so tasks assigned to a client (instead of a
+      // staff user) render with the client's name + colour on the board.
+      const clientsForBoard = await models.clients.find({}) as any[]
+      const clientsById = new Map(clientsForBoard.map((c: any) => [String(c.id), c]))
+
       for (const task of topLevel) {
         const assignee = usersById.get(String(task.assignee_id)) as any
         const reporter = usersById.get(String(task.reporter_id)) as any
         const sprint = sprintsById.get(String(task.sprint_id)) as any
+        const clientAssignee = task.client_assignee_id ? clientsById.get(String(task.client_assignee_id)) as any : null
         const enriched = {
           ...task,
-          assignee_name: assignee?.full_name || null,
-          assignee_color: assignee?.avatar_color || null,
-          assignee_designation: assignee?.designation || null,
+          assignee_name: clientAssignee ? `${clientAssignee.company_name || clientAssignee.contact_name} (Client)` : (assignee?.full_name || null),
+          assignee_color: clientAssignee ? (clientAssignee.avatar_color || '#6366f1') : (assignee?.avatar_color || null),
+          assignee_designation: clientAssignee ? 'Client' : (assignee?.designation || null),
+          assignee_kind: clientAssignee ? 'client' : (assignee ? 'user' : null),
           reporter_name: reporter?.full_name || null,
+          reporter_color: reporter?.avatar_color || null,
           sprint_name: sprint?.name || null,
           subtask_count: subtaskCounts.get(String(task.id)) || 0,
           comment_count: commentCounts.get(String(task.id)) || 0,
@@ -348,12 +356,16 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       const sprint = sprints.find((s) => s.id === task.sprint_id) as any
       const assignee = usersById.get(String(task.assignee_id)) as any
       const reporter = usersById.get(String(task.reporter_id)) as any
+      const clientAssignee = task.client_assignee_id
+        ? await models.clients.findById(String(task.client_assignee_id)) as any
+        : null
 
       const enrichedTask = {
         ...task,
-        assignee_name: assignee?.full_name || null,
-        assignee_color: assignee?.avatar_color || null,
-        assignee_designation: assignee?.designation || null,
+        assignee_name: clientAssignee ? `${clientAssignee.company_name || clientAssignee.contact_name} (Client)` : (assignee?.full_name || null),
+        assignee_color: clientAssignee ? (clientAssignee.avatar_color || '#6366f1') : (assignee?.avatar_color || null),
+        assignee_designation: clientAssignee ? 'Client' : (assignee?.designation || null),
+        assignee_kind: clientAssignee ? 'client' : (assignee ? 'user' : null),
         reporter_name: reporter?.full_name || null,
         reporter_color: reporter?.avatar_color || null,
         project_name: project?.name || null,
@@ -421,6 +433,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
         status,
         priority,
         assignee_id: body.assignee_id || null,
+        client_assignee_id: body.client_assignee_id || null,
         reporter_id: user?.sub,
         story_points: storyPoints,
         estimated_hours: estimatedHours,
@@ -466,13 +479,31 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
 
       const body = req.body || {}
       const patch: any = { updated_at: new Date().toISOString() }
-      const allowed = ['title', 'description', 'task_type', 'status', 'priority', 'assignee_id', 'sprint_id', 'milestone_id', 'story_points', 'estimated_hours', 'logged_hours', 'due_date', 'pct_of_milestone', 'labels', 'is_client_visible', 'is_billable', 'position']
+      const allowed = ['title', 'description', 'task_type', 'status', 'priority', 'assignee_id', 'client_assignee_id', 'sprint_id', 'milestone_id', 'story_points', 'estimated_hours', 'logged_hours', 'due_date', 'pct_of_milestone', 'labels', 'is_client_visible', 'is_billable', 'position']
       for (const k of allowed) {
         if (k in body) patch[k] = k === 'labels' && Array.isArray(body[k]) ? JSON.stringify(body[k]) : body[k]
       }
       if (body.status === 'done' && oldTask.status !== 'done') {
         patch.completed_at = new Date().toISOString()
       }
+
+      // If the description changed alongside a status change (or on its own),
+      // push the previous description into description_history so the UI can
+      // show "what it used to say". Skip if old description was empty.
+      const descChanged = 'description' in body && String(body.description ?? '') !== String(oldTask.description ?? '')
+      if (descChanged && String(oldTask.description || '').trim()) {
+        const historyEntry = {
+          description: oldTask.description,
+          status: oldTask.status,
+          changed_at: new Date().toISOString(),
+          changed_by: user?.sub || null,
+          changed_by_name: user?.name || user?.full_name || null,
+        }
+        const prevHistory = Array.isArray(oldTask.description_history) ? oldTask.description_history : []
+        // Cap history at 50 entries so a chatty task doesn't bloat the doc.
+        patch.description_history = [...prevHistory, historyEntry].slice(-50)
+      }
+
       await models.tasks.updateById(id, { $set: patch })
 
       // Auto-update milestone progress based on completed tasks' percentages.

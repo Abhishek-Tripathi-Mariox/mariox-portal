@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
+import { createAuthMiddleware, requireRole, userHasAnyPermission } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
 import {
   validateLength,
@@ -428,9 +428,14 @@ export function createLeadsRouter(
     }
   })
 
-  router.post('/', requireRole('admin', 'pm', 'pc', 'sales_manager', 'sales_tl'), async (req, res) => {
+  router.post('/', async (req, res) => {
     try {
       const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
+      // Built-in lead-managers + anyone admin granted `leads.create` to.
+      const allowed = ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'].includes(role)
+        || await userHasAnyPermission(models, user, 'leads.create')
+      if (!allowed) return res.status(403).json({ error: 'Forbidden' })
       const body = req.body || {}
       const name = validateLength(String(body.name || '').trim(), 2, 120, 'Name')
       const email = validateEmail(body.email, 'Email')

@@ -94,7 +94,7 @@ async function renderDocumentsCenter(el) {
     <div class="page-header">
       <div><h1 class="page-title">Document Center</h1><p class="page-subtitle">${docs.length} documents across all projects</p></div>
       <div class="page-actions">
-        ${['admin','pm'].includes(_user.role) ? `<button class="btn btn-primary" onclick="showUploadDocModal()"><i class="fas fa-upload"></i>Upload Document</button>` : ''}
+        ${(['admin','pm','pc'].includes(_user.role) || (typeof hasAnyPermission === 'function' && hasAnyPermission(['documents.upload']))) ? `<button class="btn btn-primary" onclick="showUploadDocModal()"><i class="fas fa-upload"></i>Upload Document</button>` : ''}
       </div>
     </div>
 

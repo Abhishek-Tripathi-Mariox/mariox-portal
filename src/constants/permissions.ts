@@ -175,6 +175,17 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     ],
   },
   {
+    module: 'leads',
+    label: 'Leads',
+    icon: 'fa-bullseye',
+    permissions: [
+      { key: 'leads.create',   label: 'Create leads' },
+      { key: 'leads.edit',     label: 'Edit leads' },
+      { key: 'leads.delete',   label: 'Delete leads' },
+      { key: 'leads.view_all', label: 'View all leads' },
+    ],
+  },
+  {
     module: 'portfolios',
     label: 'Portfolios',
     icon: 'fa-briefcase',

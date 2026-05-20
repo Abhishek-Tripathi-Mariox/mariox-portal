@@ -74,6 +74,10 @@ export interface ClientRecord extends BaseRecord {
   price?: number | null
   is_active?: number
   email_verified?: number
+  // User id of whoever created this client record. Used to scope the list
+  // view for users without `clients.view_all`.
+  created_by?: string | null
+  created_by_name?: string | null
 }
 
 class MongoRepository<T extends Document = Document> {
@@ -248,6 +252,8 @@ export class ClientModel extends MongoRepository<ClientRecord> {
       price: input.price ?? null,
       is_active: input.is_active ?? 1,
       email_verified: input.email_verified ?? 1,
+      created_by: input.created_by ?? null,
+      created_by_name: input.created_by_name ?? null,
       created_at: input.created_at || now,
       updated_at: input.updated_at || now,
     }

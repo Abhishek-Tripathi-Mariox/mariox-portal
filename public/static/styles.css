@@ -1278,10 +1278,36 @@ a { text-decoration: none; color: inherit; }
 .search-bar::placeholder { color: var(--text-muted); }
 
 /* ── EMPTY STATES ────────────────────────────────────────── */
-.empty-state { text-align: center; padding: 56px 20px; color: var(--text-muted); }
-.empty-state i { font-size: 44px; margin-bottom: 14px; opacity: 0.3; color: var(--primary); }
-.empty-state p { font-size: 14px; font-weight: 600; }
-.empty-state small { font-size: 12px; display: block; margin-top: 6px; }
+/* Empty/zero-data placeholders used to render almost invisibly against the
+   dark background. They're now lifted with a soft tinted card so the user
+   can see at a glance that the section is empty rather than broken. */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #cbd5e1;
+  background: linear-gradient(135deg, rgba(255,122,69,.06), rgba(197,111,230,.05));
+  border: 1px dashed rgba(255,122,69,.25);
+  border-radius: 12px;
+  margin: 6px 0;
+}
+.empty-state i { font-size: 38px; margin-bottom: 10px; opacity: 0.85; color: #FFB347; }
+.empty-state p { font-size: 14px; font-weight: 700; color: #e2e8f0; }
+.empty-state small { font-size: 12px; display: block; margin-top: 6px; color: #94a3b8; }
+
+/* Smaller inline empty notices (e.g. "No attachments yet" inside a card).
+   Apply class="empty-inline" on a <div> or <p>. */
+.empty-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: #cbd5e1;
+  background: rgba(255,122,69,.07);
+  border: 1px dashed rgba(255,122,69,.28);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.empty-inline i { color: #FFB347; }
 
 /* ── TOOLTIPS ────────────────────────────────────────────── */
 [data-tip] { position: relative; cursor: default; }

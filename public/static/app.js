@@ -161,8 +161,14 @@ const NAV_PERMISSION_MAP = {
   'sales-incentive':   ['sales_incentive.view_all', 'sales_incentive.set_target', 'sales_incentive.override', 'sales_incentive.mark_paid'],
   // Settings page — visible if user has ANY settings.* permission.
   'settings-view':     ['settings.manage_company', 'settings.manage_holidays', 'settings.manage_tech_stacks', 'settings.manage_invites', 'settings.manage_roles'],
+  // Leads pages: visible to the sales family by role (PAGE_PERMISSIONS) plus
+  // anyone admin granted a leads.* permission to.
+  'leads-view':     ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
+  'lead-detail':    ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
+  'lead-followups': ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
+  'lead-tasks':     ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
   // Pages intentionally NOT mapped (role-based only):
-  //   leads-view / lead-detail / lead-followups / lead-tasks / sales-tracker
+  //   sales-tracker
   //   → role-bound to sales family; no granular catalog entry yet
   //   dev-dashboard / team-dashboard / my-tasks
   //   → role-specific landing pages
@@ -735,7 +741,7 @@ function buildShell() {
   const navPm = role !== 'team' ? navSection({
     key: 'pm', heading: 'Project Management', chip: 'Work', expanded: true, icon: 'fa-layer-group',
     items: [
-      navItem('pm-dashboard',    'fa-gauge-high', 'PM Dashboard'),
+      navItem('pm-dashboard',    'fa-gauge-high', 'My Dashboard'),
       navItem('projects-list',   'fa-layer-group', 'Projects'),
       navItem('bidding-view',    'fa-gavel',       'Bidding', ' <span class="nav-badge" id="nb-bids" style="display:none">0</span>'),
       navItem('kanban-board',    'fa-columns',     'Kanban Board'),
@@ -938,7 +944,7 @@ function updateNav(page) {
 }
 
 const breadcrumbMap = {
-  'super-dashboard':'Overview','pm-dashboard':'PM Dashboard','dev-dashboard':'My Dashboard','team-dashboard':'Team Dashboard',
+  'super-dashboard':'Overview','pm-dashboard':'My Dashboard','dev-dashboard':'My Dashboard','team-dashboard':'Team Dashboard',
   'projects-list':'Projects','kanban-board':'Kanban Board','sprints-view':'Sprints',
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
@@ -1512,7 +1518,41 @@ function showModal(html, size='') {
     root.id = 'modal-root'
     document.body.appendChild(root)
   }
-  root.innerHTML = `<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal ${size}">${html}</div></div>`
+  // Outside-click no longer closes silently. `tryCloseModalIfClean` checks
+  // whether any input/textarea has non-empty content; if so we keep the modal
+  // open (the user almost certainly clicked outside by accident). They can
+  // still dismiss via the explicit ✕ / Cancel buttons.
+  root.innerHTML = `<div class="modal-overlay" onclick="if(event.target===this)tryCloseModalIfClean()"><div class="modal ${size}">${html}</div></div>`
+}
+
+// Returns true if any text input / textarea / contenteditable inside the
+// current modal has a non-empty value. Hidden inputs and inputs the user
+// hasn't focused yet aren't counted as "dirty".
+function _modalHasInputContent() {
+  const root = document.getElementById('modal-root')
+  if (!root) return false
+  const inputs = root.querySelectorAll('input, textarea')
+  for (const el of inputs) {
+    if (el.type === 'hidden' || el.type === 'submit' || el.type === 'button') continue
+    if (el.type === 'checkbox' || el.type === 'radio') continue
+    if (el.disabled || el.readOnly) continue
+    if (el.dataset.modalDirtyIgnore === '1') continue
+    const v = (el.value || '').toString().trim()
+    if (v) return true
+  }
+  return false
+}
+
+function tryCloseModalIfClean() {
+  if (!_modalHasInputContent()) {
+    closeModal()
+    return
+  }
+  // Surface a quick non-blocking nudge so the user knows the click was
+  // intentional-ish — they have to use Cancel / ✕ to discard a partial form.
+  if (typeof toast === 'function') {
+    toast('Your changes are kept — use ✕ or Cancel to discard.', 'info', 2200)
+  }
 }
 // Guard against rapid double-clicks on slow API-backed edit openers.
 // Same key + already-running → second call drops silently. Each opener

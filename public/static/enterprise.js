@@ -345,7 +345,7 @@ async function renderPMDashboard(el) {
       ],
     })}
     <div class="page-header">
-      <div><h1 class="page-title">PM Dashboard</h1></div>
+      <div><h1 class="page-title">My Dashboard</h1></div>
       <div class="page-actions">
         <button class="btn btn-outline" onclick="Router.navigate('kanban-board')"><i class="fas fa-columns"></i>Kanban</button>
         <button class="btn btn-primary" onclick="showCreateTaskModal()"><i class="fas fa-plus"></i>New Task</button>
@@ -748,23 +748,54 @@ async function renderKanbanBoard(el) {
     const allSprints = spData.sprints || []
     const allMilestones = msData.milestones || []
 
-    // Default to "All Projects" — aggregate tasks across every project the
-    // user can see. Picking a specific project narrows the board to that one.
+    // The board now requires the user to pick a project before loading data.
+    // Empty selProject renders a "Pick a project" prompt instead of the
+    // aggregated all-projects view.
     if (window._kanbanProjectId === undefined) window._kanbanProjectId = ''
     let selProject = window._kanbanProjectId
     const isAllProjects = !selProject
 
     if (!isAllProjects && !projects.find(p => p.id === selProject)) {
-      // Stale stored id — fall back to the all-projects view.
       window._kanbanProjectId = ''
       selProject = ''
     }
 
+    // No project chosen yet → render a friendly empty state with the project
+    // picker and bail before any board data fetch.
+    if (!selProject) {
+      el.innerHTML = `
+      <div style="display:flex;flex-direction:column;height:100%;gap:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 0 16px 0;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#FF7A45,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="fas fa-columns" style="color:#fff;font-size:15px"></i>
+            </div>
+            <div>
+              <h1 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0">Kanban Board</h1>
+              <p style="font-size:12px;color:var(--text-muted);margin:0">Pick a project to load its board</p>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <select class="form-select" style="min-width:240px;max-width:300px" onchange="switchBoardProject(this.value)">
+              <option value="" selected>— Select a project —</option>
+              ${projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="empty-state" style="border:1px dashed var(--border);border-radius:14px;padding:48px 24px;text-align:center;background:var(--bg-card-subtle,rgba(255,255,255,.02))">
+          <i class="fas fa-folder-open" style="font-size:34px;color:var(--text-muted);margin-bottom:10px"></i>
+          <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:4px">Choose a project first</div>
+          <div style="font-size:12px;color:var(--text-muted)">Select a project from the dropdown above to see its tasks on the board.</div>
+        </div>
+      </div>`
+      return
+    }
+
     const selSprint = window._kanbanSprintId || ''
     const selMilestone = window._kanbanMilestoneId || ''
-    const projectSprints = isAllProjects ? allSprints : allSprints.filter(s => s.project_id === selProject)
-    const projectMilestones = isAllProjects ? allMilestones : allMilestones.filter(m => String(m.project_id) === String(selProject))
-    const projName = isAllProjects ? 'All Projects' : (projects.find(p => p.id === selProject)?.name || '')
+    const projectSprints = allSprints.filter(s => s.project_id === selProject)
+    const projectMilestones = allMilestones.filter(m => String(m.project_id) === String(selProject))
+    const projName = (projects.find(p => p.id === selProject)?.name || '')
     window._kanbanProjectName = projName
 
     // Standard column layout used for the aggregated view. When a specific
@@ -781,20 +812,7 @@ async function renderKanbanBoard(el) {
 
     let colDefs = []
     let cols = {}
-    if (isAllProjects) {
-      const tasksRes = await API.get('/tasks').catch(() => ({ tasks: [] }))
-      const tasksList = (tasksRes.tasks || tasksRes.data || []).filter(t => {
-        if (selSprint && String(t.sprint_id || '') !== String(selSprint)) return false
-        if (selMilestone && String(t.milestone_id || '') !== String(selMilestone)) return false
-        return true
-      })
-      colDefs = FALLBACK_COLS
-      cols = Object.fromEntries(colDefs.map(c => [c.status_key, []]))
-      for (const t of tasksList) {
-        const key = cols[t.status] ? t.status : 'backlog'
-        cols[key].push(t)
-      }
-    } else {
+    {
       const boardData = await API.get(`/tasks/board/${selProject}`)
       colDefs = boardData.column_defs || []
       const rawCols = boardData.columns || {}
@@ -832,14 +850,14 @@ async function renderKanbanBoard(el) {
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <!-- Project Switcher -->
-          <select class="form-select" style="min-width:180px;max-width:220px" onchange="switchBoardProject(this.value)">
-            <option value="" ${isAllProjects ? 'selected' : ''}>All Projects</option>
+          <select class="form-select" style="min-width:180px;max-width:240px" onchange="switchBoardProject(this.value)">
+            <option value="">— Select a project —</option>
             ${projects.map(p => `<option value="${p.id}" ${p.id === selProject ? 'selected' : ''}>${p.name}</option>`).join('')}
           </select>
-          ${canManage && !isAllProjects ? `
+          ${canManage ? `
           <button class="btn btn-outline btn-sm" onclick="manageBoardColumns('${selProject}')" title="Configure board columns"><i class="fas fa-sliders-h"></i> Columns</button>
           <button class="btn btn-outline btn-sm" onclick="openKanbanPermissionsModal('${selProject}','${projName.replace(/'/g,"\\'")}')" title="Kanban permissions"><i class="fas fa-shield-alt"></i> Permissions</button>` : ''}
-          ${canAddTask && !isAllProjects ? `<button class="btn btn-primary btn-sm" onclick="showCreateTaskModal('${selProject}','${selSprint}','backlog')"><i class="fas fa-plus"></i> Add Task</button>` : ''}
+          ${canAddTask ? `<button class="btn btn-primary btn-sm" onclick="showCreateTaskModal('${selProject}','${selSprint}','backlog')"><i class="fas fa-plus"></i> Add Task</button>` : ''}
         </div>
       </div>
 
@@ -945,7 +963,8 @@ function buildTaskCard(t) {
       <div style="display:flex;align-items:center;gap:4px">
         ${t.subtask_count > 0 ? `<span style="font-size:10px;color:var(--text-muted)"><i class="fas fa-code-branch"></i>${t.subtask_count}</span>` : ''}
         ${t.comment_count > 0 ? `<span style="font-size:10px;color:var(--text-muted)"><i class="fas fa-comment"></i>${t.comment_count}</span>` : ''}
-        ${t.assignee_name ? `<div title="${t.assignee_name}" style="width:24px;height:24px;border-radius:50%;background:${t.assignee_color||'#FF7A45'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${t.assignee_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>` : `<div style="width:24px;height:24px;border-radius:50%;background:var(--bg-hover);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-muted);flex-shrink:0">?</div>`}
+        ${t.reporter_name ? `<div title="Assigned by ${t.reporter_name}" style="width:20px;height:20px;border-radius:50%;background:${t.reporter_color||'#94a3b8'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0;border:1px dashed rgba(255,255,255,.35)">${String(t.reporter_name).split(' ').map(n=>n[0]).join('').slice(0,2)}</div>` : ''}
+        ${t.assignee_name ? `<div title="Assigned to ${t.assignee_name}" style="width:24px;height:24px;border-radius:50%;background:${t.assignee_color||'#FF7A45'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${t.assignee_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>` : `<div title="Unassigned" style="width:24px;height:24px;border-radius:50%;background:var(--bg-hover);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-muted);flex-shrink:0">?</div>`}
       </div>
     </div>
   </div>`
@@ -1161,6 +1180,10 @@ async function openTaskDrawer(taskId) {
   try {
     const data = await API.get('/tasks/' + taskId)
     const t = data.task
+    // Stash the latest task payload so child editors (assignee picker, status
+    // dropdown) can read fields like client_assignee_id without a refetch.
+    window._currentTaskCache = window._currentTaskCache || {}
+    window._currentTaskCache[taskId] = t
     const subtasks = data.subtasks||[]
     const comments = data.comments||[]
     const activity = data.activity||[]
@@ -1179,13 +1202,13 @@ async function openTaskDrawer(taskId) {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 22px;border-bottom:1px solid var(--border)">
       <div>
-        <div style="font-size:10px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Assignee</div>
+        <div style="font-size:10px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Assigned To</div>
         <div id="task-assignee-cell-${t.id}" style="font-size:13px;color:#e2e8f0;display:flex;align-items:center;gap:6px">
           ${t.assignee_name ? `${avatar(t.assignee_name,t.assignee_color||'#FF7A45','sm')} <span>${t.assignee_name}</span>` : '<span style="color:#64748b">Unassigned</span>'}
           ${hasPermission('tasks.edit_any') ? `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="showTaskAssigneeEditor('${t.id}','${t.project_id}','${(t.assignee_id||'')}')" title="Change assignee"><i class="fas fa-user-edit"></i></button>` : ''}
         </div>
       </div>
-      ${metaItem('Reporter', t.reporter_name||'—')}
+      ${metaItem('Assigned By', t.reporter_name ? `<span style="display:inline-flex;align-items:center;gap:6px">${avatar(t.reporter_name, t.reporter_color||'#94a3b8','sm')}<span>${t.reporter_name}</span></span>` : '—')}
       ${metaItem('Project', t.project_name||'—')}
       ${metaItem('Sprint', t.sprint_name||'—')}
       ${metaItem('Due Date', hasPermission('tasks.move')
@@ -1194,14 +1217,32 @@ async function openTaskDrawer(taskId) {
       ${_user.role !== 'team' ? metaItem('Hours', `${t.logged_hours||0}h logged / ${t.estimated_hours||0}h est`) : ''}
     </div>
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
-      <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Move to</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap" id="task-status-btns-${t.id}">
-        ${hasPermission('tasks.move') ? 
-          ['backlog','todo','in_progress','in_review','qa','done','blocked'].map(s=>`<button class="btn btn-xs ${t.status===s?'btn-primary':'btn-outline'}" onclick="updateTaskStatus('${t.id}','${s}')">${s.replace(/_/g,' ')}</button>`).join('')
-          : `${statusBadge(t.status)}`}
-      </div>
+      <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Move to & Update</div>
+      ${hasPermission('tasks.move') ? `
+        <div id="task-status-btns-${t.id}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <select class="form-select" id="task-status-select-${t.id}" style="min-width:180px;max-width:220px">
+            ${['backlog','todo','in_progress','in_review','qa','done','blocked'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase())}</option>`).join('')}
+          </select>
+          <button class="btn btn-xs btn-primary" onclick="saveTaskStatusAndDesc('${t.id}')"><i class="fas fa-save"></i> Save</button>
+        </div>
+        <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">Description</div>
+        <textarea id="task-desc-input-${t.id}" class="form-textarea" rows="3" placeholder="Describe what's happening on this task…" style="font-size:13px;line-height:1.5">${escapeHtml(t.description || '')}</textarea>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Saving with a new description archives the previous one in history below.</div>
+      ` : `<div>${statusBadge(t.status)}</div>`}
     </div>
-    ${t.description ? `<div style="padding:14px 22px;border-bottom:1px solid var(--border)"><p style="font-size:13px;color:#94a3b8;line-height:1.6">${t.description}</p></div>` : ''}
+    ${(Array.isArray(t.description_history) && t.description_history.length) ? `
+    <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
+      <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Description History (${t.description_history.length})</div>
+      <div style="display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto">
+        ${[...t.description_history].reverse().map(h => `
+          <div style="background:var(--bg-card,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:8px;padding:8px 10px">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">
+              <i class="fas fa-history"></i> ${escapeHtml(h.changed_by_name || 'System')} · ${timeAgo(h.changed_at)} · status was <em>${escapeHtml(String(h.status || '').replace(/_/g,' '))}</em>
+            </div>
+            <div style="font-size:12px;color:#94a3b8;white-space:pre-wrap;line-height:1.5">${escapeHtml(h.description || '')}</div>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
     ${buildAttachmentsSection(t)}
     ${subtasks.length ? `
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
@@ -1235,7 +1276,7 @@ async function openTaskDrawer(taskId) {
                 <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0;white-space:pre-wrap">${formatCommentMentions(cm.content)}</p>
               </div>
             </div>
-          </div>`}).join('') || '<div style="color:#475569;font-size:13px;padding:8px 0">No comments yet.</div>'}
+          </div>`}).join('') || '<div class="empty-inline"><i class="fas fa-comment-slash"></i><span>No comments yet — be the first to chime in.</span></div>'}
       </div>
       <div class="comment-box" style="margin-top:12px;position:relative">
         <textarea id="new-comment-${t.id}" placeholder="Add a comment… (type @ to mention)" oninput="onCommentInput(event,'${t.id}','${t.project_id}')" onkeydown="onCommentKeydown(event,'${t.id}')"></textarea>
@@ -1253,13 +1294,12 @@ async function openTaskDrawer(taskId) {
       API.get('/tasks/columns/' + t.project_id).then(cd => {
         const cols = cd.columns || []
         if (!cols.length) return
-        const btnsEl = document.getElementById('task-status-btns-' + t.id)
-        if (btnsEl) {
-          btnsEl.innerHTML = cols.map(col =>
-            `<button class="btn btn-xs ${t.status === col.status_key ? 'btn-primary' : 'btn-outline'}" 
-             onclick="updateTaskStatus('${t.id}','${col.status_key}')"
-             style="${t.status === col.status_key ? `background:${col.color};border-color:${col.color}` : `border-color:${col.color};color:${col.color}`}"
-            >${col.name}</button>`
+        // Rebuild the status <select> with this project's custom columns so
+        // the dropdown matches the columns visible on the board.
+        const selEl = document.getElementById('task-status-select-' + t.id)
+        if (selEl) {
+          selEl.innerHTML = cols.map(col =>
+            `<option value="${col.status_key}" ${t.status === col.status_key ? 'selected' : ''}>${col.name}</option>`
           ).join('')
         }
       }).catch(() => {})
@@ -1278,6 +1318,26 @@ async function updateTaskStatus(taskId, newStatus) {
     // Refresh drawer
     openTaskDrawer(taskId)
   } catch(e) { toast(e.message, 'error') }
+}
+
+// Save status + (optionally) description in one shot. If the user changed the
+// description, the back-end archives the previous version under
+// `description_history` automatically.
+async function saveTaskStatusAndDesc(taskId) {
+  const sel = document.getElementById('task-status-select-' + taskId)
+  const desc = document.getElementById('task-desc-input-' + taskId)
+  if (!sel) return
+  const cached = (window._currentTaskCache && window._currentTaskCache[taskId]) || {}
+  const newStatus = sel.value
+  const newDesc = (desc?.value ?? cached.description ?? '').toString()
+  const body = { status: newStatus, description: newDesc }
+  try {
+    await API.put('/tasks/' + taskId, body)
+    toast('Task updated', 'success', 1500)
+    openTaskDrawer(taskId)
+    const kb = document.getElementById('page-kanban-board')
+    if (kb?.classList.contains('active')) { kb.dataset.loaded = ''; loadPage('kanban-board', kb) }
+  } catch (e) { toast(e.message, 'error') }
 }
 
 async function showTaskAssigneeEditor(taskId, projectId, currentAssigneeId) {
@@ -1302,10 +1362,31 @@ async function showTaskAssigneeEditor(taskId, projectId, currentAssigneeId) {
         if (u) options.push(u)
       }
     } catch {}
+
+    // The project may be linked to a client — surface that client as an
+    // additional assignee option so tasks can be handed to the client side
+    // (e.g. "waiting for client review").
+    let clientOption = null
+    if (proj.client_id) {
+      try {
+        const cRes = await API.get(`/clients/${proj.client_id}`)
+        const c = cRes.client || cRes.data || cRes
+        if (c && c.id) clientOption = c
+      } catch {}
+    }
+
+    // Build a current-value key: "user:<id>" or "client:<id>" or "".
+    const taskData = (window._currentTaskCache && window._currentTaskCache[taskId]) || {}
+    const currentClientId = taskData.client_assignee_id || ''
+    const currentKey = currentClientId
+      ? `client:${currentClientId}`
+      : (currentAssigneeId ? `user:${currentAssigneeId}` : '')
+
     cell.innerHTML = `
       <select class="form-select" id="task-assignee-select-${taskId}" style="flex:1">
         <option value="">Unassigned</option>
-        ${options.map(u => `<option value="${u.id}" ${String(currentAssigneeId)===String(u.id)?'selected':''}>${escapeHtml(u.full_name||u.name)} (${escapeHtml(u.designation||u.role||'developer')})</option>`).join('')}
+        ${options.length ? `<optgroup label="Team">${options.map(u => `<option value="user:${u.id}" ${currentKey===`user:${u.id}`?'selected':''}>${escapeHtml(u.full_name||u.name)} (${escapeHtml(u.designation||u.role||'developer')})</option>`).join('')}</optgroup>` : ''}
+        ${clientOption ? `<optgroup label="Client"><option value="client:${clientOption.id}" ${currentKey===`client:${clientOption.id}`?'selected':''}>${escapeHtml(clientOption.company_name||clientOption.contact_name||'Client')} (Client)</option></optgroup>` : ''}
       </select>
       <button class="btn btn-xs btn-primary" onclick="saveTaskAssignee('${taskId}')"><i class="fas fa-check"></i></button>
       <button class="btn btn-xs btn-outline" onclick="openTaskDrawer('${taskId}')"><i class="fas fa-times"></i></button>
@@ -1316,9 +1397,19 @@ async function showTaskAssigneeEditor(taskId, projectId, currentAssigneeId) {
 async function saveTaskAssignee(taskId) {
   const sel = document.getElementById('task-assignee-select-' + taskId)
   if (!sel) return
-  const newId = sel.value || null
+  const raw = sel.value || ''
+  // The dropdown encodes assignee kind as `user:<id>` / `client:<id>` so the
+  // back-end can populate the right column. Empty string = unassigned.
+  let body
+  if (raw.startsWith('client:')) {
+    body = { client_assignee_id: raw.slice('client:'.length), assignee_id: null }
+  } else if (raw.startsWith('user:')) {
+    body = { assignee_id: raw.slice('user:'.length), client_assignee_id: null }
+  } else {
+    body = { assignee_id: null, client_assignee_id: null }
+  }
   try {
-    await API.put('/tasks/' + taskId, { assignee_id: newId })
+    await API.put('/tasks/' + taskId, body)
     toast('Assignee updated', 'success', 1500)
     openTaskDrawer(taskId)
     const kb = document.getElementById('page-kanban-board')
@@ -1447,7 +1538,7 @@ function buildAttachmentsSection(t) {
             </div>`
           }).join('')}
         </div>
-      ` : `<div style="color:#475569;font-size:12.5px;padding:6px 0">No attachments yet.</div>`}
+      ` : `<div class="empty-inline"><i class="fas fa-paperclip"></i><span>No attachments yet${canAttach ? ' — tap “Attach” to add a file.' : '.'}</span></div>`}
     </div>`
 }
 
@@ -3725,6 +3816,8 @@ async function renderBillingAdmin(el) {
                 <td>
                   <div style="display:flex;gap:4px">
                     ${_user.role==='admin'?`<button class="btn btn-xs btn-outline" title="Send Invoice" aria-label="Send Invoice" onclick="showSendInvoiceModal('${i.id}')"><i class="fas fa-paper-plane"></i></button>`:''}
+                    <button class="btn btn-xs btn-outline" title="Download Invoice" aria-label="Download Invoice" onclick="downloadInvoice('${i.id}')"><i class="fas fa-download"></i></button>
+                    <button class="btn btn-xs btn-outline" title="Preview / Print" aria-label="Preview Invoice" onclick="previewInvoice('${i.id}')"><i class="fas fa-print"></i></button>
                     ${_user.role==='admin'&&i.status!=='paid'?`<button class="btn btn-xs btn-success" onclick="showMarkPaidModal('${i.id}','${i.invoice_number}',${i.total_amount})"><i class="fas fa-check"></i>Mark Paid</button>`:''}
                     ${_user.role==='admin'?`<button class="btn btn-xs btn-outline" onclick="showEditInvoiceModal('${i.id}')"><i class="fas fa-edit"></i></button>`:''}
                   </div>
@@ -3997,6 +4090,8 @@ async function showSendInvoiceModal(id) {
       </div>
       <div style="font-size:13px;color:#94a3b8;line-height:1.6">
         The invoice will be sent in the same billing format used by the system email template.
+        A copy of the invoice is also attached as <code>invoice-${escapeHtml(inv.invoice_number)}.html</code> so the
+        recipient can download it directly from the mail or print to PDF.
       </div>
     </div>
     <div class="modal-footer">
@@ -4044,6 +4139,51 @@ async function doEditInvoice(id) {
   } catch (e) {
     toast(e.message, 'error')
   }
+}
+
+// Fetch the stand-alone invoice HTML from the server (auth-protected) and
+// trigger a blob download. We can't use a plain <a download> link because the
+// API requires the Authorization header.
+async function downloadInvoice(id) {
+  try {
+    const r = await fetch('/api/invoices/' + id + '/download', {
+      headers: { 'Authorization': 'Bearer ' + _token },
+    })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const blob = await r.blob()
+    // Prefer the server-supplied filename so it matches the email attachment.
+    let filename = `invoice-${id}.html`
+    const cd = r.headers.get('Content-Disposition') || ''
+    const m = cd.match(/filename="([^"]+)"/i)
+    if (m) filename = m[1]
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+    toast('Invoice downloaded', 'success', 1500)
+  } catch (e) { toast('Download failed: ' + e.message, 'error') }
+}
+
+// Open the invoice in a new tab and trigger the print dialog so the user can
+// "Save as PDF" via the browser.
+async function previewInvoice(id) {
+  try {
+    const r = await fetch('/api/invoices/' + id + '/preview', {
+      headers: { 'Authorization': 'Bearer ' + _token },
+    })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const html = await r.text()
+    const win = window.open('', '_blank')
+    if (!win) throw new Error('Popup blocked — allow popups to preview')
+    win.document.open()
+    win.document.write(html)
+    win.document.close()
+    setTimeout(() => { try { win.focus(); win.print() } catch {} }, 500)
+  } catch (e) { toast('Preview failed: ' + e.message, 'error') }
 }
 
 async function doSendInvoice(id) {
