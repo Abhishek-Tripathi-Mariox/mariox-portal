@@ -12,7 +12,7 @@ window._ptaskStatusPalette = window._ptaskStatusPalette || null
 const PTASK_PRIORITIES = ['low', 'medium', 'high']
 
 async function renderPersonalTasksPage(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading tasks…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading tasks…</div>`
   try {
     const [tasksRes, usersRes] = await Promise.all([
       API.get('/personal-tasks' + (_ptaskStatus ? '?status=' + _ptaskStatus : '')),
@@ -84,7 +84,7 @@ async function renderPersonalTasksPage(el) {
         <table class="data-table">
           <thead><tr><th>Title</th><th>Assigned To</th><th>Assigned By</th><th>Priority</th><th>Status</th><th>Due</th><th style="width:180px">Actions</th></tr></thead>
           <tbody>
-            ${tasks.length ? tasks.map(t => _ptaskRow(t, statusPalette, myId)).join('') : `<tr><td colspan="7" style="text-align:center;color:#64748b;padding:36px"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><i class="fas ${activeTab.icon}" style="font-size:24px;color:#a855f7;opacity:.6"></i><div>${_ptaskTab === 'assigned_to_me' ? 'Nothing assigned to you yet.' : _ptaskTab === 'assigned_by_me' ? 'You have not assigned any tasks yet.' : 'No tasks.'}</div><button class="btn btn-sm btn-primary" onclick="openPersonalTaskModal()"><i class="fas fa-plus"></i> New Task</button></div></td></tr>`}
+            ${tasks.length ? tasks.map(t => _ptaskRow(t, statusPalette, myId)).join('') : `<tr><td colspan="7" style="text-align:center;color:#7E7E8F;padding:36px"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><i class="fas ${activeTab.icon}" style="font-size:24px;color:#a855f7;opacity:.6"></i><div>${_ptaskTab === 'assigned_to_me' ? 'Nothing assigned to you yet.' : _ptaskTab === 'assigned_by_me' ? 'You have not assigned any tasks yet.' : 'No tasks.'}</div><button class="btn btn-sm btn-primary" onclick="openPersonalTaskModal()"><i class="fas fa-plus"></i> New Task</button></div></td></tr>`}
           </tbody>
         </table>
       </div>
@@ -124,7 +124,7 @@ function _ptaskRow(t, statusPalette, myId) {
     .join('')
 
   const overdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done'
-  const dueColor = overdue ? '#FF5E3A' : '#94a3b8'
+  const dueColor = overdue ? '#FF5E3A' : '#7E7E8F'
 
   return `
     <tr data-ptask-id="${escapeInbox(t.id)}">
@@ -142,18 +142,18 @@ function _ptaskRow(t, statusPalette, myId) {
           ? `<input class="ptask-inline-input" data-ptask-id="${escapeInbox(t.id)}" data-field="description" value="${escapeInbox(t.description || '')}" placeholder="Add a description…"
               onchange="ptaskInlineSave('${escapeInbox(t.id)}','description',this.value)"
               onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-              style="font-size:11px;color:#94a3b8;background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 8px;width:100%;margin-top:2px;transition:background .15s,border-color .15s"
+              style="font-size:11px;color:#7E7E8F;background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 8px;width:100%;margin-top:2px;transition:background .15s,border-color .15s"
               onmouseover="this.style.borderColor='rgba(168,85,247,.18)'" onmouseout="this.style.borderColor='transparent'"
               onfocus="this.style.background='rgba(168,85,247,.06)';this.style.borderColor='rgba(168,85,247,.35)'"
               onblur="this.style.background='transparent';this.style.borderColor='transparent'"/>`
-          : (t.description ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px;padding:0 8px">${escapeInbox(t.description)}</div>` : '')}
+          : (t.description ? `<div style="font-size:11px;color:#7E7E8F;margin-top:2px;padding:0 8px">${escapeInbox(t.description)}</div>` : '')}
       </td>
       <td>
         ${canReassign
           ? `<select class="ptask-inline-select" onchange="ptaskInlineSave('${escapeInbox(t.id)}','assigned_to',this.value)">${userOpts}</select>`
           : (t.assigned_to_name ? `<div style="display:flex;align-items:center;gap:6px">${avatar(t.assigned_to_name, t.assigned_to_color || t.assigned_to_avatar, 'sm')}<span style="font-size:12px">${escapeInbox(t.assigned_to_name)}</span></div>` : '—')}
       </td>
-      <td>${t.created_by_name ? `<div style="display:flex;align-items:center;gap:6px">${avatar(t.created_by_name, t.created_by_color || '#94a3b8', 'sm')}<span style="font-size:12px">${escapeInbox(t.created_by_name)}</span></div>` : '—'}</td>
+      <td>${t.created_by_name ? `<div style="display:flex;align-items:center;gap:6px">${avatar(t.created_by_name, t.created_by_color || '#7E7E8F', 'sm')}<span style="font-size:12px">${escapeInbox(t.created_by_name)}</span></div>` : '—'}</td>
       <td>
         ${canEdit
           ? `<select class="ptask-inline-select" onchange="ptaskInlineSave('${escapeInbox(t.id)}','priority',this.value)">${priorityOptions}</select>`
@@ -233,7 +233,7 @@ async function openManagePersonalTaskStatuses() {
               <span style="width:10px;height:10px;border-radius:50%;background:${escapeInbox(s.color || '#a855f7')}"></span>
               <div style="flex:1;min-width:0">
                 <div style="font-size:13px;color:#e2e8f0">${escapeInbox(s.label)}</div>
-                <div style="font-size:10px;color:#94a3b8;font-family:monospace">${escapeInbox(s.value)}</div>
+                <div style="font-size:10px;color:#7E7E8F;font-family:monospace">${escapeInbox(s.value)}</div>
               </div>
               <button class="btn btn-xs btn-outline" style="color:#FF5E3A;border-color:#FF5E3A" onclick="deletePersonalTaskStatus('${escapeInbox(s.id)}','${escapeInbox(s.label)}')"><i class="fas fa-trash"></i></button>
             </div>`).join('') : '<div class="empty-inline"><i class="fas fa-circle-plus"></i><span>No custom statuses yet. Add one below.</span></div>'}
@@ -410,7 +410,7 @@ async function showPersonalTaskHistory(id) {
     </div>
     <div class="modal-body" style="padding:18px">
       <div style="font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:4px">${escapeInbox(task.title)}</div>
-      <div style="font-size:12px;color:#94a3b8;margin-bottom:14px">
+      <div style="font-size:12px;color:#7E7E8F;margin-bottom:14px">
         Assigned to <strong>${escapeInbox(task.assigned_to_name || '—')}</strong>
         by <strong>${escapeInbox(task.created_by_name || '—')}</strong>
         on ${fmtDate(task.created_at)}.
@@ -423,15 +423,15 @@ async function showPersonalTaskHistory(id) {
             const toVal = h.field === 'assigned_to' ? fmtAssignee(h.to) : fmt(h.to)
             return `
             <div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.18);border-radius:8px;padding:10px 12px">
-              <div style="font-size:11px;color:#94a3b8;margin-bottom:4px">
+              <div style="font-size:11px;color:#7E7E8F;margin-bottom:4px">
                 <i class="fas fa-user-pen" style="color:#a855f7"></i>
                 <strong style="color:#e2e8f0">${escapeInbox(h.actor_name || 'Someone')}</strong>
                 changed <strong style="color:#e2e8f0">${label}</strong> · ${fmtDate(h.changed_at)} ${new Date(h.changed_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
               </div>
               <div style="font-size:12.5px;color:#cbd5e1;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <span style="text-decoration:line-through;color:#94a3b8">${escapeInbox(fromVal)}</span>
-                <i class="fas fa-arrow-right" style="font-size:10px;color:#64748b"></i>
-                <span style="color:#FFB347;font-weight:600">${escapeInbox(toVal)}</span>
+                <span style="text-decoration:line-through;color:#7E7E8F">${escapeInbox(fromVal)}</span>
+                <i class="fas fa-arrow-right" style="font-size:10px;color:#7E7E8F"></i>
+                <span style="color:#C9A7FF;font-weight:600">${escapeInbox(toVal)}</span>
               </div>
             </div>`
           }).join('')}

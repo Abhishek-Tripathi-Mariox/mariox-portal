@@ -69,10 +69,10 @@ export const TASK_STATUS = {
 
 // Default Kanban Columns
 export const DEFAULT_KANBAN_COLUMNS = [
-  { name: 'Backlog', status_key: 'backlog', color: '#64748b', position: 0, wip_limit: 0, is_done_column: 0 },
-  { name: 'To Do', status_key: 'todo', color: '#6366f1', position: 1, wip_limit: 0, is_done_column: 0 },
-  { name: 'In Progress', status_key: 'in_progress', color: '#f59e0b', position: 2, wip_limit: 5, is_done_column: 0 },
-  { name: 'In Review', status_key: 'in_review', color: '#8b5cf6', position: 3, wip_limit: 3, is_done_column: 0 },
+  { name: 'Backlog', status_key: 'backlog', color: '#7E7E8F', position: 0, wip_limit: 0, is_done_column: 0 },
+  { name: 'To Do', status_key: 'todo', color: '#9D6CFF', position: 1, wip_limit: 0, is_done_column: 0 },
+  { name: 'In Progress', status_key: 'in_progress', color: '#A970FF', position: 2, wip_limit: 5, is_done_column: 0 },
+  { name: 'In Review', status_key: 'in_review', color: '#8B5CFF', position: 3, wip_limit: 3, is_done_column: 0 },
   { name: 'QA', status_key: 'qa', color: '#06b6d4', position: 4, wip_limit: 3, is_done_column: 0 },
   { name: 'Done', status_key: 'done', color: '#10b981', position: 5, wip_limit: 0, is_done_column: 1 },
   { name: 'Blocked', status_key: 'blocked', color: '#ef4444', position: 6, wip_limit: 0, is_done_column: 0 },
@@ -80,7 +80,7 @@ export const DEFAULT_KANBAN_COLUMNS = [
 
 // Avatar Colors
 export const AVATAR_COLORS = [
-  '#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#f97316'
+  '#9D6CFF', '#0ea5e9', '#10b981', '#A970FF', '#ec4899', '#8B5CFF', '#f97316'
 ]
 
 // Priority Levels

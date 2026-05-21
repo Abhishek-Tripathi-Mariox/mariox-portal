@@ -160,7 +160,7 @@ export const validateHexColor = (value: any, fieldName = 'Color'): string => {
   }
   const text = String(value).trim()
   if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(text)) {
-    throw new ValidationError(`${fieldName} must be a valid hex color (e.g. #6366f1)`)
+    throw new ValidationError(`${fieldName} must be a valid hex color (e.g. #9D6CFF)`)
   }
   return text
 }

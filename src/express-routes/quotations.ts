@@ -124,61 +124,61 @@ function renderQuotationHtml(q: any, leadName: string, senderName: string): stri
   const paragraph = (text: string) => esc(text).replace(/\n+/g, '<br/>')
   const rowsHtml = (q.line_items || []).map((it: any, i: number) => `
     <tr>
-      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#374151">${i + 1}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#1f2937">${esc(it.description || '')}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#374151">${it.qty}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#374151">${esc(fmtAmount(it.rate, q.currency))}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#5A5A66">${i + 1}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#1A1A22">${esc(it.description || '')}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#5A5A66">${it.qty}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#5A5A66">${esc(fmtAmount(it.rate, q.currency))}</td>
       <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#111827;font-weight:600">${esc(fmtAmount(it.amount, q.currency))}</td>
     </tr>`).join('')
 
   return `<!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1f2937">
+<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1A1A22">
   <div style="max-width:720px;margin:0 auto;background:#ffffff;padding:28px 30px;border-radius:8px;border:1px solid #e5e7eb">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:2px solid #FF7A45;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:2px solid #A970FF;margin-bottom:14px">
       <div>
         <div style="font:700 22px Arial,Helvetica,sans-serif;color:#111827">${esc(q.title)}</div>
-        ${q.client_name || leadName ? `<div style="font:13px Arial,Helvetica,sans-serif;color:#6b7280;margin-top:4px">Prepared for ${esc(q.client_name || leadName)}</div>` : ''}
+        ${q.client_name || leadName ? `<div style="font:13px Arial,Helvetica,sans-serif;color:#7E7E8F;margin-top:4px">Prepared for ${esc(q.client_name || leadName)}</div>` : ''}
       </div>
-      <div style="text-align:right;font:12px Arial,Helvetica,sans-serif;color:#6b7280">
+      <div style="text-align:right;font:12px Arial,Helvetica,sans-serif;color:#7E7E8F">
         ${q.quote_number ? `Quote #${esc(q.quote_number)}<br/>` : ''}
         ${q.validity_date ? `Valid till ${esc(q.validity_date)}` : ''}
       </div>
     </div>
-    ${q.intro_text ? `<div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#374151;margin-bottom:18px">${paragraph(q.intro_text)}</div>` : ''}
+    ${q.intro_text ? `<div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#5A5A66;margin-bottom:18px">${paragraph(q.intro_text)}</div>` : ''}
     ${(q.line_items || []).length ? `
       <table cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin-top:6px;border:1px solid #e5e7eb">
         <thead>
           <tr style="background:#f9fafb">
-            <th style="padding:10px 12px;text-align:left;font:600 12px Arial,Helvetica,sans-serif;color:#374151;border-bottom:1px solid #e5e7eb;width:36px">#</th>
-            <th style="padding:10px 12px;text-align:left;font:600 12px Arial,Helvetica,sans-serif;color:#374151;border-bottom:1px solid #e5e7eb">Description</th>
-            <th style="padding:10px 12px;text-align:right;font:600 12px Arial,Helvetica,sans-serif;color:#374151;border-bottom:1px solid #e5e7eb;width:64px">Qty</th>
-            <th style="padding:10px 12px;text-align:right;font:600 12px Arial,Helvetica,sans-serif;color:#374151;border-bottom:1px solid #e5e7eb;width:110px">Rate</th>
-            <th style="padding:10px 12px;text-align:right;font:600 12px Arial,Helvetica,sans-serif;color:#374151;border-bottom:1px solid #e5e7eb;width:120px">Amount</th>
+            <th style="padding:10px 12px;text-align:left;font:600 12px Arial,Helvetica,sans-serif;color:#5A5A66;border-bottom:1px solid #e5e7eb;width:36px">#</th>
+            <th style="padding:10px 12px;text-align:left;font:600 12px Arial,Helvetica,sans-serif;color:#5A5A66;border-bottom:1px solid #e5e7eb">Description</th>
+            <th style="padding:10px 12px;text-align:right;font:600 12px Arial,Helvetica,sans-serif;color:#5A5A66;border-bottom:1px solid #e5e7eb;width:64px">Qty</th>
+            <th style="padding:10px 12px;text-align:right;font:600 12px Arial,Helvetica,sans-serif;color:#5A5A66;border-bottom:1px solid #e5e7eb;width:110px">Rate</th>
+            <th style="padding:10px 12px;text-align:right;font:600 12px Arial,Helvetica,sans-serif;color:#5A5A66;border-bottom:1px solid #e5e7eb;width:120px">Amount</th>
           </tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
         <tfoot>
           <tr><td colspan="3"></td>
-            <td style="padding:8px 12px;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#374151">Subtotal</td>
+            <td style="padding:8px 12px;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#5A5A66">Subtotal</td>
             <td style="padding:8px 12px;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#111827">${esc(fmtAmount(q.subtotal, q.currency))}</td>
           </tr>
           <tr><td colspan="3"></td>
-            <td style="padding:8px 12px;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#374151">Tax (${q.tax_percent}%)</td>
+            <td style="padding:8px 12px;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#5A5A66">Tax (${q.tax_percent}%)</td>
             <td style="padding:8px 12px;text-align:right;font:13px Arial,Helvetica,sans-serif;color:#111827">${esc(fmtAmount(q.tax_amount, q.currency))}</td>
           </tr>
           <tr><td colspan="3"></td>
             <td style="padding:12px;text-align:right;font:700 14px Arial,Helvetica,sans-serif;color:#111827;border-top:2px solid #111827">Grand Total</td>
-            <td style="padding:12px;text-align:right;font:700 14px Arial,Helvetica,sans-serif;color:#FF7A45;border-top:2px solid #111827">${esc(fmtAmount(q.grand_total, q.currency))}</td>
+            <td style="padding:12px;text-align:right;font:700 14px Arial,Helvetica,sans-serif;color:#A970FF;border-top:2px solid #111827">${esc(fmtAmount(q.grand_total, q.currency))}</td>
           </tr>
         </tfoot>
       </table>` : ''}
     ${q.terms_text ? `
       <div style="margin-top:22px">
-        <div style="font:600 14px Arial,Helvetica,sans-serif;color:#1f2937;margin-bottom:6px">Terms &amp; Notes</div>
-        <div style="font:13px/1.55 Arial,Helvetica,sans-serif;color:#4b5563">${paragraph(q.terms_text)}</div>
+        <div style="font:600 14px Arial,Helvetica,sans-serif;color:#1A1A22;margin-bottom:6px">Terms &amp; Notes</div>
+        <div style="font:13px/1.55 Arial,Helvetica,sans-serif;color:#5A5A66">${paragraph(q.terms_text)}</div>
       </div>` : ''}
-    <div style="margin-top:26px;padding-top:14px;border-top:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#6b7280">
-      Regards,<br/><strong style="color:#1f2937">${esc(senderName)}</strong><br/>Mariox Software
+    <div style="margin-top:26px;padding-top:14px;border-top:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#7E7E8F">
+      Regards,<br/><strong style="color:#1A1A22">${esc(senderName)}</strong><br/>Mariox Software
     </div>
   </div>
 </body></html>`

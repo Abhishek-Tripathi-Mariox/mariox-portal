@@ -10,7 +10,7 @@ let _alertsSeverityFilter = ''
 
 /* ── DOCUMENTS CENTER ──────────────────────────────────── */
 async function renderDocumentsCenter(el) {
-  el.innerHTML = `<div style="padding:40px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
   try {
     const [docsData, projectsData] = await Promise.all([
       API.get('/documents'),
@@ -44,7 +44,7 @@ async function renderDocumentsCenter(el) {
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #2A1812">
             <span style="font-size:18px">${docCategoryIcon(cat)}</span>
             <span style="font-size:13px;font-weight:600;color:#e2e8f0">${categoryLabels[cat]||cat}</span>
-            <span style="background:#2A1812;color:#94a3b8;font-size:10px;padding:2px 7px;border-radius:10px">${catDocs.length}</span>
+            <span style="background:#2A1812;color:#7E7E8F;font-size:10px;padding:2px 7px;border-radius:10px">${catDocs.length}</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">
             ${catDocs.map(doc => `
@@ -55,11 +55,11 @@ async function renderDocumentsCenter(el) {
                   </div>
                   <div style="flex:1;min-width:0">
                     <div style="font-size:13px;font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${doc.title}</div>
-                    <div style="font-size:11px;color:#64748b;margin-top:2px">${doc.project_name||'—'} • v${doc.version||'1.0'}</div>
-                    ${doc.description ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4">${doc.description.substring(0,60)}${doc.description.length>60?'…':''}</div>` : ''}
+                    <div style="font-size:11px;color:#7E7E8F;margin-top:2px">${doc.project_name||'—'} • v${doc.version||'1.0'}</div>
+                    ${doc.description ? `<div style="font-size:11px;color:#7E7E8F;margin-top:4px;line-height:1.4">${doc.description.substring(0,60)}${doc.description.length>60?'…':''}</div>` : ''}
                     <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
-                      <span style="font-size:10px;color:#64748b"><i class="fas fa-user" style="margin-right:3px"></i>${doc.uploaded_by_name||'—'}</span>
-                      <span style="font-size:10px;color:#64748b"><i class="fas fa-clock" style="margin-right:3px"></i>${fmtDate(doc.created_at)}</span>
+                      <span style="font-size:10px;color:#7E7E8F"><i class="fas fa-user" style="margin-right:3px"></i>${doc.uploaded_by_name||'—'}</span>
+                      <span style="font-size:10px;color:#7E7E8F"><i class="fas fa-clock" style="margin-right:3px"></i>${fmtDate(doc.created_at)}</span>
                       <span class="badge ${doc.visibility==='all'?'badge-done':doc.visibility==='client'?'badge-inprogress':'badge-review'}" style="font-size:9px">${doc.visibility||'all'}</span>
                     </div>
                   </div>
@@ -187,7 +187,7 @@ async function showUploadDocModal() {
   window._udCatOpts = catOpts
   window._udFiles = []
   showModal(`
-  <div class="modal-header"><h3><i class="fas fa-upload" style="color:#FF7A45"></i> Upload Documents</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+  <div class="modal-header"><h3><i class="fas fa-upload" style="color:#A970FF"></i> Upload Documents</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
   <div class="modal-body">
     <div class="form-row">
       <div class="form-group"><label class="form-label">Project *</label>
@@ -196,15 +196,15 @@ async function showUploadDocModal() {
           <span>Category *</span>
           <button type="button" class="btn btn-xs btn-outline" onclick="udAddDocCategory()" title="Add a new category" style="padding:2px 8px;font-size:11px"><i class="fas fa-plus"></i> New category</button>
         </label>
-        <select class="form-select" id="ud-category" onchange="if(this.value==='__new__'){udAddDocCategory()}">${catOpts.map(c=>`<option value="${c.v}">${c.l}</option>`).join('')}<option value="__new__" style="font-style:italic;color:#FFB347">＋ Add new category…</option></select></div>
+        <select class="form-select" id="ud-category" onchange="if(this.value==='__new__'){udAddDocCategory()}">${catOpts.map(c=>`<option value="${c.v}">${c.l}</option>`).join('')}<option value="__new__" style="font-style:italic;color:#C9A7FF">＋ Add new category…</option></select></div>
     </div>
 
     <div class="form-group">
-      <label class="form-label">Files * <span style="font-weight:400;color:#64748b;font-size:11px">(pick one or many — max 25 MB each)</span></label>
-      <div id="ud-dropzone" style="border:2px dashed rgba(255,122,69,.35);border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:rgba(255,122,69,.04);transition:.2s" onclick="document.getElementById('ud-files').click()">
-        <i class="fas fa-cloud-upload-alt" style="font-size:32px;color:#FF7A45;display:block;margin-bottom:8px"></i>
+      <label class="form-label">Files * <span style="font-weight:400;color:#7E7E8F;font-size:11px">(pick one or many — max 25 MB each)</span></label>
+      <div id="ud-dropzone" style="border:2px dashed rgba(169,112,255,.35);border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:rgba(169,112,255,.04);transition:.2s" onclick="document.getElementById('ud-files').click()">
+        <i class="fas fa-cloud-upload-alt" style="font-size:32px;color:#A970FF;display:block;margin-bottom:8px"></i>
         <div style="font-size:13px;color:#e2e8f0;font-weight:600">Click to choose files from your computer</div>
-        <div style="font-size:11px;color:#64748b;margin-top:4px">or drop files here • PDF, images, docs, videos</div>
+        <div style="font-size:11px;color:#7E7E8F;margin-top:4px">or drop files here • PDF, images, docs, videos</div>
       </div>
       <input id="ud-files" type="file" multiple style="display:none" onchange="udOnFilesPicked(this.files)"/>
       <div id="ud-files-list" style="display:flex;flex-direction:column;gap:6px;margin-top:10px"></div>
@@ -225,7 +225,7 @@ async function showUploadDocModal() {
     <div class="form-group"><label class="form-label">Tags (comma separated)</label><input class="form-input" id="ud-tags" placeholder="sow, phase1, delivery"/></div>
 
     <div id="ud-progress" style="display:none;margin-top:10px">
-      <div style="font-size:12px;color:#94a3b8;margin-bottom:6px"><span id="ud-progress-label">Uploading…</span></div>
+      <div style="font-size:12px;color:#7E7E8F;margin-bottom:6px"><span id="ud-progress-label">Uploading…</span></div>
       <div class="progress-bar"><div id="ud-progress-bar" class="progress-fill amber" style="width:0%"></div></div>
     </div>
   </div>
@@ -237,9 +237,9 @@ async function showUploadDocModal() {
   // Drag and drop on the dropzone
   const dz = document.getElementById('ud-dropzone')
   if (dz) {
-    dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.background = 'rgba(255,122,69,.12)' })
-    dz.addEventListener('dragleave', () => { dz.style.background = 'rgba(255,122,69,.04)' })
-    dz.addEventListener('drop', e => { e.preventDefault(); dz.style.background = 'rgba(255,122,69,.04)'; if (e.dataTransfer?.files) udOnFilesPicked(e.dataTransfer.files) })
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.background = 'rgba(169,112,255,.12)' })
+    dz.addEventListener('dragleave', () => { dz.style.background = 'rgba(169,112,255,.04)' })
+    dz.addEventListener('drop', e => { e.preventDefault(); dz.style.background = 'rgba(169,112,255,.04)'; if (e.dataTransfer?.files) udOnFilesPicked(e.dataTransfer.files) })
   }
 }
 
@@ -257,7 +257,7 @@ function udOpenCategoryPrompt() {
       <div class="modal-overlay" style="z-index:1100;background:rgba(0,0,0,.55)">
         <div class="modal" style="max-width:420px;width:90%">
           <div class="modal-header">
-            <h3 style="display:flex;align-items:center;gap:8px;margin:0"><i class="fas fa-folder-plus" style="color:#FF7A45"></i> New Category</h3>
+            <h3 style="display:flex;align-items:center;gap:8px;margin:0"><i class="fas fa-folder-plus" style="color:#A970FF"></i> New Category</h3>
             <button class="close-btn" id="ud-cat-prompt-x" type="button">✕</button>
           </div>
           <div class="modal-body">
@@ -317,7 +317,7 @@ async function openManageDocCategories() {
   const custom = cats.filter(c => !c.builtin)
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-tags" style="color:#FF7A45;margin-right:6px"></i> Manage Categories</h3>
+      <h3><i class="fas fa-tags" style="color:#A970FF;margin-right:6px"></i> Manage Categories</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:18px">
@@ -331,11 +331,11 @@ async function openManageDocCategories() {
         <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Custom categories (${custom.length})</div>
         <div id="doc-cat-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
           ${custom.length ? custom.map(c => `
-            <div id="doc-cat-row-${escapeInbox(c.id)}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,122,69,.06);border:1px solid rgba(255,122,69,.18);border-radius:8px">
-              <i class="fas fa-folder" style="color:#FF7A45"></i>
+            <div id="doc-cat-row-${escapeInbox(c.id)}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(169,112,255,.06);border:1px solid rgba(169,112,255,.18);border-radius:8px">
+              <i class="fas fa-folder" style="color:#A970FF"></i>
               <div id="doc-cat-body-${escapeInbox(c.id)}" style="flex:1;min-width:0">
                 <div style="font-size:13px;color:#e2e8f0">${escapeInbox(c.label)}</div>
-                <div style="font-size:10px;color:#94a3b8;font-family:monospace">${escapeInbox(c.value)}</div>
+                <div style="font-size:10px;color:#7E7E8F;font-family:monospace">${escapeInbox(c.value)}</div>
               </div>
               <button class="btn btn-xs btn-outline" title="Rename" onclick="startEditDocCategory('${escapeInbox(c.id)}','${escapeInbox(c.label).replace(/'/g, "\\'")}')"><i class="fas fa-pencil"></i></button>
               <button class="btn btn-xs btn-outline" style="color:#FF5E3A;border-color:#FF5E3A" title="Delete" onclick="deleteDocCategory('${escapeInbox(c.id)}','${escapeInbox(c.label).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>
@@ -380,7 +380,7 @@ function startEditDocCategory(id, currentLabel) {
   body.innerHTML = `
     <input id="doc-cat-edit-input-${id}" class="form-input" value="${escapeInbox(currentLabel)}" maxlength="60" autocomplete="off"
       onkeydown="if(event.key==='Enter'){event.preventDefault();saveEditDocCategory('${id}')} else if(event.key==='Escape'){event.preventDefault();cancelEditDocCategory()}"
-      style="font-size:13px;padding:4px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,122,69,.45);border-radius:6px;color:#e2e8f0;width:100%"/>
+      style="font-size:13px;padding:4px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(169,112,255,.45);border-radius:6px;color:#e2e8f0;width:100%"/>
   `
   // Swap the trailing buttons too — replace edit/delete with save/cancel.
   const actions = row.querySelectorAll('button')
@@ -449,7 +449,7 @@ async function udAddDocCategory() {
     window._udCatOpts = await fetchDocCategories()
     if (sel) {
       sel.innerHTML = window._udCatOpts.map(c => `<option value="${c.v}">${c.l}</option>`).join('')
-        + `<option value="__new__" style="font-style:italic;color:#FFB347">＋ Add new category…</option>`
+        + `<option value="__new__" style="font-style:italic;color:#C9A7FF">＋ Add new category…</option>`
       sel.value = created.value
     }
   } catch (e) {
@@ -484,11 +484,11 @@ function udRenderFilesList() {
     const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
     const tooBig = f.size > 25 * 1024 * 1024
     return `
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
-        <i class="fas ${docFTypeIcon(f.type)}" style="color:#FF7A45;font-size:16px"></i>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
+        <i class="fas ${docFTypeIcon(f.type)}" style="color:#A970FF;font-size:16px"></i>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
-          <div style="font-size:11px;color:${tooBig?'#FF5E3A':'#64748b'}">${sizeMb} MB${tooBig?' — exceeds 25 MB limit':''} • ${f.type || 'unknown'}</div>
+          <div style="font-size:11px;color:${tooBig?'#FF5E3A':'#7E7E8F'}">${sizeMb} MB${tooBig?' — exceeds 25 MB limit':''} • ${f.type || 'unknown'}</div>
         </div>
         <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="udRemoveFile(${i})"><i class="fas fa-times"></i></button>
       </div>`
@@ -611,11 +611,11 @@ async function viewDocPreview(id, _encodedUrl, encodedType, encodedTitle) {
   // Open a placeholder modal immediately so the user knows something is happening.
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-eye" style="color:#FF7A45;margin-right:6px"></i>${escapeHtml(title)}</h3>
+      <h3><i class="fas fa-eye" style="color:#A970FF;margin-right:6px"></i>${escapeHtml(title)}</h3>
       <button class="close-btn" onclick="_revokeDocPreviewBlob();closeModal()">✕</button>
     </div>
     <div class="modal-body" id="doc-preview-body" style="padding:0;min-height:300px">
-      <div style="padding:40px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#FF7A45"></i><div style="margin-top:12px;font-size:13px">Loading preview…</div></div>
+      <div style="padding:40px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#A970FF"></i><div style="margin-top:12px;font-size:13px">Loading preview…</div></div>
     </div>
   `, 'modal-xl')
 
@@ -634,8 +634,8 @@ async function viewDocPreview(id, _encodedUrl, encodedType, encodedTitle) {
     const body = document.getElementById('doc-preview-body')
     if (body) {
       body.innerHTML = `
-        <div style="padding:40px;text-align:center;color:#94a3b8">
-          <i class="fas fa-triangle-exclamation" style="font-size:36px;color:#FF8866;margin-bottom:12px;display:block"></i>
+        <div style="padding:40px;text-align:center;color:#7E7E8F">
+          <i class="fas fa-triangle-exclamation" style="font-size:36px;color:#A970FF;margin-bottom:12px;display:block"></i>
           <p style="font-size:13px;margin-bottom:14px">Preview failed: ${escapeHtml(e.message || 'unknown error')}</p>
           ${fallbackUrl ? `<a href="${fallbackUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none"><i class="fas fa-external-link-alt"></i> Open in new tab</a>` : ''}
         </div>`
@@ -662,10 +662,10 @@ async function viewDocPreview(id, _encodedUrl, encodedType, encodedTitle) {
     inner = `<iframe src="${blobUrl}" style="width:100%;height:70vh;border:0;background:#fff"></iframe>`
   } else {
     inner = `
-      <div style="padding:40px;text-align:center;color:#94a3b8">
-        <i class="fas fa-file" style="font-size:48px;color:#FF7A45;margin-bottom:16px;display:block"></i>
+      <div style="padding:40px;text-align:center;color:#7E7E8F">
+        <i class="fas fa-file" style="font-size:48px;color:#A970FF;margin-bottom:16px;display:block"></i>
         <p style="font-size:14px;margin-bottom:6px">Inline preview is not available for this file type.</p>
-        <p style="font-size:12px;color:#64748b;margin-bottom:20px">Type: ${escapeHtml(resolvedType || 'unknown')}</p>
+        <p style="font-size:12px;color:#7E7E8F;margin-bottom:20px">Type: ${escapeHtml(resolvedType || 'unknown')}</p>
         <a href="${blobUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none"><i class="fas fa-external-link-alt"></i> Open in new tab</a>
       </div>`
   }
@@ -676,7 +676,7 @@ async function viewDocPreview(id, _encodedUrl, encodedType, encodedTitle) {
 
 /* ── TIMESHEETS VIEW ───────────────────────────────────── */
 async function renderTimesheetsView(el) {
-  el.innerHTML = `<div style="padding:40px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
   try {
     const [projData, userData] = await Promise.all([
       API.get('/projects'),
@@ -702,8 +702,8 @@ async function renderTimesheetsView(el) {
     <div id="ts-quick-form" style="display:none;margin-bottom:16px">
       <div class="card" style="padding:20px">
         <div style="display:flex;justify-content:space-between;margin-bottom:14px">
-          <h3 style="font-size:14px;font-weight:600;color:#e2e8f0;margin:0"><i class="fas fa-plus" style="color:#FF7A45;margin-right:8px"></i>New Time Entry</h3>
-          <button onclick="document.getElementById('ts-quick-form').style.display='none'" style="background:none;border:none;color:#64748b;cursor:pointer">✕</button>
+          <h3 style="font-size:14px;font-weight:600;color:#e2e8f0;margin:0"><i class="fas fa-plus" style="color:#A970FF;margin-right:8px"></i>New Time Entry</h3>
+          <button onclick="document.getElementById('ts-quick-form').style.display='none'" style="background:none;border:none;color:#7E7E8F;cursor:pointer">✕</button>
         </div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">Date *</label><input class="form-input" id="ts-date" type="date" value="${today}"/></div>
@@ -774,7 +774,7 @@ async function renderTimesheetsView(el) {
         ${isManager ? `<div style="display:flex;gap:8px"><button class="btn btn-sm btn-outline" onclick="bulkApproveTsSelected()"><i class="fas fa-check"></i>Approve Selected</button></div>` : ''}
       </div>
       <div class="card-body" style="padding:0">
-        <div id="ts-table-wrap"><div style="padding:24px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+        <div id="ts-table-wrap"><div style="padding:24px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
       </div>
     </div>`
 
@@ -808,7 +808,7 @@ async function loadTimesheetData() {
 
   const wrap = document.getElementById('ts-table-wrap')
   const summaryEl = document.getElementById('ts-summary')
-  if (wrap) wrap.innerHTML = '<div style="padding:24px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>'
+  if (wrap) wrap.innerHTML = '<div style="padding:24px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>'
 
   try {
     const data = await API.get(url.replace(/&$/, ''))
@@ -822,10 +822,10 @@ async function loadTimesheetData() {
 
     if (summaryEl) {
       summaryEl.innerHTML = `
-        ${miniStatCard('Total Hours', total.toFixed(1)+'h', '#FF7A45','fa-clock')}
+        ${miniStatCard('Total Hours', total.toFixed(1)+'h', '#A970FF','fa-clock')}
         ${miniStatCard('Billable', billable.toFixed(1)+'h', '#58C68A','fa-check-circle')}
-        ${miniStatCard('Non-Billable', (total-billable).toFixed(1)+'h', '#64748b','fa-ban')}
-        ${miniStatCard('Pending Approval', pending, '#FFCB47','fa-hourglass-half')}`
+        ${miniStatCard('Non-Billable', (total-billable).toFixed(1)+'h', '#7E7E8F','fa-ban')}
+        ${miniStatCard('Pending Approval', pending, '#C9A7FF','fa-hourglass-half')}`
     }
 
     if (!wrap) return
@@ -848,12 +848,12 @@ async function loadTimesheetData() {
             ${isManager ? `<td><input type="checkbox" class="ts-check" value="${l.id}"/></td>` : ''}
             <td style="font-size:12px;white-space:nowrap">${fmtDate(l.date||l.created_at)}</td>
             <td><div style="font-size:12px;color:#e2e8f0">${l.full_name||l.user_name||'—'}</div></td>
-            <td><div style="font-size:12px;color:#94a3b8;white-space:nowrap">${l.project_name||'—'}</div><div style="font-size:10px;color:#64748b">${l.project_code||''}</div></td>
-            <td style="font-size:12px;color:#94a3b8">${l.module_name||'—'}</td>
+            <td><div style="font-size:12px;color:#7E7E8F;white-space:nowrap">${l.project_name||'—'}</div><div style="font-size:10px;color:#7E7E8F">${l.project_code||''}</div></td>
+            <td style="font-size:12px;color:#7E7E8F">${l.module_name||'—'}</td>
             <td style="max-width:200px"><div style="font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.task_description||''}">${(l.task_description||'—').substring(0,60)}${(l.task_description||'').length>60?'…':''}</div>${l.blocker_remarks?`<div style="font-size:10px;color:#FF5E3A;margin-top:2px"><i class="fas fa-exclamation-triangle" style="margin-right:3px"></i>${l.blocker_remarks.substring(0,40)}</div>`:''}</td>
-            <td style="font-weight:600;color:${(l.hours_consumed||0)>8?'#FFCB47':'#e2e8f0'}">${parseFloat(l.hours_consumed||0).toFixed(1)}h${l.is_billable?'':' <span style="font-size:9px;color:#64748b">(NB)</span>'}</td>
+            <td style="font-weight:600;color:${(l.hours_consumed||0)>8?'#C9A7FF':'#e2e8f0'}">${parseFloat(l.hours_consumed||0).toFixed(1)}h${l.is_billable?'':' <span style="font-size:9px;color:#7E7E8F">(NB)</span>'}</td>
             <td><span class="badge ${statusColors[l.status]||'badge-todo'}">${l.status||'—'}</span></td>
-            <td><span class="badge ${approvalColors[l.approval_status]||'badge-todo'}">${l.approval_status||'pending'}</span>${l.pm_notes?`<div style="font-size:10px;color:#94a3b8;margin-top:2px">${l.pm_notes.substring(0,30)}</div>`:''}</td>
+            <td><span class="badge ${approvalColors[l.approval_status]||'badge-todo'}">${l.approval_status||'pending'}</span>${l.pm_notes?`<div style="font-size:10px;color:#7E7E8F;margin-top:2px">${l.pm_notes.substring(0,30)}</div>`:''}</td>
             ${isManager ? `<td style="white-space:nowrap">
               ${l.approval_status==='pending'?`<button class="btn btn-sm btn-outline" style="color:#58C68A;border-color:#58C68A" onclick="approveTsEntry('${l.id}','approved')"><i class="fas fa-check"></i></button>
               <button class="btn btn-sm btn-outline" style="color:#FF5E3A;border-color:#FF5E3A;margin-left:4px" onclick="approveTsEntry('${l.id}','rejected')"><i class="fas fa-times"></i></button>`:'—'}
@@ -881,7 +881,7 @@ function miniStatCard(label, value, color, icon) {
         <i class="fas ${icon}" style="color:${color};font-size:14px"></i>
       </div>
       <div>
-        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">${label}</div>
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.04em">${label}</div>
         <div style="font-size:20px;font-weight:700;color:#e2e8f0">${value}</div>
       </div>
     </div>
@@ -964,7 +964,7 @@ function exportTimesheetCSV() {
 
 /* ── REPORTS VIEW ──────────────────────────────────────── */
 async function renderReportsView(el) {
-  el.innerHTML = `<div style="padding:40px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
 
   el.innerHTML = `
   <div class="page-header">
@@ -976,14 +976,14 @@ async function renderReportsView(el) {
 
   <!-- Report tabs -->
   <div style="display:flex;gap:4px;background:#1F0F08;padding:4px;border-radius:10px;border:1px solid #2A1812;margin-bottom:20px;flex-wrap:wrap">
-    <button id="rtab-team"      onclick="switchReportTab2('team')"      class="report-tab active-tab" style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:600;background:#FF7A45;color:#fff">Team Utilization</button>
-    <button id="rtab-inhouse"   onclick="switchReportTab2('inhouse')"   class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">In-house Devs</button>
-    <button id="rtab-external"  onclick="switchReportTab2('external')"  class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">External Teams</button>
-    <button id="rtab-pm"        onclick="switchReportTab2('pm')"        class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">PM-wise</button>
-    <button id="rtab-pc"        onclick="switchReportTab2('pc')"        class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">PC-wise</button>
-    <button id="rtab-project"   onclick="switchReportTab2('project')"   class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">Project Status</button>
-    <button id="rtab-billing"   onclick="switchReportTab2('billing')"   class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">Billing</button>
-    <button id="rtab-timesheet" onclick="switchReportTab2('timesheet')" class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#94a3b8">Timesheet</button>
+    <button id="rtab-team"      onclick="switchReportTab2('team')"      class="report-tab active-tab" style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:600;background:#A970FF;color:#fff">Team Utilization</button>
+    <button id="rtab-inhouse"   onclick="switchReportTab2('inhouse')"   class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#7E7E8F">In-house Devs</button>
+    <button id="rtab-external"  onclick="switchReportTab2('external')"  class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#7E7E8F">External Teams</button>
+    <button id="rtab-pm"        onclick="switchReportTab2('pm')"        class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#7E7E8F">PM-wise</button>
+    <button id="rtab-pc"        onclick="switchReportTab2('pc')"        class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#7E7E8F">PC-wise</button>
+    <button id="rtab-project"   onclick="switchReportTab2('project')"   class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#7E7E8F">Project Status</button>
+    <button id="rtab-billing"   onclick="switchReportTab2('billing')"   class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#7E7E8F">Billing</button>
+    <button id="rtab-timesheet" onclick="switchReportTab2('timesheet')" class="report-tab"            style="padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;background:transparent;color:#7E7E8F">Timesheet</button>
   </div>
 
   <div id="report-panel"></div>`
@@ -993,17 +993,17 @@ async function renderReportsView(el) {
 
 function switchReportTab2(tab) {
   document.querySelectorAll('.report-tab').forEach(btn => {
-    btn.style.background = 'transparent'; btn.style.color = '#94a3b8'; btn.style.fontWeight = '500'
+    btn.style.background = 'transparent'; btn.style.color = '#7E7E8F'; btn.style.fontWeight = '500'
   })
   const active = document.getElementById('rtab-' + tab)
-  if (active) { active.style.background = '#FF7A45'; active.style.color = '#fff'; active.style.fontWeight = '600' }
+  if (active) { active.style.background = '#A970FF'; active.style.color = '#fff'; active.style.fontWeight = '600' }
   loadReport2(tab)
 }
 
 async function loadReport2(tab) {
   const panel = document.getElementById('report-panel')
   if (!panel) return
-  panel.innerHTML = '<div style="padding:24px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>'
+  panel.innerHTML = '<div style="padding:24px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>'
   try {
     if (tab === 'team') {
       const data = await API.get('/reports/team-utilization')
@@ -1016,11 +1016,11 @@ async function loadReport2(tab) {
               ${users.map(u => {
                 const pct = Math.min(u.utilization_pct || 0, 100)
                 return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-                  <span style="font-size:9px;color:${pct>=80?'#FF5E3A':pct>=50?'#FFCB47':'#58C68A'};font-weight:600">${pct}%</span>
+                  <span style="font-size:9px;color:${pct>=80?'#FF5E3A':pct>=50?'#C9A7FF':'#58C68A'};font-weight:600">${pct}%</span>
                   <div style="width:100%;background:#2A1812;border-radius:3px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end" title="${u.full_name}: ${pct}%" style="height:160px">
-                    <div style="height:${pct}%;background:${pct>=80?'linear-gradient(180deg,#FF5E3A,#FF5E3A)':pct>=50?'linear-gradient(180deg,#E5A82C,#FFCB47)':'linear-gradient(180deg,#3FAA70,#58C68A)'};border-radius:3px;transition:.5s;min-height:2px"></div>
+                    <div style="height:${pct}%;background:${pct>=80?'linear-gradient(180deg,#FF5E3A,#FF5E3A)':pct>=50?'linear-gradient(180deg,#A970FF,#C9A7FF)':'linear-gradient(180deg,#3FAA70,#58C68A)'};border-radius:3px;transition:.5s;min-height:2px"></div>
                   </div>
-                  <span style="font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50px" title="${u.full_name}">${u.full_name?.split(' ')[0]}</span>
+                  <span style="font-size:9px;color:#7E7E8F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50px" title="${u.full_name}">${u.full_name?.split(' ')[0]}</span>
                 </div>`}).join('')}
             </div>
           </div>
@@ -1030,7 +1030,7 @@ async function loadReport2(tab) {
               <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #2A1812">
                 <div style="display:flex;align-items:center;gap:8px">
                   ${avatar(u.full_name, u.avatar_color, 'sm')}
-                  <div><div style="font-size:12px;color:#e2e8f0">${u.full_name}</div><div style="font-size:10px;color:#64748b">${u.designation||u.role}</div></div>
+                  <div><div style="font-size:12px;color:#e2e8f0">${u.full_name}</div><div style="font-size:10px;color:#7E7E8F">${u.designation||u.role}</div></div>
                 </div>
                 <div style="text-align:right">
                   <div style="font-size:12px;color:#e2e8f0">${u.monthly_consumed||0}h / ${u.monthly_available_hours||160}h</div>
@@ -1045,13 +1045,13 @@ async function loadReport2(tab) {
             <table class="data-table">
               <thead><tr><th>Developer</th><th>Role</th><th>Monthly Capacity</th><th>Consumed</th><th>Utilization</th><th>Projects</th><th>Hourly Cost</th><th>Cost This Month</th></tr></thead>
               <tbody>${users.map(u => `<tr>
-                <td><div style="display:flex;align-items:center;gap:8px">${avatar(u.full_name,u.avatar_color,'sm')}<div><div style="font-size:12px;color:#e2e8f0">${u.full_name}</div><div style="font-size:10px;color:#64748b">${u.email}</div></div></div></td>
+                <td><div style="display:flex;align-items:center;gap:8px">${avatar(u.full_name,u.avatar_color,'sm')}<div><div style="font-size:12px;color:#e2e8f0">${u.full_name}</div><div style="font-size:10px;color:#7E7E8F">${u.email}</div></div></div></td>
                 <td><span class="badge badge-${u.role==='pm'?'inprogress':'review'}">${u.role}</span></td>
                 <td>${u.monthly_available_hours||160}h</td>
                 <td>${u.monthly_consumed||0}h</td>
                 <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:70px"><div class="progress-fill ${(u.utilization_pct||0)>=80?'rose':(u.utilization_pct||0)>=50?'amber':'green'}" style="width:${Math.min(u.utilization_pct||0,100)}%"></div></div><span style="font-size:11px;color:${pctColor(u.utilization_pct||0)}">${u.utilization_pct||0}%</span></div></td>
                 <td>${u.project_count||0}</td>
-                <td style="color:#94a3b8">${u.hourly_cost ? '₹'+fmtNum(u.hourly_cost) : '—'}</td>
+                <td style="color:#7E7E8F">${u.hourly_cost ? '₹'+fmtNum(u.hourly_cost) : '—'}</td>
                 <td style="color:#58C68A">${u.hourly_cost && u.monthly_consumed ? '₹'+fmtNum(u.hourly_cost * u.monthly_consumed) : '—'}</td>
               </tr>`).join('')}</tbody>
             </table>
@@ -1071,18 +1071,18 @@ async function loadReport2(tab) {
                 const remaining = (p.total_allocated_hours||0) - (p.consumed_hours||0)
                 const overdue = p.expected_end_date && new Date(p.expected_end_date) < new Date() && p.status !== 'completed'
                 return `<tr>
-                  <td><div style="font-weight:500;color:#e2e8f0;font-size:13px">${p.name}</div><div style="font-size:11px;color:#64748b">${p.code}</div></td>
-                  <td style="font-size:12px;color:#94a3b8">${p.client_name||'—'}</td>
-                  <td style="font-size:12px;color:#94a3b8">${p.project_type||'—'}</td>
+                  <td><div style="font-weight:500;color:#e2e8f0;font-size:13px">${p.name}</div><div style="font-size:11px;color:#7E7E8F">${p.code}</div></td>
+                  <td style="font-size:12px;color:#7E7E8F">${p.client_name||'—'}</td>
+                  <td style="font-size:12px;color:#7E7E8F">${p.project_type||'—'}</td>
                   <td>${statusBadge(p.status)}</td>
                   <td>${p.total_allocated_hours||0}h</td>
                   <td>${p.consumed_hours||0}h</td>
-                  <td style="color:${remaining<0?'#FF5E3A':'#94a3b8'}">${remaining}h</td>
+                  <td style="color:${remaining<0?'#FF5E3A':'#7E7E8F'}">${remaining}h</td>
                   <td><div style="display:flex;align-items:center;gap:6px">
                     <div class="progress-bar" style="width:60px"><div class="progress-fill ${burn>=90?'rose':burn>=70?'amber':'green'}" style="width:${Math.min(burn,100)}%"></div></div>
                     <span style="font-size:11px;color:${pctColor(burn)}">${burn}%</span>
                   </div></td>
-                  <td style="font-size:12px;color:${overdue?'#FF5E3A':'#94a3b8'}">${fmtDate(p.expected_end_date)}${overdue?' <span class="badge badge-blocked" style="font-size:9px">Overdue</span>':''}</td>
+                  <td style="font-size:12px;color:${overdue?'#FF5E3A':'#7E7E8F'}">${fmtDate(p.expected_end_date)}${overdue?' <span class="badge badge-blocked" style="font-size:9px">Overdue</span>':''}</td>
                   <td>${burn>=90?'🔴 Critical':burn>=70?'🟡 Warning':'🟢 Healthy'}</td>
                 </tr>`}).join('')}
               </tbody>
@@ -1097,9 +1097,9 @@ async function loadReport2(tab) {
       const pending = invoices.filter(i=>['pending','sent'].includes(i.status)).reduce((s,i) => s+(i.total_amount||0), 0)
       panel.innerHTML = `
         <div class="grid-4" style="margin-bottom:16px">
-          ${miniStatCard('Total Invoiced', fmtCurrency(total), '#FF7A45', 'fa-file-invoice-dollar')}
+          ${miniStatCard('Total Invoiced', fmtCurrency(total), '#A970FF', 'fa-file-invoice-dollar')}
           ${miniStatCard('Collected', fmtCurrency(paid), '#58C68A', 'fa-check-circle')}
-          ${miniStatCard('Outstanding', fmtCurrency(pending), '#FFCB47', 'fa-hourglass-half')}
+          ${miniStatCard('Outstanding', fmtCurrency(pending), '#C9A7FF', 'fa-hourglass-half')}
           ${miniStatCard('Overdue Count', invoices.filter(i=>i.status==='overdue').length, '#FF5E3A', 'fa-exclamation-triangle')}
         </div>
         <div class="card">
@@ -1108,14 +1108,14 @@ async function loadReport2(tab) {
             <table class="data-table">
               <thead><tr><th>Invoice #</th><th>Client</th><th>Project</th><th>Issue Date</th><th>Due Date</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead>
               <tbody>${invoices.map(i => `<tr>
-                <td style="font-family:monospace;font-size:12px;color:#FFB347">${i.invoice_number}</td>
+                <td style="font-family:monospace;font-size:12px;color:#C9A7FF">${i.invoice_number}</td>
                 <td style="font-size:12px;color:#e2e8f0">${i.company_name||'—'}</td>
-                <td style="font-size:12px;color:#94a3b8">${i.project_name||'—'}</td>
-                <td style="font-size:12px;color:#94a3b8">${fmtDate(i.issue_date)}</td>
-                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#94a3b8'}">${fmtDate(i.due_date)}</td>
+                <td style="font-size:12px;color:#7E7E8F">${i.project_name||'—'}</td>
+                <td style="font-size:12px;color:#7E7E8F">${fmtDate(i.issue_date)}</td>
+                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#7E7E8F'}">${fmtDate(i.due_date)}</td>
                 <td style="font-weight:600;color:#e2e8f0">${fmtCurrency(i.total_amount)}</td>
                 <td style="color:#58C68A">${i.paid_amount>0?fmtCurrency(i.paid_amount):'—'}</td>
-                <td style="color:${(i.total_amount-(i.paid_amount||0))>0?'#FFCB47':'#64748b'}">${fmtCurrency(i.total_amount-(i.paid_amount||0))}</td>
+                <td style="color:${(i.total_amount-(i.paid_amount||0))>0?'#C9A7FF':'#7E7E8F'}">${fmtCurrency(i.total_amount-(i.paid_amount||0))}</td>
                 <td><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></td>
               </tr>`).join('')}
               </tbody>
@@ -1142,10 +1142,10 @@ async function loadReport2(tab) {
 
       panel.innerHTML = `
         <div class="grid-4" style="margin-bottom:16px">
-          ${miniStatCard('This Month Total', totalH.toFixed(1)+'h', '#FF7A45', 'fa-clock')}
+          ${miniStatCard('This Month Total', totalH.toFixed(1)+'h', '#A970FF', 'fa-clock')}
           ${miniStatCard('Billable', billH.toFixed(1)+'h', '#58C68A', 'fa-check-circle')}
-          ${miniStatCard('Non-Billable', (totalH-billH).toFixed(1)+'h', '#64748b', 'fa-ban')}
-          ${miniStatCard('Entries', logs.length, '#FFB347', 'fa-list')}
+          ${miniStatCard('Non-Billable', (totalH-billH).toFixed(1)+'h', '#7E7E8F', 'fa-ban')}
+          ${miniStatCard('Entries', logs.length, '#C9A7FF', 'fa-list')}
         </div>
         <div class="card">
           <div class="card-header"><span style="font-weight:600">This Month by Developer</span></div>
@@ -1156,7 +1156,7 @@ async function loadReport2(tab) {
                 <td style="font-weight:500;color:#e2e8f0;font-size:13px">${d.name}</td>
                 <td style="font-weight:600;color:#e2e8f0">${d.total.toFixed(1)}h</td>
                 <td style="color:#58C68A">${d.billable.toFixed(1)}h</td>
-                <td style="color:#64748b">${(d.total-d.billable).toFixed(1)}h</td>
+                <td style="color:#7E7E8F">${(d.total-d.billable).toFixed(1)}h</td>
                 <td>${d.projects.size}</td>
               </tr>`).join('')}</tbody>
             </table>
@@ -1188,8 +1188,8 @@ async function loadReport2(tab) {
 
       panel.innerHTML = `
         <div class="grid-4" style="margin-bottom:16px">
-          ${miniStatCard('In-house Devs', devs.length, '#FF7A45', 'fa-code')}
-          ${miniStatCard('Hours This Month', rows.reduce((s, r) => s + r.totalH, 0).toFixed(1) + 'h', '#FFB347', 'fa-clock')}
+          ${miniStatCard('In-house Devs', devs.length, '#A970FF', 'fa-code')}
+          ${miniStatCard('Hours This Month', rows.reduce((s, r) => s + r.totalH, 0).toFixed(1) + 'h', '#C9A7FF', 'fa-clock')}
           ${miniStatCard('Billable', rows.reduce((s, r) => s + r.billH, 0).toFixed(1) + 'h', '#58C68A', 'fa-check-circle')}
           ${miniStatCard('Avg Utilization', Math.round(rows.reduce((s, r) => s + r.utilPct, 0) / (rows.length || 1)) + '%', '#C56FE6', 'fa-tachometer-alt')}
         </div>
@@ -1199,17 +1199,17 @@ async function loadReport2(tab) {
             <table class="data-table">
               <thead><tr><th>Developer</th><th>Designation</th><th>Capacity</th><th>Logged</th><th>Billable</th><th>Utilization</th><th>Active Projects</th><th>Hourly Cost</th><th>Cost</th><th></th></tr></thead>
               <tbody>${rows.map(r => `<tr>
-                <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.dev.full_name, r.dev.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.dev.full_name}</div><div style="font-size:10px;color:#64748b">${r.dev.email}</div></div></div></td>
-                <td style="font-size:12px;color:#94a3b8">${r.dev.designation || '—'}</td>
+                <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.dev.full_name, r.dev.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.dev.full_name}</div><div style="font-size:10px;color:#7E7E8F">${r.dev.email}</div></div></div></td>
+                <td style="font-size:12px;color:#7E7E8F">${r.dev.designation || '—'}</td>
                 <td>${r.cap}h</td>
                 <td>${r.totalH.toFixed(1)}h</td>
                 <td style="color:#58C68A">${r.billH.toFixed(1)}h</td>
                 <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:70px"><div class="progress-fill ${r.utilPct>=80?'rose':r.utilPct>=50?'amber':'green'}" style="width:${Math.min(r.utilPct,100)}%"></div></div><span style="font-size:11px;color:${pctColor(r.utilPct)}">${r.utilPct}%</span></div></td>
                 <td>${r.projects}</td>
-                <td style="color:#94a3b8">${r.dev.hourly_cost ? '₹' + fmtNum(r.dev.hourly_cost) : '—'}</td>
+                <td style="color:#7E7E8F">${r.dev.hourly_cost ? '₹' + fmtNum(r.dev.hourly_cost) : '—'}</td>
                 <td style="color:#58C68A">${r.dev.hourly_cost && r.totalH ? '₹' + fmtNum(r.dev.hourly_cost * r.totalH) : '—'}</td>
                 <td><button class="btn btn-xs btn-outline" title="View summary" onclick="openReportSummary('inhouse','${r.dev.id}')"><i class="fas fa-eye"></i></button></td>
-              </tr>`).join('') || '<tr><td colspan="10" style="text-align:center;color:#64748b;padding:24px">No in-house developers</td></tr>'}</tbody>
+              </tr>`).join('') || '<tr><td colspan="10" style="text-align:center;color:#7E7E8F;padding:24px">No in-house developers</td></tr>'}</tbody>
             </table>
           </div>
         </div>`
@@ -1257,10 +1257,10 @@ async function loadReport2(tab) {
 
       panel.innerHTML = `
         <div class="grid-4" style="margin-bottom:16px">
-          ${miniStatCard('External Teams', teams.length, '#FF7A45', 'fa-users')}
-          ${miniStatCard('External Members', teamUsers.length, '#FFB347', 'fa-user-friends')}
+          ${miniStatCard('External Teams', teams.length, '#A970FF', 'fa-users')}
+          ${miniStatCard('External Members', teamUsers.length, '#C9A7FF', 'fa-user-friends')}
           ${miniStatCard('External Projects', externalProjects.length, '#C56FE6', 'fa-folder-open')}
-          ${miniStatCard('Total Allocated', fmtNum(teamRows.reduce((s, r) => s + r.allocated, 0) + userRows.reduce((s, r) => s + r.allocated, 0)) + 'h', '#FFCB47', 'fa-clock')}
+          ${miniStatCard('Total Allocated', fmtNum(teamRows.reduce((s, r) => s + r.allocated, 0) + userRows.reduce((s, r) => s + r.allocated, 0)) + 'h', '#C9A7FF', 'fa-clock')}
         </div>
         <div class="card" style="margin-bottom:16px">
           <div class="card-header"><span style="font-weight:600">External Teams</span></div>
@@ -1272,7 +1272,7 @@ async function loadReport2(tab) {
                 const burn = r.allocated > 0 ? Math.round((r.consumed / r.allocated) * 100) : 0
                 return `<tr>
                   <td style="font-weight:500;color:#e2e8f0">${r.name}</td>
-                  <td style="font-size:12px;color:#94a3b8">${r.lead}</td>
+                  <td style="font-size:12px;color:#7E7E8F">${r.lead}</td>
                   <td>${r.members}</td>
                   <td>${r.projects}</td>
                   <td>${fmtNum(r.allocated)}h</td>
@@ -1280,7 +1280,7 @@ async function loadReport2(tab) {
                   <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:70px"><div class="progress-fill ${burn>=90?'rose':burn>=70?'amber':'green'}" style="width:${Math.min(burn,100)}%"></div></div><span style="font-size:11px;color:${pctColor(burn)}">${burn}%</span></div></td>
                   <td><button class="btn btn-xs btn-outline" title="View summary" onclick="openReportSummary('external-team','${team?.id || ''}')"><i class="fas fa-eye"></i></button></td>
                 </tr>`
-              }).join('') || '<tr><td colspan="8" style="text-align:center;color:#64748b;padding:24px">No external teams</td></tr>'}</tbody>
+              }).join('') || '<tr><td colspan="8" style="text-align:center;color:#7E7E8F;padding:24px">No external teams</td></tr>'}</tbody>
             </table>
           </div>
         </div>
@@ -1290,13 +1290,13 @@ async function loadReport2(tab) {
             <table class="data-table">
               <thead><tr><th>Member</th><th>Designation</th><th>Projects</th><th>Allocated</th><th>Logged This Month</th><th></th></tr></thead>
               <tbody>${userRows.map(r => `<tr>
-                <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.dev.full_name, r.dev.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.dev.full_name}</div><div style="font-size:10px;color:#64748b">${r.dev.email}</div></div></div></td>
-                <td style="font-size:12px;color:#94a3b8">${r.dev.designation || '—'}</td>
+                <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.dev.full_name, r.dev.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.dev.full_name}</div><div style="font-size:10px;color:#7E7E8F">${r.dev.email}</div></div></div></td>
+                <td style="font-size:12px;color:#7E7E8F">${r.dev.designation || '—'}</td>
                 <td>${r.projects}</td>
                 <td>${fmtNum(r.allocated)}h</td>
                 <td style="color:#58C68A">${r.totalH.toFixed(1)}h</td>
                 <td><button class="btn btn-xs btn-outline" title="View summary" onclick="openReportSummary('external-user','${r.dev.id}')"><i class="fas fa-eye"></i></button></td>
-              </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#64748b;padding:24px">No external members</td></tr>'}</tbody>
+              </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#7E7E8F;padding:24px">No external members</td></tr>'}</tbody>
             </table>
           </div>
         </div>`
@@ -1326,8 +1326,8 @@ async function loadReport2(tab) {
       const labelTitle = role === 'pm' ? 'Project Manager' : 'Product Coordinator'
       panel.innerHTML = `
         <div class="grid-4" style="margin-bottom:16px">
-          ${miniStatCard(labelTitle + 's', owners.length, '#FF7A45', 'fa-user-tie')}
-          ${miniStatCard('Total Projects', rows.reduce((s, r) => s + r.owned.length, 0), '#FFB347', 'fa-folder-open')}
+          ${miniStatCard(labelTitle + 's', owners.length, '#A970FF', 'fa-user-tie')}
+          ${miniStatCard('Total Projects', rows.reduce((s, r) => s + r.owned.length, 0), '#C9A7FF', 'fa-folder-open')}
           ${miniStatCard('Hours This Month', rows.reduce((s, r) => s + r.monthlyH, 0).toFixed(1) + 'h', '#58C68A', 'fa-clock')}
           ${miniStatCard('Total Revenue', '₹' + fmtNum(rows.reduce((s, r) => s + r.revenue, 0)), '#C56FE6', 'fa-indian-rupee-sign')}
         </div>
@@ -1340,7 +1340,7 @@ async function loadReport2(tab) {
                 const active = r.owned.filter(p => p.status === 'active').length
                 const burn = r.totalAlloc > 0 ? Math.round((r.totalConsumed / r.totalAlloc) * 100) : 0
                 return `<tr>
-                  <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.owner.full_name, r.owner.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.owner.full_name}</div><div style="font-size:10px;color:#64748b">${r.owner.email}</div></div></div></td>
+                  <td><div style="display:flex;align-items:center;gap:8px">${avatar(r.owner.full_name, r.owner.avatar_color, 'sm')}<div><div style="font-size:12px;color:#e2e8f0">${r.owner.full_name}</div><div style="font-size:10px;color:#7E7E8F">${r.owner.email}</div></div></div></td>
                   <td>${r.owned.length}</td>
                   <td><span class="badge badge-${active > 0 ? 'green' : 'gray'}">${active}</span></td>
                   <td>${fmtNum(r.totalAlloc)}h</td>
@@ -1348,10 +1348,10 @@ async function loadReport2(tab) {
                   <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:70px"><div class="progress-fill ${burn>=90?'rose':burn>=70?'amber':'green'}" style="width:${Math.min(burn,100)}%"></div></div><span style="font-size:11px;color:${pctColor(burn)}">${burn}%</span></div></td>
                   <td>${r.monthlyH.toFixed(1)}h</td>
                   <td style="color:#58C68A">${r.billable.toFixed(1)}h</td>
-                  <td style="color:#FFB347;font-weight:600">₹${fmtNum(r.revenue)}</td>
+                  <td style="color:#C9A7FF;font-weight:600">₹${fmtNum(r.revenue)}</td>
                   <td><button class="btn btn-xs btn-outline" title="View summary" onclick="openReportSummary('${role}','${r.owner.id}')"><i class="fas fa-eye"></i></button></td>
                 </tr>`
-              }).join('') || `<tr><td colspan="10" style="text-align:center;color:#64748b;padding:24px">No ${labelTitle.toLowerCase()}s</td></tr>`}</tbody>
+              }).join('') || `<tr><td colspan="10" style="text-align:center;color:#7E7E8F;padding:24px">No ${labelTitle.toLowerCase()}s</td></tr>`}</tbody>
             </table>
           </div>
         </div>`
@@ -1368,8 +1368,8 @@ async function loadReport2(tab) {
 async function openReportSummary(kind, entityId) {
   if (!entityId) { toast('No entity to summarize', 'error'); return }
   showModal(`
-    <div class="modal-header"><h3><i class="fas fa-chart-line" style="color:#FF7A45"></i> Loading summary…</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-    <div class="modal-body" style="padding:30px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`, 'modal-lg')
+    <div class="modal-header"><h3><i class="fas fa-chart-line" style="color:#A970FF"></i> Loading summary…</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body" style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`, 'modal-lg')
 
   try {
     const monthStart = dayjs().startOf('month').format('YYYY-MM-DD')
@@ -1389,7 +1389,7 @@ async function openReportSummary(kind, entityId) {
 
     let title = ''
     let subtitle = ''
-    let avatarColor = '#FF7A45'
+    let avatarColor = '#A970FF'
     let avatarName = '?'
     let ownedProjects = []
     let myLogs = []
@@ -1399,7 +1399,7 @@ async function openReportSummary(kind, entityId) {
       if (!u) { toast('User not found', 'error'); closeModal(); return }
       title = u.full_name
       subtitle = `${u.designation || u.role} · ${u.email}`
-      avatarColor = u.avatar_color || '#FF7A45'
+      avatarColor = u.avatar_color || '#A970FF'
       avatarName = u.full_name
       if (kind === 'pm') ownedProjects = projects.filter(p => p.pm_id === u.id)
       else if (kind === 'pc') ownedProjects = projects.filter(p => p.pc_id === u.id)
@@ -1415,7 +1415,7 @@ async function openReportSummary(kind, entityId) {
       if (!team) { toast('Team not found', 'error'); closeModal(); return }
       title = team.alias || team.name
       subtitle = `External team · Lead: ${team.lead_name || '—'} · ${team.member_count || 0} members`
-      avatarColor = '#FF7A45'
+      avatarColor = '#A970FF'
       avatarName = team.alias || team.name
       ownedProjects = projects.filter(p => p.assignment_type === 'external' && p.external_team_id === team.id && p.external_assignee_type === 'team')
       const memberIds = new Set((team.members || []).map(m => String(m.user_id || m.id)))
@@ -1451,41 +1451,41 @@ async function openReportSummary(kind, entityId) {
         ${avatar(avatarName, avatarColor, 'lg')}
         <div style="flex:1;min-width:0">
           <h3 style="margin:0;font-size:16px;color:#e2e8f0">${escapeHtml(title)}</h3>
-          <div style="font-size:11.5px;color:#64748b;margin-top:2px">${escapeHtml(kindLabel)} · ${escapeHtml(subtitle)}</div>
+          <div style="font-size:11.5px;color:#7E7E8F;margin-top:2px">${escapeHtml(kindLabel)} · ${escapeHtml(subtitle)}</div>
         </div>
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body" style="padding:18px">
         <div class="grid-4" style="gap:8px;margin-bottom:16px">
-          ${statCard('Projects', ownedProjects.length, '#FF7A45')}
+          ${statCard('Projects', ownedProjects.length, '#A970FF')}
           ${statCard('Active', activeProjects, '#58C68A')}
           ${statCard('Completed', completedProjects, '#C56FE6')}
-          ${statCard('Burn %', burn + '%', burn >= 90 ? '#FF5E3A' : burn >= 70 ? '#FFCB47' : '#58C68A')}
+          ${statCard('Burn %', burn + '%', burn >= 90 ? '#FF5E3A' : burn >= 70 ? '#C9A7FF' : '#58C68A')}
         </div>
         <div class="grid-4" style="gap:8px;margin-bottom:16px">
-          ${statCard('Allocated', fmtNum(totalAlloc) + 'h', '#FFB347')}
-          ${statCard('Consumed', fmtNum(totalConsumed) + 'h', '#FFCB47')}
+          ${statCard('Allocated', fmtNum(totalAlloc) + 'h', '#C9A7FF')}
+          ${statCard('Consumed', fmtNum(totalConsumed) + 'h', '#C9A7FF')}
           ${statCard('This Month', monthlyH.toFixed(1) + 'h', '#58C68A')}
           ${statCard('Billable', billableH.toFixed(1) + 'h', '#86E0A8')}
         </div>
-        ${revenue > 0 ? `<div style="padding:12px;background:rgba(255,180,71,.08);border:1px solid rgba(255,180,71,.25);border-radius:8px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
-          <div style="font-size:11px;color:#FFB347;text-transform:uppercase;letter-spacing:.05em">Linked Revenue</div>
-          <div style="font-size:18px;font-weight:700;color:#FFB347">₹${fmtNum(revenue)}</div>
+        ${revenue > 0 ? `<div style="padding:12px;background:rgba(169,112,255,.08);border:1px solid rgba(169,112,255,.25);border-radius:8px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:11px;color:#C9A7FF;text-transform:uppercase;letter-spacing:.05em">Linked Revenue</div>
+          <div style="font-size:18px;font-weight:700;color:#C9A7FF">₹${fmtNum(revenue)}</div>
         </div>` : ''}
 
         <div style="font-size:12px;font-weight:600;color:#e2e8f0;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Projects (${ownedProjects.length})</div>
-        ${ownedProjects.length === 0 ? '<div style="padding:14px;text-align:center;color:#64748b;border:1px dashed #2A1812;border-radius:8px;font-size:12px">No projects linked.</div>' : `
+        ${ownedProjects.length === 0 ? '<div style="padding:14px;text-align:center;color:#7E7E8F;border:1px dashed #2A1812;border-radius:8px;font-size:12px">No projects linked.</div>' : `
           <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto">
             ${ownedProjects.map(p => {
               const pBurn = (Number(p.total_allocated_hours) || 0) > 0 ? Math.round((Number(p.consumed_hours || 0) / Number(p.total_allocated_hours)) * 100) : 0
-              return `<div style="padding:10px 12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;display:flex;align-items:center;gap:10px">
+              return `<div style="padding:10px 12px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px;display:flex;align-items:center;gap:10px">
                 <div style="flex:1;min-width:0">
                   <div style="font-size:13px;color:#e2e8f0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.name)}</div>
-                  <div style="font-size:11px;color:#64748b">${escapeHtml(p.code || '')}${p.client_name ? ' · ' + escapeHtml(p.client_name) : ''} · ${escapeHtml(p.status || '')}</div>
+                  <div style="font-size:11px;color:#7E7E8F">${escapeHtml(p.code || '')}${p.client_name ? ' · ' + escapeHtml(p.client_name) : ''} · ${escapeHtml(p.status || '')}</div>
                 </div>
                 <div style="text-align:right;flex-shrink:0">
-                  <div style="font-size:11px;color:#94a3b8">${fmtNum(p.consumed_hours || 0)}/${fmtNum(p.total_allocated_hours || 0)}h</div>
-                  <div style="font-size:11px;color:${pBurn >= 90 ? '#FF5E3A' : pBurn >= 70 ? '#FFCB47' : '#58C68A'};font-weight:600">${pBurn}%</div>
+                  <div style="font-size:11px;color:#7E7E8F">${fmtNum(p.consumed_hours || 0)}/${fmtNum(p.total_allocated_hours || 0)}h</div>
+                  <div style="font-size:11px;color:${pBurn >= 90 ? '#FF5E3A' : pBurn >= 70 ? '#C9A7FF' : '#58C68A'};font-weight:600">${pBurn}%</div>
                 </div>
               </div>`
             }).join('')}
@@ -1522,16 +1522,16 @@ function exportReportCSV() {
 
 /* ── ALERTS + NOTIFICATIONS (unified inbox) ───────────── */
 const NOTIF_TYPE_ICON = {
-  ticket_created:       { icon: 'fa-ticket', color: '#FF7A45' },
+  ticket_created:       { icon: 'fa-ticket', color: '#A970FF' },
   ticket_assigned:      { icon: 'fa-user-check', color: '#C56FE6' },
-  ticket_status:        { icon: 'fa-circle-half-stroke', color: '#FFA577' },
-  ticket_priority:      { icon: 'fa-flag', color: '#FFCB47' },
-  ticket_comment:       { icon: 'fa-message', color: '#FFB67A' },
-  ticket_internal_note: { icon: 'fa-lock', color: '#FFCB47' },
+  ticket_status:        { icon: 'fa-circle-half-stroke', color: '#B388FF' },
+  ticket_priority:      { icon: 'fa-flag', color: '#C9A7FF' },
+  ticket_comment:       { icon: 'fa-message', color: '#B388FF' },
+  ticket_internal_note: { icon: 'fa-lock', color: '#C9A7FF' },
 }
 
 async function renderAlertsView(el) {
-  el.innerHTML = `<div style="padding:40px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
   try {
     const [alertsRes, notifsRes] = await Promise.all([
       API.get('/alerts').catch(() => ({ alerts: [] })),
@@ -1540,7 +1540,7 @@ async function renderAlertsView(el) {
     const alerts = alertsRes.alerts || alertsRes.data || []
     const notifs = notifsRes.notifications || notifsRes.data || []
 
-    const sevColor = { critical:'#FF5E3A', high:'#FF7A45', warning:'#FFCB47', info:'#F4C842', low:'#64748b' }
+    const sevColor = { critical:'#FF5E3A', high:'#A970FF', warning:'#C9A7FF', info:'#C9A7FF', low:'#7E7E8F' }
     const sevIcon = { critical:'fa-circle-exclamation', high:'fa-exclamation-triangle', warning:'fa-triangle-exclamation', info:'fa-info-circle', low:'fa-circle-info' }
 
     // Merge into a single inbox list sorted by created_at desc
@@ -1556,12 +1556,12 @@ async function renderAlertsView(el) {
           is_read: !!a.is_read,
           severity: a.severity || 'info',
           icon: sevIcon[a.severity] || 'fa-circle-info',
-          color: sevColor[a.severity] || '#64748b',
+          color: sevColor[a.severity] || '#7E7E8F',
           link: null,
           raw: a,
         })),
       ...notifs.map(n => {
-        const ic = NOTIF_TYPE_ICON[n.type] || { icon: 'fa-bell', color: '#FFB347' }
+        const ic = NOTIF_TYPE_ICON[n.type] || { icon: 'fa-bell', color: '#C9A7FF' }
         return {
           kind: 'notif',
           id: n.id,
@@ -1597,24 +1597,24 @@ async function renderAlertsView(el) {
     </div>
 
     <div class="grid-4" style="margin-bottom:16px">
-      ${miniStatCard('Total', items.length, '#FF7A45', 'fa-bell')}
+      ${miniStatCard('Total', items.length, '#A970FF', 'fa-bell')}
       ${miniStatCard('Unread', unread.length, '#FF5E3A', 'fa-envelope')}
-      ${miniStatCard('Activity', notifs.length, '#FFB347', 'fa-message')}
-      ${miniStatCard('System Alerts', alerts.filter(a => !a.is_dismissed).length, '#FFCB47', 'fa-triangle-exclamation')}
+      ${miniStatCard('Activity', notifs.length, '#C9A7FF', 'fa-message')}
+      ${miniStatCard('System Alerts', alerts.filter(a => !a.is_dismissed).length, '#C9A7FF', 'fa-triangle-exclamation')}
     </div>
 
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <button class="btn btn-sm btn-outline" onclick="filterAlerts('')" id="af-all" ${!filterSev?'style="background:rgba(255,122,69,.15);color:#FFB347"':''}>All</button>
-      <button class="btn btn-sm btn-outline" onclick="filterAlerts('critical')" id="af-critical" ${filterSev==='critical'?'style="background:rgba(255,94,58,.15);color:#FF8866"':''}>🔴 Critical alerts</button>
-      <button class="btn btn-sm btn-outline" onclick="filterAlerts('high')" id="af-high" ${filterSev==='high'?'style="background:rgba(255,122,69,.15);color:#FFB347"':''}>🟠 High alerts</button>
-      <button class="btn btn-sm btn-outline" onclick="filterAlerts('warning')" id="af-warning" ${filterSev==='warning'?'style="background:rgba(255,203,71,.15);color:#FFD986"':''}>🟡 Warning alerts</button>
+      <button class="btn btn-sm btn-outline" onclick="filterAlerts('')" id="af-all" ${!filterSev?'style="background:rgba(169,112,255,.15);color:#C9A7FF"':''}>All</button>
+      <button class="btn btn-sm btn-outline" onclick="filterAlerts('critical')" id="af-critical" ${filterSev==='critical'?'style="background:rgba(255,94,58,.15);color:#A970FF"':''}>🔴 Critical alerts</button>
+      <button class="btn btn-sm btn-outline" onclick="filterAlerts('high')" id="af-high" ${filterSev==='high'?'style="background:rgba(169,112,255,.15);color:#C9A7FF"':''}>🟠 High alerts</button>
+      <button class="btn btn-sm btn-outline" onclick="filterAlerts('warning')" id="af-warning" ${filterSev==='warning'?'style="background:rgba(169,112,255,.15);color:#D5C0FF"':''}>🟡 Warning alerts</button>
     </div>
 
     <div id="alerts-list">
       ${pagination.total === 0
         ? '<div class="empty-state"><i class="fas fa-bell-slash"></i><p>Inbox is clear — no alerts or notifications.</p></div>'
         : pagination.items.map(it => `
-        <div class="card inbox-row" id="inbox-${it.kind}-${it.id}" style="padding:14px 16px;margin-bottom:10px;border-left:3px solid ${it.color};${!it.is_read?'background:rgba(255,122,69,.04)':''};cursor:${it.link?'pointer':'default'}" ${it.link?`onclick="onInboxClick('${it.kind}','${it.id}','${it.link}')"`:''}>
+        <div class="card inbox-row" id="inbox-${it.kind}-${it.id}" style="padding:14px 16px;margin-bottom:10px;border-left:3px solid ${it.color};${!it.is_read?'background:rgba(169,112,255,.04)':''};cursor:${it.link?'pointer':'default'}" ${it.link?`onclick="onInboxClick('${it.kind}','${it.id}','${it.link}')"`:''}>
           <div style="display:flex;align-items:flex-start;gap:12px">
             <div style="width:36px;height:36px;border-radius:8px;background:${it.color}22;border:1px solid ${it.color}55;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <i class="fas ${it.icon}" style="color:${it.color};font-size:14px"></i>
@@ -1742,7 +1742,7 @@ async function generateNewAlerts() {
 
 /* ── SETTINGS VIEW ─────────────────────────────────────── */
 async function renderSettingsView(el) {
-  el.innerHTML = `<div style="padding:40px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
   try {
     const [settings, techData, holidayData] = await Promise.all([
       API.get('/settings'),
@@ -1760,12 +1760,12 @@ async function renderSettingsView(el) {
 
     <!-- Settings tabs -->
     <div style="display:flex;gap:4px;background:#1F0F08;padding:4px;border-radius:10px;border:1px solid #2A1812;margin-bottom:20px;width:fit-content">
-      <button class="settings-tab" id="stab-company" onclick="switchSettingsTab2('company')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:#FF7A45;color:#fff">Company</button>
-      <button class="settings-tab" id="stab-holidays" onclick="switchSettingsTab2('holidays')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Holidays</button>
-      <button class="settings-tab" id="stab-tech" onclick="switchSettingsTab2('tech')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Tech Stacks</button>
-      <button class="settings-tab" id="stab-profile" onclick="switchSettingsTab2('profile')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">My Profile</button>
-      ${['admin','pm'].includes(_user.role) ? `<button class="settings-tab" id="stab-invites" onclick="switchSettingsTab2('invites')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Invites</button>` : ''}
-      ${_user.role === 'admin' ? `<button class="settings-tab" id="stab-roles" onclick="switchSettingsTab2('roles')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#94a3b8">Roles &amp; Permissions</button>` : ''}
+      <button class="settings-tab" id="stab-company" onclick="switchSettingsTab2('company')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:#A970FF;color:#fff">Company</button>
+      <button class="settings-tab" id="stab-holidays" onclick="switchSettingsTab2('holidays')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#7E7E8F">Holidays</button>
+      <button class="settings-tab" id="stab-tech" onclick="switchSettingsTab2('tech')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#7E7E8F">Tech Stacks</button>
+      <button class="settings-tab" id="stab-profile" onclick="switchSettingsTab2('profile')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#7E7E8F">My Profile</button>
+      ${['admin','pm'].includes(_user.role) ? `<button class="settings-tab" id="stab-invites" onclick="switchSettingsTab2('invites')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#7E7E8F">Invites</button>` : ''}
+      ${_user.role === 'admin' ? `<button class="settings-tab" id="stab-roles" onclick="switchSettingsTab2('roles')" style="padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#7E7E8F">Roles &amp; Permissions</button>` : ''}
     </div>
 
     <div id="settings-panel">
@@ -1785,9 +1785,9 @@ async function renderSettingsView(el) {
 }
 
 function switchSettingsTab2(tab) {
-  document.querySelectorAll('.settings-tab').forEach(btn => { btn.style.background='transparent'; btn.style.color='#94a3b8'; btn.style.fontWeight='500' })
+  document.querySelectorAll('.settings-tab').forEach(btn => { btn.style.background='transparent'; btn.style.color='#7E7E8F'; btn.style.fontWeight='500' })
   const active = document.getElementById('stab-' + tab)
-  if (active) { active.style.background='#FF7A45'; active.style.color='#fff'; active.style.fontWeight='600' }
+  if (active) { active.style.background='#A970FF'; active.style.color='#fff'; active.style.fontWeight='600' }
   const panel = document.getElementById('settings-panel')
   if (!panel) return
 
@@ -1835,7 +1835,7 @@ function switchSettingsTab2(tab) {
           <thead><tr><th>Holiday Name</th><th>Date</th><th>Type</th><th></th></tr></thead>
           <tbody id="holidays-tbody">${pagination.items.map(h => `<tr id="holiday-row-${h.id}">
             <td style="font-weight:500;color:#e2e8f0">${h.name}</td>
-            <td style="color:#94a3b8">${fmtDate(h.date)}</td>
+            <td style="color:#7E7E8F">${fmtDate(h.date)}</td>
             <td><span class="badge badge-${h.type==='national'?'done':'inprogress'}">${h.type||'national'}</span></td>
             <td><button class="btn btn-sm btn-outline" style="color:#FF5E3A;border-color:#FF5E3A" onclick="deleteHoliday2('${h.id}')"><i class="fas fa-trash"></i></button></td>
           </tr>`).join('')}</tbody>
@@ -1856,11 +1856,11 @@ function switchSettingsTab2(tab) {
       <div class="card-body" style="padding:16px">
         ${Object.entries(byCategory).map(([cat, items]) => `
           <div style="margin-bottom:16px">
-            <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${cat}</div>
+            <div style="font-size:11px;font-weight:600;color:#7E7E8F;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${cat}</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px">
-              ${items.map(t => `<span style="padding:5px 12px;border-radius:20px;background:#2A1812;color:#94a3b8;font-size:12px;display:inline-flex;align-items:center;gap:6px">
+              ${items.map(t => `<span style="padding:5px 12px;border-radius:20px;background:#2A1812;color:#7E7E8F;font-size:12px;display:inline-flex;align-items:center;gap:6px">
                 ${t.name}
-                <button onclick="deleteTech2('${t.id}')" style="background:none;border:none;color:#64748b;cursor:pointer;padding:0;font-size:10px;display:inline-flex;align-items:center" title="Remove">✕</button>
+                <button onclick="deleteTech2('${t.id}')" style="background:none;border:none;color:#7E7E8F;cursor:pointer;padding:0;font-size:10px;display:inline-flex;align-items:center" title="Remove">✕</button>
               </span>`).join('')}
             </div>
           </div>`).join('')}
@@ -1872,9 +1872,9 @@ function switchSettingsTab2(tab) {
       <div class="card" style="padding:24px">
         <h3 style="font-size:15px;font-weight:600;color:#e2e8f0;margin:0 0 20px">Profile Info</h3>
         <div style="text-align:center;margin-bottom:20px">
-          <div style="width:64px;height:64px;border-radius:50%;background:${_user.avatar_color||'#FF7A45'};display:inline-flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff;margin-bottom:10px">${initials(_user.name||_user.full_name||'U')}</div>
+          <div style="width:64px;height:64px;border-radius:50%;background:${_user.avatar_color||'#A970FF'};display:inline-flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff;margin-bottom:10px">${initials(_user.name||_user.full_name||'U')}</div>
           <div style="font-size:16px;font-weight:600;color:#e2e8f0">${_user.name||_user.full_name||'—'}</div>
-          <div style="font-size:12px;color:#64748b;margin-top:2px">${_user.email||'—'}</div>
+          <div style="font-size:12px;color:#7E7E8F;margin-top:2px">${_user.email||'—'}</div>
           <span class="badge badge-inprogress" style="margin-top:6px;text-transform:capitalize">${_user.role}</span>
         </div>
       </div>
@@ -1890,11 +1890,11 @@ function switchSettingsTab2(tab) {
       </div>
     </div>`
   } else if (tab === 'invites') {
-    panel.innerHTML = `<div id="invites-panel-container" style="padding:8px 0"><div style="padding:20px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading invites…</div></div>`
+    panel.innerHTML = `<div id="invites-panel-container" style="padding:8px 0"><div style="padding:20px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading invites…</div></div>`
     const cont = document.getElementById('invites-panel-container')
     if (cont && typeof renderInvitesPanel === 'function') renderInvitesPanel(cont)
   } else if (tab === 'roles') {
-    panel.innerHTML = `<div id="roles-panel-container"><div style="padding:20px;text-align:center;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading roles…</div></div>`
+    panel.innerHTML = `<div id="roles-panel-container"><div style="padding:20px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading roles…</div></div>`
     renderRolesPanel()
   }
 }
@@ -2084,10 +2084,10 @@ async function deleteCustomRole(roleId) {
 
 function profileRow2(icon, label, value) {
   return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #2A1812">
-    <div style="width:32px;height:32px;border-radius:8px;background:rgba(255,122,69,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      <i class="fas ${icon}" style="color:#FFB347;font-size:12px"></i>
+    <div style="width:32px;height:32px;border-radius:8px;background:rgba(169,112,255,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <i class="fas ${icon}" style="color:#C9A7FF;font-size:12px"></i>
     </div>
-    <div><div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">${label}</div><div style="font-size:13px;color:#e2e8f0;margin-top:2px">${value}</div></div>
+    <div><div style="font-size:10px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.04em">${label}</div><div style="font-size:13px;color:#e2e8f0;margin-top:2px">${value}</div></div>
   </div>`
 }
 
@@ -2261,17 +2261,17 @@ async function renderLeavesView(el) {
       </div>
 
       <div class="grid-4" style="margin-bottom:16px">
-        ${miniStatCard('Total Requests', leaves.length, '#FF7A45', 'fa-umbrella-beach')}
-        ${miniStatCard('Pending',  pendingCount,  '#FFCB47', 'fa-hourglass-half')}
+        ${miniStatCard('Total Requests', leaves.length, '#A970FF', 'fa-umbrella-beach')}
+        ${miniStatCard('Pending',  pendingCount,  '#C9A7FF', 'fa-hourglass-half')}
         ${miniStatCard('Approved', approvedCount, '#58C68A', 'fa-check-circle')}
         ${miniStatCard('Rejected', rejectedCount, '#FF5E3A', 'fa-times-circle')}
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-outline" onclick="filterLeaves('')"        ${!_leavesFilterStatus           ?'style="background:rgba(255,122,69,.15);color:#FFB347"':''}>All</button>
-        <button class="btn btn-sm btn-outline" onclick="filterLeaves('pending')" ${_leavesFilterStatus==='pending' ?'style="background:rgba(255,203,71,.15);color:#FFD986"':''}>Pending</button>
+        <button class="btn btn-sm btn-outline" onclick="filterLeaves('')"        ${!_leavesFilterStatus           ?'style="background:rgba(169,112,255,.15);color:#C9A7FF"':''}>All</button>
+        <button class="btn btn-sm btn-outline" onclick="filterLeaves('pending')" ${_leavesFilterStatus==='pending' ?'style="background:rgba(169,112,255,.15);color:#D5C0FF"':''}>Pending</button>
         <button class="btn btn-sm btn-outline" onclick="filterLeaves('approved')" ${_leavesFilterStatus==='approved'?'style="background:rgba(88,198,138,.15);color:#86E0A8"':''}>Approved</button>
-        <button class="btn btn-sm btn-outline" onclick="filterLeaves('rejected')" ${_leavesFilterStatus==='rejected'?'style="background:rgba(255,94,58,.15);color:#FF8866"':''}>Rejected</button>
+        <button class="btn btn-sm btn-outline" onclick="filterLeaves('rejected')" ${_leavesFilterStatus==='rejected'?'style="background:rgba(255,94,58,.15);color:#A970FF"':''}>Rejected</button>
       </div>
 
       <div class="card">
@@ -2315,12 +2315,12 @@ function renderLeaveRow(l, currentRole, isManager) {
   const employeeName = l.full_name || l.email || 'Unknown employee'
 
   return `<tr>
-    ${isManager ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(employeeName, l.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(employeeName)}</span></div></td>` : ''}
+    ${isManager ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(employeeName, l.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFFFFF">${escapeInbox(employeeName)}</span></div></td>` : ''}
     <td><span class="badge badge-blue">${LEAVE_TYPE_LABEL[l.leave_type] || l.leave_type}</span></td>
     <td style="font-size:12px;color:#9F8678">${fmtDate(l.start_date)}</td>
     <td style="font-size:12px;color:#9F8678">${fmtDate(l.end_date)}</td>
-    <td style="font-weight:700;color:#FFF1E6">${l.days_count}</td>
-    <td style="font-size:12px;color:#E8D2BD;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeInbox(l.reason || '')}">${escapeInbox(l.reason || '—')}</td>
+    <td style="font-weight:700;color:#FFFFFF">${l.days_count}</td>
+    <td style="font-size:12px;color:#E8D9FF;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeInbox(l.reason || '')}">${escapeInbox(l.reason || '—')}</td>
     <td>${statusBadge}</td>
     <td>
       <div style="display:flex;gap:4px;flex-wrap:wrap">
@@ -2355,28 +2355,28 @@ function openLeaveDetailModal(id) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(255,122,69,0.06);border:1px solid rgba(255,122,69,0.2)">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(169,112,255,0.06);border:1px solid rgba(169,112,255,0.2)">
         ${avatar(employeeName, l.avatar_color, 'md')}
         <div>
-          <div style="font-size:14px;font-weight:700;color:#FFF1E6">${escapeInbox(employeeName)}</div>
+          <div style="font-size:14px;font-weight:700;color:#FFFFFF">${escapeInbox(employeeName)}</div>
           <div style="font-size:12px;color:#9F8678">${escapeInbox(l.designation || l.email || '')}</div>
         </div>
         <div style="margin-left:auto">${statusBadge}</div>
       </div>
       <div class="grid-2" style="gap:10px">
-        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Type</div><div style="font-size:13px;color:#FFF1E6;font-weight:600">${LEAVE_TYPE_LABEL[l.leave_type] || l.leave_type}</div></div>
-        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Days</div><div style="font-size:13px;color:#FFF1E6;font-weight:600">${l.days_count}</div></div>
-        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">From</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(l.start_date)}</div></div>
-        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">To</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(l.end_date)}</div></div>
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Type</div><div style="font-size:13px;color:#FFFFFF;font-weight:600">${LEAVE_TYPE_LABEL[l.leave_type] || l.leave_type}</div></div>
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Days</div><div style="font-size:13px;color:#FFFFFF;font-weight:600">${l.days_count}</div></div>
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">From</div><div style="font-size:13px;color:#FFFFFF">${fmtDate(l.start_date)}</div></div>
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">To</div><div style="font-size:13px;color:#FFFFFF">${fmtDate(l.end_date)}</div></div>
       </div>
       <div>
         <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Reason from employee</div>
-        <div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);min-height:42px">${escapeInbox(l.reason || '— No reason given —')}</div>
+        <div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);min-height:42px">${escapeInbox(l.reason || '— No reason given —')}</div>
       </div>
       ${l.decision_reason ? `
         <div>
           <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Manager note${l.approved_by_name ? ' · ' + escapeInbox(l.approved_by_name) : ''}</div>
-          <div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,122,69,0.05);border:1px solid rgba(255,122,69,0.18)">${escapeInbox(l.decision_reason)}</div>
+          <div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(169,112,255,0.05);border:1px solid rgba(169,112,255,0.18)">${escapeInbox(l.decision_reason)}</div>
         </div>` : ''}
       ${isOwnLeave && isManager && l.status === 'pending' ? `
         <div class="empty-inline"><i class="fas fa-circle-info"></i><span>This is your own leave request — ask another manager to approve or reject it.</span></div>
@@ -2546,7 +2546,7 @@ function showRejectLeaveModal(id) {
   showModal(`
   <div class="modal-header"><h3><i class="fas fa-times-circle" style="color:#FF5E3A"></i> Reject Leave</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
   <div class="modal-body">
-    <div style="font-size:13px;color:#94a3b8;margin-bottom:12px">Optionally add a reason — the employee will see this in their notification.</div>
+    <div style="font-size:13px;color:#7E7E8F;margin-bottom:12px">Optionally add a reason — the employee will see this in their notification.</div>
     <div class="form-group"><label class="form-label">Rejection reason <span style="color:#9F8678;font-weight:400">(optional)</span></label><textarea id="rj-reason" class="form-textarea" rows="3" placeholder="Why is this leave being rejected?"></textarea></div>
   </div>
   <div class="modal-footer">
@@ -2639,7 +2639,7 @@ function renderAuctionCard(a) {
       <div class="card-body" style="display:flex;flex-direction:column;gap:10px;flex:1">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div>
-            <div style="font-size:15px;font-weight:700;color:#FFF1E6">${escapeInbox(a.name || '')}</div>
+            <div style="font-size:15px;font-weight:700;color:#FFFFFF">${escapeInbox(a.name || '')}</div>
             <div style="font-size:11px;color:#9F8678;font-family:monospace">${escapeInbox(a.code || '')}${a.client_name ? ' · ' + escapeInbox(a.client_name) : ''}</div>
           </div>
           <span class="badge ${a.status === 'awarded' ? 'badge-green' : (isClosed || a.status !== 'open') ? 'badge-red' : 'badge-blue'}">${a.status === 'awarded' ? 'Awarded' : isClosed ? 'Closed' : 'Open'}</span>
@@ -2647,33 +2647,33 @@ function renderAuctionCard(a) {
         ${a.scope ? `
           <div style="padding:10px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
             <div style="font-size:10px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px"><i class="fas fa-file-lines"></i> Scope</div>
-            <div style="font-size:12.5px;color:#E8D2BD;line-height:1.55;white-space:pre-wrap">${escapeInbox(a.scope.slice(0, 320))}${a.scope.length > 320 ? '…' : ''}</div>
+            <div style="font-size:12.5px;color:#E8D9FF;line-height:1.55;white-space:pre-wrap">${escapeInbox(a.scope.slice(0, 320))}${a.scope.length > 320 ? '…' : ''}</div>
           </div>` : ''}
         <div class="grid-2" style="gap:8px">
-          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Max bid</div><div style="font-size:13px;font-weight:700;color:#FFF1E6">₹${Number(a.max_bid_amount || 0).toLocaleString()}</div></div>
-          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Reveal</div><div style="font-size:13px;font-weight:700;color:#FFF1E6">${a.visibility_hours ? `${a.visibility_hours}h before close` : 'After close'}</div></div>
-          ${a.planned_start_date ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Start</div><div style="font-size:12px;color:#FFF1E6">${fmtDate(a.planned_start_date)}</div></div>` : ''}
-          ${a.planned_end_date ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">End</div><div style="font-size:12px;color:#FFF1E6">${fmtDate(a.planned_end_date)}</div></div>` : ''}
+          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Max bid</div><div style="font-size:13px;font-weight:700;color:#FFFFFF">₹${Number(a.max_bid_amount || 0).toLocaleString()}</div></div>
+          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Reveal</div><div style="font-size:13px;font-weight:700;color:#FFFFFF">${a.visibility_hours ? `${a.visibility_hours}h before close` : 'After close'}</div></div>
+          ${a.planned_start_date ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Start</div><div style="font-size:12px;color:#FFFFFF">${fmtDate(a.planned_start_date)}</div></div>` : ''}
+          ${a.planned_end_date ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">End</div><div style="font-size:12px;color:#FFFFFF">${fmtDate(a.planned_end_date)}</div></div>` : ''}
         </div>
         ${a.status === 'open' && !isClosed ? `
-          <div style="padding:10px;border-radius:10px;background:rgba(255,122,69,0.08);border:1px solid rgba(255,122,69,0.18)">
+          <div style="padding:10px;border-radius:10px;background:rgba(169,112,255,0.08);border:1px solid rgba(169,112,255,0.18)">
             <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Time remaining</div>
-            <div data-bid-countdown="${a.id}" data-deadline="${deadlineMs || ''}" style="font-size:18px;font-weight:700;color:#FFB347;font-variant-numeric:tabular-nums">${_formatCountdown(deadlineMs ? deadlineMs - Date.now() : null)}</div>
+            <div data-bid-countdown="${a.id}" data-deadline="${deadlineMs || ''}" style="font-size:18px;font-weight:700;color:#C9A7FF;font-variant-numeric:tabular-nums">${_formatCountdown(deadlineMs ? deadlineMs - Date.now() : null)}</div>
           </div>` : `
           <div style="padding:10px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">
             <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Bidding</div>
             <div style="font-size:15px;font-weight:700;color:#9F8678">${a.status === 'awarded' ? 'Awarded' : a.status === 'cancelled' ? 'Cancelled' : 'Closed'}</div>
           </div>`}
         <div class="grid-2" style="gap:8px">
-          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Bids</div><div style="font-size:14px;font-weight:700;color:#FFF1E6">${a.submission_count || 0}</div></div>
-          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Lowest</div><div style="font-size:14px;font-weight:700;color:#FFF1E6">${lowestText}</div></div>
+          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Bids</div><div style="font-size:14px;font-weight:700;color:#FFFFFF">${a.submission_count || 0}</div></div>
+          <div><div style="font-size:10px;color:#9F8678;text-transform:uppercase">Lowest</div><div style="font-size:14px;font-weight:700;color:#FFFFFF">${lowestText}</div></div>
         </div>
         ${!reveal && a.status === 'open' ? `<div style="font-size:11px;color:#9F8678"><i class="fas fa-eye-slash"></i> Other bids reveal ${a.visibility_hours ? a.visibility_hours + 'h before deadline' : 'after deadline'}</div>` : ''}
         ${myBid ? `<div style="font-size:11.5px;color:#86E0A8"><i class="fas fa-check-circle"></i> Your bid: ₹${Number(myBid.amount).toLocaleString()}${myBid.delivery_days ? ' · ' + myBid.delivery_days + ' days' : ''}</div>` : ''}
         ${winnerName ? `
           <div style="padding:10px;border-radius:10px;background:rgba(88,198,138,0.08);border:1px solid rgba(88,198,138,0.25)">
             <div style="font-size:10px;color:#86E0A8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px"><i class="fas fa-trophy"></i> Won by</div>
-            <div style="font-size:13px;color:#FFF1E6;font-weight:700">${escapeInbox(winnerName)}${winnerAmt ? ' · ₹' + Number(winnerAmt).toLocaleString() : ''}</div>
+            <div style="font-size:13px;color:#FFFFFF;font-weight:700">${escapeInbox(winnerName)}${winnerAmt ? ' · ₹' + Number(winnerAmt).toLocaleString() : ''}</div>
             ${a.resulting_project_id ? `<div style="font-size:11px;color:#9F8678;margin-top:3px"><i class="fas fa-folder-open"></i> Project auto-created</div>` : ''}
           </div>` : ''}
       </div>
@@ -2774,12 +2774,12 @@ async function openAuctionModal() {
         <div class="form-group" style="margin-bottom:0"><label class="form-label">Planned end date</label><input id="auc-end" class="form-input" type="date"/></div>
       </div>
       <div class="form-group" style="margin-bottom:0">
-        <label class="form-label"><i class="fas fa-file-lines" style="color:#FF7A45;margin-right:6px"></i>Project scope *</label>
+        <label class="form-label"><i class="fas fa-file-lines" style="color:#A970FF;margin-right:6px"></i>Project scope *</label>
         <textarea id="auc-scope" class="form-textarea" rows="4" placeholder="Describe the deliverables, tech, constraints — bidders read this before bidding."></textarea>
       </div>
       <div class="form-group" style="margin-bottom:0">
-        <label class="form-label"><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:6px"></i>Attachments (optional)</label>
-        <div style="border:1px dashed rgba(255,180,120,.32);border-radius:10px;padding:10px;background:rgba(0,0,0,.18)">
+        <label class="form-label"><i class="fas fa-paperclip" style="color:#A970FF;margin-right:6px"></i>Attachments (optional)</label>
+        <div style="border:1px dashed rgba(179,136,255,.32);border-radius:10px;padding:10px;background:rgba(0,0,0,.18)">
           <input id="auc-files-input" type="file" multiple style="display:none" onchange="aucAddFiles(this.files);this.value=''"/>
           <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('auc-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
           <span style="font-size:11px;color:var(--text-muted);margin-left:8px">Bidders + Documents will see these. 25 MB / file.</span>
@@ -2787,14 +2787,14 @@ async function openAuctionModal() {
         </div>
       </div>
       <div class="form-group" style="margin-bottom:0">
-        <label class="form-label"><i class="fas fa-users" style="color:#FF7A45;margin-right:6px"></i>Invite teams (role=team) *</label>
+        <label class="form-label"><i class="fas fa-users" style="color:#A970FF;margin-right:6px"></i>Invite teams (role=team) *</label>
         <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
           <div id="auc-team-list" style="max-height:220px;overflow-y:auto;padding:8px">
             ${teamUsers.length === 0 ? '<div style="color:var(--text-muted);font-size:12px;padding:8px;text-align:center">No team users available</div>' :
               teamUsers.map(u => `
                 <label data-team-row="${u.id}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;border:1px solid transparent">
-                  <input type="checkbox" data-team-cb="${u.id}" onchange="toggleAuctionInvite('${u.id}', this.checked)" style="accent-color:#FF7A45;width:15px;height:15px"/>
-                  <div style="width:28px;height:28px;border-radius:50%;background:${u.avatar_color || '#FF7A45'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${escapeInbox((u.full_name || '').split(' ').map(n => n[0]).join('').slice(0, 2))}</div>
+                  <input type="checkbox" data-team-cb="${u.id}" onchange="toggleAuctionInvite('${u.id}', this.checked)" style="accent-color:#A970FF;width:15px;height:15px"/>
+                  <div style="width:28px;height:28px;border-radius:50%;background:${u.avatar_color || '#A970FF'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${escapeInbox((u.full_name || '').split(' ').map(n => n[0]).join('').slice(0, 2))}</div>
                   <div style="flex:1">
                     <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${escapeInbox(u.full_name)}</div>
                     <div style="font-size:11px;color:var(--text-muted)">${escapeInbox(u.designation || u.email || 'team')}</div>
@@ -2831,11 +2831,11 @@ function aucRenderFilesList() {
     const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
     const tooBig = f.size > 25 * 1024 * 1024
     return `
-      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
-        <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
+        <i class="fas fa-file" style="color:#A970FF;font-size:14px"></i>
         <div style="flex:1;min-width:0">
           <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
-          <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#64748b'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
+          <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#7E7E8F'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
         </div>
         <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="aucRemoveFile(${i})"><i class="fas fa-times"></i></button>
       </div>`
@@ -3032,18 +3032,18 @@ async function openAuctionDetailModal(auctionId) {
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-        ${winnerName ? `<div style="padding:10px;border-radius:10px;background:rgba(88,198,138,0.1);border:1px solid rgba(88,198,138,0.3);font-size:13px;color:#FFF1E6"><i class="fas fa-trophy" style="color:#86E0A8"></i> <strong>${escapeInbox(winnerName)}</strong> won at ₹${Number(a.winner_amount || 0).toLocaleString()}${a.resulting_project_id ? ' — project auto-created' : ''}</div>` : ''}
-        ${a.scope ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Scope</div><div style="font-size:13px;color:#E8D2BD;line-height:1.55;white-space:pre-wrap">${escapeInbox(a.scope)}</div></div>` : ''}
+        ${winnerName ? `<div style="padding:10px;border-radius:10px;background:rgba(88,198,138,0.1);border:1px solid rgba(88,198,138,0.3);font-size:13px;color:#FFFFFF"><i class="fas fa-trophy" style="color:#86E0A8"></i> <strong>${escapeInbox(winnerName)}</strong> won at ₹${Number(a.winner_amount || 0).toLocaleString()}${a.resulting_project_id ? ' — project auto-created' : ''}</div>` : ''}
+        ${a.scope ? `<div><div style="font-size:10px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Scope</div><div style="font-size:13px;color:#E8D9FF;line-height:1.55;white-space:pre-wrap">${escapeInbox(a.scope)}</div></div>` : ''}
         ${(a.attachments && a.attachments.length) ? `
           <div>
             <div style="font-size:10px;color:#9F8678;text-transform:uppercase;margin-bottom:6px">Attachments (${a.attachments.length})</div>
             <div style="display:flex;flex-direction:column;gap:6px">
               ${a.attachments.map(f => `
-                <a href="${escapeInbox(f.file_url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;text-decoration:none">
-                  <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+                <a href="${escapeInbox(f.file_url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px;text-decoration:none">
+                  <i class="fas fa-file" style="color:#A970FF;font-size:14px"></i>
                   <div style="flex:1;min-width:0">
                     <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeInbox(f.file_name || 'file')}</div>
-                    <div style="font-size:10.5px;color:#64748b">${f.file_size ? (Number(f.file_size) / (1024 * 1024)).toFixed(2) + ' MB' : ''}${f.file_type ? ' • ' + escapeInbox(f.file_type) : ''}</div>
+                    <div style="font-size:10.5px;color:#7E7E8F">${f.file_size ? (Number(f.file_size) / (1024 * 1024)).toFixed(2) + ' MB' : ''}${f.file_type ? ' • ' + escapeInbox(f.file_type) : ''}</div>
                   </div>
                   <i class="fas fa-external-link-alt" style="color:#9F8678;font-size:11px"></i>
                 </a>`).join('')}
@@ -3065,10 +3065,10 @@ async function openAuctionDetailModal(auctionId) {
               <thead><tr><th>Bidder</th><th>Amount</th><th>Delivery</th><th>Note</th>${canAward ? '<th></th>' : ''}</tr></thead>
               <tbody>
                 ${subs.map((s, i) => `<tr ${(reveal && i === 0) ? 'style="background:rgba(88,198,138,0.08)"' : ''}>
-                  <td><div style="display:flex;align-items:center;gap:8px">${avatar(s.bidder_name || '—', s.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(s.bidder_name || '—')}</span>${(reveal && i === 0) ? '<span class="badge badge-green" style="font-size:10px">Lowest</span>' : ''}${s.status === 'awarded' ? '<span class="badge badge-green" style="font-size:10px">Won</span>' : ''}${s.status === 'lost' ? '<span class="badge" style="font-size:10px;background:rgba(255,255,255,0.06);color:#9F8678">Lost</span>' : ''}</div></td>
-                  <td style="font-weight:700;color:#FFF1E6">₹${Number(s.amount).toLocaleString()}</td>
+                  <td><div style="display:flex;align-items:center;gap:8px">${avatar(s.bidder_name || '—', s.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFFFFF">${escapeInbox(s.bidder_name || '—')}</span>${(reveal && i === 0) ? '<span class="badge badge-green" style="font-size:10px">Lowest</span>' : ''}${s.status === 'awarded' ? '<span class="badge badge-green" style="font-size:10px">Won</span>' : ''}${s.status === 'lost' ? '<span class="badge" style="font-size:10px;background:rgba(255,255,255,0.06);color:#9F8678">Lost</span>' : ''}</div></td>
+                  <td style="font-weight:700;color:#FFFFFF">₹${Number(s.amount).toLocaleString()}</td>
                   <td style="font-size:12px;color:#9F8678">${s.delivery_days ? s.delivery_days + ' days' : '—'}</td>
-                  <td style="font-size:12px;color:#E8D2BD;max-width:240px">${escapeInbox(s.note || '—')}</td>
+                  <td style="font-size:12px;color:#E8D9FF;max-width:240px">${escapeInbox(s.note || '—')}</td>
                   ${canAward && s.status === 'submitted' ? `<td><button class="btn btn-success btn-xs" onclick="awardBidAction('${auctionId}','${s.id}')"><i class="fas fa-trophy"></i> Award</button></td>` : (canAward ? '<td></td>' : '')}
                 </tr>`).join('')}
               </tbody>
@@ -3139,8 +3139,8 @@ async function renderTeamDashboard(el) {
       }) : `<div class="page-header"><div><h1 class="page-title">Welcome${_user?.name ? ', ' + escapeInbox(_user.name.split(' ')[0]) : ''}</h1></div></div>`}
 
       <div class="grid-4" style="margin-bottom:16px">
-        ${miniStatCard('Active Projects', activeProjects.length, '#FF7A45', 'fa-layer-group')}
-        ${miniStatCard('Open Auctions',   openAuctions.length,   '#FFCB47', 'fa-gavel')}
+        ${miniStatCard('Active Projects', activeProjects.length, '#A970FF', 'fa-layer-group')}
+        ${miniStatCard('Open Auctions',   openAuctions.length,   '#C9A7FF', 'fa-gavel')}
         ${miniStatCard('Wins',            myWins.length,         '#58C68A', 'fa-trophy')}
         ${miniStatCard('Awarded Value',   '₹' + Number(totalRevenue).toLocaleString(), '#C56FE6', 'fa-rupee-sign')}
       </div>
@@ -3160,7 +3160,7 @@ async function renderTeamDashboard(el) {
                     ${myProjects.map((p) => `
                       <tr>
                         <td>
-                          <div style="font-weight:600;color:#FFF1E6">${escapeInbox(p.name || '')}</div>
+                          <div style="font-weight:600;color:#FFFFFF">${escapeInbox(p.name || '')}</div>
                           <div style="font-size:11px;color:#9F8678;font-family:monospace">${escapeInbox(p.code || '')}</div>
                         </td>
                         <td>${typeof statusBadge === 'function' ? statusBadge(p.status) : `<span class="badge">${escapeInbox(p.status || '')}</span>`}</td>
@@ -3188,12 +3188,12 @@ async function renderTeamDashboard(el) {
                     <div style="padding:12px;border-radius:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
                       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
                         <div style="min-width:0">
-                          <div style="font-size:13.5px;font-weight:700;color:#FFF1E6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeInbox(a.name || '')}</div>
+                          <div style="font-size:13.5px;font-weight:700;color:#FFFFFF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeInbox(a.name || '')}</div>
                           <div style="font-size:11px;color:#9F8678">Max ₹${Number(a.max_bid_amount || 0).toLocaleString()}</div>
                         </div>
                         <span class="badge badge-blue" style="font-size:10px">Open</span>
                       </div>
-                      <div style="margin-top:8px;font-size:13px;font-weight:700;color:#FFB347;font-variant-numeric:tabular-nums" data-bid-countdown="${a.id}" data-deadline="${dl || ''}">${_formatCountdown(dl ? dl - Date.now() : null)}</div>
+                      <div style="margin-top:8px;font-size:13px;font-weight:700;color:#C9A7FF;font-variant-numeric:tabular-nums" data-bid-countdown="${a.id}" data-deadline="${dl || ''}">${_formatCountdown(dl ? dl - Date.now() : null)}</div>
                       ${myBid ? `<div style="font-size:11px;color:#86E0A8;margin-top:4px"><i class="fas fa-check-circle"></i> Your bid: ₹${Number(myBid.amount).toLocaleString()}</div>` : ''}
                       <div style="margin-top:8px;display:flex;gap:6px">
                         <button class="btn btn-primary btn-xs" onclick="openPlaceBidModal('${a.id}')" style="flex:1"><i class="fas fa-gavel"></i> ${myBid ? 'Update' : 'Place'} bid</button>
@@ -3216,10 +3216,10 @@ async function renderTeamDashboard(el) {
                 ${myWins.map((a) => `
                   <tr>
                     <td>
-                      <div style="font-weight:600;color:#FFF1E6">${escapeInbox(a.name || '')}</div>
+                      <div style="font-weight:600;color:#FFFFFF">${escapeInbox(a.name || '')}</div>
                       <div style="font-size:11px;color:#9F8678;font-family:monospace">${escapeInbox(a.code || '')}</div>
                     </td>
-                    <td style="font-weight:700;color:#FFF1E6">₹${Number(a.awarded_amount || 0).toLocaleString()}</td>
+                    <td style="font-weight:700;color:#FFFFFF">₹${Number(a.awarded_amount || 0).toLocaleString()}</td>
                     <td style="font-size:12px;color:#9F8678">${a.awarded_at ? fmtDate(a.awarded_at) : '—'}</td>
                     <td style="font-size:12px;color:#9F8678">${a.resulting_project_id ? '<i class="fas fa-folder-open" style="color:#86E0A8"></i> Created' : '—'}</td>
                   </tr>`).join('')}

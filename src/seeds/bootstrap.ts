@@ -71,7 +71,7 @@ async function ensureAdminUser(
     hourly_cost: 0,
     monthly_available_hours: 160,
     reporting_pm_id: null,
-    avatar_color: '#6366f1',
+    avatar_color: '#9D6CFF',
     remarks: 'Seeded admin account',
     is_active: 1,
     created_at: now,

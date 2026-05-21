@@ -112,7 +112,7 @@ app.get('*', (c) => {
   <!-- Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css"/>
   <!-- App CSS -->
-  <link rel="stylesheet" href="/static/styles.css?v=lavender3"/>
+  <link rel="stylesheet" href="/static/styles.css?v=theme3"/>
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
@@ -120,26 +120,26 @@ app.get('*', (c) => {
 </head>
 <body>
   <div id="app"></div>
-  <script src="/static/app.js?v=fixes21"></script>
-  <script src="/static/pages.js?v=incent9"></script>
-  <script src="/static/pages2.js?v=lavender1"></script>
-  <script src="/static/enterprise.js?v=lavender2"></script>
-  <script src="/static/enterprise2.js?v=lavender2"></script>
-  <script src="/static/client-portal.js?v=fixes13"></script>
-  <script src="/static/project-extensions.js?v=incent7"></script>
-  <script src="/static/support.js?v=fixes19"></script>
-  <script src="/static/leads.js?v=fixes10"></script>
+  <script src="/static/app.js?v=theme3"></script>
+  <script src="/static/pages.js?v=theme3"></script>
+  <script src="/static/pages2.js?v=theme3"></script>
+  <script src="/static/enterprise.js?v=theme3"></script>
+  <script src="/static/enterprise2.js?v=theme3"></script>
+  <script src="/static/client-portal.js?v=theme3"></script>
+  <script src="/static/project-extensions.js?v=theme3"></script>
+  <script src="/static/support.js?v=theme3"></script>
+  <script src="/static/leads.js?v=theme3"></script>
   <!-- HR module: _shared.js must load first so each per-component file can use its helpers -->
-  <script src="/static/hr/_shared.js?v=hr8"></script>
-  <script src="/static/hr/hr-attendance.js?v=hr5"></script>
-  <script src="/static/hr/hr-calendar.js?v=fixes13"></script>
-  <script src="/static/hr/hr-warnings.js?v=hr4"></script>
-  <script src="/static/hr/hr-pips.js?v=hr2"></script>
-  <script src="/static/hr/hr-salary-slips.js?v=hr2"></script>
-  <script src="/static/hr/hr-terminations.js?v=hr2"></script>
-  <script src="/static/hr/hr-documents.js?v=hr3"></script>
-  <script src="/static/hr/hr-assets.js?v=hr3"></script>
-  <script src="/static/personal-tasks.js?v=fixes20"></script>
+  <script src="/static/hr/_shared.js?v=theme3"></script>
+  <script src="/static/hr/hr-attendance.js?v=theme3"></script>
+  <script src="/static/hr/hr-calendar.js?v=theme3"></script>
+  <script src="/static/hr/hr-warnings.js?v=theme3"></script>
+  <script src="/static/hr/hr-pips.js?v=theme3"></script>
+  <script src="/static/hr/hr-salary-slips.js?v=theme3"></script>
+  <script src="/static/hr/hr-terminations.js?v=theme3"></script>
+  <script src="/static/hr/hr-documents.js?v=theme3"></script>
+  <script src="/static/hr/hr-assets.js?v=theme3"></script>
+  <script src="/static/personal-tasks.js?v=theme3"></script>
 </body>
 </html>`)
 })

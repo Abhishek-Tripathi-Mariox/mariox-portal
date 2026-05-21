@@ -20,7 +20,7 @@ async function createTeam(c: any, projectId: string | null, body: any) {
     body.name.trim(),
     body.description || null,
     body.team_lead_id || null,
-    body.color || '#6366f1',
+    body.color || '#9D6CFF',
     ...(projectId ? [projectId] : []),
     user.sub,
   ]
@@ -141,7 +141,7 @@ projectTeams.put('/:teamId', requireRole('admin', 'pm'), async (c) => {
       WHERE id=?
     `).bind(
       body.name, body.description || null, body.team_lead_id || null,
-      body.color || '#6366f1', teamId
+      body.color || '#9D6CFF', teamId
     ).run()
     return c.json({ message: 'Team updated' })
   } catch (e: any) {

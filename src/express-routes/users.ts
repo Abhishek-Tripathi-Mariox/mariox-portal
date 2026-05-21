@@ -167,14 +167,14 @@ function buildStaffWelcomeEmail(opts: {
           <p style="margin:0 0 12px;font-size:14px">Hi <strong>${escapeEmailHtml(fullName)}</strong>,</p>
           <p style="margin:0 0 16px;font-size:14px;line-height:1.55">An account has been created for you. Use the credentials below to sign in:</p>
           <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;margin:8px 0 16px">
-            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280;border-bottom:1px solid #e5e7eb;width:120px">Login URL</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><a href="${escapeEmailHtml(loginUrl)}" style="color:#FF7A45">${escapeEmailHtml(loginUrl)}</a></td></tr>
-            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280;border-bottom:1px solid #e5e7eb">Email</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><strong>${escapeEmailHtml(email)}</strong></td></tr>
-            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280;border-bottom:1px solid #e5e7eb">Password</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">${escapeEmailHtml(password)}</code></td></tr>
-            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280">Role</td><td style="padding:10px 14px;font-size:13px">${escapeEmailHtml(role)}</td></tr>
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#7E7E8F;border-bottom:1px solid #e5e7eb;width:120px">Login URL</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><a href="${escapeEmailHtml(loginUrl)}" style="color:#A970FF">${escapeEmailHtml(loginUrl)}</a></td></tr>
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#7E7E8F;border-bottom:1px solid #e5e7eb">Email</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><strong>${escapeEmailHtml(email)}</strong></td></tr>
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#7E7E8F;border-bottom:1px solid #e5e7eb">Password</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">${escapeEmailHtml(password)}</code></td></tr>
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#7E7E8F">Role</td><td style="padding:10px 14px;font-size:13px">${escapeEmailHtml(role)}</td></tr>
           </table>
-          <p style="margin:0;font-size:12px;color:#6b7280">For security, please change your password after the first login.</p>
+          <p style="margin:0;font-size:12px;color:#7E7E8F">For security, please change your password after the first login.</p>
         </div>
-        <div style="padding:14px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280">— Mariox Software Pvt Ltd</div>
+        <div style="padding:14px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#7E7E8F">— Mariox Software Pvt Ltd</div>
       </div>
     </div>`
 
@@ -356,7 +356,7 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
         : 0
       const avatarColor = body.avatar_color
         ? validateHexColor(body.avatar_color, 'Avatar color')
-        : '#6366f1'
+        : '#9D6CFF'
       const shift = parseShift(body)
 
       const existing = await models.users.findByEmail(email)
@@ -649,8 +649,8 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
   router.get('/import/template.csv', (_req, res) => {
     const sample = [
       'full_name,email,role,designation,phone,daily_work_hours,monthly_available_hours,hourly_cost,joining_date,avatar_color,password',
-      'Rahul Sharma,rahul@example.com,developer,Senior Developer,+91-9876543210,8,160,800,2024-01-15,#FF7A45,Welcome@123',
-      'Priya Verma,priya@example.com,pm,Project Manager,+91-9876500001,8,160,1200,2023-06-01,#FFB347,Welcome@123',
+      'Rahul Sharma,rahul@example.com,developer,Senior Developer,+91-9876543210,8,160,800,2024-01-15,#A970FF,Welcome@123',
+      'Priya Verma,priya@example.com,pm,Project Manager,+91-9876500001,8,160,1200,2023-06-01,#C9A7FF,Welcome@123',
       'Aman Singh,aman@example.com,team,External Developer,+91-9876500002,8,160,600,,#C56FE6,Welcome@123',
     ].join('\n')
     res.setHeader('Content-Type', 'text/csv')
@@ -723,7 +723,7 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
             reporting_pm_id: null,
             avatar_color: record.avatar_color && /^#[0-9a-fA-F]{6}$/.test(record.avatar_color)
               ? record.avatar_color
-              : '#FF7A45',
+              : '#A970FF',
             remarks: null,
           })
           created.push({ id: user.id, email, full_name: fullName, role })

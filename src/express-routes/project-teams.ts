@@ -125,7 +125,7 @@ export function createProjectTeamsRouter(models: MongoModels, jwtSecret: string)
       const name = validateLength(String(body.name || '').trim(), 2, 80, 'Team name')
       const alias = validateLength(String(body.alias || '').trim(), 1, 40, 'Alias')
       const description = validateOptional(body.description, (v) => validateLength(String(v).trim(), 0, 2000, 'Description'))
-      const color = body.color ? validateHexColor(body.color, 'Color') : '#6366f1'
+      const color = body.color ? validateHexColor(body.color, 'Color') : '#9D6CFF'
       await models.projectTeams.updateById(teamId, {
         $set: {
           name,
@@ -219,7 +219,7 @@ async function createTeam(models: MongoModels, user: any, projectId: string | nu
     alias: String(body.alias || '').trim(),
     description: body.description || null,
     team_lead_id: body.team_lead_id || null,
-    color: body.color || '#6366f1',
+    color: body.color || '#9D6CFF',
     position,
     created_by: user?.sub || null,
     created_at: now,

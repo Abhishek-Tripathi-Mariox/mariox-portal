@@ -37,7 +37,7 @@ const utils = {
     return `<span class="badge ${map[status]||'badge-todo'}">${(status||'unknown').replace('_',' ')}</span>`
   },
   progressBar: (pct, color='green') => {
-    const colors = { green:'#58C68A', yellow:'#FFCB47', red:'#FF5E3A', blue:'#FF7A45' }
+    const colors = { green:'#58C68A', yellow:'#C9A7FF', red:'#FF5E3A', blue:'#A970FF' }
     const bg = colors[color] || color
     const w = Math.max(0, Math.min(100, Number(pct||0)))
     return `<div class="progress-bar"><div class="progress-fill" style="width:${w}%;background:${bg}"></div></div>`
@@ -84,6 +84,7 @@ const PAGE_PERMISSIONS = {
   'clients-list':    ['admin'],
   'billing-admin':   ['admin'],
   'team-overview':   ['admin', 'pm'],
+  'external-team':   ['admin', 'pm'],
   // Sales CRM pages — defaulted to admin + sales family. PM/PC don't get
   // these by default any more; admin can still grant them via the granular
   // permission keys (leads.*, portfolios.*, scopes.*, quotations.*,
@@ -157,6 +158,7 @@ const NAV_PERMISSION_MAP = {
   'clients-list':      ['clients.create', 'clients.view_all', 'clients.edit', 'clients.delete'],
   'billing-admin':     ['invoices.create', 'invoices.view_all', 'invoices.send', 'invoices.mark_paid', 'invoices.delete'],
   'team-overview':     ['users.view_all'],
+  'external-team':     ['users.view_all'],
   // Team directories — gate on user-list visibility
   'sales-team':        ['users.view_all'],
   'project-team':      ['users.view_all'],
@@ -243,6 +245,7 @@ const SIDEBAR_PAGE_GROUPS = {
   'clients-list': 'admin',
   'billing-admin': 'admin',
   'team-overview': 'admin',
+  'external-team': 'admin',
   'leads-view': 'sales',
   'lead-followups': 'sales',
   'lead-tasks': 'sales',
@@ -398,7 +401,7 @@ function renderPager(pagination, prevFn, nextFn, label = 'items', pageKey = '') 
   const currentLimit = Number(pagination.limit || PAGE_SIZE_OPTIONS[0])
   const pageSizeControl = pageKey ? `
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:12px;color:#64748b;white-space:nowrap">Rows per page</span>
+        <span style="font-size:12px;color:#7E7E8F;white-space:nowrap">Rows per page</span>
         <select class="form-select" style="width:96px;padding:8px 28px 8px 10px" onchange="setEnterprisePageSize('${pageKey}', this.value)">
           ${PAGE_SIZE_OPTIONS.map(size => `<option value="${size}" ${currentLimit===size?'selected':''}>${size}</option>`).join('')}
         </select>
@@ -406,14 +409,14 @@ function renderPager(pagination, prevFn, nextFn, label = 'items', pageKey = '') 
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-top:1px solid var(--border);flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <div style="font-size:12px;color:#94a3b8">
+        <div style="font-size:12px;color:#7E7E8F">
           ${pagination.total ? `Showing ${pagination.start}-${pagination.end} of ${pagination.total} ${label}` : `No ${label} found`}
         </div>
         ${pageSizeControl}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="btn btn-sm btn-outline" ${pagination.page <= 1 ? 'disabled' : ''} onclick="${prevFn}(${pagination.page - 1})">Previous</button>
-        <span style="font-size:12px;color:#64748b">Page ${pagination.page} of ${pagination.totalPages || 1}</span>
+        <span style="font-size:12px;color:#7E7E8F">Page ${pagination.page} of ${pagination.totalPages || 1}</span>
         <button class="btn btn-sm btn-outline" ${!pagination.hasMore ? 'disabled' : ''} onclick="${nextFn}(${pagination.page + 1})">Next</button>
       </div>
     </div>`
@@ -473,7 +476,7 @@ function toast(msg, type='info', dur=3500) {
   const icons = { success:'fa-check-circle', error:'fa-exclamation-circle', info:'fa-info-circle' }
   const t = document.createElement('div')
   t.className = `toast ${type}`
-  t.innerHTML = `<i class="fas ${icons[type]||'fa-info-circle'}" style="color:${type==='success'?'#58C68A':type==='error'?'#FF5E3A':'#FF7A45'}"></i><span>${msg}</span>`
+  t.innerHTML = `<i class="fas ${icons[type]||'fa-info-circle'}" style="color:${type==='success'?'#58C68A':type==='error'?'#FF5E3A':'#A970FF'}"></i><span>${msg}</span>`
   ct.appendChild(t)
   setTimeout(() => t.remove(), dur)
 }
@@ -483,6 +486,7 @@ function saveAuth(token, user) {
   _token = token; _user = user
   localStorage.setItem('devportal_token', token)
   localStorage.setItem('devportal_user', JSON.stringify(user))
+  applyTheme(user?.theme)
 }
 function clearAuth() {
   _token = null; _user = null
@@ -492,9 +496,44 @@ function clearAuth() {
 function loadAuth() {
   const t = localStorage.getItem('devportal_token')
   const u = localStorage.getItem('devportal_user')
-  if (t && u) { _token = t; _user = JSON.parse(u); return true }
+  if (t && u) { _token = t; _user = JSON.parse(u); applyTheme(_user?.theme); return true }
   return false
 }
+
+// Theme: light | dark. Default = dark (AMOLED lavender). Stored on the user
+// record server-side so it follows them across devices; localStorage is just
+// a cache so the page paints with the right theme before /verify resolves.
+function applyTheme(theme) {
+  const t = String(theme || '').toLowerCase() === 'light' ? 'light' : 'dark'
+  document.body.classList.toggle('theme-light', t === 'light')
+  document.body.classList.toggle('theme-dark', t === 'dark')
+  try { localStorage.setItem('devportal_theme', t) } catch {}
+}
+
+// Read theme from localStorage *before* user data is available, so the login
+// page and the first paint don't flash the wrong theme on reload.
+function applyCachedTheme() {
+  try { applyTheme(localStorage.getItem('devportal_theme')) } catch { applyTheme('dark') }
+}
+
+async function setTheme(theme) {
+  const next = String(theme || '').toLowerCase() === 'light' ? 'light' : 'dark'
+  applyTheme(next)
+  if (_user) {
+    _user = { ..._user, theme: next }
+    localStorage.setItem('devportal_user', JSON.stringify(_user))
+  }
+  if (!_token) return
+  try {
+    await API.patch('/auth/theme', { theme: next })
+  } catch (e) {
+    // Surface the failure but keep the local change so the UI doesn't
+    // jump back — they can retry from the profile modal.
+    toast('Theme saved locally, server update failed: ' + (e?.message || ''), 'warning')
+  }
+}
+window.setTheme = setTheme
+window.applyTheme = applyTheme
 
 // Re-fetch the current user from the server so role/designation changes the
 // admin makes elsewhere take effect on the next page load — without forcing
@@ -516,6 +555,7 @@ async function refreshAuthFromServer() {
     if (data?.valid && data?.user) {
       _user = { ..._user, ...data.user, role: String(data.user.role || '').toLowerCase() }
       localStorage.setItem('devportal_user', JSON.stringify(_user))
+      applyTheme(_user.theme)
       // Catch the case where a session is already open when admin resets the
       // password — verify will return must_change_password=1 even though we
       // didn't just log in.
@@ -590,7 +630,7 @@ window.addEventListener('hashchange', () => {
 
 // ── Colour helpers ───────────────────────────────────────────
 function initials(name='') { return name.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase() }
-function avatar(name, color='#FF7A45', size='') {
+function avatar(name, color='#A970FF', size='') {
   return `<div class="avatar ${size}" style="background:${color}">${initials(name)}</div>`
 }
 
@@ -619,14 +659,14 @@ function timeAgo(d) {
   if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago'
   return Math.floor(diff/86400000) + 'd ago'
 }
-function pctColor(p) { return p >= 90 ? '#FF5E3A' : p >= 70 ? '#FFCB47' : '#58C68A' }
+function pctColor(p) { return p >= 90 ? '#FF5E3A' : p >= 70 ? '#C9A7FF' : '#58C68A' }
 function docCategoryIcon(cat) {
   const ic = { sow:'📋', brd:'📌', frd:'📐', uiux:'🎨', wireframes:'🖼️', meeting_notes:'📝', technical:'⚙️', test_report:'🧪', release:'🚀', billing:'💰', contract:'📜', other:'📄' }
   return ic[cat] || '📄'
 }
 function docCategoryColor(cat) {
-  const c = { sow:'#FF7A45', brd:'#F4C842', frd:'#FF7A45', uiux:'#FF5E3A', wireframes:'#FFCB47', meeting_notes:'#58C68A', technical:'#64748b', test_report:'#FF7A45', release:'#FFB347', billing:'#58C68A', contract:'#FFA577', other:'#475569' }
-  return c[cat] || '#475569'
+  const c = { sow:'#A970FF', brd:'#C9A7FF', frd:'#A970FF', uiux:'#FF5E3A', wireframes:'#C9A7FF', meeting_notes:'#58C68A', technical:'#7E7E8F', test_report:'#A970FF', release:'#C9A7FF', billing:'#58C68A', contract:'#B388FF', other:'#5A5A66' }
+  return c[cat] || '#5A5A66'
 }
 
 // ── Main render entry ────────────────────────────────────────
@@ -737,6 +777,7 @@ function buildShell() {
       navItem('clients-list',    'fa-building',   'Clients'),
       navItem('billing-admin',   'fa-file-invoice-dollar', 'Billing'),
       navItem('team-overview',   'fa-users',      'Team'),
+      navItem('external-team',   'fa-user-tag',   'External Team'),
     ],
   })
 
@@ -871,12 +912,12 @@ function buildShell() {
     ${navAdmin}${navPm}${navDev}${navTeam}${navSales}${navHR}${navReports}${navSettings}
     <div class="sidebar-footer">
       <div class="user-card" onclick="showProfileModal()">
-        ${avatar(_user.name||_user.full_name, _user.avatar_color||'#FF7A45')}
+        ${avatar(_user.name||_user.full_name, _user.avatar_color||'#A970FF')}
         <div style="min-width:0">
           <div style="font-size:13px;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_user.name||_user.full_name}</div>
-          <div style="font-size:11px;color:#94a3b8;text-transform:capitalize">${_user.role}</div>
+          <div style="font-size:11px;color:#7E7E8F;text-transform:capitalize">${_user.role}</div>
         </div>
-        <i class="fas fa-ellipsis" style="color:#64748b;margin-left:auto;font-size:12px"></i>
+        <i class="fas fa-ellipsis" style="color:#7E7E8F;margin-left:auto;font-size:12px"></i>
       </div>
     </div>
   </div>
@@ -923,6 +964,7 @@ function buildShell() {
     <div id="page-clients-list"     class="page"></div>
     <div id="page-billing-admin"    class="page"></div>
     <div id="page-team-overview"    class="page"></div>
+    <div id="page-external-team"    class="page"></div>
     <div id="page-leads-view"       class="page"></div>
     <div id="page-lead-detail"      class="page"></div>
     <div id="page-lead-followups"   class="page"></div>
@@ -980,7 +1022,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','hr-team':'HR Team','personal-tasks':'My Task','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','external-team':'External Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','hr-team':'HR Team','personal-tasks':'My Task','settings-view':'Settings'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -1392,13 +1434,13 @@ function renderLogin() {
             <label class="form-label">Password</label>
             <div style="position:relative">
               <input id="login-pass" type="password" class="form-input" placeholder="••••••••" autocomplete="current-password"/>
-              <button type="button" onclick="togglePass('login-pass',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
+              <button type="button" onclick="togglePass('login-pass',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#7E7E8F;cursor:pointer"><i class="fas fa-eye"></i></button>
             </div>
           </div>
           <button type="submit" class="btn btn-primary w-full" style="margin-top:4px"><i class="fas fa-sign-in-alt"></i>Sign In</button>
         </form>
         <div style="margin-top:14px;text-align:center">
-          <a href="javascript:void(0)" onclick="openForgotPasswordModal()" style="font-size:12.5px;color:#FFB347;text-decoration:none">Forgot password?</a>
+          <a href="javascript:void(0)" onclick="openForgotPasswordModal()" style="font-size:12.5px;color:#C9A7FF;text-decoration:none">Forgot password?</a>
         </div>
       </div>
     </div>
@@ -1477,10 +1519,10 @@ async function doLogin() {
 function showForcePasswordChangeModal(currentPasswordHint) {
   showModal(`
     <div class="modal-header">
-      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-key" style="color:#FFCB47"></i> Set a new password</h3>
+      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-key" style="color:#C9A7FF"></i> Set a new password</h3>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
-      <div style="padding:10px 12px;border-radius:10px;background:rgba(255,203,71,.10);border:1px solid rgba(255,203,71,.35);font-size:12.5px;color:#FFD9A0;line-height:1.5">
+      <div style="padding:10px 12px;border-radius:10px;background:rgba(169,112,255,.10);border:1px solid rgba(169,112,255,.35);font-size:12.5px;color:#C9A7FF;line-height:1.5">
         <i class="fas fa-circle-info"></i> This is your first login (or your admin reset your password). Please choose a new password before you continue.
       </div>
       <div class="form-group">
@@ -1653,21 +1695,53 @@ function closeDrawer() {
 
 // ── Profile Modal ─────────────────────────────────────────────
 function showProfileModal() {
+  const currentTheme = String(_user?.theme || 'dark').toLowerCase() === 'light' ? 'light' : 'dark'
   showModal(`
     <div class="modal-header"><h3>My Profile</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body" style="text-align:center">
-      ${avatar(_user.name||_user.full_name, _user.avatar_color||'#FF7A45','xl')}
+      ${avatar(_user.name||_user.full_name, _user.avatar_color||'#A970FF','xl')}
       <div style="margin-top:14px">
-        <div style="font-size:18px;font-weight:700;color:#fff">${_user.name||_user.full_name}</div>
-        <div style="font-size:13px;color:#94a3b8;text-transform:capitalize;margin-top:2px">${_user.role} • ${_user.designation||'DevPortal'}</div>
-        <div style="font-size:13px;color:#64748b;margin-top:4px">${_user.email}</div>
+        <div style="font-size:18px;font-weight:700;color:var(--text-primary,#fff)">${_user.name||_user.full_name}</div>
+        <div style="font-size:13px;color:var(--text-muted,#7E7E8F);text-transform:capitalize;margin-top:2px">${_user.role} • ${_user.designation||'DevPortal'}</div>
+        <div style="font-size:13px;color:var(--text-muted,#7E7E8F);margin-top:4px">${_user.email}</div>
       </div>
+
+      <div style="margin-top:22px;padding:14px 16px;border:1px solid var(--border,rgba(179,136,255,0.12));border-radius:14px;text-align:left">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text-primary,#fff)"><i class="fas fa-palette" style="color:#A970FF;margin-right:6px"></i>Theme</div>
+            <div style="font-size:12px;color:var(--text-muted,#7E7E8F);margin-top:2px">Choose how the app looks — saved to your profile.</div>
+          </div>
+          <div id="theme-toggle-group" style="display:flex;gap:6px">
+            <button id="theme-btn-dark" class="btn btn-sm ${currentTheme === 'dark' ? 'btn-primary' : 'btn-outline'}" onclick="onProfileSetTheme('dark')"><i class="fas fa-moon"></i> Dark</button>
+            <button id="theme-btn-light" class="btn btn-sm ${currentTheme === 'light' ? 'btn-primary' : 'btn-outline'}" onclick="onProfileSetTheme('light')"><i class="fas fa-sun"></i> Light</button>
+          </div>
+        </div>
+      </div>
+
       <div style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="openChangePasswordModal()"><i class="fas fa-key"></i> Change Password</button>
         <button class="btn btn-danger" onclick="logout();closeModal()"><i class="fas fa-sign-out-alt"></i> Logout</button>
       </div>
     </div>`)
 }
+
+async function onProfileSetTheme(theme) {
+  const next = theme === 'light' ? 'light' : 'dark'
+  await setTheme(next)
+  // Re-sync the toggle UI inside the modal so the highlighted button matches
+  // the new state without forcing the user to reopen the modal.
+  const darkBtn = document.getElementById('theme-btn-dark')
+  const lightBtn = document.getElementById('theme-btn-light')
+  if (darkBtn && lightBtn) {
+    darkBtn.className = 'btn btn-sm ' + (next === 'dark' ? 'btn-primary' : 'btn-outline')
+    lightBtn.className = 'btn btn-sm ' + (next === 'light' ? 'btn-primary' : 'btn-outline')
+    darkBtn.innerHTML = '<i class="fas fa-moon"></i> Dark'
+    lightBtn.innerHTML = '<i class="fas fa-sun"></i> Light'
+  }
+  toast(`Switched to ${next} theme`, 'success')
+}
+window.onProfileSetTheme = onProfileSetTheme
 
 function openChangePasswordModal() {
   showModal(`
@@ -1680,7 +1754,7 @@ function openChangePasswordModal() {
         <label class="form-label">Current Password *</label>
         <div style="position:relative">
           <input id="cp-current" type="password" class="form-input" autocomplete="current-password" placeholder="••••••••" oninput="clearChangePasswordError('cp-current')"/>
-          <button type="button" onclick="togglePass('cp-current',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
+          <button type="button" onclick="togglePass('cp-current',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#7E7E8F;cursor:pointer"><i class="fas fa-eye"></i></button>
         </div>
         <div id="cp-current-err" style="display:none;color:#FF5E3A;font-size:12px;margin-top:6px"></div>
       </div>
@@ -1688,7 +1762,7 @@ function openChangePasswordModal() {
         <label class="form-label">New Password *</label>
         <div style="position:relative">
           <input id="cp-new" type="password" class="form-input" autocomplete="new-password" placeholder="At least 8 characters" oninput="clearChangePasswordError('cp-new')"/>
-          <button type="button" onclick="togglePass('cp-new',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
+          <button type="button" onclick="togglePass('cp-new',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#7E7E8F;cursor:pointer"><i class="fas fa-eye"></i></button>
         </div>
         <div id="cp-new-err" style="display:none;color:#FF5E3A;font-size:12px;margin-top:6px"></div>
       </div>
@@ -1753,22 +1827,22 @@ async function submitChangePassword() {
 // ── Notifications panel ───────────────────────────────────────
 function _notifIcon(type) {
   const map = {
-    ticket_created:        { icon: 'fa-ticket', color: '#FF7A45' },
+    ticket_created:        { icon: 'fa-ticket', color: '#A970FF' },
     ticket_assigned:       { icon: 'fa-user-check', color: '#C56FE6' },
-    ticket_status:         { icon: 'fa-circle-half-stroke', color: '#FFA577' },
-    ticket_priority:       { icon: 'fa-flag', color: '#FFCB47' },
-    ticket_comment:        { icon: 'fa-message', color: '#FFB67A' },
-    ticket_internal_note:  { icon: 'fa-lock', color: '#FFCB47' },
-    bid_opened:            { icon: 'fa-gavel', color: '#FFB347' },
-    bid_placed:            { icon: 'fa-coins', color: '#FFCB47' },
+    ticket_status:         { icon: 'fa-circle-half-stroke', color: '#B388FF' },
+    ticket_priority:       { icon: 'fa-flag', color: '#C9A7FF' },
+    ticket_comment:        { icon: 'fa-message', color: '#B388FF' },
+    ticket_internal_note:  { icon: 'fa-lock', color: '#C9A7FF' },
+    bid_opened:            { icon: 'fa-gavel', color: '#C9A7FF' },
+    bid_placed:            { icon: 'fa-coins', color: '#C9A7FF' },
     bid_awarded:           { icon: 'fa-trophy', color: '#86E0A8' },
-    leave_request:           { icon: 'fa-umbrella-beach', color: '#FFB67A' },
+    leave_request:           { icon: 'fa-umbrella-beach', color: '#B388FF' },
     leave_approved:          { icon: 'fa-check-circle', color: '#86E0A8' },
-    leave_rejected:          { icon: 'fa-times-circle', color: '#FF8866' },
-    password_reset_request:  { icon: 'fa-key', color: '#FFCB47' },
+    leave_rejected:          { icon: 'fa-times-circle', color: '#A970FF' },
+    password_reset_request:  { icon: 'fa-key', color: '#C9A7FF' },
     password_reset_done:     { icon: 'fa-key', color: '#86E0A8' },
   }
-  return map[type] || { icon: 'fa-bell', color: '#FFB347' }
+  return map[type] || { icon: 'fa-bell', color: '#C9A7FF' }
 }
 
 function _notifTimeAgo(iso) {
@@ -2010,7 +2084,7 @@ function globalSearch(q) {
       }
 
       const escapeAttr = (s) => String(s || '').replace(/'/g, "\\'")
-      const ttl = (kind, count) => `<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;display:flex;justify-content:space-between"><span>${kind}</span><span style="color:#FF7A45">${count}</span></div>`
+      const ttl = (kind, count) => `<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;display:flex;justify-content:space-between"><span>${kind}</span><span style="color:#A970FF">${count}</span></div>`
       const row = (icon, color, primary, secondary, onClickAttr) => `
         <div class="search-result-row" onmousedown="event.preventDefault()" onclick="hideGlobalSearch();${onClickAttr}" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.04))">
           <i class="fas ${icon}" style="color:${color};font-size:13px;width:18px;text-align:center"></i>
@@ -2024,7 +2098,7 @@ function globalSearch(q) {
       if (matchP.length) {
         rows.push(ttl('Projects', matchP.length))
         for (const p of matchP) {
-          rows.push(row('fa-folder', '#FF7A45',
+          rows.push(row('fa-folder', '#A970FF',
             escapeHtml((typeof tc==='function'?tc(p.name):p.name) || ''),
             `${escapeHtml(p.code || '')} · ${escapeHtml(p.status || '')}`,
             `openProjectBoard('${escapeAttr(p.id)}','${escapeAttr(p.name)}')`))
@@ -2060,7 +2134,7 @@ function globalSearch(q) {
       if (matchL.length) {
         rows.push(ttl('Leads', matchL.length))
         for (const l of matchL) {
-          rows.push(row('fa-bullseye', '#FFB347',
+          rows.push(row('fa-bullseye', '#C9A7FF',
             escapeHtml(l.name || ''),
             `${escapeHtml(l.email || '')} · ${escapeHtml(l.phone || '')} · ${escapeHtml(l.status || '')}`,
             `Router.navigate('lead-detail', { id: '${escapeAttr(l.id)}' })`))
@@ -2131,6 +2205,7 @@ function loadPage(page, el) {
     case 'clients-list':     renderClientsList(el); break
     case 'billing-admin':    renderBillingAdmin(el); break
     case 'team-overview':    renderTeamOverview(el); break
+    case 'external-team':    renderExternalTeam(el); break
     case 'leads-view':       renderLeadsView(el); break
     case 'lead-detail':      renderLeadDetailPage(el, Router.current?.params?.id); break
     case 'lead-followups':   renderLeadFollowupsPage(el); break
@@ -2198,6 +2273,10 @@ function resolveInitialPage() {
 function init() {
   // If URL is /accept-invite, defer to project-extensions.js
   if (location.pathname === '/accept-invite') return
+
+  // Paint the right theme as the very first thing — before login or any page
+  // render — so we never flash the wrong colour scheme on reload.
+  applyCachedTheme()
 
   if (loadAuth()) {
     if (_user.role === 'client') {

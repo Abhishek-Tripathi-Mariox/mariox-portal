@@ -41,18 +41,18 @@ async function renderPipsView(el) {
       </div>
 
       <div class="grid-4" style="margin-bottom:16px">
-        ${miniStatCard('Total',     list.length, '#FF7A45', 'fa-clipboard-list')}
-        ${miniStatCard('Active',    list.filter(p => p.status === 'active').length, '#FFCB47', 'fa-bolt')}
+        ${miniStatCard('Total',     list.length, '#A970FF', 'fa-clipboard-list')}
+        ${miniStatCard('Active',    list.filter(p => p.status === 'active').length, '#C9A7FF', 'fa-bolt')}
         ${miniStatCard('Completed', list.filter(p => p.status === 'completed').length, '#58C68A', 'fa-check-circle')}
         ${miniStatCard('Failed',    list.filter(p => p.status === 'failed').length, '#FF5E3A', 'fa-circle-xmark')}
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
         ${hrFilterButtons([
-          { value: '',          label: 'All',       activeStyle: 'background:rgba(255,122,69,.15);color:#FFB347' },
-          { value: 'active',    label: 'Active',    activeStyle: 'background:rgba(255,203,71,.15);color:#FFD986' },
+          { value: '',          label: 'All',       activeStyle: 'background:rgba(169,112,255,.15);color:#C9A7FF' },
+          { value: 'active',    label: 'Active',    activeStyle: 'background:rgba(169,112,255,.15);color:#D5C0FF' },
           { value: 'completed', label: 'Completed', activeStyle: 'background:rgba(88,198,138,.15);color:#86E0A8' },
-          { value: 'failed',    label: 'Failed',    activeStyle: 'background:rgba(255,94,58,.15);color:#FF8866' },
+          { value: 'failed',    label: 'Failed',    activeStyle: 'background:rgba(255,94,58,.15);color:#A970FF' },
           { value: 'cancelled', label: 'Cancelled', activeStyle: 'background:rgba(255,255,255,.07)' },
         ], _hrPipStatus, 'hrPipSetStatus')}
       </div>
@@ -79,8 +79,8 @@ async function renderPipsView(el) {
 function renderPipRow(p, canManage) {
   const name = p.full_name || p.email || 'Unknown'
   return `<tr>
-    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, p.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(name)}</span></div></td>` : ''}
-    <td style="font-size:12.5px;color:#FFF1E6;font-weight:600">${escapeInbox(p.title)}</td>
+    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, p.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFFFFF">${escapeInbox(name)}</span></div></td>` : ''}
+    <td style="font-size:12.5px;color:#FFFFFF;font-weight:600">${escapeInbox(p.title)}</td>
     <td style="font-size:12px;color:#9F8678">${fmtDate(p.start_date)}</td>
     <td style="font-size:12px;color:#9F8678">${fmtDate(p.end_date)}</td>
     <td>${PIP_STATUS_BADGE[p.status] || `<span class="badge">${escapeInbox(p.status)}</span>`}</td>
@@ -149,23 +149,23 @@ function openPipDetail(id) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(255,122,69,0.06);border:1px solid rgba(255,122,69,0.2)">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(169,112,255,0.06);border:1px solid rgba(169,112,255,0.2)">
         ${avatar(name, p.avatar_color, 'md')}
         <div>
-          <div style="font-size:14px;font-weight:700;color:#FFF1E6">${escapeInbox(name)}</div>
+          <div style="font-size:14px;font-weight:700;color:#FFFFFF">${escapeInbox(name)}</div>
           <div style="font-size:12px;color:#9F8678">${escapeInbox(p.designation || p.email || '')}</div>
         </div>
         <div style="margin-left:auto">${PIP_STATUS_BADGE[p.status] || ''}</div>
       </div>
-      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Title</div><div style="font-size:14px;color:#FFF1E6;font-weight:600">${escapeInbox(p.title)}</div></div>
+      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Title</div><div style="font-size:14px;color:#FFFFFF;font-weight:600">${escapeInbox(p.title)}</div></div>
       <div class="grid-2">
-        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Start</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(p.start_date)}</div></div>
-        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">End</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(p.end_date)}</div></div>
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Start</div><div style="font-size:13px;color:#FFFFFF">${fmtDate(p.start_date)}</div></div>
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">End</div><div style="font-size:13px;color:#FFFFFF">${fmtDate(p.end_date)}</div></div>
       </div>
-      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Reason</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(p.reason)}</div></div>
-      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Expectations</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(p.expectations)}</div></div>
-      ${p.support_plan ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Support plan</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(88,198,138,0.06);border:1px solid rgba(88,198,138,0.2)">${escapeInbox(p.support_plan)}</div></div>` : ''}
-      ${p.outcome ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Outcome</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,122,69,0.05);border:1px solid rgba(255,122,69,0.18)">${escapeInbox(p.outcome)}</div></div>` : ''}
+      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Reason</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(p.reason)}</div></div>
+      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Expectations</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(p.expectations)}</div></div>
+      ${p.support_plan ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Support plan</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(88,198,138,0.06);border:1px solid rgba(88,198,138,0.2)">${escapeInbox(p.support_plan)}</div></div>` : ''}
+      ${p.outcome ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Outcome</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(169,112,255,0.05);border:1px solid rgba(169,112,255,0.18)">${escapeInbox(p.outcome)}</div></div>` : ''}
       ${canManage ? `
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Update status</label>

@@ -28,7 +28,7 @@ function renderDevCard(d) {
   const consumed = parseFloat(d.monthly_consumed || 0)
   const capacity = parseFloat(d.monthly_available_hours || 160)
   const pct = Math.round((consumed / capacity) * 100)
-  const color = pct >= 100 ? '#FF5E3A' : pct >= 70 ? '#58C68A' : pct >= 50 ? '#FFCB47' : '#94a3b8'
+  const color = pct >= 100 ? '#FF5E3A' : pct >= 70 ? '#58C68A' : pct >= 50 ? '#C9A7FF' : '#7E7E8F'
   const techStack = d.tech_stack ? (typeof d.tech_stack === 'string' ? JSON.parse(d.tech_stack) : d.tech_stack) : []
   return `
     <div class="glass-card" style="padding:20px;cursor:pointer" onclick="router.navigate('developer-detail',{id:'${d.id}'})" id="dev-card-${d.id}">
@@ -176,7 +176,7 @@ async function openDeveloperModal(dev = null) {
         <div class="form-group"><label class="form-label">Daily Work Hours</label><input id="dev-daily-hours" class="form-input" type="number" value="${dev?.daily_work_hours||8}" min="1" max="12"/></div>
         <div class="form-group"><label class="form-label">Monthly Available Hours</label><input id="dev-monthly-hours" class="form-input" type="number" value="${dev?.monthly_available_hours||160}"/></div>
         <div class="form-group"><label class="form-label">Hourly Cost (₹)</label><input id="dev-hourly-cost" class="form-input" type="number" value="${dev?.hourly_cost||0}"/></div>
-        <div class="form-group"><label class="form-label">Avatar Color</label><input id="dev-color" class="form-input" type="color" value="${dev?.avatar_color||'#FF7A45'}" style="height:40px;cursor:pointer;padding:4px"/></div>
+        <div class="form-group"><label class="form-label">Avatar Color</label><input id="dev-color" class="form-input" type="color" value="${dev?.avatar_color||'#A970FF'}" style="height:40px;cursor:pointer;padding:4px"/></div>
       </div>
       <div id="dev-sales-hierarchy-wrap" style="display:${['sales_tl','sales_agent'].includes(selectedRole) ? '' : 'none'}">
         <div class="grid-2">
@@ -186,7 +186,7 @@ async function openDeveloperModal(dev = null) {
               <option value="">— Select Manager —</option>
               ${salesManagers.map(m => `<option value="${m.id}" ${String(dev?.manager_id||'')===String(m.id) ? 'selected' : ''}>${(m.full_name || m.email || '').replace(/</g,'&lt;')}</option>`).join('')}
             </select>
-            ${salesManagers.length === 0 ? '<div class="form-hint" style="font-size:11px;color:#FF7A45;margin-top:4px">No active Sales Manager — create one first.</div>' : ''}
+            ${salesManagers.length === 0 ? '<div class="form-hint" style="font-size:11px;color:#A970FF;margin-top:4px">No active Sales Manager — create one first.</div>' : ''}
           </div>
           <div id="dev-tl-wrap" class="form-group" style="display:${selectedRole === 'sales_agent' ? '' : 'none'}">
             <label class="form-label">Team Lead *</label>
@@ -199,7 +199,7 @@ async function openDeveloperModal(dev = null) {
                 return `<option value="${t.id}" data-manager="${tlMgr}" ${hidden} ${String(dev?.tl_id||'')===String(t.id) ? 'selected' : ''}>${(t.full_name || t.email || '').replace(/</g,'&lt;')}</option>`
               }).join('')}
             </select>
-            ${salesTls.length === 0 ? '<div class="form-hint" style="font-size:11px;color:#FF7A45;margin-top:4px">No active Sales TL — create one first.</div>' : ''}
+            ${salesTls.length === 0 ? '<div class="form-hint" style="font-size:11px;color:#A970FF;margin-top:4px">No active Sales TL — create one first.</div>' : ''}
           </div>
         </div>
       </div>
@@ -208,12 +208,12 @@ async function openDeveloperModal(dev = null) {
           <div class="form-group">
             <label class="form-label">Monthly Revenue Target (₹)</label>
             <input id="dev-monthly-target" class="form-input" type="text" inputmode="decimal" value="${dev?.monthly_target ?? 0}" placeholder="e.g. 500000"/>
-            <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Sales target per month in rupees. Achieved is auto-summed from project revenue (lead → close → project).</div>
+            <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Sales target per month in rupees. Achieved is auto-summed from project revenue (lead → close → project).</div>
           </div>
           <div class="form-group">
             <label class="form-label">Incentive Rate (₹ paid per ₹ above target)</label>
             <input id="dev-incentive-rate" class="form-input" type="text" inputmode="decimal" value="${dev?.incentive_rate ?? 0}" placeholder="e.g. 0.10"/>
-            <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">e.g. 0.10 = 10% commission on revenue above target. Earned = max(0, achieved − target) × rate.</div>
+            <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">e.g. 0.10 = 10% commission on revenue above target. Earned = max(0, achieved − target) × rate.</div>
           </div>
         </div>
       </div>
@@ -231,19 +231,19 @@ async function openDeveloperModal(dev = null) {
         <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
           ${[['Sun',0],['Mon',1],['Tue',2],['Wed',3],['Thu',4],['Fri',5],['Sat',6]].map(([lbl,n]) => {
             const sel = Array.isArray(dev?.shift_days) && dev.shift_days.includes(n)
-            return `<label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid #374151;border-radius:6px;cursor:pointer;background:${sel?'rgba(168,85,247,.18)':'transparent'};font-size:12px;color:#e2e8f0">
+            return `<label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid #5A5A66;border-radius:6px;cursor:pointer;background:${sel?'rgba(168,85,247,.18)':'transparent'};font-size:12px;color:#e2e8f0">
               <input type="checkbox" class="dev-shift-day" value="${n}" ${sel?'checked':''} style="margin:0"/> ${lbl}
             </label>`
           }).join('')}
         </div>
-        <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">User apne dashboard se in timings ke according punch-in / punch-out karenge. HR daily summary approve / reject karega.</div>
+        <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">User apne dashboard se in timings ke according punch-in / punch-out karenge. HR daily summary approve / reject karega.</div>
       </div>
       <div class="form-group"><label class="form-label">Remarks</label>
         <textarea id="dev-remarks" class="form-textarea" rows="2" placeholder="Remarks">${dev?.remarks||''}</textarea></div>
       ${!isEdit ? `<div class="form-group"><label class="form-label">Password *</label>
         <div style="position:relative">
           <input id="dev-password" class="form-input" type="password" placeholder="Enter Your Password" autocomplete="new-password" style="padding-right:40px"/>
-          <button type="button" id="dev-password-toggle" onclick="toggleDevPasswordVisibility()" aria-label="Show password" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:6px;display:flex;align-items:center;justify-content:center"><i class="fas fa-eye"></i></button>
+          <button type="button" id="dev-password-toggle" onclick="toggleDevPasswordVisibility()" aria-label="Show password" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:transparent;border:none;color:#7E7E8F;cursor:pointer;padding:6px;display:flex;align-items:center;justify-content:center"><i class="fas fa-eye"></i></button>
         </div>
       </div>` : ''}
       </form>
@@ -441,7 +441,7 @@ router.register('developer-detail', async ({ id }) => {
                 ['Logged Hours', `<strong>${utils.formatHours(util?.logged_hours)}</strong>`],
                 ['Remaining', `<strong style="color:var(--accent)">${utils.formatHours(util?.remaining_hours)}</strong>`],
                 ['Idle (Unallocated)', `<strong style="color:var(--warning)">${utils.formatHours(util?.idle_hours)}</strong>`],
-              ].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(45,45,107,0.5);font-size:13px"><span style="color:var(--text-muted)">${l}</span><span>${v}</span></div>`).join('')}
+              ].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(26,26,34,0.5);font-size:13px"><span style="color:var(--text-muted)">${l}</span><span>${v}</span></div>`).join('')}
               <div style="margin-top:14px">${utils.utilizationBadge(util?.utilization_percent || 0)}</div>
             </div>
           </div>
@@ -499,7 +499,7 @@ router.register('developer-detail', async ({ id }) => {
     if (d.assignments?.length > 0) {
       const ctx = document.getElementById('devDistChart')
       if (ctx) {
-        const colors = ['#FF7A45','#FFA577','#58C68A','#FFCB47','#FF5E3A','#C56FE6','#C56FE6']
+        const colors = ['#A970FF','#B388FF','#58C68A','#C9A7FF','#FF5E3A','#C56FE6','#C56FE6']
         new Chart(ctx, {
           type: 'doughnut',
           data: {
@@ -553,7 +553,7 @@ function renderProjectCard(p) {
   const color = burnPct >= 100 ? 'red' : burnPct >= 80 ? 'yellow' : 'green'
   const canEditProject = hasProjectPermission('projects.edit')
   return `
-    <div class="glass-card" style="padding:20px;cursor:pointer;border-top:3px solid #FF7A45" onclick="router.navigate('project-detail',{id:'${p.id}'})" id="proj-card-${p.id}">
+    <div class="glass-card" style="padding:20px;cursor:pointer;border-top:3px solid #A970FF" onclick="router.navigate('project-detail',{id:'${p.id}'})" id="proj-card-${p.id}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -572,7 +572,7 @@ function renderProjectCard(p) {
           <div style="font-size:10px;color:var(--text-muted)">Allocated</div>
         </div>
         <div style="flex:1;text-align:center;padding:8px;background:rgba(255,255,255,0.03);border-radius:8px">
-          <div style="font-size:18px;font-weight:800;color:${color==='red'?'#FF8866':color==='yellow'?'#FFD986':'#58C68A'}">${utils.formatNum(p.consumed_hours,0)}h</div>
+          <div style="font-size:18px;font-weight:800;color:${color==='red'?'#A970FF':color==='yellow'?'#D5C0FF':'#58C68A'}">${utils.formatNum(p.consumed_hours,0)}h</div>
           <div style="font-size:10px;color:var(--text-muted)">Consumed</div>
         </div>
         <div style="flex:1;text-align:center;padding:8px;background:rgba(255,255,255,0.03);border-radius:8px">
@@ -628,7 +628,7 @@ function toggleDevSelection(devId, devName, devDesig) {
   // Update dev list highlighting
   document.querySelectorAll(`[data-dev-row="${devId}"]`).forEach(row => {
     row.style.background = window._projSelectedDevs.some(d => d.id === devId) ? 'rgba(108,95,252,0.08)' : ''
-    row.style.borderColor = window._projSelectedDevs.some(d => d.id === devId) ? '#FF7A45' : 'var(--border)'
+    row.style.borderColor = window._projSelectedDevs.some(d => d.id === devId) ? '#A970FF' : 'var(--border)'
   })
 }
 
@@ -642,7 +642,7 @@ function renderSelectedDevs() {
   }
   cont.innerHTML = window._projSelectedDevs.map(d => `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-input);border-radius:8px;border:1px solid rgba(108,95,252,0.3)">
-      <div style="width:28px;height:28px;border-radius:50%;background:#FF7A45;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${escapeHtml(d.name.split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
+      <div style="width:28px;height:28px;border-radius:50%;background:#A970FF;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${escapeHtml(d.name.split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:600;color:var(--text-primary)">${escapeHtml(d.name)}</div>
         <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(d.designation||'staff')}</div>
@@ -815,8 +815,8 @@ function openProjectModal(id = null) {
                 <div id="proj-assign-inhouse-panel" style="display:${initialAssignment==='in_house'?'block':'none'}">
                   <div class="form-group">
                     <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-                      <span><i class="fas fa-code" style="color:#FF7A45;margin-right:6px"></i>Allocated Developers</span>
-                      <span id="dev-sel-count" style="font-size:11px;color:#FF7A45;font-weight:600">${window._projSelectedDevs.length} selected</span>
+                      <span><i class="fas fa-code" style="color:#A970FF;margin-right:6px"></i>Allocated Developers</span>
+                      <span id="dev-sel-count" style="font-size:11px;color:#A970FF;font-weight:600">${window._projSelectedDevs.length} selected</span>
                     </label>
                     <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
                       <div style="padding:8px 12px;background:var(--surface-2);border-bottom:1px solid var(--border)">
@@ -826,14 +826,14 @@ function openProjectModal(id = null) {
                         ${devs.length === 0 ? '<div style="color:var(--text-muted);font-size:12px;padding:8px;text-align:center">No developers found</div>' :
                         devs.map(d => {
                           const isSel = window._projSelectedDevs.some(s => s.id === d.id)
-                          return `<div data-dev-row="${d.id}" onclick="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||d.role||'')}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:.15s;border:1px solid ${isSel?'#FF7A45':'transparent'};background:${isSel?'rgba(108,95,252,0.08)':''};margin-bottom:4px">
-                            <input type="checkbox" data-dev-cb="${d.id}" ${isSel?'checked':''} onchange="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||d.role||'')}')" onclick="event.stopPropagation()" style="accent-color:#FF7A45;width:15px;height:15px"/>
-                            <div style="width:28px;height:28px;border-radius:50%;background:${d.avatar_color||'#FF7A45'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${esc((d.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
+                          return `<div data-dev-row="${d.id}" onclick="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||d.role||'')}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:.15s;border:1px solid ${isSel?'#A970FF':'transparent'};background:${isSel?'rgba(108,95,252,0.08)':''};margin-bottom:4px">
+                            <input type="checkbox" data-dev-cb="${d.id}" ${isSel?'checked':''} onchange="toggleDevSelection('${d.id}','${esc(d.full_name)}','${esc(d.designation||d.role||'')}')" onclick="event.stopPropagation()" style="accent-color:#A970FF;width:15px;height:15px"/>
+                            <div style="width:28px;height:28px;border-radius:50%;background:${d.avatar_color||'#A970FF'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${esc((d.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2))}</div>
                             <div style="flex:1">
                               <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${esc(d.full_name)}</div>
                               <div style="font-size:11px;color:var(--text-muted)">${esc(d.designation||d.role||'staff')}</div>
                             </div>
-                            ${isSel ? '<i class="fas fa-check-circle" style="color:#FF7A45;font-size:14px"></i>' : ''}
+                            ${isSel ? '<i class="fas fa-check-circle" style="color:#A970FF;font-size:14px"></i>' : ''}
                           </div>`
                         }).join('')}
                       </div>
@@ -843,7 +843,7 @@ function openProjectModal(id = null) {
 
                 <div id="proj-assign-external-panel" style="display:${initialAssignment==='external'?'block':'none'}">
                   <div class="form-group" style="margin-bottom:0">
-                    <label class="form-label"><i class="fas fa-users-cog" style="color:#FF7A45;margin-right:6px"></i>Select External Team / Member *</label>
+                    <label class="form-label"><i class="fas fa-users-cog" style="color:#A970FF;margin-right:6px"></i>Select External Team / Member *</label>
                     <select id="proj-external-team" class="form-select">
                       <option value="">— Select —</option>
                       ${teams.length ? `<optgroup label="Project Teams">
@@ -906,7 +906,7 @@ function openProjectModal(id = null) {
                     ${['pm','pc','developer','team','client'].map(role => {
                       const checked = Array.isArray(proj?.commercial_visible_to) && proj.commercial_visible_to.includes(role)
                       return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);cursor:pointer">
-                        <input type="checkbox" class="proj-commercial-role" value="${role}" ${checked?'checked':''} style="accent-color:#FF7A45"/>${role.toUpperCase()}
+                        <input type="checkbox" class="proj-commercial-role" value="${role}" ${checked?'checked':''} style="accent-color:#A970FF"/>${role.toUpperCase()}
                       </label>`
                     }).join('')}
                   </div>
@@ -917,16 +917,16 @@ function openProjectModal(id = null) {
             <div class="card">
               <div class="card-header"><h3>Attachments</h3><span style="font-size:12px;color:var(--text-muted)">Files and pasted links appear under this project in Documents (25 MB / file)</span></div>
               <div class="card-body">
-                <div style="border:1px dashed rgba(255,180,120,.32);border-radius:10px;padding:12px;background:rgba(0,0,0,.18)">
+                <div style="border:1px dashed rgba(179,136,255,.32);border-radius:10px;padding:12px;background:rgba(0,0,0,.18)">
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                     <input id="proj-files-input" type="file" multiple style="display:none" onchange="projAddFiles(this.files);this.value=''"/>
                     <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('proj-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
-                    <span style="color:#475569;font-size:11px">— or —</span>
+                    <span style="color:#5A5A66;font-size:11px">— or —</span>
                     <input id="proj-link-url" class="form-input" type="url" placeholder="Paste a document URL (Drive, Figma, Notion…)" style="flex:1;min-width:220px;padding:6px 10px;font-size:12.5px"/>
                     <input id="proj-link-name" class="form-input" type="text" placeholder="Label (optional)" style="width:160px;padding:6px 10px;font-size:12.5px"/>
                     <button type="button" class="btn btn-outline btn-sm" onclick="projAddLink()"><i class="fas fa-link"></i> Add link</button>
                   </div>
-                  <div style="font-size:11px;color:#64748b;margin-top:6px">Attach SOW, contracts, mockups, or paste shared-doc URLs.</div>
+                  <div style="font-size:11px;color:#7E7E8F;margin-top:6px">Attach SOW, contracts, mockups, or paste shared-doc URLs.</div>
                   <div id="proj-files-list" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
                 </div>
               </div>
@@ -1103,21 +1103,21 @@ function projRenderFilesList() {
     const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
     const tooBig = f.size > 25 * 1024 * 1024
     return `
-      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
-        <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
+        <i class="fas fa-file" style="color:#A970FF;font-size:14px"></i>
         <div style="flex:1;min-width:0">
           <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(f.name)}</div>
-          <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#64748b'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
+          <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#7E7E8F'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
         </div>
         <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="projRemoveFile(${i})"><i class="fas fa-times"></i></button>
       </div>`
   })
   const linkRows = links.map((l, i) => `
-    <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
       <i class="fas fa-link" style="color:#86E0A8;font-size:14px"></i>
       <div style="flex:1;min-width:0">
         <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(l.name)}</div>
-        <div style="font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:#9F8678">${escapeHtml(l.url)}</a></div>
+        <div style="font-size:10.5px;color:#7E7E8F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:#9F8678">${escapeHtml(l.url)}</a></div>
       </div>
       <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="projRemoveLink(${i})"><i class="fas fa-times"></i></button>
     </div>`)
@@ -1302,14 +1302,14 @@ router.register('project-detail', async ({ id }) => {
                 <div>
                   <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
                     <span style="color:var(--text-muted)">Timeline Progress</span>
-                    <span style="font-weight:700;color:#FFA577">${tlPct}%</span>
+                    <span style="font-weight:700;color:#B388FF">${tlPct}%</span>
                   </div>
                   <div class="progress-bar" style="height:10px"><div class="progress-fill blue" style="width:${tlPct}%"></div></div>
                 </div>
                 <div>
                   <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
                     <span style="color:var(--text-muted)">Hours Burned</span>
-                    <span style="font-weight:700;color:${burnPct>=100?'#FF8866':burnPct>=80?'#FFD986':'#58C68A'}">${burnPct}%</span>
+                    <span style="font-weight:700;color:${burnPct>=100?'#A970FF':burnPct>=80?'#D5C0FF':'#58C68A'}">${burnPct}%</span>
                   </div>
                   <div class="progress-bar" style="height:10px"><div class="progress-fill ${burnPct>=100?'red':burnPct>=80?'yellow':'green'}" style="width:${Math.min(burnPct,100)}%"></div></div>
                 </div>
@@ -1379,7 +1379,7 @@ router.register('project-detail', async ({ id }) => {
                 ['Deadline', utils.formatDate(p.expected_end_date)],
                 ['Billable', p.billable ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-gray">No</span>'],
                 ['Revenue', p.revenue ? `₹${parseFloat(p.revenue).toLocaleString()}` : '-'],
-              ].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(45,45,107,0.5);font-size:13px"><span style="color:var(--text-muted)">${l}</span><span>${v}</span></div>`).join('')}
+              ].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(26,26,34,0.5);font-size:13px"><span style="color:var(--text-muted)">${l}</span><span>${v}</span></div>`).join('')}
             </div>
             <div class="glass-card" style="padding:20px;margin-bottom:16px">
               <h3 style="font-size:13px;font-weight:700;margin-bottom:14px">Health Status</h3>
@@ -1420,9 +1420,9 @@ router.register('project-detail', async ({ id }) => {
           type: 'line',
           data: {
             labels: p.monthly_burn.map(d=>d.month),
-            datasets: [{label:'Hours Burned', data: p.monthly_burn.map(d=>parseFloat(d.hours||0)), borderColor:'#FFCB47', backgroundColor:'rgba(255,203,71,0.1)', fill:true, tension:0.4, pointBackgroundColor:'#FFCB47', pointRadius:4}]
+            datasets: [{label:'Hours Burned', data: p.monthly_burn.map(d=>parseFloat(d.hours||0)), borderColor:'#C9A7FF', backgroundColor:'rgba(169,112,255,0.1)', fill:true, tension:0.4, pointBackgroundColor:'#C9A7FF', pointRadius:4}]
           },
-          options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false},ticks:{color:'#64748b'}},y:{grid:{color:'rgba(45,45,107,0.5)'},ticks:{color:'#64748b',callback:v=>v+'h'}}} }
+          options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false},ticks:{color:'#7E7E8F'}},y:{grid:{color:'rgba(26,26,34,0.5)'},ticks:{color:'#7E7E8F',callback:v=>v+'h'}}} }
         })
       }
     }

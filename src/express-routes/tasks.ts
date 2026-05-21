@@ -127,7 +127,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       const user = req.user as any
       if (!(await userHasAnyPermission(models, user, 'projects.manage_kanban_perms'))) return res.status(403).json({ error: 'Forbidden' })
       const projectId = req.params.project_id
-      const { name, color = '#6366f1', wip_limit = 0, is_done_column = 0 } = req.body || {}
+      const { name, color = '#9D6CFF', wip_limit = 0, is_done_column = 0 } = req.body || {}
       if (!name) return res.status(400).json({ error: 'name required' })
       const status_key = String(name).toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').slice(0, 30) + '_' + Date.now()
       const existing = await models.kanbanColumns.find({ project_id: projectId }) as any[]
@@ -241,7 +241,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
         const enriched = {
           ...task,
           assignee_name: clientAssignee ? `${clientAssignee.company_name || clientAssignee.contact_name} (Client)` : (assignee?.full_name || null),
-          assignee_color: clientAssignee ? (clientAssignee.avatar_color || '#6366f1') : (assignee?.avatar_color || null),
+          assignee_color: clientAssignee ? (clientAssignee.avatar_color || '#9D6CFF') : (assignee?.avatar_color || null),
           assignee_designation: clientAssignee ? 'Client' : (assignee?.designation || null),
           assignee_kind: clientAssignee ? 'client' : (assignee ? 'user' : null),
           reporter_name: reporter?.full_name || null,
@@ -388,7 +388,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       const enrichedTask = {
         ...task,
         assignee_name: clientAssignee ? `${clientAssignee.company_name || clientAssignee.contact_name} (Client)` : (assignee?.full_name || null),
-        assignee_color: clientAssignee ? (clientAssignee.avatar_color || '#6366f1') : (assignee?.avatar_color || null),
+        assignee_color: clientAssignee ? (clientAssignee.avatar_color || '#9D6CFF') : (assignee?.avatar_color || null),
         assignee_designation: clientAssignee ? 'Client' : (assignee?.designation || null),
         assignee_kind: clientAssignee ? 'client' : (assignee ? 'user' : null),
         reporter_name: reporter?.full_name || null,

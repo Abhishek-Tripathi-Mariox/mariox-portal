@@ -471,20 +471,20 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
       const tasksTable = taskRows
         ? `<table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:13px"><thead><tr><th align="left" style="padding:6px 10px;background:#f1f5f9">Task</th><th align="left" style="padding:6px 10px;background:#f1f5f9">Status</th><th align="left" style="padding:6px 10px;background:#f1f5f9">Assignee</th></tr></thead><tbody>${taskRows}</tbody></table>`
         : ''
-      const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#0f172a;background:#f8fafc;margin:0;padding:24px">
+      const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#0B0B0D;background:#f8fafc;margin:0;padding:24px">
         <div style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:24px">
-          <h2 style="margin:0 0 8px;color:#0f172a">Milestone Completed</h2>
-          <p style="color:#475569;margin:0 0 16px">Hi ${esc(client?.name || client?.full_name || 'Client')}, we are pleased to inform you that the following milestone has been completed.</p>
+          <h2 style="margin:0 0 8px;color:#0B0B0D">Milestone Completed</h2>
+          <p style="color:#5A5A66;margin:0 0 16px">Hi ${esc(client?.name || client?.full_name || 'Client')}, we are pleased to inform you that the following milestone has been completed.</p>
           <div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;background:#f8fafc">
             <div style="font-size:16px;font-weight:600;margin-bottom:6px">${esc(milestone.title)}</div>
-            <div style="font-size:13px;color:#64748b">Project: ${esc(project?.name || '—')}</div>
-            <div style="font-size:13px;color:#64748b">Due Date: ${esc(milestone.due_date || '—')}</div>
-            ${milestone.description ? `<div style="margin-top:8px;font-size:13px;color:#334155">${esc(milestone.description)}</div>` : ''}
+            <div style="font-size:13px;color:#7E7E8F">Project: ${esc(project?.name || '—')}</div>
+            <div style="font-size:13px;color:#7E7E8F">Due Date: ${esc(milestone.due_date || '—')}</div>
+            ${milestone.description ? `<div style="margin-top:8px;font-size:13px;color:#2B2B35">${esc(milestone.description)}</div>` : ''}
             ${milestone.is_billable ? `<div style="margin-top:8px;font-size:13px;color:#0f766e"><strong>Billable Amount:</strong> ₹${Number(milestone.invoice_amount || 0).toLocaleString('en-IN')}</div>` : ''}
           </div>
           ${tasksTable}
-          <p style="margin-top:20px;color:#475569;font-size:13px">We would love to hear your feedback. Please log in to the client portal to share your rating.</p>
-          <p style="margin-top:20px;color:#0f172a;font-size:13px">Regards,<br/>${esc(companyName)}</p>
+          <p style="margin-top:20px;color:#5A5A66;font-size:13px">We would love to hear your feedback. Please log in to the client portal to share your rating.</p>
+          <p style="margin-top:20px;color:#0B0B0D;font-size:13px">Regards,<br/>${esc(companyName)}</p>
         </div>
       </body></html>`
       const text = `Milestone Completed: ${milestone.title}\nProject: ${project?.name || '—'}\nDue: ${milestone.due_date || '—'}\n\n${milestone.description || ''}`

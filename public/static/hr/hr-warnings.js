@@ -8,7 +8,7 @@ let _hrWarnSeverity = ''
 
 const WARN_BADGE = {
   verbal:  '<span class="badge badge-yellow">Verbal</span>',
-  written: '<span class="badge" style="background:rgba(255,150,80,.15);color:#FFC089">Written</span>',
+  written: '<span class="badge" style="background:rgba(169,112,255,.15);color:#C9A7FF">Written</span>',
   final:   '<span class="badge badge-red">Final</span>',
 }
 
@@ -40,18 +40,18 @@ async function renderWarningsView(el) {
       </div>
 
       <div class="grid-4" style="margin-bottom:16px">
-        ${miniStatCard('Total',   list.length, '#FF7A45', 'fa-triangle-exclamation')}
-        ${miniStatCard('Verbal',  list.filter(w => w.severity === 'verbal').length, '#FFCB47', 'fa-comment-dots')}
-        ${miniStatCard('Written', list.filter(w => w.severity === 'written').length, '#FFA94D', 'fa-file-pen')}
+        ${miniStatCard('Total',   list.length, '#A970FF', 'fa-triangle-exclamation')}
+        ${miniStatCard('Verbal',  list.filter(w => w.severity === 'verbal').length, '#C9A7FF', 'fa-comment-dots')}
+        ${miniStatCard('Written', list.filter(w => w.severity === 'written').length, '#A970FF', 'fa-file-pen')}
         ${miniStatCard('Final',   list.filter(w => w.severity === 'final').length, '#FF5E3A', 'fa-fire')}
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
         ${hrFilterButtons([
-          { value: '',        label: 'All',     activeStyle: 'background:rgba(255,122,69,.15);color:#FFB347' },
-          { value: 'verbal',  label: 'Verbal',  activeStyle: 'background:rgba(255,203,71,.15);color:#FFD986' },
-          { value: 'written', label: 'Written', activeStyle: 'background:rgba(255,169,77,.15);color:#FFC089' },
-          { value: 'final',   label: 'Final',   activeStyle: 'background:rgba(255,94,58,.15);color:#FF8866' },
+          { value: '',        label: 'All',     activeStyle: 'background:rgba(169,112,255,.15);color:#C9A7FF' },
+          { value: 'verbal',  label: 'Verbal',  activeStyle: 'background:rgba(169,112,255,.15);color:#D5C0FF' },
+          { value: 'written', label: 'Written', activeStyle: 'background:rgba(169,112,255,.15);color:#C9A7FF' },
+          { value: 'final',   label: 'Final',   activeStyle: 'background:rgba(255,94,58,.15);color:#A970FF' },
         ], _hrWarnSeverity, 'hrWarnSetSev')}
       </div>
 
@@ -77,9 +77,9 @@ async function renderWarningsView(el) {
 function renderWarningRow(w, canManage) {
   const name = w.full_name || w.email || 'Unknown'
   return `<tr>
-    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, w.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(name)}</span></div></td>` : ''}
+    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, w.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFFFFF">${escapeInbox(name)}</span></div></td>` : ''}
     <td>${WARN_BADGE[w.severity] || `<span class="badge">${escapeInbox(w.severity)}</span>`}</td>
-    <td style="font-size:12.5px;color:#FFF1E6;font-weight:600">${escapeInbox(w.subject)}</td>
+    <td style="font-size:12.5px;color:#FFFFFF;font-weight:600">${escapeInbox(w.subject)}</td>
     <td style="font-size:12px;color:#9F8678">${fmtDate(w.warning_date)}</td>
     <td>${Number(w.acknowledged) === 1 ? '<span class="badge badge-green">Acknowledged</span>' : '<span class="badge badge-yellow">Pending</span>'}</td>
     <td>
@@ -98,7 +98,7 @@ function openWarningModal() {
   if (!hrCanManage('warnings')) { toast('Not allowed', 'error'); return }
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-triangle-exclamation" style="color:#FF8866;margin-right:6px"></i>Issue Warning</h3>
+      <h3><i class="fas fa-triangle-exclamation" style="color:#A970FF;margin-right:6px"></i>Issue Warning</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
@@ -150,26 +150,26 @@ function openWarningDetail(id) {
 
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-triangle-exclamation" style="color:#FF8866;margin-right:6px"></i>Warning</h3>
+      <h3><i class="fas fa-triangle-exclamation" style="color:#A970FF;margin-right:6px"></i>Warning</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(255,122,69,0.06);border:1px solid rgba(255,122,69,0.2)">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(169,112,255,0.06);border:1px solid rgba(169,112,255,0.2)">
         ${avatar(name, w.avatar_color, 'md')}
         <div>
-          <div style="font-size:14px;font-weight:700;color:#FFF1E6">${escapeInbox(name)}</div>
+          <div style="font-size:14px;font-weight:700;color:#FFFFFF">${escapeInbox(name)}</div>
           <div style="font-size:12px;color:#9F8678">${escapeInbox(w.designation || w.email || '')}</div>
         </div>
         <div style="margin-left:auto">${WARN_BADGE[w.severity] || ''}</div>
       </div>
-      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Subject</div><div style="font-size:14px;color:#FFF1E6;font-weight:600">${escapeInbox(w.subject)}</div></div>
-      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Description</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(w.description)}</div></div>
-      ${w.action_required ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Action required</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,122,69,0.05);border:1px solid rgba(255,122,69,0.18)">${escapeInbox(w.action_required)}</div></div>` : ''}
+      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Subject</div><div style="font-size:14px;color:#FFFFFF;font-weight:600">${escapeInbox(w.subject)}</div></div>
+      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Description</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(w.description)}</div></div>
+      ${w.action_required ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Action required</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(169,112,255,0.05);border:1px solid rgba(169,112,255,0.18)">${escapeInbox(w.action_required)}</div></div>` : ''}
 
       ${w.response ? `
         <div>
           <div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Employee response${w.responded_at ? ' · ' + fmtDate(w.responded_at) : ''}</div>
-          <div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(88,198,138,0.06);border:1px solid rgba(88,198,138,0.2)">${escapeInbox(w.response)}</div>
+          <div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(88,198,138,0.06);border:1px solid rgba(88,198,138,0.2)">${escapeInbox(w.response)}</div>
         </div>` : ''}
 
       ${canRespond ? `

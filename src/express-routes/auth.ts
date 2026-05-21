@@ -21,6 +21,13 @@ function normalizeRole(role: string) {
   return String(role || '').toLowerCase().trim()
 }
 
+// 'dark' (default) or 'light'. Anything else falls back to 'dark' so a stale
+// or invalid DB value can't put the UI into a broken state.
+function normalizeTheme(theme: unknown): 'dark' | 'light' {
+  const t = String(theme || '').toLowerCase().trim()
+  return t === 'light' ? 'light' : 'dark'
+}
+
 async function hashPassword(password: string, salt: string): Promise<string> {
   const data = encoder.encode(password + salt)
   const hashBuffer = await crypto.subtle.digest('SHA-256', data)
@@ -92,6 +99,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
           designation: user.designation,
           avatar_color: user.avatar_color,
           must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
+          theme: normalizeTheme(user.theme),
           permissions,
           impersonated_by: null,
         },
@@ -108,7 +116,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
       if (!token) return res.status(400).json({ valid: false })
       const payload = (await jwtVerify(token, encoder.encode(jwtSecret))).payload as any
       const user = await models.users.findActiveById(payload.sub, {
-        projection: { id: 1, email: 1, full_name: 1, role: 1, designation: 1, avatar_color: 1, must_change_password: 1 },
+        projection: { id: 1, email: 1, full_name: 1, role: 1, designation: 1, avatar_color: 1, must_change_password: 1, theme: 1 },
       }) as any
       if (!user) return res.status(401).json({ valid: false })
       // Cache-busting so a stale 200 can't sit in any proxy/browser cache —
@@ -132,6 +140,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
           designation: user.designation,
           avatar_color: user.avatar_color,
           must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
+          theme: normalizeTheme(user.theme),
           permissions,
           impersonated_by: impersonatedBy,
         },
@@ -268,6 +277,19 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
       // User chose this password themselves — clear the forced-change flag.
       await models.users.updatePassword(userCtx.sub, newHash, false)
       return res.json({ message: 'Password changed successfully' })
+    } catch (error) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // User picks 'light' or 'dark' for the UI from their profile. Stored on
+  // the user record so the choice follows them across browsers/devices.
+  router.patch('/theme', authMiddleware, async (req, res) => {
+    try {
+      const userCtx = req.user as any
+      const theme = normalizeTheme(req.body?.theme)
+      await models.users.updateById(userCtx.sub, { $set: { theme, updated_at: new Date().toISOString() } })
+      return res.json({ theme })
     } catch (error) {
       return respondWithError(res, error, 500)
     }

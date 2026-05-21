@@ -137,13 +137,13 @@ function buildClientWelcomeEmail(opts: {
           <p style="margin:0 0 12px;font-size:14px">Hi <strong>${escapeEmailHtml(contactName)}</strong>,</p>
           <p style="margin:0 0 16px;font-size:14px;line-height:1.55">Your client account for <strong>${escapeEmailHtml(companyName)}</strong> has been created. Use the credentials below to sign in:</p>
           <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;margin:8px 0 16px">
-            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280;border-bottom:1px solid #e5e7eb;width:120px">Login URL</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><a href="${escapeEmailHtml(loginUrl)}" style="color:#FF7A45">${escapeEmailHtml(loginUrl)}</a></td></tr>
-            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280;border-bottom:1px solid #e5e7eb">Email</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><strong>${escapeEmailHtml(email)}</strong></td></tr>
-            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#6b7280">Password</td><td style="padding:10px 14px;font-size:13px"><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">${escapeEmailHtml(password)}</code></td></tr>
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#7E7E8F;border-bottom:1px solid #e5e7eb;width:120px">Login URL</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><a href="${escapeEmailHtml(loginUrl)}" style="color:#A970FF">${escapeEmailHtml(loginUrl)}</a></td></tr>
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#7E7E8F;border-bottom:1px solid #e5e7eb">Email</td><td style="padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e7eb"><strong>${escapeEmailHtml(email)}</strong></td></tr>
+            <tr><td style="padding:10px 14px;background:#f9fafb;font-size:12px;color:#7E7E8F">Password</td><td style="padding:10px 14px;font-size:13px"><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">${escapeEmailHtml(password)}</code></td></tr>
           </table>
-          <p style="margin:0;font-size:12px;color:#6b7280">For security, please change your password after the first login.</p>
+          <p style="margin:0;font-size:12px;color:#7E7E8F">For security, please change your password after the first login.</p>
         </div>
-        <div style="padding:14px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280">— Mariox Software Pvt Ltd</div>
+        <div style="padding:14px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#7E7E8F">— Mariox Software Pvt Ltd</div>
       </div>
     </div>`
 
@@ -639,7 +639,7 @@ export function createLeadsRouter(
       const country = validateLength(String(body.country || '').trim(), 2, 80, 'Country')
       const avatar_color = typeof body.avatar_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.avatar_color.trim())
         ? body.avatar_color.trim()
-        : '#6366f1'
+        : '#9D6CFF'
 
       const [existingClient, existingUser] = await Promise.all([
         models.clients.findByEmail(email),

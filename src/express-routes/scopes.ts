@@ -138,31 +138,31 @@ function normalizeScopePayload(body: any) {
 
 function renderScopeBlockHtml(b: ScopeBlock, esc: (s: string) => string, paragraph: (s: string) => string): string {
   if (b.type === 'paragraph') {
-    return `<div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#374151;margin:10px 0">${paragraph(b.text)}</div>`
+    return `<div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#5A5A66;margin:10px 0">${paragraph(b.text)}</div>`
   }
   if (b.type === 'subheading') {
-    return `<div style="font:700 15px Arial,Helvetica,sans-serif;color:#1f2937;margin:14px 0 6px">${esc(b.text)}</div>`
+    return `<div style="font:700 15px Arial,Helvetica,sans-serif;color:#1A1A22;margin:14px 0 6px">${esc(b.text)}</div>`
   }
   if (b.type === 'bullets') {
-    return `<ul style="margin:8px 0;padding-left:22px;color:#374151;font:14px/1.6 Arial,Helvetica,sans-serif">
+    return `<ul style="margin:8px 0;padding-left:22px;color:#5A5A66;font:14px/1.6 Arial,Helvetica,sans-serif">
       ${b.items.map((it) => `<li style="margin-bottom:4px">${esc(it)}</li>`).join('')}
     </ul>`
   }
   if (b.type === 'numbered') {
-    return `<ol style="margin:8px 0;padding-left:22px;color:#374151;font:14px/1.6 Arial,Helvetica,sans-serif">
+    return `<ol style="margin:8px 0;padding-left:22px;color:#5A5A66;font:14px/1.6 Arial,Helvetica,sans-serif">
       ${b.items.map((it) => `<li style="margin-bottom:4px">${esc(it)}</li>`).join('')}
     </ol>`
   }
   if (b.type === 'table') {
     const headHtml = b.columns.length ? `
-      <thead><tr style="background:#FFEAD9">
-        ${b.columns.map((c) => `<th style="padding:10px 12px;text-align:left;font:600 12px Arial,Helvetica,sans-serif;color:#1f2937;border:1px solid #f1d2b6">${esc(c)}</th>`).join('')}
+      <thead><tr style="background:#E8D9FF">
+        ${b.columns.map((c) => `<th style="padding:10px 12px;text-align:left;font:600 12px Arial,Helvetica,sans-serif;color:#1A1A22;border:1px solid #f1d2b6">${esc(c)}</th>`).join('')}
       </tr></thead>` : ''
     const colCount = b.columns.length || (b.rows[0]?.length ?? 1)
     const bodyHtml = b.rows.map((r) => {
       const cells: string[] = []
       for (let i = 0; i < colCount; i++) {
-        cells.push(`<td style="padding:10px 12px;font:13px/1.5 Arial,Helvetica,sans-serif;color:#374151;border:1px solid #f1d2b6;vertical-align:top">${paragraph(r[i] || '')}</td>`)
+        cells.push(`<td style="padding:10px 12px;font:13px/1.5 Arial,Helvetica,sans-serif;color:#5A5A66;border:1px solid #f1d2b6;vertical-align:top">${paragraph(r[i] || '')}</td>`)
       }
       return `<tr>${cells.join('')}</tr>`
     }).join('')
@@ -172,7 +172,7 @@ function renderScopeBlockHtml(b: ScopeBlock, esc: (s: string) => string, paragra
     </table>`
   }
   if (b.type === 'code') {
-    return `<pre style="margin:10px 0;padding:14px;background:#0f172a;color:#e2e8f0;border-radius:8px;font:12px/1.55 'Courier New',monospace;white-space:pre;overflow:auto">${esc(b.text)}</pre>`
+    return `<pre style="margin:10px 0;padding:14px;background:#0B0B0D;color:#e2e8f0;border-radius:8px;font:12px/1.55 'Courier New',monospace;white-space:pre;overflow:auto">${esc(b.text)}</pre>`
   }
   return ''
 }
@@ -184,61 +184,61 @@ function renderScopeHtml(scope: any, leadName: string, senderName: string): stri
   // Each section: heading + (legacy body paragraph if present) + structured blocks.
   const sectionsHtml = (scope.sections || []).map((s: any, idx: number) => {
     const num = idx + 1
-    const heading = `<h2 style="font:700 18px Arial,Helvetica,sans-serif;color:#111827;margin:22px 0 8px;padding-bottom:6px;border-bottom:2px solid #FF7A45;display:inline-block">${num}. ${esc(s.heading || '')}</h2>`
-    const legacyBody = s.body ? `<div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#374151;margin:10px 0">${paragraph(s.body)}</div>` : ''
+    const heading = `<h2 style="font:700 18px Arial,Helvetica,sans-serif;color:#111827;margin:22px 0 8px;padding-bottom:6px;border-bottom:2px solid #A970FF;display:inline-block">${num}. ${esc(s.heading || '')}</h2>`
+    const legacyBody = s.body ? `<div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#5A5A66;margin:10px 0">${paragraph(s.body)}</div>` : ''
     const blocksHtml = (s.blocks || []).map((b: ScopeBlock) => renderScopeBlockHtml(b, esc, paragraph)).join('')
     return `<div style="margin-top:8px">${heading}${legacyBody}${blocksHtml}</div>`
   }).join('')
 
   const deliverablesHtml = (scope.deliverables || []).length ? `
     <div style="margin-top:18px">
-      <h2 style="font:700 18px Arial,Helvetica,sans-serif;color:#111827;margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid #FF7A45;display:inline-block">Deliverables</h2>
-      <ul style="margin:8px 0;padding-left:22px;color:#374151;font:14px/1.6 Arial,Helvetica,sans-serif">
+      <h2 style="font:700 18px Arial,Helvetica,sans-serif;color:#111827;margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid #A970FF;display:inline-block">Deliverables</h2>
+      <ul style="margin:8px 0;padding-left:22px;color:#5A5A66;font:14px/1.6 Arial,Helvetica,sans-serif">
         ${(scope.deliverables || []).map((d: string) => `<li style="margin-bottom:4px">${esc(d)}</li>`).join('')}
       </ul>
     </div>` : ''
   const timelineHtml = scope.timeline_text ? `
     <div style="margin-top:18px">
-      <h2 style="font:700 18px Arial,Helvetica,sans-serif;color:#111827;margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid #FF7A45;display:inline-block">Timeline</h2>
-      <div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#374151">${paragraph(scope.timeline_text)}</div>
+      <h2 style="font:700 18px Arial,Helvetica,sans-serif;color:#111827;margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid #A970FF;display:inline-block">Timeline</h2>
+      <div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#5A5A66">${paragraph(scope.timeline_text)}</div>
     </div>` : ''
   const assumptionsHtml = scope.assumptions ? `
     <div style="margin-top:18px">
-      <h2 style="font:700 18px Arial,Helvetica,sans-serif;color:#111827;margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid #FF7A45;display:inline-block">Assumptions &amp; Notes</h2>
-      <div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#374151">${paragraph(scope.assumptions)}</div>
+      <h2 style="font:700 18px Arial,Helvetica,sans-serif;color:#111827;margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid #A970FF;display:inline-block">Assumptions &amp; Notes</h2>
+      <div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#5A5A66">${paragraph(scope.assumptions)}</div>
     </div>` : ''
 
   // Header block (project name / client / SPOC / dev partner) — mirrors the
   // formal SOW layout when those fields are present.
   const projectName = scope.project_name || scope.title || ''
   const headerLines: string[] = []
-  if (scope.client_name || leadName) headerLines.push(`<div><strong style="color:#1f2937">Client:</strong> <span style="color:#374151">${esc(scope.client_name || leadName)}</span></div>`)
-  if (scope.spoc_name) headerLines.push(`<div><strong style="color:#1f2937">SPOC:</strong> <span style="color:#374151">${esc(scope.spoc_name)}</span></div>`)
-  headerLines.push(`<div><strong style="color:#1f2937">Development Partner:</strong> <span style="color:#374151">Mariox Software</span></div>`)
+  if (scope.client_name || leadName) headerLines.push(`<div><strong style="color:#1A1A22">Client:</strong> <span style="color:#5A5A66">${esc(scope.client_name || leadName)}</span></div>`)
+  if (scope.spoc_name) headerLines.push(`<div><strong style="color:#1A1A22">SPOC:</strong> <span style="color:#5A5A66">${esc(scope.spoc_name)}</span></div>`)
+  headerLines.push(`<div><strong style="color:#1A1A22">Development Partner:</strong> <span style="color:#5A5A66">Mariox Software</span></div>`)
 
   return `<!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1f2937">
+<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1A1A22">
   <div style="max-width:780px;margin:0 auto;background:#ffffff;padding:30px 34px;border-radius:8px;border:1px solid #e5e7eb">
-    <div style="text-align:center;padding-bottom:18px;border-bottom:2px solid #FF7A45;margin-bottom:18px">
+    <div style="text-align:center;padding-bottom:18px;border-bottom:2px solid #A970FF;margin-bottom:18px">
       <div style="font:800 26px Arial,Helvetica,sans-serif;color:#111827">STATEMENT OF WORK (SOW)</div>
-      ${projectName ? `<div style="font:700 16px Arial,Helvetica,sans-serif;color:#FF7A45;margin-top:8px">${esc(projectName)}</div>` : ''}
+      ${projectName ? `<div style="font:700 16px Arial,Helvetica,sans-serif;color:#A970FF;margin-top:8px">${esc(projectName)}</div>` : ''}
     </div>
 
     <div style="display:block;margin:0 0 18px;font:14px/1.7 Arial,Helvetica,sans-serif">
       ${headerLines.join('')}
     </div>
 
-    ${scope.overview ? `<div style="font:14px/1.7 Arial,Helvetica,sans-serif;color:#374151;margin:12px 0;padding:14px 16px;background:#fafafa;border-left:3px solid #FF7A45;border-radius:0 6px 6px 0">${paragraph(scope.overview)}</div>` : ''}
+    ${scope.overview ? `<div style="font:14px/1.7 Arial,Helvetica,sans-serif;color:#5A5A66;margin:12px 0;padding:14px 16px;background:#fafafa;border-left:3px solid #A970FF;border-radius:0 6px 6px 0">${paragraph(scope.overview)}</div>` : ''}
 
     ${sectionsHtml}
     ${deliverablesHtml}
     ${timelineHtml}
     ${assumptionsHtml}
 
-    ${scope.footer_text ? `<div style="margin-top:22px;font:13px/1.6 Arial,Helvetica,sans-serif;color:#4b5563">${paragraph(scope.footer_text)}</div>` : ''}
+    ${scope.footer_text ? `<div style="margin-top:22px;font:13px/1.6 Arial,Helvetica,sans-serif;color:#5A5A66">${paragraph(scope.footer_text)}</div>` : ''}
 
-    <div style="margin-top:26px;padding-top:14px;border-top:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#6b7280">
-      Regards,<br/><strong style="color:#1f2937">${esc(senderName)}</strong><br/>Mariox Software
+    <div style="margin-top:26px;padding-top:14px;border-top:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#7E7E8F">
+      Regards,<br/><strong style="color:#1A1A22">${esc(senderName)}</strong><br/>Mariox Software
     </div>
   </div>
 </body></html>`

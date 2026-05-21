@@ -206,7 +206,7 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
   const customerLocation = [customerCity, customerState, customerPincode].filter(Boolean).join(', ')
 
   const itemTitle = inv.title || project?.name || 'Project services'
-  const description = inv.description ? `<div style="font-size:11px;color:#374151;margin-top:4px">${escapeHtml(inv.description).replace(/\n/g, '<br/>')}</div>` : ''
+  const description = inv.description ? `<div style="font-size:11px;color:#5A5A66;margin-top:4px">${escapeHtml(inv.description).replace(/\n/g, '<br/>')}</div>` : ''
   const qty = Number(inv.quantity || 1)
   const taxableValue = Number(inv.amount || 0)
   const taxPct = Number(inv.tax_pct || 0)
@@ -225,13 +225,13 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
     <tr>
       <td style="vertical-align:top">
-        <div style="font-size:11px;letter-spacing:.18em;color:#6b7280;font-weight:700">TAX INVOICE</div>
+        <div style="font-size:11px;letter-spacing:.18em;color:#7E7E8F;font-weight:700">TAX INVOICE</div>
         <div style="font-size:20px;font-weight:800;color:#111827;margin-top:6px">${escapeHtml(companyName)}</div>
-        <div style="font-size:11px;color:#374151;margin-top:6px"><strong>GSTIN</strong> ${escapeHtml(gstin)}</div>
-        <div style="font-size:11px;color:#374151;margin-top:4px;line-height:1.5;max-width:380px">${escapeHtml(address)}</div>
+        <div style="font-size:11px;color:#5A5A66;margin-top:6px"><strong>GSTIN</strong> ${escapeHtml(gstin)}</div>
+        <div style="font-size:11px;color:#5A5A66;margin-top:4px;line-height:1.5;max-width:380px">${escapeHtml(address)}</div>
       </td>
       <td style="vertical-align:top;text-align:right">
-        <div style="font-size:11px;letter-spacing:.18em;color:#6b7280;font-weight:700">ORIGINAL FOR RECIPIENT</div>
+        <div style="font-size:11px;letter-spacing:.18em;color:#7E7E8F;font-weight:700">ORIGINAL FOR RECIPIENT</div>
       </td>
     </tr>
   </table>
@@ -249,12 +249,12 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
       <td style="vertical-align:top">
         <div style="font-size:12px;font-weight:700;color:#111827">Bill To:</div>
         ${customerCompany ? `<div style="font-size:13px;font-weight:700;color:#111827;margin-top:6px">${escapeHtml(customerCompany)}</div>` : ''}
-        ${customerName ? `<div style="font-size:12px;color:#374151;margin-top:2px">Attn: ${escapeHtml(customerName)}</div>` : ''}
-        ${customerAddress ? `<div style="font-size:12px;color:#374151;margin-top:4px;line-height:1.5;max-width:340px">${escapeHtml(customerAddress)}</div>` : ''}
-        ${customerLocation ? `<div style="font-size:12px;color:#374151;margin-top:2px">${escapeHtml(customerLocation)}${customerCountry ? `, ${escapeHtml(customerCountry)}` : ''}</div>` : (customerCountry ? `<div style="font-size:12px;color:#374151;margin-top:2px">${escapeHtml(customerCountry)}</div>` : '')}
-        ${customerGstin ? `<div style="font-size:12px;color:#374151;margin-top:4px"><strong>GSTIN:</strong> ${escapeHtml(customerGstin)}</div>` : ''}
-        ${customerPhone ? `<div style="font-size:12px;color:#374151;margin-top:2px">Ph: ${escapeHtml(customerPhone)}</div>` : ''}
-        ${customerEmail ? `<div style="font-size:12px;color:#374151;margin-top:2px">${escapeHtml(customerEmail)}</div>` : ''}
+        ${customerName ? `<div style="font-size:12px;color:#5A5A66;margin-top:2px">Attn: ${escapeHtml(customerName)}</div>` : ''}
+        ${customerAddress ? `<div style="font-size:12px;color:#5A5A66;margin-top:4px;line-height:1.5;max-width:340px">${escapeHtml(customerAddress)}</div>` : ''}
+        ${customerLocation ? `<div style="font-size:12px;color:#5A5A66;margin-top:2px">${escapeHtml(customerLocation)}${customerCountry ? `, ${escapeHtml(customerCountry)}` : ''}</div>` : (customerCountry ? `<div style="font-size:12px;color:#5A5A66;margin-top:2px">${escapeHtml(customerCountry)}</div>` : '')}
+        ${customerGstin ? `<div style="font-size:12px;color:#5A5A66;margin-top:4px"><strong>GSTIN:</strong> ${escapeHtml(customerGstin)}</div>` : ''}
+        ${customerPhone ? `<div style="font-size:12px;color:#5A5A66;margin-top:2px">Ph: ${escapeHtml(customerPhone)}</div>` : ''}
+        ${customerEmail ? `<div style="font-size:12px;color:#5A5A66;margin-top:2px">${escapeHtml(customerEmail)}</div>` : ''}
       </td>
       <td style="vertical-align:top;text-align:right">
         <div style="font-size:12px;font-weight:700;color:#111827">Place of Supply:</div>
@@ -265,13 +265,13 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
 
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-top:22px;border:1px solid #cbd5e1">
     <tr style="background:#f1f5f9">
-      <th style="padding:8px 10px;font-size:11px;text-align:left;color:#0f172a;border-right:1px solid #cbd5e1;width:32px">#</th>
-      <th style="padding:8px 10px;font-size:11px;text-align:left;color:#0f172a;border-right:1px solid #cbd5e1">Item</th>
-      <th style="padding:8px 10px;font-size:11px;text-align:right;color:#0f172a;border-right:1px solid #cbd5e1">Rate / Item</th>
-      <th style="padding:8px 10px;font-size:11px;text-align:right;color:#0f172a;border-right:1px solid #cbd5e1">Qty</th>
-      <th style="padding:8px 10px;font-size:11px;text-align:right;color:#0f172a;border-right:1px solid #cbd5e1">Taxable Value</th>
-      <th style="padding:8px 10px;font-size:11px;text-align:right;color:#0f172a;border-right:1px solid #cbd5e1">Tax Amount</th>
-      <th style="padding:8px 10px;font-size:11px;text-align:right;color:#0f172a">Amount</th>
+      <th style="padding:8px 10px;font-size:11px;text-align:left;color:#0B0B0D;border-right:1px solid #cbd5e1;width:32px">#</th>
+      <th style="padding:8px 10px;font-size:11px;text-align:left;color:#0B0B0D;border-right:1px solid #cbd5e1">Item</th>
+      <th style="padding:8px 10px;font-size:11px;text-align:right;color:#0B0B0D;border-right:1px solid #cbd5e1">Rate / Item</th>
+      <th style="padding:8px 10px;font-size:11px;text-align:right;color:#0B0B0D;border-right:1px solid #cbd5e1">Qty</th>
+      <th style="padding:8px 10px;font-size:11px;text-align:right;color:#0B0B0D;border-right:1px solid #cbd5e1">Taxable Value</th>
+      <th style="padding:8px 10px;font-size:11px;text-align:right;color:#0B0B0D;border-right:1px solid #cbd5e1">Tax Amount</th>
+      <th style="padding:8px 10px;font-size:11px;text-align:right;color:#0B0B0D">Amount</th>
     </tr>
     <tr>
       <td style="padding:10px;font-size:12px;color:#111827;border-top:1px solid #cbd5e1;border-right:1px solid #cbd5e1;vertical-align:top">1</td>
@@ -289,17 +289,17 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
 
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-top:14px">
     <tr>
-      <td style="vertical-align:top;font-size:11px;color:#374151">
+      <td style="vertical-align:top;font-size:11px;color:#5A5A66">
         Total Items / Qty : 1 / ${qty}
       </td>
       <td style="vertical-align:top">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
-          <tr><td style="padding:4px 0;font-size:12px;color:#374151;text-align:right">Taxable Amount</td><td style="padding:4px 0 4px 12px;font-size:12px;color:#111827;text-align:right;font-weight:600;width:120px">₹${fmtINR(taxableValue)}</td></tr>
+          <tr><td style="padding:4px 0;font-size:12px;color:#5A5A66;text-align:right">Taxable Amount</td><td style="padding:4px 0 4px 12px;font-size:12px;color:#111827;text-align:right;font-weight:600;width:120px">₹${fmtINR(taxableValue)}</td></tr>
           ${sameState ? `
-            <tr><td style="padding:4px 0;font-size:12px;color:#374151;text-align:right">CGST ${fmtINR(halfPct)}%</td><td style="padding:4px 0 4px 12px;font-size:12px;color:#111827;text-align:right;font-weight:600">₹${fmtINR(halfTax)}</td></tr>
-            <tr><td style="padding:4px 0;font-size:12px;color:#374151;text-align:right">SGST ${fmtINR(halfPct)}%</td><td style="padding:4px 0 4px 12px;font-size:12px;color:#111827;text-align:right;font-weight:600">₹${fmtINR(halfTax)}</td></tr>
+            <tr><td style="padding:4px 0;font-size:12px;color:#5A5A66;text-align:right">CGST ${fmtINR(halfPct)}%</td><td style="padding:4px 0 4px 12px;font-size:12px;color:#111827;text-align:right;font-weight:600">₹${fmtINR(halfTax)}</td></tr>
+            <tr><td style="padding:4px 0;font-size:12px;color:#5A5A66;text-align:right">SGST ${fmtINR(halfPct)}%</td><td style="padding:4px 0 4px 12px;font-size:12px;color:#111827;text-align:right;font-weight:600">₹${fmtINR(halfTax)}</td></tr>
           ` : `
-            <tr><td style="padding:4px 0;font-size:12px;color:#374151;text-align:right">IGST ${fmtINR(taxPct)}%</td><td style="padding:4px 0 4px 12px;font-size:12px;color:#111827;text-align:right;font-weight:600">₹${fmtINR(taxAmount)}</td></tr>
+            <tr><td style="padding:4px 0;font-size:12px;color:#5A5A66;text-align:right">IGST ${fmtINR(taxPct)}%</td><td style="padding:4px 0 4px 12px;font-size:12px;color:#111827;text-align:right;font-weight:600">₹${fmtINR(taxAmount)}</td></tr>
           `}
           <tr><td style="padding:8px 0 4px 0;font-size:13px;color:#111827;text-align:right;font-weight:700;border-top:1px solid #e5e7eb">Total</td><td style="padding:8px 0 4px 12px;font-size:13px;color:#111827;text-align:right;font-weight:800;border-top:1px solid #e5e7eb">₹${fmtINR(totalAmount)}</td></tr>
         </table>
@@ -307,7 +307,7 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
     </tr>
   </table>
 
-  <div style="margin-top:14px;font-size:11px;color:#374151;line-height:1.5">
+  <div style="margin-top:14px;font-size:11px;color:#5A5A66;line-height:1.5">
     <strong>Total amount (in words):</strong> ${escapeHtml(amountToIndianWords(totalAmount))}
   </div>
   <div style="margin-top:6px;font-size:13px;color:#111827;font-weight:700">Amount Payable: ₹${fmtINR(totalAmount)}</div>
@@ -316,7 +316,7 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
     <tr>
       <td style="vertical-align:top;width:60%">
         <div style="font-size:12px;font-weight:700;color:#111827">Bank Details:</div>
-        <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-top:6px;font-size:12px;color:#374151">
+        <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-top:6px;font-size:12px;color:#5A5A66">
           <tr><td style="padding:2px 16px 2px 0">Bank:</td><td style="padding:2px 0;color:#111827;font-weight:600">${escapeHtml(bankName)}</td></tr>
           <tr><td style="padding:2px 16px 2px 0">Account Holder:</td><td style="padding:2px 0;color:#111827;font-weight:600">${escapeHtml(bankHolder)}</td></tr>
           <tr><td style="padding:2px 16px 2px 0">Account #:</td><td style="padding:2px 0;color:#111827;font-weight:600">${escapeHtml(bankAcc)}</td></tr>
@@ -325,17 +325,17 @@ export function buildInvoiceEmailGST({ inv, client, project, env }: InvoiceEmail
         </table>
       </td>
       <td style="vertical-align:top;text-align:right">
-        <div style="font-size:11px;color:#374151">For ${escapeHtml(companyName)}</div>
+        <div style="font-size:11px;color:#5A5A66">For ${escapeHtml(companyName)}</div>
         ${signatureSrc ? `<div style="margin-top:8px"><img src="${escapeHtml(signatureSrc)}" alt="Authorized Signature" style="max-height:64px;max-width:200px;display:inline-block"/></div>` : '<div style="margin-top:32px"></div>'}
-        <div style="margin-top:6px;font-size:11px;color:#374151;border-top:1px solid #cbd5e1;display:inline-block;padding:6px 18px 0">Authorized Signatory</div>
+        <div style="margin-top:6px;font-size:11px;color:#5A5A66;border-top:1px solid #cbd5e1;display:inline-block;padding:6px 18px 0">Authorized Signatory</div>
       </td>
     </tr>
   </table>
 
-  ${inv.notes ? `<div style="margin-top:22px;padding:12px;border:1px solid #e5e7eb;border-radius:6px;font-size:11px;color:#374151;line-height:1.5"><strong style="color:#111827">Notes:</strong><br/>${escapeHtml(inv.notes).replace(/\n/g, '<br/>')}</div>` : ''}
-  ${inv.payment_terms ? `<div style="margin-top:8px;font-size:11px;color:#374151"><strong>Payment Terms:</strong> ${escapeHtml(inv.payment_terms)}</div>` : ''}
+  ${inv.notes ? `<div style="margin-top:22px;padding:12px;border:1px solid #e5e7eb;border-radius:6px;font-size:11px;color:#5A5A66;line-height:1.5"><strong style="color:#111827">Notes:</strong><br/>${escapeHtml(inv.notes).replace(/\n/g, '<br/>')}</div>` : ''}
+  ${inv.payment_terms ? `<div style="margin-top:8px;font-size:11px;color:#5A5A66"><strong>Payment Terms:</strong> ${escapeHtml(inv.payment_terms)}</div>` : ''}
 
-  <div style="margin-top:28px;padding-top:14px;border-top:1px solid #e5e7eb;text-align:center;font-size:10px;color:#9ca3af">This is a digitally generated document. Page 1 / 1.</div>
+  <div style="margin-top:28px;padding-top:14px;border-top:1px solid #e5e7eb;text-align:center;font-size:10px;color:#B8B8C7">This is a digitally generated document. Page 1 / 1.</div>
 </div>
 </body></html>`
 

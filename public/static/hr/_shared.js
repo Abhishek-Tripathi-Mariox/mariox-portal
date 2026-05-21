@@ -93,10 +93,10 @@ function hrEmployeePicker(id, users, selectedId, opts) {
              onfocus="hrEmpPickerOpen('${id}')"
              onclick="hrEmpPickerOpen('${id}')"
              onkeydown="hrEmpPickerKeydown(event,'${id}')"/>
-      <i class="fas fa-chevron-down" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;pointer-events:none"></i>
+      <i class="fas fa-chevron-down" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#7E7E8F;font-size:11px;pointer-events:none"></i>
       <input type="hidden" id="${id}" value="${selectedId || ''}"/>
       <div class="hr-emp-picker-list" id="${id}-list"
-           style="display:none;position:absolute;top:100%;left:0;right:0;z-index:1100;max-height:260px;overflow-y:auto;background:#1f2937;border:1px solid #374151;border-radius:8px;margin-top:4px;box-shadow:0 6px 24px rgba(0,0,0,.35)">
+           style="display:none;position:absolute;top:100%;left:0;right:0;z-index:1100;max-height:260px;overflow-y:auto;background:#1A1A22;border:1px solid #5A5A66;border-radius:8px;margin-top:4px;box-shadow:0 6px 24px rgba(0,0,0,.35)">
         ${listHtml}
       </div>
     </div>
@@ -112,19 +112,19 @@ function _hrEmpPickerListHtml(users, selectedId, query, canAdd) {
       })
     : users
   const addRow = canAdd
-    ? `<div class="hr-emp-picker-add" onclick="hrEmpPickerAddNew()" style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #374151;color:#FF7A45;font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px"><i class="fas fa-user-plus"></i> Add Employee</div>`
+    ? `<div class="hr-emp-picker-add" onclick="hrEmpPickerAddNew()" style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #5A5A66;color:#A970FF;font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px"><i class="fas fa-user-plus"></i> Add Employee</div>`
     : ''
   if (!filtered.length) {
-    return addRow + `<div style="padding:14px;color:#94a3b8;font-size:13px;text-align:center">No employees match.</div>`
+    return addRow + `<div style="padding:14px;color:#7E7E8F;font-size:13px;text-align:center">No employees match.</div>`
   }
   const rows = filtered.map(u => {
     const isSel = String(u.id) === String(selectedId || '')
     const label = escapeInbox(u.full_name || u.email || u.id)
     const sub = u.designation ? ` · ${escapeInbox(u.designation)}` : ''
     return `<div class="hr-emp-picker-item" data-id="${u.id}" onclick="hrEmpPickerSelect('${u.id}')"
-            style="padding:9px 12px;cursor:pointer;font-size:13px;color:#e2e8f0;${isSel ? 'background:#2563eb' : ''}"
-            onmouseover="this.style.background='#374151'"
-            onmouseout="this.style.background='${isSel ? '#2563eb' : 'transparent'}'">${label}<span style="color:#94a3b8">${sub}</span></div>`
+            style="padding:9px 12px;cursor:pointer;font-size:13px;color:#e2e8f0;${isSel ? 'background:#7B4DFF' : ''}"
+            onmouseover="this.style.background='#5A5A66'"
+            onmouseout="this.style.background='${isSel ? '#7B4DFF' : 'transparent'}'">${label}<span style="color:#7E7E8F">${sub}</span></div>`
   }).join('')
   return addRow + rows
 }
@@ -244,10 +244,10 @@ function searchableSelect(id, items, selectedId, opts) {
              onfocus="hrEmpPickerOpen('${id}')"
              onclick="hrEmpPickerOpen('${id}')"
              onkeydown="hrEmpPickerKeydown(event,'${id}')"/>
-      <i class="fas fa-chevron-down" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;pointer-events:none"></i>
+      <i class="fas fa-chevron-down" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#7E7E8F;font-size:11px;pointer-events:none"></i>
       <input type="hidden" id="${id}" value="${selectedId || ''}"/>
       <div class="hr-emp-picker-list" id="${id}-list"
-           style="display:none;position:absolute;top:100%;left:0;right:0;z-index:1100;max-height:260px;overflow-y:auto;background:#1f2937;border:1px solid #374151;border-radius:8px;margin-top:4px;box-shadow:0 6px 24px rgba(0,0,0,.35)">
+           style="display:none;position:absolute;top:100%;left:0;right:0;z-index:1100;max-height:260px;overflow-y:auto;background:#1A1A22;border:1px solid #5A5A66;border-radius:8px;margin-top:4px;box-shadow:0 6px 24px rgba(0,0,0,.35)">
         ${listHtml}
       </div>
     </div>

@@ -50,6 +50,9 @@ export interface UserRecord extends BaseRecord {
   // 1 = the user is on a system-issued password (just created or admin reset)
   // and must change it on next login. Cleared once they pick their own.
   must_change_password?: number
+  // User-chosen UI theme — 'dark' (AMOLED lavender, default) or 'light'.
+  // Persisted so the choice survives a fresh login on a different device.
+  theme?: string
 }
 
 export interface ClientRecord extends BaseRecord {
@@ -190,7 +193,7 @@ export class UserModel extends MongoRepository<UserRecord> {
       reporting_pm_id: input.reporting_pm_id ?? null,
       manager_id: input.manager_id ?? null,
       tl_id: input.tl_id ?? null,
-      avatar_color: input.avatar_color || '#6366f1',
+      avatar_color: input.avatar_color || '#9D6CFF',
       remarks: input.remarks ?? null,
       is_active: input.is_active ?? 1,
       // New staff accounts always start with a forced password change so
@@ -248,7 +251,7 @@ export class ClientModel extends MongoRepository<ClientRecord> {
       state_code: input.state_code ?? null,
       pincode: input.pincode ?? null,
       country: input.country ?? null,
-      avatar_color: input.avatar_color || '#6366f1',
+      avatar_color: input.avatar_color || '#9D6CFF',
       price: input.price ?? null,
       is_active: input.is_active ?? 1,
       email_verified: input.email_verified ?? 1,

@@ -6,16 +6,16 @@
 
 const SUPPORT_PRIORITY_COLORS = {
   urgent: '#FF5E3A',
-  high: '#FF7A45',
-  medium: '#FFCB47',
-  low: '#94a3b8',
+  high: '#A970FF',
+  medium: '#C9A7FF',
+  low: '#7E7E8F',
 }
 const SUPPORT_STATUS_COLORS = {
-  open: '#FF7A45',
-  in_progress: '#FFA577',
+  open: '#A970FF',
+  in_progress: '#B388FF',
   waiting_on_client: '#C56FE6',
   resolved: '#58C68A',
-  closed: '#64748b',
+  closed: '#7E7E8F',
 }
 const SUPPORT_STATUSES = ['open', 'in_progress', 'waiting_on_client', 'resolved', 'closed']
 const SUPPORT_PRIORITIES = ['low', 'medium', 'high', 'urgent']
@@ -35,16 +35,16 @@ const _supportState = {
 }
 
 const SUPPORT_EVENT_ICONS = {
-  created: { icon: 'fa-circle-plus', color: '#FFB347' },
-  status_changed: { icon: 'fa-circle-half-stroke', color: '#FFA577' },
-  priority_changed: { icon: 'fa-flag', color: '#FFCB47' },
+  created: { icon: 'fa-circle-plus', color: '#C9A7FF' },
+  status_changed: { icon: 'fa-circle-half-stroke', color: '#B388FF' },
+  priority_changed: { icon: 'fa-flag', color: '#C9A7FF' },
   assignee_changed: { icon: 'fa-user-check', color: '#C56FE6' },
-  category_changed: { icon: 'fa-tags', color: '#FFB67A' },
-  project_changed: { icon: 'fa-folder', color: '#FFCB47' },
+  category_changed: { icon: 'fa-tags', color: '#B388FF' },
+  project_changed: { icon: 'fa-folder', color: '#C9A7FF' },
   subject_edited: { icon: 'fa-pen', color: '#9F8678' },
   description_edited: { icon: 'fa-file-pen', color: '#9F8678' },
-  comment_added: { icon: 'fa-message', color: '#FFB67A' },
-  internal_note_added: { icon: 'fa-lock', color: '#FFCB47' },
+  comment_added: { icon: 'fa-message', color: '#B388FF' },
+  internal_note_added: { icon: 'fa-lock', color: '#C9A7FF' },
 }
 
 function _supEsc(value = '') {
@@ -143,8 +143,8 @@ function paintSupportList(el) {
 }
 
 function renderSupportRow(t) {
-  const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#94a3b8'
-  const sColor = SUPPORT_STATUS_COLORS[t.status] || '#64748b'
+  const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#7E7E8F'
+  const sColor = SUPPORT_STATUS_COLORS[t.status] || '#7E7E8F'
   const subTitle = [t.project_name, t.client_name].filter(Boolean).join(' · ')
   return `
     <div class="glass-card" style="padding:14px;cursor:pointer;border-left:3px solid ${pColor}" onclick="openSupportDetail('${_supEsc(t.id)}')">
@@ -159,7 +159,7 @@ function renderSupportRow(t) {
           ${_supBadge(t.priority || 'medium', pColor)}
           ${_supBadge(_supStatusLabel(t.status), sColor)}
           ${t.created_by_name ? `<span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-user-tag"></i> Assigned by ${_supEsc(t.created_by_name)}</span>` : ''}
-          ${t.assigned_to_name ? `<span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-user-check"></i> Assigned to ${_supEsc(t.assigned_to_name)}</span>` : `<span style="font-size:11px;color:#94a3b8"><i class="fas fa-user-slash"></i> Unassigned</span>`}
+          ${t.assigned_to_name ? `<span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-user-check"></i> Assigned to ${_supEsc(t.assigned_to_name)}</span>` : `<span style="font-size:11px;color:#7E7E8F"><i class="fas fa-user-slash"></i> Unassigned</span>`}
         </div>
       </div>
     </div>`
@@ -426,7 +426,7 @@ function _supEventLabel(ev) {
 
 function _supRenderTimelineItem(it) {
   const ev = it.data
-  const conf = SUPPORT_EVENT_ICONS[ev.type] || { icon: 'fa-circle', color: '#94A3B8' }
+  const conf = SUPPORT_EVENT_ICONS[ev.type] || { icon: 'fa-circle', color: '#7E7E8F' }
   const when = _supRelativeTime(ev.created_at || ev.at)
   const fullTime = _supEsc(new Date(ev.created_at).toLocaleString())
   const actor = _supEsc(ev.actor_name || 'Someone')
@@ -467,8 +467,8 @@ function paintSupportDetail() {
   const role = String(_user?.role || '').toLowerCase()
   const isStaff = ['admin','pm','pc','developer','team'].includes(role)
   const isPm = ['admin','pm','pc'].includes(role)
-  const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#94a3b8'
-  const sColor = SUPPORT_STATUS_COLORS[t.status] || '#64748b'
+  const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#7E7E8F'
+  const sColor = SUPPORT_STATUS_COLORS[t.status] || '#7E7E8F'
 
   const groups = _supportState.assignees.groups || {}
   const project = _supportState.assignees.project
@@ -653,7 +653,7 @@ const _cpSupportState = {
 }
 
 async function renderCpSupport(container) {
-  container.innerHTML = `<div style="color:#64748b;padding:40px 0;text-align:center"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
+  container.innerHTML = `<div style="color:#7E7E8F;padding:40px 0;text-align:center"><i class="fas fa-spinner fa-spin" style="font-size:24px"></i></div>`
   await Promise.all([cpLoadSupportList(), cpLoadSupportProjects()])
   cpPaintSupportList(container)
 }
@@ -716,22 +716,22 @@ function cpPaintSupportList(container) {
     </div>
 
     ${list.length === 0 ? `
-      <div style="padding:48px;text-align:center;color:#64748b;border:1px dashed #2A1812;border-radius:12px">
+      <div style="padding:48px;text-align:center;color:#7E7E8F;border:1px dashed #2A1812;border-radius:12px">
         <i class="fas fa-life-ring" style="font-size:32px;opacity:.5"></i>
         <p style="margin-top:12px">${_cpSupportState.list.length === 0 ? "You haven't raised any tickets yet." : 'No tickets match your filters.'}</p>
       </div>
     ` : `
       <div style="display:grid;gap:10px">
         ${list.map(t => {
-          const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#94a3b8'
-          const sColor = SUPPORT_STATUS_COLORS[t.status] || '#64748b'
+          const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#7E7E8F'
+          const sColor = SUPPORT_STATUS_COLORS[t.status] || '#7E7E8F'
           const subTitle = [t.project_name].filter(Boolean).join(' · ')
           return `
             <div onclick="openCpSupportDetail('${_supEsc(t.id)}')" style="padding:14px;border-radius:10px;background:#1F0F08;border:1px solid #2A1812;border-left:3px solid ${pColor};cursor:pointer">
               <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
                 <div style="flex:1;min-width:0">
                   <div style="font-size:14px;font-weight:600;color:#e2e8f0">${_supEsc(t.subject)}</div>
-                  <div style="font-size:11px;color:#64748b;margin-top:4px">#${_supEsc(String(t.id).slice(-6))}${subTitle ? ` · ${_supEsc(subTitle)}` : ''} · ${_supEsc(new Date(t.created_at).toLocaleDateString())} · ${_supEsc(t.assigned_to_name||'Unassigned')}</div>
+                  <div style="font-size:11px;color:#7E7E8F;margin-top:4px">#${_supEsc(String(t.id).slice(-6))}${subTitle ? ` · ${_supEsc(subTitle)}` : ''} · ${_supEsc(new Date(t.created_at).toLocaleDateString())} · ${_supEsc(t.assigned_to_name||'Unassigned')}</div>
                 </div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start">${_supBadge(_supStatusLabel(t.status), sColor)}${_supBadge(t.priority||'medium', pColor)}</div>
               </div>
@@ -785,13 +785,13 @@ async function openCpSupportCreate() {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:12px">
-      <div style="padding:10px 12px;border-radius:10px;background:rgba(255,122,69,.10);border:1px solid rgba(255,122,69,.30);font-size:12px;color:#FFCEAA;line-height:1.5">
+      <div style="padding:10px 12px;border-radius:10px;background:rgba(169,112,255,.10);border:1px solid rgba(169,112,255,.30);font-size:12px;color:#C9A7FF;line-height:1.5">
         <i class="fas fa-info-circle"></i>
         Your ticket will be routed to the project manager. They'll then assign it to the right person on your project's team.
       </div>
 
       ${loadError ? `
-        <div style="padding:10px 12px;border-radius:10px;background:rgba(255,94,58,.10);border:1px solid rgba(255,94,58,.30);font-size:12px;color:#FFB099">
+        <div style="padding:10px 12px;border-radius:10px;background:rgba(255,94,58,.10);border:1px solid rgba(255,94,58,.30);font-size:12px;color:#B388FF">
           <i class="fas fa-triangle-exclamation"></i> Could not load your projects: ${_supEsc(loadError)}
         </div>
       ` : ''}
@@ -809,7 +809,7 @@ async function openCpSupportCreate() {
               ? `<option value="">No projects available</option>`
               : `<option value="">— Select a project —</option>${projects.map(p => `<option value="${_supEsc(p.id)}">${_supEsc(p.name || p.code || p.id)}</option>`).join('')}`}
           </select>
-          ${noProjects ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px">No projects are linked to your account yet. You can still raise a general ticket.</div>` : `<div style="font-size:11px;color:#64748b;margin-top:4px">Pick the project this ticket relates to so it reaches the right team.</div>`}
+          ${noProjects ? `<div style="font-size:11px;color:#7E7E8F;margin-top:4px">No projects are linked to your account yet. You can still raise a general ticket.</div>` : `<div style="font-size:11px;color:#7E7E8F;margin-top:4px">Pick the project this ticket relates to so it reaches the right team.</div>`}
         </div>
         <div class="form-group">
           <label class="form-label">Priority</label>
@@ -865,21 +865,21 @@ async function openCpSupportDetail(ticketId) {
     const res = await ClientAPI.get(`/support/tickets/${ticketId}`)
     const t = res.ticket
     const comments = res.comments || []
-    const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#94a3b8'
-    const sColor = SUPPORT_STATUS_COLORS[t.status] || '#64748b'
+    const pColor = SUPPORT_PRIORITY_COLORS[t.priority] || '#7E7E8F'
+    const sColor = SUPPORT_STATUS_COLORS[t.status] || '#7E7E8F'
     const commentsHtml = comments.map((c) => `
       <div style="padding:10px 12px;border-radius:10px;background:#1F0F08;border:1px solid #2A1812">
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#64748b;margin-bottom:4px">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#7E7E8F;margin-bottom:4px">
           <span><strong>${_supEsc(c.author_role==='client'?'You':'Support')}</strong> · ${_supEsc(new Date(c.created_at).toLocaleString())}</span>
         </div>
         <div style="white-space:pre-wrap;color:#e2e8f0;font-size:13px">${_supEsc(c.body)}</div>
       </div>
-    `).join('') || '<div style="color:#64748b;font-size:12px;text-align:center;padding:16px">No replies yet.</div>'
+    `).join('') || '<div style="color:#7E7E8F;font-size:12px;text-align:center;padding:16px">No replies yet.</div>'
     showModal(`
       <div class="modal-header">
         <div>
           <h3 style="margin:0">${_supEsc(t.subject)}</h3>
-          <div style="font-size:11px;color:#64748b;margin-top:3px">#${_supEsc(String(t.id).slice(-6))} · ${_supEsc(t.project_name||'No project')}</div>
+          <div style="font-size:11px;color:#7E7E8F;margin-top:3px">#${_supEsc(String(t.id).slice(-6))} · ${_supEsc(t.project_name||'No project')}</div>
         </div>
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>

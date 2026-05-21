@@ -30,7 +30,7 @@ clientAuth.post('/signup', async (c) => {
 
     const id = 'client-' + Date.now()
     const password_hash = await hashPassword(password, c.env.PASSWORD_SALT)
-    const colors = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ec4899','#8b5cf6','#f97316']
+    const colors = ['#9D6CFF','#0ea5e9','#10b981','#A970FF','#ec4899','#8B5CFF','#f97316']
     const avatar_color = colors[Math.floor(Math.random() * colors.length)]
 
     const clientRecord = await c.env.MODELS.clients.createClient({

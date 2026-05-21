@@ -132,7 +132,7 @@ users.post('/', requireRole('admin'), async (c) => {
       body.hourly_cost || 0,
       body.monthly_available_hours || 160,
       body.reporting_pm_id || null,
-      body.avatar_color || '#6366f1',
+      body.avatar_color || '#9D6CFF',
       body.remarks || null
     ).run()
 

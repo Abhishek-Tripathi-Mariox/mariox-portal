@@ -112,21 +112,21 @@ function buildInvoiceEmail(inv: any) {
                     <tr>
                       <td valign="top" style="width:58%;padding-right:20px">
                         <div style="font-size:21px;font-weight:700;line-height:1.2;color:#111827">${brandName}</div>
-                        <div style="margin-top:10px;font-size:13px;line-height:1.55;color:#374151">
+                        <div style="margin-top:10px;font-size:13px;line-height:1.55;color:#5A5A66">
                           <div>${escapeHtml(fromEmailFallback(inv))}</div>
                           <div>Invoice mailer for client billing</div>
                         </div>
                       </td>
                       <td valign="top" align="right" style="width:42%">
-                        <div style="font-size:34px;font-weight:700;letter-spacing:.03em;color:#9ca3af;line-height:1">INVOICE</div>
-                        <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-top:18px;border:1px solid #9ca3af">
+                        <div style="font-size:34px;font-weight:700;letter-spacing:.03em;color:#B8B8C7;line-height:1">INVOICE</div>
+                        <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-top:18px;border:1px solid #B8B8C7">
                           <tr>
-                            <td style="padding:5px 10px;background:#e5e7eb;border-right:1px solid #9ca3af;font-size:11px;font-weight:700;color:#111827;text-align:center">INVOICE #</td>
+                            <td style="padding:5px 10px;background:#e5e7eb;border-right:1px solid #B8B8C7;font-size:11px;font-weight:700;color:#111827;text-align:center">INVOICE #</td>
                             <td style="padding:5px 10px;background:#e5e7eb;font-size:11px;font-weight:700;color:#111827;text-align:center">DATE</td>
                           </tr>
                           <tr>
-                            <td style="padding:7px 10px;border-top:1px solid #9ca3af;border-right:1px solid #9ca3af;font-size:12px;color:#111827;text-align:center;white-space:nowrap">${invoiceNumber}</td>
-                            <td style="padding:7px 10px;border-top:1px solid #9ca3af;font-size:12px;color:#111827;text-align:center;white-space:nowrap">${issueDate}</td>
+                            <td style="padding:7px 10px;border-top:1px solid #B8B8C7;border-right:1px solid #B8B8C7;font-size:12px;color:#111827;text-align:center;white-space:nowrap">${invoiceNumber}</td>
+                            <td style="padding:7px 10px;border-top:1px solid #B8B8C7;font-size:12px;color:#111827;text-align:center;white-space:nowrap">${issueDate}</td>
                           </tr>
                         </table>
                       </td>
@@ -139,17 +139,17 @@ function buildInvoiceEmail(inv: any) {
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
                     <tr>
                       <td valign="top" style="width:50%;padding-right:18px">
-                        <div style="display:inline-block;background:#e5e7eb;border:1px solid #9ca3af;padding:6px 12px;font-size:12px;font-weight:700;color:#111827">BILL TO</div>
+                        <div style="display:inline-block;background:#e5e7eb;border:1px solid #B8B8C7;padding:6px 12px;font-size:12px;font-weight:700;color:#111827">BILL TO</div>
                         <div style="margin-top:10px;font-size:13px;line-height:1.55;color:#111827">
                           <div style="font-size:17px;font-weight:700;line-height:1.25">${companyName}</div>
                           <div>${contactName}</div>
                           <div>${escapeHtml(inv.client_email || '')}</div>
                         </div>
                       </td>
-                      <td valign="top" align="right" style="width:50%;font-size:13px;line-height:1.6;color:#374151">
-                        <div><span style="color:#6b7280">Project:</span> <strong style="color:#111827">${projectName}</strong></div>
-                        <div><span style="color:#6b7280">Issue Date:</span> ${issueDate}</div>
-                        <div><span style="color:#6b7280">Due Date:</span> ${dueDate}</div>
+                      <td valign="top" align="right" style="width:50%;font-size:13px;line-height:1.6;color:#5A5A66">
+                        <div><span style="color:#7E7E8F">Project:</span> <strong style="color:#111827">${projectName}</strong></div>
+                        <div><span style="color:#7E7E8F">Issue Date:</span> ${issueDate}</div>
+                        <div><span style="color:#7E7E8F">Due Date:</span> ${dueDate}</div>
                       </td>
                     </tr>
                   </table>
@@ -157,21 +157,21 @@ function buildInvoiceEmail(inv: any) {
               </tr>
               <tr>
                 <td style="padding:18px 30px 0 30px">
-                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #9ca3af">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #B8B8C7">
                     <tr>
-                      <td style="padding:8px 10px;background:#e5e7eb;border-right:1px solid #9ca3af;font-size:12px;font-weight:700;color:#111827">DESCRIPTION</td>
+                      <td style="padding:8px 10px;background:#e5e7eb;border-right:1px solid #B8B8C7;font-size:12px;font-weight:700;color:#111827">DESCRIPTION</td>
                       <td style="padding:8px 10px;background:#e5e7eb;font-size:12px;font-weight:700;color:#111827;text-align:right">AMOUNT</td>
                     </tr>
                     <tr>
-                      <td style="padding:12px 12px;border-top:1px solid #9ca3af;border-right:1px solid #9ca3af;font-size:13px;line-height:1.55;color:#111827">
+                      <td style="padding:12px 12px;border-top:1px solid #B8B8C7;border-right:1px solid #B8B8C7;font-size:13px;line-height:1.55;color:#111827">
                         <div style="font-weight:700">${title}</div>
-                        <div style="margin-top:4px;color:#374151">${description}</div>
+                        <div style="margin-top:4px;color:#5A5A66">${description}</div>
                       </td>
-                      <td valign="top" style="padding:12px 12px;border-top:1px solid #9ca3af;font-size:13px;color:#111827;text-align:right;white-space:nowrap">${amount}</td>
+                      <td valign="top" style="padding:12px 12px;border-top:1px solid #B8B8C7;font-size:13px;color:#111827;text-align:right;white-space:nowrap">${amount}</td>
                     </tr>
                     <tr>
-                      <td style="padding:10px 12px;border-top:1px solid #9ca3af;border-right:1px solid #9ca3af;text-align:right;font-size:13px;font-weight:700;color:#111827">TOTAL</td>
-                      <td style="padding:10px 12px;border-top:1px solid #9ca3af;font-size:13px;font-weight:700;color:#111827;text-align:right;white-space:nowrap">${totalAmount}</td>
+                      <td style="padding:10px 12px;border-top:1px solid #B8B8C7;border-right:1px solid #B8B8C7;text-align:right;font-size:13px;font-weight:700;color:#111827">TOTAL</td>
+                      <td style="padding:10px 12px;border-top:1px solid #B8B8C7;font-size:13px;font-weight:700;color:#111827;text-align:right;white-space:nowrap">${totalAmount}</td>
                     </tr>
                   </table>
                 </td>
@@ -180,15 +180,15 @@ function buildInvoiceEmail(inv: any) {
                 <td style="padding:16px 30px 0 30px">
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
                     <tr>
-                      <td style="width:25%;border:1px solid #d1d5db;padding:10px 12px;font-size:12px;color:#6b7280;vertical-align:top">TAX</td>
+                      <td style="width:25%;border:1px solid #d1d5db;padding:10px 12px;font-size:12px;color:#7E7E8F;vertical-align:top">TAX</td>
                       <td style="width:25%;border:1px solid #d1d5db;border-left:0;padding:10px 12px;font-size:16px;font-weight:700;color:#111827;vertical-align:top;white-space:nowrap">${taxAmount}</td>
-                      <td style="width:25%;border:1px solid #d1d5db;border-left:0;padding:10px 12px;font-size:12px;color:#6b7280;vertical-align:top">STATUS</td>
+                      <td style="width:25%;border:1px solid #d1d5db;border-left:0;padding:10px 12px;font-size:12px;color:#7E7E8F;vertical-align:top">STATUS</td>
                       <td style="width:25%;border:1px solid #d1d5db;border-left:0;padding:10px 12px;font-size:16px;font-weight:700;color:#b45309;vertical-align:top">${status}</td>
                     </tr>
                     <tr>
-                      <td style="border:1px solid #d1d5db;border-top:0;padding:10px 12px;font-size:12px;color:#6b7280;vertical-align:top">PAID</td>
+                      <td style="border:1px solid #d1d5db;border-top:0;padding:10px 12px;font-size:12px;color:#7E7E8F;vertical-align:top">PAID</td>
                       <td style="border:1px solid #d1d5db;border-left:0;border-top:0;padding:10px 12px;font-size:16px;font-weight:700;color:#111827;vertical-align:top;white-space:nowrap">${paidAmount}</td>
-                      <td style="border:1px solid #d1d5db;border-left:0;border-top:0;padding:10px 12px;font-size:12px;color:#6b7280;vertical-align:top">PROJECT</td>
+                      <td style="border:1px solid #d1d5db;border-left:0;border-top:0;padding:10px 12px;font-size:12px;color:#7E7E8F;vertical-align:top">PROJECT</td>
                       <td style="border:1px solid #d1d5db;border-left:0;border-top:0;padding:10px 12px;font-size:16px;font-weight:700;color:#111827;vertical-align:top">${projectName}</td>
                     </tr>
                   </table>
@@ -198,13 +198,13 @@ function buildInvoiceEmail(inv: any) {
                 <td style="padding:16px 30px 0 30px">
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
                     <tr>
-                      <td style="border:1px solid #d1d5db;padding:12px 14px;font-size:13px;line-height:1.7;color:#374151">
+                      <td style="border:1px solid #d1d5db;padding:12px 14px;font-size:13px;line-height:1.7;color:#5A5A66">
                         <div style="font-weight:700;color:#111827;margin-bottom:4px">Payment Terms</div>
                         <div>${terms}</div>
                       </td>
                     </tr>
                     <tr>
-                      <td style="border:1px solid #d1d5db;border-top:0;padding:12px 14px;font-size:13px;line-height:1.7;color:#374151">
+                      <td style="border:1px solid #d1d5db;border-top:0;padding:12px 14px;font-size:13px;line-height:1.7;color:#5A5A66">
                         <div style="font-weight:700;color:#111827;margin-bottom:4px">Notes</div>
                         <div>${notes}</div>
                       </td>
@@ -213,10 +213,10 @@ function buildInvoiceEmail(inv: any) {
                 </td>
               </tr>
               <tr>
-                <td style="padding:18px 30px 24px 30px;text-align:center;font-style:italic;font-size:12px;color:#6b7280">Thank you for your business!</td>
+                <td style="padding:18px 30px 24px 30px;text-align:center;font-style:italic;font-size:12px;color:#7E7E8F">Thank you for your business!</td>
               </tr>
               <tr>
-                <td style="padding:18px 30px 28px 30px;border-top:1px solid #e5e7eb;text-align:center;font-size:12px;line-height:1.7;color:#6b7280">
+                <td style="padding:18px 30px 28px 30px;border-top:1px solid #e5e7eb;text-align:center;font-size:12px;line-height:1.7;color:#7E7E8F">
                   If you have any questions about this invoice, please contact<br/>
                   <strong style="color:#111827">${brandName}</strong><br/>
                   ${escapeHtml(fromEmailFallback(inv))}

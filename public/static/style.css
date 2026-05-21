@@ -8,12 +8,12 @@ body {
   margin: 0;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   background:
-    radial-gradient(ellipse 80% 70% at 18% 25%, rgba(180,200,225,0.30), transparent 55%),
-    radial-gradient(ellipse 60% 60% at 95% 100%, rgba(10,16,28,0.65), transparent 55%),
-    radial-gradient(ellipse 70% 60% at 100% 50%, rgba(20,28,42,0.45), transparent 55%),
-    linear-gradient(135deg, #7d8fa3 0%, #62738a 22%, #4a5b73 45%, #344358 68%, #1f2a3a 100%);
+    radial-gradient(ellipse 80% 70% at 18% 25%, rgba(201,167,255,0.30), transparent 55%),
+    radial-gradient(ellipse 60% 60% at 95% 100%, rgba(11,11,13,0.65), transparent 55%),
+    radial-gradient(ellipse 70% 60% at 100% 50%, rgba(18,18,22,0.45), transparent 55%),
+    linear-gradient(135deg, #9D6CFF 0%, #7E7E8F 22%, #2B2B35 45%, #1A1A22 68%, #121216 100%);
   background-attachment: fixed;
-  color: #0f172a;
+  color: #0B0B0D;
 }
 
 h1 {

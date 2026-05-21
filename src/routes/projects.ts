@@ -140,10 +140,10 @@ projects.post('/', requireRole('admin', 'pm'), async (c) => {
 
     // Auto-seed default kanban columns
     const defaultCols = [
-      { key: 'backlog',     name: 'Backlog',     color: '#64748b', wip: 0, done: 0 },
-      { key: 'todo',        name: 'To Do',       color: '#6366f1', wip: 0, done: 0 },
-      { key: 'in_progress', name: 'In Progress', color: '#f59e0b', wip: 5, done: 0 },
-      { key: 'in_review',   name: 'In Review',   color: '#8b5cf6', wip: 3, done: 0 },
+      { key: 'backlog',     name: 'Backlog',     color: '#7E7E8F', wip: 0, done: 0 },
+      { key: 'todo',        name: 'To Do',       color: '#9D6CFF', wip: 0, done: 0 },
+      { key: 'in_progress', name: 'In Progress', color: '#A970FF', wip: 5, done: 0 },
+      { key: 'in_review',   name: 'In Review',   color: '#8B5CFF', wip: 3, done: 0 },
       { key: 'qa',          name: 'QA',          color: '#06b6d4', wip: 3, done: 0 },
       { key: 'done',        name: 'Done',        color: '#10b981', wip: 0, done: 1 },
       { key: 'blocked',     name: 'Blocked',     color: '#ef4444', wip: 0, done: 0 },

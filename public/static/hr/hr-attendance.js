@@ -77,10 +77,10 @@ async function renderAttendanceView(el) {
       </div>` : ''}
 
       <div class="grid-4" style="margin-bottom:16px">
-        ${miniStatCard('Records', list.length, '#FF7A45', 'fa-user-clock')}
+        ${miniStatCard('Records', list.length, '#A970FF', 'fa-user-clock')}
         ${miniStatCard('Present', present, '#58C68A', 'fa-check-circle')}
         ${miniStatCard('Absent',  absent,  '#FF5E3A', 'fa-times-circle')}
-        ${miniStatCard('Late',    late,    '#FFCB47', 'fa-hourglass-half')}
+        ${miniStatCard('Late',    late,    '#C9A7FF', 'fa-hourglass-half')}
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
@@ -90,12 +90,12 @@ async function renderAttendanceView(el) {
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
           ${hrFilterButtons([
-            { value: '',         label: 'All',       activeStyle: 'background:rgba(255,122,69,.15);color:#FFB347' },
+            { value: '',         label: 'All',       activeStyle: 'background:rgba(169,112,255,.15);color:#C9A7FF' },
             { value: 'present',  label: 'Present',   activeStyle: 'background:rgba(88,198,138,.15);color:#86E0A8' },
-            { value: 'absent',   label: 'Absent',    activeStyle: 'background:rgba(255,94,58,.15);color:#FF8866' },
-            { value: 'half_day', label: 'Half day',  activeStyle: 'background:rgba(255,203,71,.15);color:#FFD986' },
-            { value: 'late',     label: 'Late',      activeStyle: 'background:rgba(255,203,71,.15);color:#FFD986' },
-            { value: 'on_leave', label: 'On leave',  activeStyle: 'background:rgba(100,160,255,.15);color:#A8C8FF' },
+            { value: 'absent',   label: 'Absent',    activeStyle: 'background:rgba(255,94,58,.15);color:#A970FF' },
+            { value: 'half_day', label: 'Half day',  activeStyle: 'background:rgba(169,112,255,.15);color:#D5C0FF' },
+            { value: 'late',     label: 'Late',      activeStyle: 'background:rgba(169,112,255,.15);color:#D5C0FF' },
+            { value: 'on_leave', label: 'On leave',  activeStyle: 'background:rgba(169,112,255,.15);color:#A8C8FF' },
           ], _hrAttFilterStatus, 'hrAttSetStatus')}
         </div>
       </div>
@@ -124,9 +124,9 @@ function renderMyPunchCard(today) {
   const hasOut = today && today.check_out
   const approval = today?.approval_status || 'pending'
   const approvalLabel = !today ? 'No punch yet' : (approval === 'approved' ? 'Approved' : approval === 'rejected' ? 'Rejected' : 'Pending HR approval')
-  const approvalColor = approval === 'approved' ? '#58C68A' : approval === 'rejected' ? '#FF5E3A' : '#FFCB47'
+  const approvalColor = approval === 'approved' ? '#58C68A' : approval === 'rejected' ? '#FF5E3A' : '#C9A7FF'
   const rejectReason = approval === 'rejected' && today?.decision_reason
-    ? `<div style="font-size:11px;color:#FF8866;margin-top:4px"><i class="fas fa-comment-dots"></i> ${escapeInbox(today.decision_reason)}</div>`
+    ? `<div style="font-size:11px;color:#A970FF;margin-top:4px"><i class="fas fa-comment-dots"></i> ${escapeInbox(today.decision_reason)}</div>`
     : ''
   return `
   <div class="card" style="margin-bottom:14px">
@@ -134,8 +134,8 @@ function renderMyPunchCard(today) {
       <div>
         <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">My Shift Today</div>
         <div style="display:flex;align-items:center;gap:14px;margin-top:4px;flex-wrap:wrap">
-          <div><span style="font-size:11px;color:#94a3b8">In:</span> <span style="font-weight:600;color:${hasIn?'#86E0A8':'#64748b'}">${hasIn ? escapeInbox(today.check_in) : '—'}</span></div>
-          <div><span style="font-size:11px;color:#94a3b8">Out:</span> <span style="font-weight:600;color:${hasOut?'#86E0A8':'#64748b'}">${hasOut ? escapeInbox(today.check_out) : '—'}</span></div>
+          <div><span style="font-size:11px;color:#7E7E8F">In:</span> <span style="font-weight:600;color:${hasIn?'#86E0A8':'#7E7E8F'}">${hasIn ? escapeInbox(today.check_in) : '—'}</span></div>
+          <div><span style="font-size:11px;color:#7E7E8F">Out:</span> <span style="font-weight:600;color:${hasOut?'#86E0A8':'#7E7E8F'}">${hasOut ? escapeInbox(today.check_out) : '—'}</span></div>
           <div><span class="badge" style="background:${approvalColor}20;color:${approvalColor};border:1px solid ${approvalColor}40">${approvalLabel}</span></div>
         </div>
         ${rejectReason}
@@ -163,7 +163,7 @@ async function hrPunch(action) {
 
 function _attApprovalBadge(r) {
   const s = r.approval_status || 'pending'
-  const color = s === 'approved' ? '#58C68A' : s === 'rejected' ? '#FF5E3A' : '#FFCB47'
+  const color = s === 'approved' ? '#58C68A' : s === 'rejected' ? '#FF5E3A' : '#C9A7FF'
   const label = s === 'approved' ? 'Approved' : s === 'rejected' ? 'Rejected' : 'Pending'
   const tip = s === 'rejected' && r.decision_reason ? ` title="${escapeInbox(r.decision_reason)}"` : ''
   return `<span class="badge"${tip} style="background:${color}20;color:${color};border:1px solid ${color}40">${label}</span>`
@@ -173,13 +173,13 @@ function renderAttendanceRow(r, canManage) {
   const name = r.full_name || r.email || 'Unknown'
   const isPending = (r.approval_status || 'pending') === 'pending'
   return `<tr>
-    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, r.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(name)}</span></div></td>` : ''}
+    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, r.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFFFFF">${escapeInbox(name)}</span></div></td>` : ''}
     <td style="font-size:12px;color:#9F8678">${fmtDate(r.date)}</td>
     <td>${ATT_STATUS_BADGE[r.status] || `<span class="badge">${escapeInbox(r.status||'')}</span>`}</td>
-    <td style="font-size:12px;color:#E8D2BD">${escapeInbox(r.check_in || '—')}</td>
-    <td style="font-size:12px;color:#E8D2BD">${escapeInbox(r.check_out || '—')}</td>
+    <td style="font-size:12px;color:#E8D9FF">${escapeInbox(r.check_in || '—')}</td>
+    <td style="font-size:12px;color:#E8D9FF">${escapeInbox(r.check_out || '—')}</td>
     <td>${_attApprovalBadge(r)}</td>
-    <td style="font-size:12px;color:#E8D2BD;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeInbox(r.note || '')}">${escapeInbox(r.note || '—')}</td>
+    <td style="font-size:12px;color:#E8D9FF;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeInbox(r.note || '')}">${escapeInbox(r.note || '—')}</td>
     ${canManage ? `<td>
       <div style="display:flex;gap:4px">
         ${isPending ? `<button class="btn btn-xs btn-primary" onclick="hrAttDecide('${r.id}','approved')" title="Approve"><i class="fas fa-check"></i></button>
@@ -328,11 +328,11 @@ async function renderAttendanceSummaryTab(el) {
             ${rows.length === 0
               ? hrEmptyRow(8, 'fa-chart-column', 'No employees found.')
               : rows.map(s => `<tr>
-                  <td><div style="display:flex;align-items:center;gap:8px">${avatar(s.full_name || s.email || '?', s.avatar_color, 'sm')}<div><div style="font-size:12.5px;color:#FFF1E6">${escapeInbox(s.full_name || '—')}</div><div style="font-size:11px;color:#9F8678">${escapeInbox(s.designation || s.email || '')}</div></div></div></td>
+                  <td><div style="display:flex;align-items:center;gap:8px">${avatar(s.full_name || s.email || '?', s.avatar_color, 'sm')}<div><div style="font-size:12.5px;color:#FFFFFF">${escapeInbox(s.full_name || '—')}</div><div style="font-size:11px;color:#9F8678">${escapeInbox(s.designation || s.email || '')}</div></div></div></td>
                   <td style="text-align:center;color:#86E0A8;font-weight:700">${s.present}</td>
-                  <td style="text-align:center;color:#FFD986">${s.half_day}</td>
-                  <td style="text-align:center;color:#FFD986">${s.late}</td>
-                  <td style="text-align:center;color:#FF8866;font-weight:700">${s.absent}</td>
+                  <td style="text-align:center;color:#D5C0FF">${s.half_day}</td>
+                  <td style="text-align:center;color:#D5C0FF">${s.late}</td>
+                  <td style="text-align:center;color:#A970FF;font-weight:700">${s.absent}</td>
                   <td style="text-align:center;color:#A8C8FF">${s.on_leave}</td>
                   <td style="text-align:center;color:#A8C8FF">${s.holiday}</td>
                   <td style="text-align:center;color:#9F8678">${s.total}</td>
@@ -358,7 +358,7 @@ function openBulkAttendanceModal() {
       <input type="checkbox" class="att-bulk-user" value="${u.id}" checked/>
       ${avatar(u.full_name || u.email || '?', u.avatar_color, 'sm')}
       <div style="flex:1;min-width:0">
-        <div style="font-size:12.5px;color:#FFF1E6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeInbox(u.full_name || u.email || '?')}</div>
+        <div style="font-size:12.5px;color:#FFFFFF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeInbox(u.full_name || u.email || '?')}</div>
         <div style="font-size:11px;color:#9F8678;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeInbox(u.designation || u.email || '')}</div>
       </div>
     </label>`).join('')

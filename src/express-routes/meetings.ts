@@ -86,32 +86,32 @@ function buildInviteHtml(meeting: any, lead: any, senderName: string, opts: { is
   })
   const isJitsi = /(^|\.)meet\.jit\.si\//i.test(String(meeting.meeting_link || ''))
   const linkBlock = meeting.meeting_link
-    ? `<div style="margin:14px 0"><a href="${esc(meeting.meeting_link)}" style="display:inline-block;background:#FF7A45;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">Join Meeting</a></div>`
+    ? `<div style="margin:14px 0"><a href="${esc(meeting.meeting_link)}" style="display:inline-block;background:#A970FF;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">Join Meeting</a></div>`
     : ''
   const jitsiNote = isJitsi
-    ? `<div style="margin:10px 0;padding:10px 12px;background:#fff4e5;border-left:3px solid #f59e0b;border-radius:0 6px 6px 0;font:13px/1.5 Arial,Helvetica,sans-serif;color:#92400e">If you see "waiting for moderator", please wait a moment — the host will start the call shortly.</div>`
+    ? `<div style="margin:10px 0;padding:10px 12px;background:#fff4e5;border-left:3px solid #A970FF;border-radius:0 6px 6px 0;font:13px/1.5 Arial,Helvetica,sans-serif;color:#92400e">If you see "waiting for moderator", please wait a moment — the host will start the call shortly.</div>`
     : ''
   const heading = opts.isReschedule ? 'Meeting Rescheduled' : 'Meeting Invitation'
   const intro = opts.isReschedule
     ? `Our meeting has been moved to a new time. Updated details:`
     : `You're invited to a meeting with Mariox Software. Details below:`
-  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1f2937">
+  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1A1A22">
     <div style="max-width:640px;margin:0 auto;background:#fff;padding:28px 30px;border-radius:8px;border:1px solid #e5e7eb">
-      <div style="text-align:center;padding-bottom:14px;border-bottom:2px solid #FF7A45;margin-bottom:18px">
+      <div style="text-align:center;padding-bottom:14px;border-bottom:2px solid #A970FF;margin-bottom:18px">
         <div style="font:800 22px Arial,Helvetica,sans-serif;color:#111827">${heading}</div>
-        <div style="font:700 15px Arial,Helvetica,sans-serif;color:#FF7A45;margin-top:6px">${esc(meeting.title)}</div>
+        <div style="font:700 15px Arial,Helvetica,sans-serif;color:#A970FF;margin-top:6px">${esc(meeting.title)}</div>
       </div>
       <p style="font:14px/1.6 Arial,Helvetica,sans-serif">Hi ${esc(lead?.name || 'there')},</p>
       <p style="font:14px/1.6 Arial,Helvetica,sans-serif">${intro}</p>
-      <div style="background:#fafafa;padding:14px 16px;border-left:3px solid #FF7A45;border-radius:0 6px 6px 0;margin:14px 0">
+      <div style="background:#fafafa;padding:14px 16px;border-left:3px solid #A970FF;border-radius:0 6px 6px 0;margin:14px 0">
         <div style="font:14px/1.7 Arial,Helvetica,sans-serif"><strong>When:</strong> ${esc(when)}</div>
         <div style="font:14px/1.7 Arial,Helvetica,sans-serif"><strong>Duration:</strong> ${meeting.duration_mins} minutes</div>
       </div>
       ${linkBlock}
       ${jitsiNote}
-      ${meeting.agenda ? `<div style="margin-top:14px"><div style="font:700 14px Arial,Helvetica,sans-serif;color:#1f2937;margin-bottom:6px">Agenda</div><div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#374151;white-space:pre-wrap">${esc(meeting.agenda)}</div></div>` : ''}
-      <div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#6b7280">
-        Regards,<br/><strong style="color:#1f2937">${esc(senderName)}</strong><br/>Mariox Software
+      ${meeting.agenda ? `<div style="margin-top:14px"><div style="font:700 14px Arial,Helvetica,sans-serif;color:#1A1A22;margin-bottom:6px">Agenda</div><div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#5A5A66;white-space:pre-wrap">${esc(meeting.agenda)}</div></div>` : ''}
+      <div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#7E7E8F">
+        Regards,<br/><strong style="color:#1A1A22">${esc(senderName)}</strong><br/>Mariox Software
       </div>
     </div></body></html>`
 }
@@ -148,7 +148,7 @@ function buildAttendeeHtml(meeting: any, lead: any, attendeeName: string, sender
   const intro = opts.isReschedule
     ? `A meeting${lead?.name ? ` with <strong>${esc(lead.name)}</strong>` : ''} has been rescheduled. Updated details:`
     : `You've been added to a meeting${lead?.name ? ` with <strong>${esc(lead.name)}</strong>` : ''}. Details:`
-  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1f2937">
+  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1A1A22">
     <div style="max-width:640px;margin:0 auto;background:#fff;padding:28px 30px;border-radius:8px;border:1px solid #e5e7eb">
       <div style="text-align:center;padding-bottom:14px;border-bottom:2px solid #a78bfa;margin-bottom:18px">
         <div style="font:800 22px Arial,Helvetica,sans-serif;color:#111827">${heading}</div>
@@ -163,8 +163,8 @@ function buildAttendeeHtml(meeting: any, lead: any, attendeeName: string, sender
         <div style="font:14px/1.7 Arial,Helvetica,sans-serif"><strong>Scheduled by:</strong> ${esc(senderName)}</div>
       </div>
       ${linkBlock}
-      ${meeting.agenda ? `<div style="margin-top:14px"><div style="font:700 14px Arial,Helvetica,sans-serif;color:#1f2937;margin-bottom:6px">Agenda</div><div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#374151;white-space:pre-wrap">${esc(meeting.agenda)}</div></div>` : ''}
-      <div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#6b7280">
+      ${meeting.agenda ? `<div style="margin-top:14px"><div style="font:700 14px Arial,Helvetica,sans-serif;color:#1A1A22;margin-bottom:6px">Agenda</div><div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#5A5A66;white-space:pre-wrap">${esc(meeting.agenda)}</div></div>` : ''}
+      <div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb;font:13px Arial,Helvetica,sans-serif;color:#7E7E8F">
         You'll also get an in-app reminder 5 minutes before the meeting starts.<br/>— Mariox Portal
       </div>
     </div></body></html>`

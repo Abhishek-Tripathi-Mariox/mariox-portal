@@ -38,8 +38,8 @@ async function renderSalarySlipsView(el) {
       </div>
 
       <div class="grid-4" style="margin-bottom:16px">
-        ${miniStatCard('Slips',         list.length, '#FF7A45', 'fa-money-check-dollar')}
-        ${miniStatCard('Months',        new Set(list.map(s => s.month)).size, '#FFCB47', 'fa-calendar')}
+        ${miniStatCard('Slips',         list.length, '#A970FF', 'fa-money-check-dollar')}
+        ${miniStatCard('Months',        new Set(list.map(s => s.month)).size, '#C9A7FF', 'fa-calendar')}
         ${miniStatCard('Total net pay', hrFmtMoney(totalPay), '#58C68A', 'fa-coins')}
         ${miniStatCard('Latest month',  list[0]?.month || '—', '#A8C8FF', 'fa-clock')}
       </div>
@@ -74,11 +74,11 @@ async function renderSalarySlipsView(el) {
 function renderSlipRow(s, canManage) {
   const name = s.full_name || s.email || 'Unknown'
   return `<tr>
-    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, s.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(name)}</span></div></td>` : ''}
-    <td style="font-size:12.5px;color:#FFF1E6;font-weight:600">${escapeInbox(s.month)}</td>
-    <td style="font-size:12px;color:#E8D2BD">${hrFmtMoney(s.gross)}</td>
-    <td style="font-size:12px;color:#FF8866">${hrFmtMoney(s.deductions)}</td>
-    <td style="font-size:12px;color:#FF8866">${hrFmtMoney(s.tax)}</td>
+    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, s.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFFFFF">${escapeInbox(name)}</span></div></td>` : ''}
+    <td style="font-size:12.5px;color:#FFFFFF;font-weight:600">${escapeInbox(s.month)}</td>
+    <td style="font-size:12px;color:#E8D9FF">${hrFmtMoney(s.gross)}</td>
+    <td style="font-size:12px;color:#A970FF">${hrFmtMoney(s.deductions)}</td>
+    <td style="font-size:12px;color:#A970FF">${hrFmtMoney(s.tax)}</td>
     <td style="font-size:13px;color:#86E0A8;font-weight:700">${hrFmtMoney(s.net_pay)}</td>
     <td>
       <div style="display:flex;gap:4px;flex-wrap:wrap">
@@ -145,17 +145,17 @@ function openSlipDetail(id) {
   const s = (window._hrSlipsById || {})[id]
   if (!s) { toast('Slip not found', 'error'); return }
   const name = s.full_name || s.email || 'Unknown'
-  const row = (label, val, accent) => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span style="color:#9F8678;font-size:12px">${label}</span><span style="color:${accent || '#FFF1E6'};font-size:13px;font-weight:600">${val}</span></div>`
+  const row = (label, val, accent) => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span style="color:#9F8678;font-size:12px">${label}</span><span style="color:${accent || '#FFFFFF'};font-size:13px;font-weight:600">${val}</span></div>`
   showModal(`
     <div class="modal-header">
       <h3><i class="fas fa-money-check-dollar" style="color:var(--accent);margin-right:6px"></i>Salary Slip · ${escapeInbox(s.month)}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(255,122,69,0.06);border:1px solid rgba(255,122,69,0.2)">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(169,112,255,0.06);border:1px solid rgba(169,112,255,0.2)">
         ${avatar(name, s.avatar_color, 'md')}
         <div>
-          <div style="font-size:14px;font-weight:700;color:#FFF1E6">${escapeInbox(name)}</div>
+          <div style="font-size:14px;font-weight:700;color:#FFFFFF">${escapeInbox(name)}</div>
           <div style="font-size:12px;color:#9F8678">${escapeInbox(s.designation || s.email || '')}</div>
         </div>
       </div>
@@ -169,8 +169,8 @@ function openSlipDetail(id) {
       </div>
       <div>
         <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Deductions</div>
-        ${row('Deductions', hrFmtMoney(s.deductions), '#FF8866')}
-        ${row('Tax', hrFmtMoney(s.tax), '#FF8866')}
+        ${row('Deductions', hrFmtMoney(s.deductions), '#A970FF')}
+        ${row('Tax', hrFmtMoney(s.tax), '#A970FF')}
       </div>
       <div>
         <div style="font-size:11px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Days</div>
@@ -181,7 +181,7 @@ function openSlipDetail(id) {
         <span style="font-size:13px;color:#9F8678">Net pay</span>
         <span style="font-size:20px;font-weight:800;color:#86E0A8">${hrFmtMoney(s.net_pay)}</span>
       </div>
-      ${s.notes ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Notes</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(s.notes)}</div></div>` : ''}
+      ${s.notes ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Notes</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(s.notes)}</div></div>` : ''}
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Close</button>
@@ -268,7 +268,7 @@ async function hrBulkSlipLoad() {
             ${users.map(u => {
               const p = prevByUser[u.id] || {}
               return `<tr data-uid="${u.id}">
-                <td><div style="display:flex;align-items:center;gap:8px">${avatar(u.full_name || u.email || '?', u.avatar_color, 'sm')}<div style="min-width:0"><div style="font-size:12px;color:#FFF1E6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">${escapeInbox(u.full_name || u.email)}</div><div style="font-size:10.5px;color:#9F8678">${escapeInbox(u.designation || '')}</div></div></div></td>
+                <td><div style="display:flex;align-items:center;gap:8px">${avatar(u.full_name || u.email || '?', u.avatar_color, 'sm')}<div style="min-width:0"><div style="font-size:12px;color:#FFFFFF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">${escapeInbox(u.full_name || u.email)}</div><div style="font-size:10.5px;color:#9F8678">${escapeInbox(u.designation || '')}</div></div></div></td>
                 <td>${numCell(u.id, 'basic', p.basic)}</td>
                 <td>${numCell(u.id, 'hra', p.hra)}</td>
                 <td>${numCell(u.id, 'allowances', p.allowances)}</td>

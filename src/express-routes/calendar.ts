@@ -131,7 +131,7 @@ export function createCalendarRouter(models: MongoModels, jwtSecret: string) {
         start_time: startTime,
         end_time: endTime,
         description,
-        color: color || (visibility === 'personal' ? '#A8C8FF' : '#FF7A45'),
+        color: color || (visibility === 'personal' ? '#A8C8FF' : '#A970FF'),
         created_by: user?.sub || null,
         created_at: now,
         updated_at: now,

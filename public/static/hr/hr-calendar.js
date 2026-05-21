@@ -48,7 +48,7 @@ async function renderHRCalendarView(el) {
 
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px">
         <button class="btn btn-sm btn-outline" onclick="hrCalShift(-1)"><i class="fas fa-chevron-left"></i></button>
-        <div style="font-weight:700;color:#FFF1E6;min-width:180px;text-align:center">${monthLabel}</div>
+        <div style="font-weight:700;color:#FFFFFF;min-width:180px;text-align:center">${monthLabel}</div>
         <button class="btn btn-sm btn-outline" onclick="hrCalShift(1)"><i class="fas fa-chevron-right"></i></button>
         <button class="btn btn-sm btn-outline" onclick="hrCalGotoToday()" style="margin-left:8px">Today</button>
       </div>
@@ -89,16 +89,16 @@ function renderCalendarGrid(cells, monthEvents) {
           const e = (ev.end_date   || ev.start_date || '').slice(0, 10)
           return s <= dateStr && e >= dateStr
         })
-        return `<div style="min-height:74px;border-radius:10px;padding:6px;background:${isToday ? 'rgba(255,122,69,0.12)' : 'rgba(255,255,255,0.03)'};border:1px solid ${isToday ? 'rgba(255,122,69,0.4)' : 'rgba(255,255,255,0.06)'}">
-          <div style="font-size:11px;font-weight:700;color:${isToday ? '#FFB347' : '#FFF1E6'};margin-bottom:4px">${d}</div>
+        return `<div style="min-height:74px;border-radius:10px;padding:6px;background:${isToday ? 'rgba(169,112,255,0.12)' : 'rgba(255,255,255,0.03)'};border:1px solid ${isToday ? 'rgba(169,112,255,0.4)' : 'rgba(255,255,255,0.06)'}">
+          <div style="font-size:11px;font-weight:700;color:${isToday ? '#C9A7FF' : '#FFFFFF'};margin-bottom:4px">${d}</div>
           ${dayEvents.slice(0,3).map(ev => {
             const v = ev.visibility || 'company'
             const icon = ev.is_project_deadline
-              ? '<i class="fas fa-flag-checkered" style="font-size:9px;margin-right:3px;opacity:.85;color:#FF8A6A"></i>'
+              ? '<i class="fas fa-flag-checkered" style="font-size:9px;margin-right:3px;opacity:.85;color:#A970FF"></i>'
               : (v === 'personal' ? '<i class="fas fa-user-lock" style="font-size:9px;margin-right:3px;opacity:.7"></i>' : '')
             const time = ev.start_time ? `<span style="opacity:.7;margin-right:3px">${ev.start_time}</span>` : ''
-            const bg = ev.is_project_deadline ? 'rgba(255,94,58,0.18)' : ((ev.color || '#FF7A45') + '22')
-            const textColor = ev.is_project_deadline ? '#FFC9BD' : '#FFE5D2'
+            const bg = ev.is_project_deadline ? 'rgba(255,94,58,0.18)' : ((ev.color || '#A970FF') + '22')
+            const textColor = ev.is_project_deadline ? '#C9A7FF' : '#E8D9FF'
             const displayTitle = ev.is_project_deadline && typeof tc === 'function' ? tc(ev.title) : ev.title
             return `<div style="font-size:10.5px;padding:2px 5px;border-radius:6px;background:${bg};color:${textColor};margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:${ev.is_project_deadline ? '1px solid rgba(255,94,58,.4)' : '1px solid transparent'}" title="${escapeInbox(displayTitle)}${ev.start_time ? ' @ ' + ev.start_time : ''}">${icon}${time}${escapeInbox(displayTitle)}</div>`
           }).join('')}
@@ -120,12 +120,12 @@ function _hrCalCanDelete(ev, canManage) {
 
 function _hrCalVisibilityBadge(ev) {
   if (ev.is_project_deadline) {
-    return '<span class="badge" style="background:rgba(255,94,58,.15);color:#FF8A6A"><i class="fas fa-flag-checkered"></i> Deadline</span>'
+    return '<span class="badge" style="background:rgba(255,94,58,.15);color:#A970FF"><i class="fas fa-flag-checkered"></i> Deadline</span>'
   }
   const v = ev.visibility || 'company'
   return v === 'personal'
-    ? '<span class="badge" style="background:rgba(100,160,255,.15);color:#A8C8FF"><i class="fas fa-user-lock"></i> Personal</span>'
-    : '<span class="badge" style="background:rgba(255,122,69,.15);color:#FFB347"><i class="fas fa-building"></i> Company</span>'
+    ? '<span class="badge" style="background:rgba(169,112,255,.15);color:#A8C8FF"><i class="fas fa-user-lock"></i> Personal</span>'
+    : '<span class="badge" style="background:rgba(169,112,255,.15);color:#C9A7FF"><i class="fas fa-building"></i> Company</span>'
 }
 
 // Compact "When" label: "12 Mar · 14:00–15:00" if same day with time, else
@@ -147,11 +147,11 @@ function renderCalendarRow(ev, canManage) {
   // displays as "Demo Project — Deadline" without touching free-text events.
   const displayTitle = ev.is_project_deadline && typeof tc === 'function' ? tc(ev.title) : ev.title
   return `<tr>
-    <td style="color:#FFF1E6;font-weight:600">${escapeInbox(displayTitle)}</td>
+    <td style="color:#FFFFFF;font-weight:600">${escapeInbox(displayTitle)}</td>
     <td>${_hrCalVisibilityBadge(ev)}</td>
     <td><span class="badge badge-blue">${escapeInbox(ev.event_type || '')}</span></td>
     <td style="font-size:12px;color:#9F8678;white-space:nowrap">${_hrCalWhenLabel(ev)}</td>
-    <td style="font-size:12px;color:#E8D2BD;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeInbox(ev.description || '')}">${escapeInbox(ev.description || '—')}</td>
+    <td style="font-size:12px;color:#E8D9FF;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeInbox(ev.description || '')}">${escapeInbox(ev.description || '—')}</td>
     <td>${canDelete ? `<button class="btn btn-icon btn-xs" onclick="deleteCalendarEvent('${ev.id}')" title="Delete"><i class="fas fa-trash"></i></button>` : ''}</td>
   </tr>`
 }
@@ -170,7 +170,7 @@ function openCalendarEventModal() {
   // when the user lacks hr.calendar.manage.
   const canManage = hrCanManage('calendar')
   // Default colors: blue-ish for personal, accent orange for company.
-  const defaultColor = canManage ? '#FF7A45' : '#A8C8FF'
+  const defaultColor = canManage ? '#A970FF' : '#A8C8FF'
   showModal(`
     <div class="modal-header">
       <h3><i class="fas fa-calendar-days" style="color:var(--accent);margin-right:6px"></i>Add Event</h3>
@@ -180,17 +180,17 @@ function openCalendarEventModal() {
       <div class="form-group">
         <label class="form-label">Visibility *</label>
         <div style="display:flex;gap:8px">
-          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(100,160,255,0.3);background:rgba(100,160,255,0.06);cursor:pointer">
+          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(169,112,255,0.3);background:rgba(169,112,255,0.06);cursor:pointer">
             <input type="radio" name="cal-visibility" value="personal" checked/>
             <div>
-              <div style="font-size:13px;color:#FFF1E6;font-weight:600"><i class="fas fa-user-lock" style="margin-right:4px"></i>Personal</div>
+              <div style="font-size:13px;color:#FFFFFF;font-weight:600"><i class="fas fa-user-lock" style="margin-right:4px"></i>Personal</div>
               <div style="font-size:11px;color:#9F8678">Only you see it — e.g. client meeting at 2 pm</div>
             </div>
           </label>
-          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,122,69,0.3);background:rgba(255,122,69,0.05);cursor:${canManage ? 'pointer' : 'not-allowed'};opacity:${canManage ? '1' : '0.45'}">
+          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(169,112,255,0.3);background:rgba(169,112,255,0.05);cursor:${canManage ? 'pointer' : 'not-allowed'};opacity:${canManage ? '1' : '0.45'}">
             <input type="radio" name="cal-visibility" value="company"${canManage ? '' : ' disabled'}/>
             <div>
-              <div style="font-size:13px;color:#FFF1E6;font-weight:600"><i class="fas fa-building" style="margin-right:4px"></i>Company</div>
+              <div style="font-size:13px;color:#FFFFFF;font-weight:600"><i class="fas fa-building" style="margin-right:4px"></i>Company</div>
               <div style="font-size:11px;color:#9F8678">${canManage ? 'Everyone sees it — holidays, all-hands' : 'Requires HR permission'}</div>
             </div>
           </label>
@@ -225,7 +225,7 @@ function openCalendarEventModal() {
       <div class="form-group" style="margin-bottom:0">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px">
           <input type="checkbox" id="cal-allday" checked onchange="hrCalToggleAllDay(this.checked)"/>
-          <span style="font-size:13px;color:#FFF1E6">All-day</span>
+          <span style="font-size:13px;color:#FFFFFF">All-day</span>
         </label>
         <div id="cal-time-row" class="grid-2" style="display:none">
           <div class="form-group" style="margin-bottom:0"><label class="form-label">Start time</label><input id="cal-start-time" class="form-input" type="time" value="09:00"/></div>
@@ -261,7 +261,7 @@ async function submitCalendarEvent() {
     end_date:    document.getElementById('cal-to')?.value || start_date,
     start_time:  allDay ? null : (document.getElementById('cal-start-time')?.value || null),
     end_time:    allDay ? null : (document.getElementById('cal-end-time')?.value || null),
-    color:       document.getElementById('cal-color')?.value || '#FF7A45',
+    color:       document.getElementById('cal-color')?.value || '#A970FF',
     description: document.getElementById('cal-desc')?.value.trim() || null,
   }
   if (!payload.title || !payload.start_date) { toast('Title and date are required', 'error'); return }

@@ -56,29 +56,29 @@ async function renderHrAssetsView(el) {
       </div>
 
       <div class="grid-4" style="margin-bottom:16px">
-        ${miniStatCard('Total',      list.length, '#FF7A45', 'fa-box-archive')}
+        ${miniStatCard('Total',      list.length, '#A970FF', 'fa-box-archive')}
         ${miniStatCard('Available',  list.filter(a => a.status === 'available').length, '#58C68A', 'fa-circle-check')}
-        ${miniStatCard('Assigned',   list.filter(a => a.status === 'assigned').length, '#FFCB47', 'fa-user-check')}
+        ${miniStatCard('Assigned',   list.filter(a => a.status === 'assigned').length, '#C9A7FF', 'fa-user-check')}
         ${miniStatCard('Retired/lost', list.filter(a => a.status === 'retired' || a.status === 'lost').length, '#FF5E3A', 'fa-trash')}
       </div>
 
       <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap">
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${hrFilterButtons([
-            { value: '',          label: 'Any status', activeStyle: 'background:rgba(255,122,69,.15);color:#FFB347' },
+            { value: '',          label: 'Any status', activeStyle: 'background:rgba(169,112,255,.15);color:#C9A7FF' },
             { value: 'available', label: 'Available',  activeStyle: 'background:rgba(88,198,138,.15);color:#86E0A8' },
-            { value: 'assigned',  label: 'Assigned',   activeStyle: 'background:rgba(255,203,71,.15);color:#FFD986' },
+            { value: 'assigned',  label: 'Assigned',   activeStyle: 'background:rgba(169,112,255,.15);color:#D5C0FF' },
             { value: 'retired',   label: 'Retired',    activeStyle: 'background:rgba(255,255,255,.07)' },
-            { value: 'lost',      label: 'Lost',       activeStyle: 'background:rgba(255,94,58,.15);color:#FF8866' },
+            { value: 'lost',      label: 'Lost',       activeStyle: 'background:rgba(255,94,58,.15);color:#A970FF' },
           ], _hrAssetStatus, 'hrAssetSetStatus')}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${hrFilterButtons([
-            { value: '',          label: 'Any type', activeStyle: 'background:rgba(100,160,255,.15);color:#A8C8FF' },
-            { value: 'laptop',    label: 'Laptop',   activeStyle: 'background:rgba(100,160,255,.15);color:#A8C8FF' },
-            { value: 'phone',     label: 'Phone',    activeStyle: 'background:rgba(100,160,255,.15);color:#A8C8FF' },
-            { value: 'id_card',   label: 'ID card',  activeStyle: 'background:rgba(100,160,255,.15);color:#A8C8FF' },
-            { value: 'other',     label: 'Other',    activeStyle: 'background:rgba(100,160,255,.15);color:#A8C8FF' },
+            { value: '',          label: 'Any type', activeStyle: 'background:rgba(169,112,255,.15);color:#A8C8FF' },
+            { value: 'laptop',    label: 'Laptop',   activeStyle: 'background:rgba(169,112,255,.15);color:#A8C8FF' },
+            { value: 'phone',     label: 'Phone',    activeStyle: 'background:rgba(169,112,255,.15);color:#A8C8FF' },
+            { value: 'id_card',   label: 'ID card',  activeStyle: 'background:rgba(169,112,255,.15);color:#A8C8FF' },
+            { value: 'other',     label: 'Other',    activeStyle: 'background:rgba(169,112,255,.15);color:#A8C8FF' },
           ], _hrAssetType, 'hrAssetSetType')}
         </div>
       </div>
@@ -105,11 +105,11 @@ function renderAssetRow(a, canManage) {
   const icon = ASSET_TYPE_ICON[a.asset_type] || 'fa-box'
   const typeLabel = ASSET_TYPE_LABEL[a.asset_type] || a.asset_type
   return `<tr>
-    <td><div style="display:flex;align-items:center;gap:10px"><i class="fas ${icon}" style="color:#FFB347;font-size:18px;width:22px;text-align:center"></i><div><div style="font-size:13px;color:#FFF1E6;font-weight:600">${escapeInbox(a.name)}</div><div style="font-size:11px;color:#9F8678">${escapeInbox(typeLabel)}</div></div></div></td>
-    <td style="font-family:monospace;font-size:12px;color:#E8D2BD">${escapeInbox(a.tag || '—')}</td>
+    <td><div style="display:flex;align-items:center;gap:10px"><i class="fas ${icon}" style="color:#C9A7FF;font-size:18px;width:22px;text-align:center"></i><div><div style="font-size:13px;color:#FFFFFF;font-weight:600">${escapeInbox(a.name)}</div><div style="font-size:11px;color:#9F8678">${escapeInbox(typeLabel)}</div></div></div></td>
+    <td style="font-family:monospace;font-size:12px;color:#E8D9FF">${escapeInbox(a.tag || '—')}</td>
     <td>${ASSET_STATUS_BADGE[a.status] || `<span class="badge">${escapeInbox(a.status)}</span>`}</td>
     <td>${a.assigned_to_name
-      ? `<div style="display:flex;align-items:center;gap:6px">${avatar(a.assigned_to_name, a.assigned_to_avatar_color, 'sm')}<span style="font-size:12px;color:#FFF1E6">${escapeInbox(a.assigned_to_name)}</span></div>`
+      ? `<div style="display:flex;align-items:center;gap:6px">${avatar(a.assigned_to_name, a.assigned_to_avatar_color, 'sm')}<span style="font-size:12px;color:#FFFFFF">${escapeInbox(a.assigned_to_name)}</span></div>`
       : '<span style="font-size:12px;color:#9F8678">—</span>'}</td>
     <td style="font-size:12px;color:#9F8678">${a.assigned_at ? fmtDate(a.assigned_at) : '—'}</td>
     <td>
@@ -206,7 +206,7 @@ function openReturnAssetModal(id) {
       <div class="form-group"><label class="form-label">Condition note</label><textarea id="ret-note" class="form-textarea" rows="2" placeholder="e.g. Screen scratched, keyboard fine"></textarea></div>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
         <input type="checkbox" id="ret-retire"/>
-        <span style="font-size:13px;color:#FFF1E6">Mark as retired (don't reissue)</span>
+        <span style="font-size:13px;color:#FFFFFF">Mark as retired (don't reissue)</span>
       </label>
     </div>
     <div class="modal-footer">
@@ -233,22 +233,22 @@ function openAssetDetail(id) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-radius:12px;background:rgba(255,122,69,0.06);border:1px solid rgba(255,122,69,0.2)">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-radius:12px;background:rgba(169,112,255,0.06);border:1px solid rgba(169,112,255,0.2)">
         <div>
-          <div style="font-size:14px;font-weight:700;color:#FFF1E6">${escapeInbox(a.name)}</div>
+          <div style="font-size:14px;font-weight:700;color:#FFFFFF">${escapeInbox(a.name)}</div>
           <div style="font-size:12px;color:#9F8678">${escapeInbox(typeLabel)}${a.tag ? ' · ' + escapeInbox(a.tag) : ''}</div>
         </div>
         ${ASSET_STATUS_BADGE[a.status] || ''}
       </div>
       <div class="grid-2">
-        ${a.purchase_date ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Purchased</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(a.purchase_date)}</div></div>` : ''}
-        ${a.purchase_cost != null ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Cost</div><div style="font-size:13px;color:#FFF1E6">${hrFmtMoney(a.purchase_cost)}</div></div>` : ''}
-        ${a.assigned_to_name ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Assigned to</div><div style="font-size:13px;color:#FFF1E6">${escapeInbox(a.assigned_to_name)}</div></div>` : ''}
-        ${a.assigned_at ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Assigned since</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(a.assigned_at)}</div></div>` : ''}
-        ${a.returned_at ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Last returned</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(a.returned_at)}</div></div>` : ''}
+        ${a.purchase_date ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Purchased</div><div style="font-size:13px;color:#FFFFFF">${fmtDate(a.purchase_date)}</div></div>` : ''}
+        ${a.purchase_cost != null ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Cost</div><div style="font-size:13px;color:#FFFFFF">${hrFmtMoney(a.purchase_cost)}</div></div>` : ''}
+        ${a.assigned_to_name ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Assigned to</div><div style="font-size:13px;color:#FFFFFF">${escapeInbox(a.assigned_to_name)}</div></div>` : ''}
+        ${a.assigned_at ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Assigned since</div><div style="font-size:13px;color:#FFFFFF">${fmtDate(a.assigned_at)}</div></div>` : ''}
+        ${a.returned_at ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Last returned</div><div style="font-size:13px;color:#FFFFFF">${fmtDate(a.returned_at)}</div></div>` : ''}
       </div>
-      ${a.notes ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Notes</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(a.notes)}</div></div>` : ''}
-      ${a.last_return_note ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Last return note</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,122,69,0.05);border:1px solid rgba(255,122,69,0.18)">${escapeInbox(a.last_return_note)}</div></div>` : ''}
+      ${a.notes ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Notes</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(a.notes)}</div></div>` : ''}
+      ${a.last_return_note ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Last return note</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(169,112,255,0.05);border:1px solid rgba(169,112,255,0.18)">${escapeInbox(a.last_return_note)}</div></div>` : ''}
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Close</button>

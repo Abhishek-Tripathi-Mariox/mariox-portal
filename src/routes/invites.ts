@@ -140,7 +140,7 @@ invites.post('/accept/:token', async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO users (id, email, password_hash, full_name, role, avatar_color, is_active, must_change_password)
       VALUES (?, ?, ?, ?, ?, ?, 1, 0)
-    `).bind(userId, row.email, passwordHash, row.full_name, row.role, '#6366f1').run()
+    `).bind(userId, row.email, passwordHash, row.full_name, row.role, '#9D6CFF').run()
 
     await c.env.DB.prepare(`
       UPDATE user_invites SET accepted_at = datetime('now'), user_id = ? WHERE id = ?

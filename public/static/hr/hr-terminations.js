@@ -40,18 +40,18 @@ async function renderTerminationsView(el) {
       </div>
 
       <div class="grid-4" style="margin-bottom:16px">
-        ${miniStatCard('Total',         list.length, '#FF7A45', 'fa-user-slash')}
-        ${miniStatCard('Initiated',     list.filter(t => t.status === 'initiated').length, '#FFCB47', 'fa-hourglass-half')}
+        ${miniStatCard('Total',         list.length, '#A970FF', 'fa-user-slash')}
+        ${miniStatCard('Initiated',     list.filter(t => t.status === 'initiated').length, '#C9A7FF', 'fa-hourglass-half')}
         ${miniStatCard('Notice period', list.filter(t => t.status === 'notice_period').length, '#A8C8FF', 'fa-stopwatch')}
         ${miniStatCard('Completed',     list.filter(t => t.status === 'completed').length, '#FF5E3A', 'fa-check')}
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
         ${hrFilterButtons([
-          { value: '',              label: 'All',       activeStyle: 'background:rgba(255,122,69,.15);color:#FFB347' },
-          { value: 'initiated',     label: 'Initiated', activeStyle: 'background:rgba(255,203,71,.15);color:#FFD986' },
-          { value: 'notice_period', label: 'Notice',    activeStyle: 'background:rgba(100,160,255,.15);color:#A8C8FF' },
-          { value: 'completed',     label: 'Completed', activeStyle: 'background:rgba(255,94,58,.15);color:#FF8866' },
+          { value: '',              label: 'All',       activeStyle: 'background:rgba(169,112,255,.15);color:#C9A7FF' },
+          { value: 'initiated',     label: 'Initiated', activeStyle: 'background:rgba(169,112,255,.15);color:#D5C0FF' },
+          { value: 'notice_period', label: 'Notice',    activeStyle: 'background:rgba(169,112,255,.15);color:#A8C8FF' },
+          { value: 'completed',     label: 'Completed', activeStyle: 'background:rgba(255,94,58,.15);color:#A970FF' },
           { value: 'cancelled',     label: 'Cancelled', activeStyle: 'background:rgba(255,255,255,.07)' },
         ], _hrTermStatus, 'hrTermSetStatus')}
       </div>
@@ -78,7 +78,7 @@ async function renderTerminationsView(el) {
 function renderTermRow(t, canManage) {
   const name = t.full_name || t.email || 'Unknown'
   return `<tr>
-    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, t.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(name)}</span></div></td>` : ''}
+    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, t.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFFFFF">${escapeInbox(name)}</span></div></td>` : ''}
     <td><span class="badge badge-blue">${escapeInbox((t.termination_type || '').replace('_',' '))}</span></td>
     <td style="font-size:12px;color:#9F8678">${t.notice_date ? fmtDate(t.notice_date) : '—'}</td>
     <td style="font-size:12px;color:#9F8678">${fmtDate(t.termination_date)}</td>
@@ -99,7 +99,7 @@ function openTermModal() {
   if (!hrCanManage('terminations')) { toast('Not allowed', 'error'); return }
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-user-slash" style="color:#FF8866;margin-right:6px"></i>Record Termination</h3>
+      <h3><i class="fas fa-user-slash" style="color:#A970FF;margin-right:6px"></i>Record Termination</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
@@ -184,12 +184,12 @@ function _renderTermChecklist(t, canManage) {
         <div style="font-size:11px;color:#9F8678">${completed} / ${total} · ${pct}%</div>
       </div>
       <div style="height:6px;background:rgba(255,255,255,0.05);border-radius:6px;overflow:hidden;margin-bottom:10px">
-        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#FF7A45,#86E0A8);transition:width .3s"></div>
+        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#A970FF,#86E0A8);transition:width .3s"></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
         ${TERM_CHECKLIST_ITEMS.map(it => {
           const checked = !!current[it.key]
-          const fontStyle = checked ? 'color:#86E0A8;text-decoration:line-through' : 'color:#FFF1E6'
+          const fontStyle = checked ? 'color:#86E0A8;text-decoration:line-through' : 'color:#FFFFFF'
           if (canManage) {
             return `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:4px 2px">
               <input type="checkbox" class="term-checklist-cb" data-key="${it.key}" ${checked ? 'checked' : ''}/>
@@ -224,27 +224,27 @@ function openTermDetail(id) {
   const canManage = hrCanManage('terminations')
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-user-slash" style="color:#FF8866;margin-right:6px"></i>Termination</h3>
+      <h3><i class="fas fa-user-slash" style="color:#A970FF;margin-right:6px"></i>Termination</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(255,122,69,0.06);border:1px solid rgba(255,122,69,0.2)">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(169,112,255,0.06);border:1px solid rgba(169,112,255,0.2)">
         ${avatar(name, t.avatar_color, 'md')}
         <div>
-          <div style="font-size:14px;font-weight:700;color:#FFF1E6">${escapeInbox(name)}</div>
+          <div style="font-size:14px;font-weight:700;color:#FFFFFF">${escapeInbox(name)}</div>
           <div style="font-size:12px;color:#9F8678">${escapeInbox(t.designation || t.email || '')}</div>
         </div>
         <div style="margin-left:auto">${TERM_STATUS_BADGE[t.status] || ''}</div>
       </div>
       <div class="grid-2">
-        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Type</div><div style="font-size:13px;color:#FFF1E6">${escapeInbox((t.termination_type || '').replace('_',' '))}</div></div>
-        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Termination date</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(t.termination_date)}</div></div>
-        ${t.notice_date ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Notice date</div><div style="font-size:13px;color:#FFF1E6">${fmtDate(t.notice_date)}</div></div>` : ''}
-        ${t.initiated_by_name ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Initiated by</div><div style="font-size:13px;color:#FFF1E6">${escapeInbox(t.initiated_by_name)}</div></div>` : ''}
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Type</div><div style="font-size:13px;color:#FFFFFF">${escapeInbox((t.termination_type || '').replace('_',' '))}</div></div>
+        <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Termination date</div><div style="font-size:13px;color:#FFFFFF">${fmtDate(t.termination_date)}</div></div>
+        ${t.notice_date ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Notice date</div><div style="font-size:13px;color:#FFFFFF">${fmtDate(t.notice_date)}</div></div>` : ''}
+        ${t.initiated_by_name ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase">Initiated by</div><div style="font-size:13px;color:#FFFFFF">${escapeInbox(t.initiated_by_name)}</div></div>` : ''}
       </div>
-      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Reason</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(t.reason)}</div></div>
-      ${t.handover_notes ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Handover</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(t.handover_notes)}</div></div>` : ''}
-      ${t.exit_notes ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Exit notes</div><div style="font-size:13px;color:#FFF1E6;padding:10px;border-radius:8px;background:rgba(255,122,69,0.05);border:1px solid rgba(255,122,69,0.18)">${escapeInbox(t.exit_notes)}</div></div>` : ''}
+      <div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Reason</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(t.reason)}</div></div>
+      ${t.handover_notes ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Handover</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">${escapeInbox(t.handover_notes)}</div></div>` : ''}
+      ${t.exit_notes ? `<div><div style="font-size:11px;color:#9F8678;text-transform:uppercase;margin-bottom:4px">Exit notes</div><div style="font-size:13px;color:#FFFFFF;padding:10px;border-radius:8px;background:rgba(169,112,255,0.05);border:1px solid rgba(169,112,255,0.18)">${escapeInbox(t.exit_notes)}</div></div>` : ''}
       ${_renderTermChecklist(t, canManage)}
       ${canManage ? `
         <div class="form-group" style="margin-bottom:0">

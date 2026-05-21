@@ -20,10 +20,10 @@ tasks.use('*', async (c, next) => {
 
 // Default columns seeded for new projects
 const DEFAULT_COLUMNS = [
-  { name: 'Backlog',      status_key: 'backlog',     color: '#64748b', position: 0, wip_limit: 0, is_done_column: 0 },
-  { name: 'To Do',        status_key: 'todo',        color: '#94a3b8', position: 1, wip_limit: 0, is_done_column: 0 },
+  { name: 'Backlog',      status_key: 'backlog',     color: '#7E7E8F', position: 0, wip_limit: 0, is_done_column: 0 },
+  { name: 'To Do',        status_key: 'todo',        color: '#7E7E8F', position: 1, wip_limit: 0, is_done_column: 0 },
   { name: 'In Progress',  status_key: 'in_progress', color: '#3b82f6', position: 2, wip_limit: 3, is_done_column: 0 },
-  { name: 'In Review',    status_key: 'in_review',   color: '#8b5cf6', position: 3, wip_limit: 0, is_done_column: 0 },
+  { name: 'In Review',    status_key: 'in_review',   color: '#8B5CFF', position: 3, wip_limit: 0, is_done_column: 0 },
   { name: 'QA',           status_key: 'qa',          color: '#0ea5e9', position: 4, wip_limit: 0, is_done_column: 0 },
   { name: 'Done',         status_key: 'done',        color: '#10b981', position: 5, wip_limit: 0, is_done_column: 1 },
   { name: 'Blocked',      status_key: 'blocked',     color: '#ef4444', position: 6, wip_limit: 0, is_done_column: 0 },
@@ -61,7 +61,7 @@ tasks.post('/columns/:project_id', async (c) => {
     const user = c.get('user')
     if (!['admin','pm'].includes(user.role)) return c.json({ error: 'Forbidden' }, 403)
     const project_id = c.req.param('project_id')
-    const { name, color='#6366f1', wip_limit=0, is_done_column=0 } = await c.req.json()
+    const { name, color='#9D6CFF', wip_limit=0, is_done_column=0 } = await c.req.json()
     if (!name) return c.json({ error: 'name required' }, 400)
     const status_key = name.toLowerCase().replace(/[^a-z0-9]/g,'_').replace(/_+/g,'_').slice(0,30) + '_' + Date.now()
     const maxPos = await c.env.DB.prepare('SELECT MAX(position) as m FROM kanban_columns WHERE project_id=?').bind(project_id).first() as any

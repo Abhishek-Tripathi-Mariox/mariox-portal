@@ -10,6 +10,7 @@ let _resourcesPageLimit = 10
 let _approvalQueuePageLimit = 10
 let _clientsPageLimit = 10
 let _teamOverviewPageLimit = 10
+let _externalTeamPageLimit = 10
 let _billingInvoiceLimit = 10
 
 let _projectsListPage = 1
@@ -21,6 +22,7 @@ let _approvalQueuePage = 1
 let _clientsListPage = 1
 let _clientsListFilter = 'active'
 let _teamOverviewPage = 1
+let _externalTeamPage = 1
 let _billingInvoicePage = 1
 
 const ENTERPRISE_PAGE_SIZE_OPTIONS = window.PAGE_SIZE_OPTIONS || [10, 15, 20, 25, 50, 100, 200]
@@ -88,6 +90,12 @@ const pageSizeRegistry = {
     getLimit: () => _teamOverviewPageLimit,
     setLimit: value => { _teamOverviewPageLimit = normalizePageSize(value, _teamOverviewPageLimit) },
   },
+  'external-team': {
+    getPage: () => _externalTeamPage,
+    setPage: value => { _externalTeamPage = Math.max(1, Number(value) || 1) },
+    getLimit: () => _externalTeamPageLimit,
+    setLimit: value => { _externalTeamPageLimit = normalizePageSize(value, _externalTeamPageLimit) },
+  },
   'billing-admin': {
     getPage: () => _billingInvoicePage,
     setPage: value => { _billingInvoicePage = Math.max(1, Number(value) || 1) },
@@ -119,7 +127,7 @@ function rerenderEnterprisePage(page, stateSetter) {
 
 /* ── SUPER ADMIN DASHBOARD ──────────────────────────────── */
 async function renderSuperDashboard(el) {
-  el.innerHTML = `<div class="page-header"><div><h1 class="page-title">Super Admin Overview</h1><p class="page-subtitle">Platform health, billing, and team metrics</p></div><div class="page-actions"><button class="btn btn-primary" onclick="Router.navigate('billing-admin')"><i class="fas fa-file-invoice-dollar"></i>Manage Billing</button></div></div><div style="display:flex;align-items:center;gap:10px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
+  el.innerHTML = `<div class="page-header"><div><h1 class="page-title">Super Admin Overview</h1><p class="page-subtitle">Platform health, billing, and team metrics</p></div><div class="page-actions"><button class="btn btn-primary" onclick="Router.navigate('billing-admin')"><i class="fas fa-file-invoice-dollar"></i>Manage Billing</button></div></div><div style="display:flex;align-items:center;gap:10px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
   try {
     const [dash, invoiceData, clientsData] = await Promise.all([
       API.get('/dashboard/pm'),
@@ -149,14 +157,14 @@ async function renderSuperDashboard(el) {
       </div>
     </div>
     <div class="grid-4" style="margin-bottom:20px">
-      ${statCard('Total Projects', d.projects?.total||0, 'fas fa-layer-group', '#FF7A45', `${d.projects?.active||0} active`)}
-      ${statCard('Active Clients', activeClients, 'fas fa-building', '#F4C842', `${clients.length} total`)}
+      ${statCard('Total Projects', d.projects?.total||0, 'fas fa-layer-group', '#A970FF', `${d.projects?.active||0} active`)}
+      ${statCard('Active Clients', activeClients, 'fas fa-building', '#C9A7FF', `${clients.length} total`)}
       ${statCard('Total Revenue', '₹'+fmtNum(inv.total_value||0), 'fas fa-indian-rupee-sign', '#58C68A', `₹${fmtNum(inv.total_paid||0)} collected`)}
       ${statCard('Pending Invoices', inv.overdue_count||0, 'fas fa-exclamation-circle', '#FF5E3A', `₹${fmtNum(inv.total_overdue||0)} overdue`)}
     </div>
     <div class="grid-2" style="margin-bottom:20px">
       ${statCard('Allocated Hours', fmtNum(d.hours?.total_allocated||0)+'h', 'fas fa-clock', '#C56FE6', `${fmtNum(d.hours?.total_consumed||0)}h consumed`)}
-      ${statCard('Team Members', (d.developers?.total||0)+' devs', 'fas fa-users', '#FFCB47', `${d.developers?.active||0} active`)}
+      ${statCard('Team Members', (d.developers?.total||0)+' devs', 'fas fa-users', '#C9A7FF', `${d.developers?.active||0} active`)}
     </div>
     <div class="grid-2" style="margin-bottom:20px">
       <div class="card">
@@ -166,8 +174,8 @@ async function renderSuperDashboard(el) {
             <thead><tr><th>Project</th><th>Client</th><th>Status</th><th>Burn</th><th>Health</th></tr></thead>
             <tbody>${(d.top_projects||[]).map(p=>`
               <tr>
-                <td><div style="font-weight:500;color:#e2e8f0">${tc(p.name)}</div><div style="font-size:11px;color:#64748b">${p.code}</div></td>
-                <td><span style="font-size:12px;color:#94a3b8">—</span></td>
+                <td><div style="font-weight:500;color:#e2e8f0">${tc(p.name)}</div><div style="font-size:11px;color:#7E7E8F">${p.code}</div></td>
+                <td><span style="font-size:12px;color:#7E7E8F">—</span></td>
                 <td>${statusBadge(p.status)}</td>
                 <td>
                   <div style="display:flex;align-items:center;gap:8px">
@@ -187,10 +195,10 @@ async function renderSuperDashboard(el) {
             <thead><tr><th>Invoice</th><th>Amount</th><th>Status</th><th>Due</th></tr></thead>
             <tbody>${(invoiceData.invoices||[]).slice(0,6).map(i=>`
               <tr>
-                <td><div style="font-weight:500;font-size:12px;color:#e2e8f0">${i.invoice_number}</div><div style="font-size:11px;color:#64748b">${i.company_name||'—'}</div></td>
+                <td><div style="font-weight:500;font-size:12px;color:#e2e8f0">${i.invoice_number}</div><div style="font-size:11px;color:#7E7E8F">${i.company_name||'—'}</div></td>
                 <td style="font-weight:600;color:#58C68A">${fmtCurrency(i.total_amount)}</td>
                 <td><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></td>
-                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#94a3b8'}">${fmtDate(i.due_date)}</td>
+                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#7E7E8F'}">${fmtDate(i.due_date)}</td>
               </tr>`).join('')}</tbody>
           </table>
         </div>
@@ -203,7 +211,7 @@ async function renderSuperDashboard(el) {
           <thead><tr><th>Developer</th><th>Monthly Capacity</th><th>Consumed This Month</th><th>Utilization</th><th>Projects</th></tr></thead>
           <tbody>${(d.utilization||[]).map(u=>`
             <tr>
-              <td><div style="display:flex;align-items:center;gap:8px">${avatar(u.full_name,u.avatar_color,'sm')}<div><div style="font-weight:500;color:#e2e8f0">${u.full_name}</div><div style="font-size:11px;color:#64748b">${u.designation}</div></div></div></td>
+              <td><div style="display:flex;align-items:center;gap:8px">${avatar(u.full_name,u.avatar_color,'sm')}<div><div style="font-weight:500;color:#e2e8f0">${u.full_name}</div><div style="font-size:11px;color:#7E7E8F">${u.designation}</div></div></div></td>
               <td>${u.monthly_available_hours}h</td>
               <td>${u.monthly_consumed}h</td>
               <td>
@@ -246,7 +254,7 @@ function helloBanner({ subtitle = '', metrics = [] } = {}) {
   return `
     <div class="hello-banner">
       <div style="display:flex;align-items:center;gap:14px;min-width:0">
-        ${avatar(_user?.name || _user?.full_name || 'User', _user?.avatar_color || '#FF7A45', 'lg')}
+        ${avatar(_user?.name || _user?.full_name || 'User', _user?.avatar_color || '#A970FF', 'lg')}
         <div style="min-width:0">
           <div class="hello-banner-greeting">${tod},</div>
           <div class="hello-banner-name">${escapeHtml(firstName)}</div>
@@ -261,7 +269,7 @@ function helloBanner({ subtitle = '', metrics = [] } = {}) {
 
 function listSectionHeader(labels, templateColumns) {
   return `
-    <div class="card" style="margin-bottom:12px;padding:14px 16px;background:rgba(15,23,42,.72);border:1px solid rgba(148,163,184,.22);box-shadow:none">
+    <div class="card" style="margin-bottom:12px;padding:14px 16px;background:rgba(11,11,13,.72);border:1px solid rgba(179,136,255,.22);box-shadow:none">
       <div style="display:grid;grid-template-columns:${templateColumns};gap:12px;align-items:center;font-size:12px;letter-spacing:.03em;color:#f8fafc;font-weight:700">
         ${labels.map((label, index) => `<div style="${index === 0 ? 'padding-left:2px' : ''}">${label}</div>`).join('')}
       </div>
@@ -318,7 +326,7 @@ function goTeamOverviewPage(page) {
 
 /* ── PM DASHBOARD ────────────────────────────────────────── */
 async function renderPMDashboard(el) {
-  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading PM dashboard…</div>`
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading PM dashboard…</div>`
   try {
     const [dash, tasks, sprints] = await Promise.all([
       API.get('/dashboard/pm'),
@@ -352,19 +360,19 @@ async function renderPMDashboard(el) {
       </div>
     </div>
     <div class="grid-4" style="margin-bottom:20px">
-      ${statCard('Active Projects', d.projects?.active||0, 'fas fa-layer-group', '#FF7A45', `${d.projects?.total||0} total`)}
-      ${statCard('Open Tasks', allTasks.filter(t=>t.status!=='done').length, 'fas fa-list-check', '#F4C842', `${allTasks.filter(t=>t.status==='blocked').length} blocked`)}
+      ${statCard('Active Projects', d.projects?.active||0, 'fas fa-layer-group', '#A970FF', `${d.projects?.total||0} total`)}
+      ${statCard('Open Tasks', allTasks.filter(t=>t.status!=='done').length, 'fas fa-list-check', '#C9A7FF', `${allTasks.filter(t=>t.status==='blocked').length} blocked`)}
       ${statCard('Team Members', d.developers?.total||0, 'fas fa-users', '#58C68A', `${d.developers?.active||0} active`)}
-      ${statCard('Hours Consumed', fmtNum(d.hours?.total_consumed||0)+'h', 'fas fa-clock', '#FFCB47', `${fmtNum(d.hours?.total_remaining||0)}h remaining`)}
+      ${statCard('Hours Consumed', fmtNum(d.hours?.total_consumed||0)+'h', 'fas fa-clock', '#C9A7FF', `${fmtNum(d.hours?.total_remaining||0)}h remaining`)}
     </div>
     ${activeSprint ? `
     <div class="sprint-header" style="margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div><span style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Active Sprint</span><div style="font-size:16px;font-weight:600;color:#e2e8f0;margin-top:2px">${activeSprint.name}</div><div style="font-size:12px;color:#64748b">${fmtDate(activeSprint.start_date)} – ${fmtDate(activeSprint.end_date)}</div></div>
+        <div><span style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px">Active Sprint</span><div style="font-size:16px;font-weight:600;color:#e2e8f0;margin-top:2px">${activeSprint.name}</div><div style="font-size:12px;color:#7E7E8F">${fmtDate(activeSprint.start_date)} – ${fmtDate(activeSprint.end_date)}</div></div>
         <button class="btn btn-sm btn-outline" onclick="Router.navigate('kanban-board')">Open Board <i class="fas fa-arrow-right"></i></button>
       </div>
       <div style="display:flex;gap:24px;margin-bottom:10px">
-        ${[['Total Points', activeSprint.total_story_points||0,'#94a3b8'],['Done', activeSprint.completed_story_points||0,'#58C68A'],['Tasks', activeSprint.task_count||0,'#FF7A45'],['Blocked', activeSprint.blocked_count||0,'#FF5E3A']].map(([l,v,c])=>`<div class="sprint-stat"><div class="val" style="color:${c}">${v}</div><div class="lbl">${l}</div></div>`).join('')}
+        ${[['Total Points', activeSprint.total_story_points||0,'#7E7E8F'],['Done', activeSprint.completed_story_points||0,'#58C68A'],['Tasks', activeSprint.task_count||0,'#A970FF'],['Blocked', activeSprint.blocked_count||0,'#FF5E3A']].map(([l,v,c])=>`<div class="sprint-stat"><div class="val" style="color:${c}">${v}</div><div class="lbl">${l}</div></div>`).join('')}
       </div>
       <div class="progress-bar xl"><div class="progress-fill ${((activeSprint.completed_story_points/Math.max(activeSprint.total_story_points,1))*100)>=80?'green':'blue'}" style="width:${Math.min((activeSprint.completed_story_points/Math.max(activeSprint.total_story_points,1))*100,100)}%"></div></div>
     </div>` : ''}
@@ -385,7 +393,7 @@ async function renderPMDashboard(el) {
                 ${t.status==='blocked'?'<span style="color:#FF5E3A;font-size:11px"><i class="fas fa-ban"></i> Blocked</span>':''}
               </div>
               <div style="font-size:13px;color:#e2e8f0;font-weight:500">${t.title}</div>
-              <div style="font-size:11px;color:#64748b;margin-top:2px">${tc(t.project_name)||'—'} • ${t.assignee_name||'Unassigned'}</div>
+              <div style="font-size:11px;color:#7E7E8F;margin-top:2px">${tc(t.project_name)||'—'} • ${t.assignee_name||'Unassigned'}</div>
             </div>`).join('') || '<div class="empty-state"><i class="fas fa-check-circle"></i><p>No open tasks</p></div>'}
         </div>
       </div>
@@ -395,13 +403,13 @@ async function renderPMDashboard(el) {
         <div class="card-header"><span style="font-weight:600">Top Projects by Burn Rate</span></div>
         <div class="card-body p-0">
           ${(d.top_projects||[]).map(p=>`
-            <div style="padding:12px 16px;border-bottom:1px solid rgba(30,30,69,.5)">
+            <div style="padding:12px 16px;border-bottom:1px solid rgba(26,26,34,.5)">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <div><span style="font-size:13px;font-weight:500;color:#e2e8f0">${tc(p.name)}</span> <span style="font-size:11px;color:#475569">${p.code}</span></div>
+                <div><span style="font-size:13px;font-weight:500;color:#e2e8f0">${tc(p.name)}</span> <span style="font-size:11px;color:#5A5A66">${p.code}</span></div>
                 <span style="font-size:12px;font-weight:600;color:${pctColor(p.burn_pct)}">${p.burn_pct?.toFixed(0)}%</span>
               </div>
               <div class="progress-bar"><div class="progress-fill ${p.burn_pct>=90?'rose':p.burn_pct>=70?'amber':'green'}" style="width:${Math.min(p.burn_pct,100)}%"></div></div>
-              <div style="font-size:11px;color:#64748b;margin-top:4px">${p.consumed_hours}h of ${p.total_allocated_hours}h used</div>
+              <div style="font-size:11px;color:#7E7E8F;margin-top:4px">${p.consumed_hours}h of ${p.total_allocated_hours}h used</div>
             </div>`).join('')}
         </div>
       </div>
@@ -426,15 +434,15 @@ async function renderPMDashboard(el) {
       if (!ctx) return
       const labels = ['Backlog','To Do','In Progress','In Review','QA','Done','Blocked']
       const keys   = ['backlog','todo','in_progress','in_review','qa','done','blocked']
-      const colors = ['#475569','#94a3b8','#F4C842','#C56FE6','#FFA577','#58C68A','#FF5E3A']
-      new Chart(ctx, { type:'doughnut', data:{ labels, datasets:[{ data: keys.map(k=>statusCounts[k]||0), backgroundColor: colors, borderColor: '#1F0F08', borderWidth: 2 }] }, options:{ responsive:true, plugins:{ legend:{ position:'right', labels:{ color:'#94a3b8', font:{size:11} } } } } })
+      const colors = ['#5A5A66','#7E7E8F','#C9A7FF','#C56FE6','#B388FF','#58C68A','#FF5E3A']
+      new Chart(ctx, { type:'doughnut', data:{ labels, datasets:[{ data: keys.map(k=>statusCounts[k]||0), backgroundColor: colors, borderColor: '#1F0F08', borderWidth: 2 }] }, options:{ responsive:true, plugins:{ legend:{ position:'right', labels:{ color:'#7E7E8F', font:{size:11} } } } } })
     }, 100)
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }
 
 /* ── DEV DASHBOARD ───────────────────────────────────────── */
 async function renderDevDashboard(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
   try {
     // Some login flows store the user id under `id`, JWT-issued ones under `sub`.
     // Always resolve to a real id so server-side `user_id` filters don't get the
@@ -470,8 +478,8 @@ async function renderDevDashboard(el) {
       </div>
     </div>
     <div class="grid-4" style="margin-bottom:20px">
-      ${statCard("Today's Hours", todayHours+'h', 'fas fa-sun', '#FFCB47', `${8-todayHours}h remaining`)}
-      ${statCard('Open Tasks', tasks.filter(t=>t.status!=='done').length, 'fas fa-list-check', '#FF7A45', `${tasks.filter(t=>t.status==='in_progress').length} in progress`)}
+      ${statCard("Today's Hours", todayHours+'h', 'fas fa-sun', '#C9A7FF', `${8-todayHours}h remaining`)}
+      ${statCard('Open Tasks', tasks.filter(t=>t.status!=='done').length, 'fas fa-list-check', '#A970FF', `${tasks.filter(t=>t.status==='in_progress').length} in progress`)}
       ${statCard('Hours This Month', totalLogged+'h', 'fas fa-clock', '#58C68A', `of ${totalAllocated}h allocated`)}
       ${statCard('Blocked Tasks', tasks.filter(t=>t.status==='blocked').length, 'fas fa-ban', '#FF5E3A', 'needs attention')}
     </div>
@@ -485,7 +493,7 @@ async function renderDevDashboard(el) {
                 ${taskTypeIcon(t.task_type)}${priorityBadge(t.priority)}${statusBadge(t.status)}
               </div>
               <div style="font-size:13px;font-weight:500;color:#e2e8f0">${t.title}</div>
-              <div style="font-size:11px;color:#64748b;margin-top:2px">${tc(t.project_name)||'—'} • Due: ${fmtDate(t.due_date)}</div>
+              <div style="font-size:11px;color:#7E7E8F;margin-top:2px">${tc(t.project_name)||'—'} • Due: ${fmtDate(t.due_date)}</div>
               <div style="margin-top:6px">
                 <div class="progress-bar"><div class="progress-fill blue" style="width:${Math.min(((t.logged_hours||0)/(t.estimated_hours||1))*100,100)}%"></div></div>
               </div>
@@ -503,7 +511,7 @@ async function renderDevDashboard(el) {
                 <td>${a.allocated_hours}h</td>
                 <td>${a.consumed_hours}h</td>
                 <td style="color:${(a.allocated_hours-a.consumed_hours)<=8?'#FF5E3A':'#58C68A'}">${a.allocated_hours-a.consumed_hours}h</td>
-              </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:#64748b;padding:20px">No allocations</td></tr>'}
+              </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:#7E7E8F;padding:20px">No allocations</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -521,7 +529,7 @@ async function renderDevDashboard(el) {
               <td><div style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.task_description}</div></td>
               <td><strong>${l.hours_consumed}h</strong></td>
               <td>${statusBadge(l.approval_status)}</td>
-            </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px">No logs yet</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:#7E7E8F;padding:20px">No logs yet</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -543,7 +551,7 @@ function hasPermission(key) {
 }
 
 async function renderProjectsList(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading projects…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading projects…</div>`
   try {
     const [proj, clients] = await Promise.all([API.get('/projects'), API.get('/clients').catch(()=>({clients:[]}))])
     const projects = proj.projects || proj || []
@@ -576,10 +584,10 @@ async function renderProjectsList(el) {
               return `<tr>
                 <td>
                   <div style="font-weight:600;color:#e2e8f0">${tc(p.name)}</div>
-                  <div style="font-size:11px;color:#475569;font-family:monospace">${p.code}</div>
+                  <div style="font-size:11px;color:#5A5A66;font-family:monospace">${p.code}</div>
                 </td>
-                <td>${cl ? `<div style="display:flex;align-items:center;gap:6px">${avatar(cl.company_name,cl.avatar_color,'sm')}<span style="font-size:12px">${cl.company_name}</span></div>` : `<span style="color:#475569;font-size:12px">${p.client_name||'—'}</span>`}</td>
-                <td><span style="font-size:12px;color:#94a3b8">${p.pm_name||'—'}</span></td>
+                <td>${cl ? `<div style="display:flex;align-items:center;gap:6px">${avatar(cl.company_name,cl.avatar_color,'sm')}<span style="font-size:12px">${cl.company_name}</span></div>` : `<span style="color:#5A5A66;font-size:12px">${p.client_name||'—'}</span>`}</td>
+                <td><span style="font-size:12px;color:#7E7E8F">${p.pm_name||'—'}</span></td>
                 <td>${statusBadge(p.status)}</td>
                 ${_user.role !== 'team' ? `
                 <td style="min-width:120px">
@@ -589,7 +597,7 @@ async function renderProjectsList(el) {
                   </div>
                 </td>
                 <td><span style="font-size:12px">${p.consumed_hours}h / ${p.total_allocated_hours}h</span></td>` : ''}
-                <td style="font-size:12px;color:${new Date(p.expected_end_date)<new Date()&&p.status==='active'?'#FF5E3A':'#94a3b8'}">${fmtDate(p.expected_end_date)}</td>
+                <td style="font-size:12px;color:${new Date(p.expected_end_date)<new Date()&&p.status==='active'?'#FF5E3A':'#7E7E8F'}">${fmtDate(p.expected_end_date)}</td>
                 <td>
                   <div style="display:flex;gap:4px">
                     <button class="btn btn-xs btn-outline" onclick="openProjectDetailModal('${p.id}')" title="View project details"><i class="fas fa-eye"></i></button>
@@ -687,7 +695,7 @@ async function openProjectDetailModal(projectId) {
 
         <div class="grid-2" style="gap:10px">
           <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Start date</div><div style="font-size:13px;color:var(--text-primary);font-weight:600">${p.start_date ? fmtDate(p.start_date) : '—'}</div></div>
-          <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Due date</div><div style="font-size:13px;color:${p.expected_end_date && new Date(p.expected_end_date) < new Date() && p.status === 'active' ? '#FF8866' : 'var(--text-primary)'};font-weight:600">${p.expected_end_date ? fmtDate(p.expected_end_date) : '—'}</div></div>
+          <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Due date</div><div style="font-size:13px;color:${p.expected_end_date && new Date(p.expected_end_date) < new Date() && p.status === 'active' ? '#A970FF' : 'var(--text-primary)'};font-weight:600">${p.expected_end_date ? fmtDate(p.expected_end_date) : '—'}</div></div>
           ${!isTeam ? `<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Project Manager</div><div style="font-size:13px;color:var(--text-primary)">${escapeHtml(p.pm_name || '—')}</div></div>` : ''}
           ${!isTeam ? `<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Coordinator</div><div style="font-size:13px;color:var(--text-primary)">${escapeHtml(p.pc_name || '—')}</div></div>` : ''}
           <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Assignment</div><div style="font-size:13px;color:var(--text-primary)">${escapeHtml(assignmentDisplay)}</div></div>
@@ -704,7 +712,7 @@ async function openProjectDetailModal(projectId) {
               </div>
               <div style="text-align:right">
                 <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Burn</div>
-                <div style="font-size:14px;color:${burnPct >= 100 ? '#FF8866' : burnPct >= 80 ? '#FDE68A' : '#86EFAC'};font-weight:700">${burnPct}%</div>
+                <div style="font-size:14px;color:${burnPct >= 100 ? '#A970FF' : burnPct >= 80 ? '#D5C0FF' : '#86EFAC'};font-weight:700">${burnPct}%</div>
               </div>
             </div>
             <div class="progress-bar"><div class="progress-fill ${burnPct >= 100 ? 'rose' : burnPct >= 80 ? 'amber' : 'green'}" style="width:${Math.min(burnPct, 100)}%"></div></div>
@@ -806,7 +814,7 @@ async function renderKanbanBoard(el) {
       <div style="display:flex;flex-direction:column;gap:18px">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
           <div style="display:flex;align-items:center;gap:12px">
-            <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#FF7A45,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#A970FF,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <i class="fas fa-columns" style="color:#fff;font-size:15px"></i>
             </div>
             <div>
@@ -851,11 +859,11 @@ async function renderKanbanBoard(el) {
     // Standard column layout used for the aggregated view. When a specific
     // project is chosen we honour that project's custom kanban columns.
     const FALLBACK_COLS = [
-      { name: 'Backlog', status_key: 'backlog', color: '#64748b', is_done_column: 0 },
-      { name: 'To-Do', status_key: 'todo', color: '#94a3b8', is_done_column: 0 },
+      { name: 'Backlog', status_key: 'backlog', color: '#7E7E8F', is_done_column: 0 },
+      { name: 'To-Do', status_key: 'todo', color: '#7E7E8F', is_done_column: 0 },
       { name: 'In Progress', status_key: 'in_progress', color: '#3b82f6', is_done_column: 0 },
       { name: 'In Review', status_key: 'in_review', color: '#a78bfa', is_done_column: 0 },
-      { name: 'QA', status_key: 'qa', color: '#f59e0b', is_done_column: 0 },
+      { name: 'QA', status_key: 'qa', color: '#A970FF', is_done_column: 0 },
       { name: 'Done', status_key: 'done', color: '#10b981', is_done_column: 1 },
       { name: 'Blocked', status_key: 'blocked', color: '#ef4444', is_done_column: 0 },
     ]
@@ -890,7 +898,7 @@ async function renderKanbanBoard(el) {
       <!-- Board Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:0 0 16px 0;flex-wrap:wrap;gap:10px">
         <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#FF7A45,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#A970FF,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <i class="fas fa-columns" style="color:#fff;font-size:15px"></i>
           </div>
           <div>
@@ -918,13 +926,13 @@ async function renderKanbanBoard(el) {
       ${activeSprint && !selSprint ? `
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:16px">
         <div style="display:flex;align-items:center;gap:8px">
-          <i class="fas fa-bolt" style="color:#FF7A45;font-size:13px"></i>
+          <i class="fas fa-bolt" style="color:#A970FF;font-size:13px"></i>
           <span style="font-size:12px;font-weight:600;color:var(--text-primary)">${activeSprint.name}</span>
           <span class="badge badge-inprogress" style="font-size:10px">Active</span>
         </div>
         <div style="flex:1;display:flex;align-items:center;gap:10px">
           <div style="flex:1;height:6px;background:var(--bg-input);border-radius:3px;overflow:hidden">
-            <div style="height:100%;background:#FF7A45;border-radius:3px;width:${activeSprint.total_story_points > 0 ? Math.round((activeSprint.completed_story_points / activeSprint.total_story_points) * 100) : 0}%;transition:.3s"></div>
+            <div style="height:100%;background:#A970FF;border-radius:3px;width:${activeSprint.total_story_points > 0 ? Math.round((activeSprint.completed_story_points / activeSprint.total_story_points) * 100) : 0}%;transition:.3s"></div>
           </div>
           <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">${activeSprint.completed_story_points||0}/${activeSprint.total_story_points||0} pts</span>
         </div>
@@ -949,11 +957,11 @@ function buildKanbanColumns(cols, colDefs, projectId, sprintId, canManage, canAd
   if (!colDefs.length) {
     // Fallback default columns
     colDefs = [
-      { status_key: 'backlog', name: 'Backlog', color: '#64748b', wip_limit: 0, is_done_column: 0 },
-      { status_key: 'todo', name: 'To Do', color: '#94a3b8', wip_limit: 0, is_done_column: 0 },
-      { status_key: 'in_progress', name: 'In Progress', color: '#FFA577', wip_limit: 3, is_done_column: 0 },
+      { status_key: 'backlog', name: 'Backlog', color: '#7E7E8F', wip_limit: 0, is_done_column: 0 },
+      { status_key: 'todo', name: 'To Do', color: '#7E7E8F', wip_limit: 0, is_done_column: 0 },
+      { status_key: 'in_progress', name: 'In Progress', color: '#B388FF', wip_limit: 3, is_done_column: 0 },
       { status_key: 'in_review', name: 'In Review', color: '#C56FE6', wip_limit: 0, is_done_column: 0 },
-      { status_key: 'qa', name: 'QA', color: '#FFA577', wip_limit: 0, is_done_column: 0 },
+      { status_key: 'qa', name: 'QA', color: '#B388FF', wip_limit: 0, is_done_column: 0 },
       { status_key: 'done', name: 'Done', color: '#58C68A', wip_limit: 0, is_done_column: 1 },
       { status_key: 'blocked', name: 'Blocked', color: '#FF5E3A', wip_limit: 0, is_done_column: 0 },
     ]
@@ -962,7 +970,7 @@ function buildKanbanColumns(cols, colDefs, projectId, sprintId, canManage, canAd
     const tasks = cols[col.status_key] || []
     const wipOver = col.wip_limit > 0 && tasks.length > col.wip_limit
     const wipAt = col.wip_limit > 0 && tasks.length === col.wip_limit
-    const wipColor = wipOver ? '#FF5E3A' : wipAt ? '#FFCB47' : col.color
+    const wipColor = wipOver ? '#FF5E3A' : wipAt ? '#C9A7FF' : col.color
     return `
     <div class="kanban-col" data-status="${col.status_key}" data-col-id="${col.id||''}" style="min-width:260px;max-width:280px">
       <div class="kanban-col-header" style="border-top:3px solid ${col.color}">
@@ -988,23 +996,23 @@ function buildKanbanColumns(cols, colDefs, projectId, sprintId, canManage, canAd
 
 function buildTaskCard(t) {
   const typeIcons = { bug: '🐛', story: '📖', task: '✓', epic: '⚡', sub_task: '↳' }
-  const typeColors = { bug: '#FF5E3A', story: '#F4C842', task: '#FF7A45', epic: '#FFCB47', sub_task: '#64748b' }
-  const prioColors = { critical: '#FF5E3A', high: '#FF7A45', medium: '#FFCB47', low: '#6b7280' }
+  const typeColors = { bug: '#FF5E3A', story: '#C9A7FF', task: '#A970FF', epic: '#C9A7FF', sub_task: '#7E7E8F' }
+  const prioColors = { critical: '#FF5E3A', high: '#A970FF', medium: '#C9A7FF', low: '#7E7E8F' }
   const prioIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '⚪' }
   const isOverdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done'
   return `
   <div class="task-card" draggable="true" data-task-id="${t.id}" onclick="openTaskDrawer('${t.id}')">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-      <span style="font-size:11px;background:${typeColors[t.task_type]||'#FF7A45'}22;color:${typeColors[t.task_type]||'#FF7A45'};padding:1px 6px;border-radius:4px;font-weight:600;letter-spacing:.3px">${(t.task_type||'task').toUpperCase()}</span>
+      <span style="font-size:11px;background:${typeColors[t.task_type]||'#A970FF'}22;color:${typeColors[t.task_type]||'#A970FF'};padding:1px 6px;border-radius:4px;font-weight:600;letter-spacing:.3px">${(t.task_type||'task').toUpperCase()}</span>
       <span style="font-size:10px;color:var(--text-muted);margin-left:auto;font-family:monospace">#${String(t.id).split('-').pop()}</span>
     </div>
     <div style="font-size:13px;font-weight:500;color:var(--text-primary);line-height:1.4;margin-bottom:8px">${t.title}</div>
-    ${(!window._kanbanProjectId && t.project_name) ? `<div style="font-size:10px;color:#FF7A45;background:rgba(255,122,69,.1);padding:2px 7px;border-radius:4px;display:inline-block;margin-bottom:6px"><i class="fas fa-folder"></i> ${tc(t.project_name)}</div>` : ''}
+    ${(!window._kanbanProjectId && t.project_name) ? `<div style="font-size:10px;color:#A970FF;background:rgba(169,112,255,.1);padding:2px 7px;border-radius:4px;display:inline-block;margin-bottom:6px"><i class="fas fa-folder"></i> ${tc(t.project_name)}</div>` : ''}
     ${t.description ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${t.description}</div>` : ''}
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">
       ${isOverdue ? `<span style="font-size:10px;color:#FF5E3A;background:#3A1A14;padding:1px 6px;border-radius:4px;font-weight:600"><i class="fas fa-exclamation-circle"></i> Overdue</span>` : ''}
       ${t.due_date ? `<span style="font-size:10px;color:${isOverdue ? '#FF5E3A' : 'var(--text-muted)'}"><i class="fas fa-calendar-alt"></i> ${fmtDate(t.due_date)}</span>` : ''}
-      ${t.sprint_name ? `<span style="font-size:10px;color:#FF7A45"><i class="fas fa-bolt"></i> ${t.sprint_name}</span>` : ''}
+      ${t.sprint_name ? `<span style="font-size:10px;color:#A970FF"><i class="fas fa-bolt"></i> ${t.sprint_name}</span>` : ''}
       ${t.milestone_id ? `<span style="font-size:10px;color:#C56FE6"><i class="fas fa-flag"></i> Milestone</span>` : ''}
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between">
@@ -1016,8 +1024,8 @@ function buildTaskCard(t) {
       <div style="display:flex;align-items:center;gap:4px">
         ${t.subtask_count > 0 ? `<span style="font-size:10px;color:var(--text-muted)"><i class="fas fa-code-branch"></i>${t.subtask_count}</span>` : ''}
         ${t.comment_count > 0 ? `<span style="font-size:10px;color:var(--text-muted)"><i class="fas fa-comment"></i>${t.comment_count}</span>` : ''}
-        ${t.reporter_name ? `<div title="Assigned by ${t.reporter_name}" style="width:20px;height:20px;border-radius:50%;background:${t.reporter_color||'#94a3b8'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0;border:1px dashed rgba(255,255,255,.35)">${String(t.reporter_name).split(' ').map(n=>n[0]).join('').slice(0,2)}</div>` : ''}
-        ${t.assignee_name ? `<div title="Assigned to ${t.assignee_name}" style="width:24px;height:24px;border-radius:50%;background:${t.assignee_color||'#FF7A45'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${t.assignee_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>` : `<div title="Unassigned" style="width:24px;height:24px;border-radius:50%;background:var(--bg-hover);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-muted);flex-shrink:0">?</div>`}
+        ${t.reporter_name ? `<div title="Assigned by ${t.reporter_name}" style="width:20px;height:20px;border-radius:50%;background:${t.reporter_color||'#7E7E8F'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0;border:1px dashed rgba(255,255,255,.35)">${String(t.reporter_name).split(' ').map(n=>n[0]).join('').slice(0,2)}</div>` : ''}
+        ${t.assignee_name ? `<div title="Assigned to ${t.assignee_name}" style="width:24px;height:24px;border-radius:50%;background:${t.assignee_color||'#A970FF'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${t.assignee_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>` : `<div title="Unassigned" style="width:24px;height:24px;border-radius:50%;background:var(--bg-hover);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-muted);flex-shrink:0">?</div>`}
       </div>
     </div>
   </div>`
@@ -1143,10 +1151,10 @@ function toggleKanbanZoom(direction) {
 function _kanbanProjectCard(p, taskCount, doneCount, lastActivity) {
   const statusColors = {
     active: '#58C68A', on_track: '#58C68A', healthy: '#58C68A',
-    at_risk: '#F59E0B', warning: '#FFCB47', delayed: '#F59E0B',
+    at_risk: '#A970FF', warning: '#C9A7FF', delayed: '#A970FF',
     critical: '#FF5E3A', blocked: '#FF5E3A',
     completed: '#3b82f6', done: '#3b82f6',
-    paused: '#94a3b8', on_hold: '#94a3b8',
+    paused: '#7E7E8F', on_hold: '#7E7E8F',
   }
   const statusColor = statusColors[String(p.status || '').toLowerCase()] || '#a78bfa'
   const progress = taskCount ? Math.round((doneCount / taskCount) * 100) : 0
@@ -1173,17 +1181,17 @@ function _kanbanProjectCard(p, taskCount, doneCount, lastActivity) {
     </div>
 
     <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
-      ${p.pm_name ? `<div style="display:flex;align-items:center;gap:6px;color:#94a3b8"><i class="fas fa-user-tie" style="width:14px;color:#FF7A45"></i>PM · ${escapeHtml(p.pm_name)}</div>` : ''}
-      ${p.team_lead_name ? `<div style="display:flex;align-items:center;gap:6px;color:#94a3b8"><i class="fas fa-user-shield" style="width:14px;color:#C56FE6"></i>Lead · ${escapeHtml(p.team_lead_name)}</div>` : ''}
-      ${typeof p.developer_count === 'number' ? `<div style="display:flex;align-items:center;gap:6px;color:#94a3b8"><i class="fas fa-users" style="width:14px;color:#58C68A"></i>${p.developer_count} dev${p.developer_count === 1 ? '' : 's'}</div>` : ''}
-      ${p.expected_end_date ? `<div style="display:flex;align-items:center;gap:6px;color:${new Date(p.expected_end_date) < new Date() ? '#FF5E3A' : '#94a3b8'}"><i class="fas fa-flag-checkered" style="width:14px"></i>Due ${fmtDate(p.expected_end_date)}</div>` : ''}
+      ${p.pm_name ? `<div style="display:flex;align-items:center;gap:6px;color:#7E7E8F"><i class="fas fa-user-tie" style="width:14px;color:#A970FF"></i>PM · ${escapeHtml(p.pm_name)}</div>` : ''}
+      ${p.team_lead_name ? `<div style="display:flex;align-items:center;gap:6px;color:#7E7E8F"><i class="fas fa-user-shield" style="width:14px;color:#C56FE6"></i>Lead · ${escapeHtml(p.team_lead_name)}</div>` : ''}
+      ${typeof p.developer_count === 'number' ? `<div style="display:flex;align-items:center;gap:6px;color:#7E7E8F"><i class="fas fa-users" style="width:14px;color:#58C68A"></i>${p.developer_count} dev${p.developer_count === 1 ? '' : 's'}</div>` : ''}
+      ${p.expected_end_date ? `<div style="display:flex;align-items:center;gap:6px;color:${new Date(p.expected_end_date) < new Date() ? '#FF5E3A' : '#7E7E8F'}"><i class="fas fa-flag-checkered" style="width:14px"></i>Due ${fmtDate(p.expected_end_date)}</div>` : ''}
     </div>
 
     ${taskCount ? `
       <div>
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:4px">
           <span>${doneCount} / ${taskCount} tasks done</span>
-          <span style="font-weight:600;color:${progress >= 100 ? '#58C68A' : progress >= 60 ? '#FFCB47' : '#94a3b8'}">${progress}%</span>
+          <span style="font-weight:600;color:${progress >= 100 ? '#58C68A' : progress >= 60 ? '#C9A7FF' : '#7E7E8F'}">${progress}%</span>
         </div>
         <div style="height:5px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden">
           <div style="height:100%;width:${progress}%;background:linear-gradient(90deg,${statusColor},${statusColor}cc);transition:width .3s"></div>
@@ -1191,7 +1199,7 @@ function _kanbanProjectCard(p, taskCount, doneCount, lastActivity) {
       </div>` : `<div style="font-size:11px;color:var(--text-muted);font-style:italic">No tasks yet</div>`}
 
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-      ${myRole ? `<div style="font-size:10px;font-weight:700;color:#FFB347;background:rgba(255,179,71,.12);padding:3px 8px;border-radius:999px"><i class="fas fa-star" style="font-size:9px"></i> You are ${myRole}</div>` : '<span></span>'}
+      ${myRole ? `<div style="font-size:10px;font-weight:700;color:#C9A7FF;background:rgba(169,112,255,.12);padding:3px 8px;border-radius:999px"><i class="fas fa-star" style="font-size:9px"></i> You are ${myRole}</div>` : '<span></span>'}
       ${lastActivity ? `<div style="font-size:10px;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px" title="${escapeHtml(new Date(lastActivity).toLocaleString())}"><i class="fas fa-clock-rotate-left" style="font-size:9px"></i>Updated ${typeof timeAgo === 'function' ? timeAgo(lastActivity) : fmtDate(lastActivity)}</div>` : ''}
     </div>
   </div>`
@@ -1257,7 +1265,7 @@ async function manageBoardColumns(projectId) {
     const projName = tc((projData.projects || projData.data || []).find(p => p.id === projectId)?.name || projectId)
     showModal(`
     <div class="modal-header">
-      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-columns" style="color:#FF7A45"></i> Board Columns — ${projName}</h3>
+      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-columns" style="color:#A970FF"></i> Board Columns — ${projName}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -1267,7 +1275,7 @@ async function manageBoardColumns(projectId) {
         <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg-input);border-radius:8px;border:1px solid var(--border)" data-col-id="${col.id}">
           <span style="width:12px;height:12px;border-radius:50%;background:${col.color};flex-shrink:0"></span>
           <span style="font-weight:600;font-size:13px;flex:1;color:var(--text-primary)">${col.name}</span>
-          ${col.wip_limit > 0 ? `<span style="font-size:11px;color:#FFCB47;background:rgba(255,203,71,.1);padding:1px 6px;border-radius:4px">WIP: ${col.wip_limit}</span>` : ''}
+          ${col.wip_limit > 0 ? `<span style="font-size:11px;color:#C9A7FF;background:rgba(169,112,255,.1);padding:1px 6px;border-radius:4px">WIP: ${col.wip_limit}</span>` : ''}
           ${col.is_done_column ? `<span style="font-size:11px;color:#58C68A;background:rgba(88,198,138,.1);padding:1px 6px;border-radius:4px"><i class="fas fa-check"></i> Done</span>` : ''}
           <div style="display:flex;gap:4px">
             <button onclick="editColumnModal('${col.id}','${col.name}','${col.color}',${col.wip_limit},${col.is_done_column},'${projectId}')" class="btn btn-xs btn-outline" title="Edit"><i class="fas fa-pencil"></i></button>
@@ -1287,7 +1295,7 @@ async function manageBoardColumns(projectId) {
           </div>
           <div class="form-group" style="width:80px;margin:0">
             <label class="form-label">Color</label>
-            <input type="color" id="new-col-color" value="#FF7A45" class="form-input" style="height:38px;padding:2px 4px"/>
+            <input type="color" id="new-col-color" value="#A970FF" class="form-input" style="height:38px;padding:2px 4px"/>
           </div>
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted);margin-bottom:2px"><input type="checkbox" id="new-col-done" style="accent-color:#58C68A"/> Done column</label>
           <button class="btn btn-primary btn-sm" onclick="addBoardColumn('${projectId}')"><i class="fas fa-plus"></i> Add Column</button>
@@ -1303,7 +1311,7 @@ async function manageBoardColumns(projectId) {
 async function addBoardColumn(projectId) {
   const name = document.getElementById('new-col-name')?.value?.trim()
   const wip_limit = parseInt(document.getElementById('new-col-wip')?.value || '0')
-  const color = document.getElementById('new-col-color')?.value || '#FF7A45'
+  const color = document.getElementById('new-col-color')?.value || '#A970FF'
   const is_done_column = document.getElementById('new-col-done')?.checked ? 1 : 0
   if (!name) return toast('Enter a column name', 'error')
   try {
@@ -1365,7 +1373,7 @@ function editColumnInline(colId, name, color, wipLimit, isDone) {
 
 /* ── TASK DRAWER ────────────────────────────────────────── */
 async function openTaskDrawer(taskId) {
-  openDrawer(`<div style="padding:20px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading task…</div>`)
+  openDrawer(`<div style="padding:20px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading task…</div>`)
   try {
     const data = await API.get('/tasks/' + taskId)
     const t = data.task
@@ -1383,7 +1391,7 @@ async function openTaskDrawer(taskId) {
     const drawerHTML = `
     <div class="detail-header" style="padding:18px 22px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        ${taskTypeIcon(t.task_type)}<span style="font-size:11px;color:#475569;font-family:monospace">${t.id}</span>
+        ${taskTypeIcon(t.task_type)}<span style="font-size:11px;color:#5A5A66;font-family:monospace">${t.id}</span>
         ${statusBadge(t.status)}${priorityBadge(t.priority)}
         <button class="close-btn" onclick="closeDrawer()" style="margin-left:auto"><i class="fas fa-times"></i></button>
       </div>
@@ -1391,18 +1399,18 @@ async function openTaskDrawer(taskId) {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 22px;border-bottom:1px solid var(--border)">
       <div>
-        <div style="font-size:10px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Assigned To</div>
+        <div style="font-size:10px;font-weight:600;color:#5A5A66;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Assigned To</div>
         <div id="task-assignee-cell-${t.id}" style="font-size:13px;color:#e2e8f0;display:flex;align-items:center;gap:6px">
-          ${t.assignee_name ? `${avatar(t.assignee_name,t.assignee_color||'#FF7A45','sm')} <span>${t.assignee_name}</span>` : '<span style="color:#64748b">Unassigned</span>'}
+          ${t.assignee_name ? `${avatar(t.assignee_name,t.assignee_color||'#A970FF','sm')} <span>${t.assignee_name}</span>` : '<span style="color:#7E7E8F">Unassigned</span>'}
           ${hasPermission('tasks.edit_any') ? `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="showTaskAssigneeEditor('${t.id}','${t.project_id}','${(t.assignee_id||'')}')" title="Change assignee"><i class="fas fa-user-edit"></i></button>` : ''}
         </div>
       </div>
-      ${metaItem('Assigned By', t.reporter_name ? `<span style="display:inline-flex;align-items:center;gap:6px">${avatar(t.reporter_name, t.reporter_color||'#94a3b8','sm')}<span>${t.reporter_name}</span></span>` : '—')}
+      ${metaItem('Assigned By', t.reporter_name ? `<span style="display:inline-flex;align-items:center;gap:6px">${avatar(t.reporter_name, t.reporter_color||'#7E7E8F','sm')}<span>${t.reporter_name}</span></span>` : '—')}
       ${metaItem('Project', t.project_name ? tc(t.project_name) : '—')}
       ${metaItem('Sprint', t.sprint_name||'—')}
       ${metaItem('Due Date', hasPermission('tasks.move')
         ? `<input type="date" class="form-input" id="task-due-${t.id}" value="${t.due_date ? String(t.due_date).slice(0,10) : ''}" onchange="saveTaskDueDate('${t.id}', this.value)" style="font-size:12.5px;padding:4px 6px;color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#e2e8f0'}"/>`
-        : `<span style="color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#94a3b8'}">${fmtDate(t.due_date)}</span>`)}
+        : `<span style="color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#7E7E8F'}">${fmtDate(t.due_date)}</span>`)}
       ${_user.role !== 'team' ? metaItem('Hours', `${t.logged_hours||0}h logged / ${t.estimated_hours||0}h est`) : ''}
     </div>
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
@@ -1428,48 +1436,48 @@ async function openTaskDrawer(taskId) {
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">
               <i class="fas fa-history"></i> ${escapeHtml(h.changed_by_name || 'System')} · ${timeAgo(h.changed_at)} · status was <em>${escapeHtml(String(h.status || '').replace(/_/g,' '))}</em>
             </div>
-            <div style="font-size:12px;color:#94a3b8;white-space:pre-wrap;line-height:1.5">${escapeHtml(h.description || '')}</div>
+            <div style="font-size:12px;color:#7E7E8F;white-space:pre-wrap;line-height:1.5">${escapeHtml(h.description || '')}</div>
           </div>`).join('')}
       </div>
     </div>` : ''}
     ${buildAttachmentsSection(t)}
     ${subtasks.length ? `
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
-      <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Subtasks (${subtasks.length})</div>
+      <div style="font-size:12px;font-weight:600;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Subtasks (${subtasks.length})</div>
       ${subtasks.map(st=>`
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(30,30,69,.4)">
-          <input type="checkbox" ${st.status==='done'?'checked':''} onchange="updateTaskStatus('${st.id}',this.checked?'done':'todo')" style="accent-color:#FF7A45"/>
-          <span style="font-size:13px;color:${st.status==='done'?'#475569':'#e2e8f0'};${st.status==='done'?'text-decoration:line-through':''}">${st.title}</span>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(26,26,34,.4)">
+          <input type="checkbox" ${st.status==='done'?'checked':''} onchange="updateTaskStatus('${st.id}',this.checked?'done':'todo')" style="accent-color:#A970FF"/>
+          <span style="font-size:13px;color:${st.status==='done'?'#5A5A66':'#e2e8f0'};${st.status==='done'?'text-decoration:line-through':''}">${st.title}</span>
           ${statusBadge(st.status)}
         </div>`).join('')}
     </div>` : ''}
     <div style="padding:14px 22px">
-      <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Comments (${comments.length})</div>
+      <div style="font-size:12px;font-weight:600;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Comments (${comments.length})</div>
       <div id="task-comments">
         ${comments.map(cm=>{
           const canEdit = (cm.author_user_id && String(cm.author_user_id) === String(_user.id)) || _user.role === 'admin' || _user.role === 'pm'
           return `
           <div class="comment-item" id="comment-${cm.id}" data-content="${escapeHtml(cm.content||'')}">
-            ${avatar(cm.author_name||cm.client_name||'?', cm.author_color||cm.client_color||'#FF7A45','sm')}
+            ${avatar(cm.author_name||cm.client_name||'?', cm.author_color||cm.client_color||'#A970FF','sm')}
             <div style="flex:1;min-width:0">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                 <span style="font-size:12px;font-weight:600;color:#e2e8f0">${cm.author_name||cm.client_name||'Unknown'}</span>
-                ${cm.is_internal?'<span style="font-size:10px;background:rgba(255,122,69,.15);color:#FFB347;padding:1px 6px;border-radius:4px">Internal</span>':''}
-                <span style="font-size:11px;color:#475569;margin-left:auto">${timeAgo(cm.created_at)}${cm.edited?' · edited':''}</span>
+                ${cm.is_internal?'<span style="font-size:10px;background:rgba(169,112,255,.15);color:#C9A7FF;padding:1px 6px;border-radius:4px">Internal</span>':''}
+                <span style="font-size:11px;color:#5A5A66;margin-left:auto">${timeAgo(cm.created_at)}${cm.edited?' · edited':''}</span>
                 ${canEdit ? `
-                  <button class="comment-action-btn" title="Edit" onclick="startEditComment('${cm.id}','${t.id}')" style="background:none;border:none;color:#64748b;cursor:pointer;padding:2px 4px;font-size:11px"><i class="fas fa-pencil"></i></button>
-                  <button class="comment-action-btn" title="Delete" onclick="deleteComment('${cm.id}','${t.id}')" style="background:none;border:none;color:#64748b;cursor:pointer;padding:2px 4px;font-size:11px"><i class="fas fa-trash"></i></button>
+                  <button class="comment-action-btn" title="Edit" onclick="startEditComment('${cm.id}','${t.id}')" style="background:none;border:none;color:#7E7E8F;cursor:pointer;padding:2px 4px;font-size:11px"><i class="fas fa-pencil"></i></button>
+                  <button class="comment-action-btn" title="Delete" onclick="deleteComment('${cm.id}','${t.id}')" style="background:none;border:none;color:#7E7E8F;cursor:pointer;padding:2px 4px;font-size:11px"><i class="fas fa-trash"></i></button>
                 ` : ''}
               </div>
               <div id="comment-body-${cm.id}">
-                <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0;white-space:pre-wrap">${formatCommentMentions(cm.content)}</p>
+                <p style="font-size:13px;color:#7E7E8F;line-height:1.5;margin:0;white-space:pre-wrap">${formatCommentMentions(cm.content)}</p>
                 ${(Array.isArray(cm.attachments) && cm.attachments.length) ? `
                   <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
                     ${cm.attachments.map(a => `
                       <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-input,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:6px;font-size:12px">
-                        <i class="fas ${fileIconClass(a.file_type, a.file_name)}" style="color:#FF7A45"></i>
+                        <i class="fas ${fileIconClass(a.file_type, a.file_name)}" style="color:#A970FF"></i>
                         <span style="flex:1;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.file_name||'file')}</span>
-                        <span style="color:#64748b;font-size:11px">${fmtFileSize(a.file_size)}</span>
+                        <span style="color:#7E7E8F;font-size:11px">${fmtFileSize(a.file_size)}</span>
                         <a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline" title="View" style="text-decoration:none;padding:2px 6px"><i class="fas fa-eye"></i></a>
                         <a href="${escapeHtml(a.url)}" download="${escapeHtml(a.file_name||'file')}" class="btn btn-xs btn-outline" title="Download" style="text-decoration:none;padding:2px 6px"><i class="fas fa-download"></i></a>
                       </div>`).join('')}
@@ -1483,7 +1491,7 @@ async function openTaskDrawer(taskId) {
         <div id="mention-suggest-${t.id}" style="display:none;position:absolute;bottom:100%;left:0;right:0;max-height:180px;overflow-y:auto;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.4);z-index:5;margin-bottom:6px"></div>
         <div id="comment-attachments-${t.id}" style="display:none;flex-direction:column;gap:6px;margin-top:8px"></div>
         <div class="comment-box-footer">
-          ${hasPermission('tasks.comment') ? `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#64748b;margin-right:auto;cursor:pointer"><input type="checkbox" id="comment-internal-${t.id}" style="accent-color:#FF7A45"/> Internal only</label>` : ''}
+          ${hasPermission('tasks.comment') ? `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#7E7E8F;margin-right:auto;cursor:pointer"><input type="checkbox" id="comment-internal-${t.id}" style="accent-color:#A970FF"/> Internal only</label>` : ''}
           <label class="btn btn-sm btn-outline" style="cursor:pointer;margin:0" title="Attach a file to this comment">
             <i class="fas fa-paperclip"></i> Attach
             <input type="file" multiple style="display:none" onchange="onCommentAttachPick('${t.id}', this)"/>
@@ -1513,7 +1521,7 @@ async function openTaskDrawer(taskId) {
 }
 
 function metaItem(label, value) {
-  return `<div><div style="font-size:10px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${label}</div><div style="font-size:13px;color:#e2e8f0;display:flex;align-items:center;gap:4px">${value}</div></div>`
+  return `<div><div style="font-size:10px;font-weight:600;color:#5A5A66;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${label}</div><div style="font-size:13px;color:#e2e8f0;display:flex;align-items:center;gap:4px">${value}</div></div>`
 }
 
 async function updateTaskStatus(taskId, newStatus) {
@@ -1548,12 +1556,12 @@ async function saveTaskStatusAndDesc(taskId) {
 async function showTaskAssigneeEditor(taskId, projectId, currentAssigneeId) {
   const cell = document.getElementById('task-assignee-cell-' + taskId)
   if (!cell) return
-  cell.innerHTML = `<i class="fas fa-spinner fa-spin" style="color:#64748b"></i>`
+  cell.innerHTML = `<i class="fas fa-spinner fa-spin" style="color:#7E7E8F"></i>`
   try {
     const projRes = await API.get(`/projects/${projectId}`)
     const proj = projRes.data || projRes.project || {}
     if (proj.assignment_type === 'external') {
-      cell.innerHTML = `<span style="color:#64748b;font-size:12px"><i class="fas fa-users"></i> External project — assignee is fixed to the linked team.</span>`
+      cell.innerHTML = `<span style="color:#7E7E8F;font-size:12px"><i class="fas fa-users"></i> External project — assignee is fixed to the linked team.</span>`
       return
     }
     const usersRes = await API.get('/users')
@@ -1672,9 +1680,9 @@ function renderPendingCommentAttachments(taskId) {
   wrap.style.display = 'flex'
   wrap.innerHTML = list.map((a, idx) => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-input,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:6px;font-size:12px">
-      <i class="fas ${fileIconClass(a.file_type, a.file_name)}" style="color:#FF7A45"></i>
+      <i class="fas ${fileIconClass(a.file_type, a.file_name)}" style="color:#A970FF"></i>
       <span style="flex:1;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.file_name)}</span>
-      <span style="color:#64748b;font-size:11px">${fmtFileSize(a.file_size)}</span>
+      <span style="color:#7E7E8F;font-size:11px">${fmtFileSize(a.file_size)}</span>
       <button class="btn btn-xs btn-outline" title="Remove" onclick="removePendingCommentAttachment('${taskId}',${idx})" style="color:#FF5E3A;border-color:#FF5E3A;padding:2px 6px"><i class="fas fa-times"></i></button>
     </div>`).join('')
 }
@@ -1729,7 +1737,7 @@ function cancelEditComment(commentId) {
   const body = document.getElementById('comment-body-' + commentId)
   if (!wrap || !body) return
   const original = wrap.dataset.content || ''
-  body.innerHTML = `<p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0;white-space:pre-wrap">${formatCommentMentions(original)}</p>`
+  body.innerHTML = `<p style="font-size:13px;color:#7E7E8F;line-height:1.5;margin:0;white-space:pre-wrap">${formatCommentMentions(original)}</p>`
 }
 
 async function saveEditComment(commentId, taskId) {
@@ -1779,7 +1787,7 @@ function buildAttachmentsSection(t) {
   return `
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Attachments (${attachments.length})</div>
+        <div style="font-size:12px;font-weight:600;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px">Attachments (${attachments.length})</div>
         ${canAttach ? `
           <label class="btn btn-xs btn-outline" style="cursor:pointer;margin:0">
             <i class="fas fa-paperclip"></i> Attach
@@ -1794,10 +1802,10 @@ function buildAttachmentsSection(t) {
               ['admin','pm','pc'].includes(_user.role)
             return `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-input,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:8px">
-              <i class="fas ${fileIconClass(a.file_type, a.file_name)}" style="color:#FF7A45;font-size:16px;width:20px;text-align:center"></i>
+              <i class="fas ${fileIconClass(a.file_type, a.file_name)}" style="color:#A970FF;font-size:16px;width:20px;text-align:center"></i>
               <div style="flex:1;min-width:0">
                 <div style="font-size:13px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.file_name||'file')}</div>
-                <div style="font-size:11px;color:#64748b">${fmtFileSize(a.file_size)}${a.uploaded_by_name ? ' · by ' + escapeHtml(a.uploaded_by_name) : ''}</div>
+                <div style="font-size:11px;color:#7E7E8F">${fmtFileSize(a.file_size)}${a.uploaded_by_name ? ' · by ' + escapeHtml(a.uploaded_by_name) : ''}</div>
               </div>
               <a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline" title="View" style="text-decoration:none"><i class="fas fa-eye"></i></a>
               <a href="${escapeHtml(a.url)}" download="${escapeHtml(a.file_name||'file')}" class="btn btn-xs btn-outline" title="Download" style="text-decoration:none"><i class="fas fa-download"></i></a>
@@ -1881,11 +1889,11 @@ async function onCommentInput(ev, taskId, projectId) {
   window._commentMentionUsers = pool
   if (!matches.length) { box.style.display = 'none'; box.innerHTML = ''; return }
   box.innerHTML = matches.map(u => `
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border)" onmousedown="insertMention(event,'${taskId}','${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')" onmouseover="this.style.background='rgba(255,122,69,0.1)'" onmouseout="this.style.background='transparent'">
-      ${avatar(u.full_name||'?', u.avatar_color||'#FF7A45','sm')}
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border)" onmousedown="insertMention(event,'${taskId}','${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')" onmouseover="this.style.background='rgba(169,112,255,0.1)'" onmouseout="this.style.background='transparent'">
+      ${avatar(u.full_name||'?', u.avatar_color||'#A970FF','sm')}
       <div style="flex:1;min-width:0">
         <div style="font-size:12.5px;color:#e2e8f0">${escapeHtml(u.full_name||'')}</div>
-        <div style="font-size:10.5px;color:#64748b;text-transform:capitalize">${escapeHtml(u.role||'')}</div>
+        <div style="font-size:10.5px;color:#7E7E8F;text-transform:capitalize">${escapeHtml(u.role||'')}</div>
       </div>
     </div>`).join('')
   box.style.display = 'block'
@@ -1953,7 +1961,7 @@ function formatCommentMentions(content) {
     if (!name) continue
     const safe = escapeHtml(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const re = new RegExp(`@${safe}\\b`, 'g')
-    html = html.replace(re, `<span style="background:rgba(255,122,69,.15);color:#FFB347;padding:1px 5px;border-radius:4px;font-weight:500">@${escapeHtml(name)}</span>`)
+    html = html.replace(re, `<span style="background:rgba(169,112,255,.15);color:#C9A7FF;padding:1px 5px;border-radius:4px;font-weight:500">@${escapeHtml(name)}</span>`)
   }
   return html
 }
@@ -2052,7 +2060,7 @@ async function showCreateTaskModal(projectId='', sprintId='', defaultStatus='bac
 
     showModal(`
     <div class="modal-header">
-      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-plus-circle" style="color:#FF7A45"></i> Create Task</h3>
+      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-plus-circle" style="color:#A970FF"></i> Create Task</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -2096,8 +2104,8 @@ async function showCreateTaskModal(projectId='', sprintId='', defaultStatus='bac
         <div class="form-group"><label class="form-label">Story Points</label><input class="form-input" type="number" id="ct-points" placeholder="0" min="0"/></div>
       </div>
       <div style="display:flex;align-items:center;gap:16px;margin-top:6px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted)"><input type="checkbox" id="ct-visible" checked style="accent-color:#FF7A45"/> Client visible</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted)"><input type="checkbox" id="ct-billable" checked style="accent-color:#FF7A45"/> Billable</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted)"><input type="checkbox" id="ct-visible" checked style="accent-color:#A970FF"/> Client visible</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:var(--text-muted)"><input type="checkbox" id="ct-billable" checked style="accent-color:#A970FF"/> Billable</label>
       </div>
     </div>
     <div class="modal-footer">
@@ -2165,7 +2173,7 @@ async function doCreateTask() {
 
 /* ── SPRINTS VIEW ────────────────────────────────────────── */
 async function renderSprintsView(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const [spData, proj] = await Promise.all([API.get('/sprints'), API.get('/projects')])
     const sprints = spData.sprints||[]
@@ -2194,7 +2202,7 @@ async function renderSprintsView(el) {
               <span style="font-size:15px;font-weight:600;color:#e2e8f0">${s.name}</span>
               ${statusBadge(s.status)}
             </div>
-            <div style="font-size:12px;color:#64748b;margin-top:3px">${projMap[s.project_id]?.name||s.project_id} • ${fmtDate(s.start_date)} → ${fmtDate(s.end_date)}</div>
+            <div style="font-size:12px;color:#7E7E8F;margin-top:3px">${projMap[s.project_id]?.name||s.project_id} • ${fmtDate(s.start_date)} → ${fmtDate(s.end_date)}</div>
           </div>
           <div style="display:flex;gap:8px">
             <button class="btn btn-sm btn-outline" onclick="openProjectBoard('${s.project_id}','')"><i class="fas fa-columns"></i>Board</button>
@@ -2202,14 +2210,14 @@ async function renderSprintsView(el) {
           </div>
         </div>
         <div class="card-body">
-          ${s.goal?`<p style="font-size:13px;color:#94a3b8;margin-bottom:12px"><i class="fas fa-bullseye" style="color:#FF7A45;margin-right:6px"></i>${s.goal}</p>`:''}
+          ${s.goal?`<p style="font-size:13px;color:#7E7E8F;margin-bottom:12px"><i class="fas fa-bullseye" style="color:#A970FF;margin-right:6px"></i>${s.goal}</p>`:''}
           <div style="display:flex;gap:28px;margin-bottom:12px">
-            ${[['Total Tasks',s.task_count||0,'#94a3b8'],['Completed',s.done_count||0,'#58C68A'],['Blocked',s.blocked_count||0,'#FF5E3A'],['Story Points',`${doneSP}/${totalSP}`,'#FF7A45']].map(([l,v,c])=>`<div><div style="font-size:18px;font-weight:700;color:${c}">${v}</div><div style="font-size:11px;color:#64748b">${l}</div></div>`).join('')}
+            ${[['Total Tasks',s.task_count||0,'#7E7E8F'],['Completed',s.done_count||0,'#58C68A'],['Blocked',s.blocked_count||0,'#FF5E3A'],['Story Points',`${doneSP}/${totalSP}`,'#A970FF']].map(([l,v,c])=>`<div><div style="font-size:18px;font-weight:700;color:${c}">${v}</div><div style="font-size:11px;color:#7E7E8F">${l}</div></div>`).join('')}
           </div>
           <div class="progress-bar lg">
             <div class="progress-fill ${pct>=80?'green':pct>=50?'blue':'amber'}" style="width:${pct}%"></div>
           </div>
-          <div style="font-size:11px;color:#64748b;margin-top:4px">${pct}% complete</div>
+          <div style="font-size:11px;color:#7E7E8F;margin-top:4px">${pct}% complete</div>
         </div>
       </div>`
     }).join('') || '<div class="empty-state"><i class="fas fa-bolt"></i><p>No sprints created yet</p></div>'}
@@ -2259,7 +2267,7 @@ async function editSprint(id, currentStatus) {
       const projects = projRes.projects || projRes || []
       const statuses = ['planning', 'active', 'completed', 'cancelled']
       showModal(`
-        <div class="modal-header"><h3><i class="fas fa-bolt" style="color:#FF7A45;margin-right:6px"></i>Edit Sprint</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+        <div class="modal-header"><h3><i class="fas fa-bolt" style="color:#A970FF;margin-right:6px"></i>Edit Sprint</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
         <div class="modal-body">
           <div class="form-group"><label class="form-label">Project</label>
             <select class="form-select" id="esp-project">
@@ -2309,7 +2317,7 @@ async function doUpdateSprint(id) {
 
 /* ── MILESTONES VIEW ────────────────────────────────────── */
 async function renderMilestonesView(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const [msData, proj, docsData] = await Promise.all([
       API.get('/milestones'),
@@ -2367,18 +2375,18 @@ async function renderMilestonesView(el) {
           const totalBillable = ms.filter(m => m.is_billable).reduce((s, m) => s + (Number(m.invoice_amount) || 0), 0)
           const completedCount = ms.filter(m => m.status === 'completed' || Number(m.completion_pct) >= 100).length
           return `
-          <div style="width:320px;flex-shrink:0;background:rgba(15,23,42,.4);border:1px solid rgba(148,163,184,.15);border-radius:10px;padding:12px">
-            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(148,163,184,.15)">
+          <div style="width:320px;flex-shrink:0;background:rgba(11,11,13,.4);border:1px solid rgba(179,136,255,.15);border-radius:10px;padding:12px">
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(179,136,255,.15)">
               <div style="flex:1;min-width:0">
                 <div style="font-size:13px;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(tc(p.name))}</div>
-                <div style="font-size:11px;color:#64748b;margin-top:2px">${escapeHtml(p.code || '')}${p.client_name ? ' · ' + escapeHtml(p.client_name) : ''}</div>
-                <div style="font-size:10px;color:#94a3b8;margin-top:6px">${ms.length} milestone${ms.length === 1 ? '' : 's'}${completedCount ? ` · ${completedCount} done` : ''}${totalBillable ? ` · ₹${fmtNum(totalBillable)}` : ''}</div>
+                <div style="font-size:11px;color:#7E7E8F;margin-top:2px">${escapeHtml(p.code || '')}${p.client_name ? ' · ' + escapeHtml(p.client_name) : ''}</div>
+                <div style="font-size:10px;color:#7E7E8F;margin-top:6px">${ms.length} milestone${ms.length === 1 ? '' : 's'}${completedCount ? ` · ${completedCount} done` : ''}${totalBillable ? ` · ₹${fmtNum(totalBillable)}` : ''}</div>
               </div>
               <span class="badge ${p.status === 'active' ? 'badge-inprogress' : p.status === 'completed' ? 'badge-done' : 'badge-todo'}" style="font-size:9px;flex-shrink:0">${escapeHtml(p.status || '')}</span>
             </div>
 
             <div style="display:flex;flex-direction:column;gap:8px;max-height:560px;overflow-y:auto">
-              ${ms.length === 0 ? '<div style="padding:14px;text-align:center;color:#475569;font-size:12px;border:1px dashed rgba(148,163,184,.18);border-radius:8px">No milestones yet</div>' :
+              ${ms.length === 0 ? '<div style="padding:14px;text-align:center;color:#5A5A66;font-size:12px;border:1px dashed rgba(179,136,255,.18);border-radius:8px">No milestones yet</div>' :
               ms.map(m => {
                 const overdue = new Date(m.due_date) < new Date() && m.status !== 'completed'
                 const tasks = Array.isArray(m.tasks) ? m.tasks : []
@@ -2397,19 +2405,19 @@ async function renderMilestonesView(el) {
                       <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
                         ${statusBadge(m.status)}
                         ${overdue ? '<span class="badge badge-blocked" style="font-size:9px"><i class="fas fa-exclamation-triangle"></i> Overdue</span>' : ''}
-                        ${ratingOverall ? `<span style="font-size:9px;background:rgba(255,203,71,.15);color:#FFCB47;padding:1px 6px;border-radius:8px;font-weight:600"><i class="fas fa-star"></i> ${ratingOverall.toFixed(1)}</span>` : ''}
+                        ${ratingOverall ? `<span style="font-size:9px;background:rgba(169,112,255,.15);color:#C9A7FF;padding:1px 6px;border-radius:8px;font-weight:600"><i class="fas fa-star"></i> ${ratingOverall.toFixed(1)}</span>` : ''}
                       </div>
                     </div>
                     <div style="text-align:right;flex-shrink:0">
-                      <div style="font-size:18px;font-weight:700;color:${pct >= 100 ? '#58C68A' : pct >= 60 ? '#FFCB47' : '#FFB347'};line-height:1">${pct}<span style="font-size:10px">%</span></div>
+                      <div style="font-size:18px;font-weight:700;color:${pct >= 100 ? '#58C68A' : pct >= 60 ? '#C9A7FF' : '#C9A7FF'};line-height:1">${pct}<span style="font-size:10px">%</span></div>
                     </div>
                   </div>
-                  ${m.description ? `<div style="font-size:11px;color:#94a3b8;line-height:1.4;margin:6px 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHtml(m.description)}</div>` : ''}
+                  ${m.description ? `<div style="font-size:11px;color:#7E7E8F;line-height:1.4;margin:6px 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHtml(m.description)}</div>` : ''}
                   <div class="progress-bar" style="margin-top:6px"><div class="progress-fill ${pct >= 100 ? 'green' : pct >= 70 ? 'blue' : 'amber'}" style="width:${pct}%"></div></div>
-                  <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:center;font-size:10.5px;color:#94a3b8">
-                    <span><i class="fas fa-calendar" style="color:${overdue ? '#FF5E3A' : '#FFB347'};margin-right:3px"></i>${fmtDate(m.due_date)}</span>
-                    <span><i class="fas fa-tasks" style="color:#FF7A45;margin-right:3px"></i>${doneCount}/${tasks.length}</span>
-                    ${fileCount ? `<span><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:3px"></i>${fileCount}</span>` : ''}
+                  <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:center;font-size:10.5px;color:#7E7E8F">
+                    <span><i class="fas fa-calendar" style="color:${overdue ? '#FF5E3A' : '#C9A7FF'};margin-right:3px"></i>${fmtDate(m.due_date)}</span>
+                    <span><i class="fas fa-tasks" style="color:#A970FF;margin-right:3px"></i>${doneCount}/${tasks.length}</span>
+                    ${fileCount ? `<span><i class="fas fa-paperclip" style="color:#A970FF;margin-right:3px"></i>${fileCount}</span>` : ''}
                     ${m.is_billable ? `<span style="color:#58C68A;font-weight:600;margin-left:auto"><i class="fas fa-indian-rupee-sign" style="margin-right:2px"></i>${fmtNum(m.invoice_amount)}</span>` : ''}
                   </div>
                 </div>`
@@ -2459,10 +2467,10 @@ async function showCreateMilestoneModal(prefilledProjectId) {
     window._cmsLinks = []
     const initialProject = prefilledProjectId && projects.find(p => String(p.id) === String(prefilledProjectId)) ? String(prefilledProjectId) : ''
     showModal(`
-    <div class="modal-header"><h3><i class="fas fa-flag" style="color:#FF7A45"></i> Create Milestone</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h3><i class="fas fa-flag" style="color:#A970FF"></i> Create Milestone</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <div class="form-group"><label class="form-label">Project *</label><select class="form-select" id="cms-project" onchange="cmsOnProjectChange(this.value)"><option value="">Select a project…</option>${projects.map(p=>`<option value="${p.id}" ${p.id===initialProject?'selected':''}>${escapeHtml(tc(p.name))}</option>`).join('')}</select>
-        <div id="cms-assign-info" style="font-size:11px;color:#64748b;margin-top:6px"></div>
+        <div id="cms-assign-info" style="font-size:11px;color:#7E7E8F;margin-top:6px"></div>
       </div>
       <div class="form-group"><label class="form-label">Milestone Title *</label><input class="form-input" id="cms-title" placeholder="Phase 1 – Delivery"/></div>
       <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="cms-desc" placeholder="What is delivered in this milestone?"></textarea></div>
@@ -2471,32 +2479,32 @@ async function showCreateMilestoneModal(prefilledProjectId) {
         <div class="form-group"><label class="form-label">Invoice Amount (₹)</label><input class="form-input" type="number" id="cms-amount" placeholder="0"/></div>
       </div>
       <div style="display:flex;gap:16px;margin-bottom:14px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-billable" style="accent-color:#FF7A45"/> Billable Milestone</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-visible" checked style="accent-color:#FF7A45"/> Client Visible</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-billable" style="accent-color:#A970FF"/> Billable Milestone</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cms-visible" checked style="accent-color:#A970FF"/> Client Visible</label>
       </div>
-      <div style="border-top:1px solid rgba(148,163,184,.15);padding-top:14px;margin-bottom:14px">
-        <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:6px"></i>Attachments (optional)</div>
-        <div style="border:1px dashed rgba(255,180,120,.32);border-radius:10px;padding:10px;background:rgba(0,0,0,.18)">
+      <div style="border-top:1px solid rgba(179,136,255,.15);padding-top:14px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-paperclip" style="color:#A970FF;margin-right:6px"></i>Attachments (optional)</div>
+        <div style="border:1px dashed rgba(179,136,255,.32);border-radius:10px;padding:10px;background:rgba(0,0,0,.18)">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <input id="cms-files-input" type="file" multiple style="display:none" onchange="cmsAddFiles(this.files);this.value=''"/>
             <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('cms-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
-            <span style="color:#475569;font-size:11px">— or —</span>
+            <span style="color:#5A5A66;font-size:11px">— or —</span>
             <input id="cms-link-url" class="form-input" type="url" placeholder="Paste a document URL (Drive, Figma, Notion…)" style="flex:1;min-width:220px;padding:6px 10px;font-size:12.5px"/>
             <input id="cms-link-name" class="form-input" type="text" placeholder="Label (optional)" style="width:160px;padding:6px 10px;font-size:12.5px"/>
             <button type="button" class="btn btn-outline btn-sm" onclick="cmsAddLink()"><i class="fas fa-link"></i> Add link</button>
           </div>
-          <div style="font-size:11px;color:#64748b;margin-top:6px">Both files and pasted links will appear under this project in the Documents section. 25 MB / file.</div>
+          <div style="font-size:11px;color:#7E7E8F;margin-top:6px">Both files and pasted links will appear under this project in the Documents section. 25 MB / file.</div>
           <div id="cms-files-list" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
         </div>
       </div>
-      <div style="border-top:1px solid rgba(148,163,184,.15);padding-top:14px">
+      <div style="border-top:1px solid rgba(179,136,255,.15);padding-top:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <div style="font-size:13px;font-weight:600;color:#e2e8f0"><i class="fas fa-tasks" style="color:#FF7A45;margin-right:6px"></i>Tasks under this Milestone</div>
+          <div style="font-size:13px;font-weight:600;color:#e2e8f0"><i class="fas fa-tasks" style="color:#A970FF;margin-right:6px"></i>Tasks under this Milestone</div>
           <button class="btn btn-sm btn-outline" type="button" onclick="cmsAddTaskRow()"><i class="fas fa-plus"></i> Add Task</button>
         </div>
-        <div style="font-size:11px;color:#64748b;margin-bottom:10px">Each task carries a % of the milestone. As tasks complete, milestone progress updates automatically. <span id="cms-pct-summary" style="font-weight:600">Total: 0% (must equal 100%)</span></div>
+        <div style="font-size:11px;color:#7E7E8F;margin-bottom:10px">Each task carries a % of the milestone. As tasks complete, milestone progress updates automatically. <span id="cms-pct-summary" style="font-weight:600">Total: 0% (must equal 100%)</span></div>
         <div id="cms-tasks-list" style="display:flex;flex-direction:column;gap:8px"></div>
-        <div id="cms-tasks-empty" style="font-size:12px;color:#64748b;text-align:center;padding:14px;border:1px dashed rgba(148,163,184,.2);border-radius:8px">No tasks added yet — pick a project and click "Add Task".</div>
+        <div id="cms-tasks-empty" style="font-size:12px;color:#7E7E8F;text-align:center;padding:14px;border:1px dashed rgba(179,136,255,.2);border-radius:8px">No tasks added yet — pick a project and click "Add Task".</div>
       </div>
     </div>
     <div class="modal-footer">
@@ -2606,7 +2614,7 @@ function cmsRenderTasks() {
   list.innerHTML = tasks.map((t, i) => {
     const externalAssignee = isExternal ? (opts[0] || null) : null
     const assigneeCell = externalAssignee
-      ? `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;background:rgba(255,122,69,.08);border:1px solid rgba(255,122,69,.25);border-radius:6px;padding:8px"><i class="fas fa-users" style="color:#FF7A45"></i> ${escapeHtml(externalAssignee.name)} <span style="color:#64748b">(${escapeHtml(externalAssignee.role)})</span></div>`
+      ? `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;background:rgba(169,112,255,.08);border:1px solid rgba(169,112,255,.25);border-radius:6px;padding:8px"><i class="fas fa-users" style="color:#A970FF"></i> ${escapeHtml(externalAssignee.name)} <span style="color:#7E7E8F">(${escapeHtml(externalAssignee.role)})</span></div>`
       : `<select class="form-select" onchange="cmsUpdateTask(${i},'assignee_id',this.value)">
           <option value="">${opts.length ? 'Select developer' : 'No developers allocated'}</option>
           ${opts.map(o => `<option value="${o.id}" ${t.assignee_id===o.id?'selected':''}>${escapeHtml(o.name)} (${escapeHtml(o.role)})</option>`).join('')}
@@ -2615,24 +2623,24 @@ function cmsRenderTasks() {
       ? `${escapeHtml(t.file.name)} (${(t.file.size/(1024*1024)).toFixed(2)} MB)`
       : (t.file_name ? escapeHtml(t.file_name) : 'No file attached')
     return `
-    <div style="background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
+    <div style="background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
       <div style="display:grid;grid-template-columns:2.2fr 1.5fr 1fr auto;gap:8px;align-items:center">
         <input class="form-input" placeholder="Task title…" value="${escapeHtml(t.title)}" oninput="cmsUpdateTask(${i},'title',this.value)"/>
         ${assigneeCell}
-        <div style="display:flex;align-items:center;gap:4px"><input class="form-input" type="number" min="0" max="100" step="1" value="${t.pct_of_milestone||0}" onchange="cmsUpdatePct(${i},this.value)" placeholder="0" title="% of milestone this task represents"/><span style="font-size:12px;color:#94a3b8">%</span></div>
+        <div style="display:flex;align-items:center;gap:4px"><input class="form-input" type="number" min="0" max="100" step="1" value="${t.pct_of_milestone||0}" onchange="cmsUpdatePct(${i},this.value)" placeholder="0" title="% of milestone this task represents"/><span style="font-size:12px;color:#7E7E8F">%</span></div>
         <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsRemoveTaskRow(${i})" title="Remove"><i class="fas fa-trash"></i></button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center">
         <div>
-          <label style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Reference URL</label>
+          <label style="font-size:10px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em">Reference URL</label>
           <input class="form-input" type="url" placeholder="https://figma.com/file/…" value="${escapeHtml(t.reference_url || '')}" oninput="cmsUpdateTask(${i},'reference_url',this.value)" style="margin-top:3px"/>
         </div>
         <div>
-          <label style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Attach file</label>
+          <label style="font-size:10px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em">Attach file</label>
           <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
             <input id="cms-task-file-${i}" type="file" style="display:none" onchange="cmsTaskAttachFile(${i}, this.files && this.files[0]);this.value=''"/>
             <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('cms-task-file-${i}').click()"><i class="fas fa-paperclip"></i> ${t.file || t.file_name ? 'Change' : 'Choose'}</button>
-            <span style="font-size:11px;color:${t.file || t.file_name ? '#cbd5e1' : '#64748b'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${fileLabel}</span>
+            <span style="font-size:11px;color:${t.file || t.file_name ? '#cbd5e1' : '#7E7E8F'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${fileLabel}</span>
             ${t.file || t.file_name ? `<button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsTaskClearFile(${i})" title="Remove file"><i class="fas fa-times"></i></button>` : ''}
           </div>
         </div>
@@ -2643,7 +2651,7 @@ function cmsRenderTasks() {
   const summary = document.getElementById('cms-pct-summary')
   if (summary) {
     summary.textContent = `Total: ${total}% (must equal 100%)`
-    summary.style.color = total === 100 ? '#58C68A' : (total > 100 ? '#FF5E3A' : '#FFCB47')
+    summary.style.color = total === 100 ? '#58C68A' : (total > 100 ? '#FF5E3A' : '#C9A7FF')
   }
 }
 
@@ -2725,21 +2733,21 @@ function cmsRenderFilesList() {
     const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
     const tooBig = f.size > 25 * 1024 * 1024
     return `
-      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
-        <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
+        <i class="fas fa-file" style="color:#A970FF;font-size:14px"></i>
         <div style="flex:1;min-width:0">
           <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(f.name)}</div>
-          <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#64748b'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
+          <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#7E7E8F'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
         </div>
         <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsRemoveFile(${i})"><i class="fas fa-times"></i></button>
       </div>`
   })
   const linkRows = links.map((l, i) => `
-    <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
       <i class="fas fa-link" style="color:#86E0A8;font-size:14px"></i>
       <div style="flex:1;min-width:0">
         <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(l.name)}</div>
-        <div style="font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:#9F8678">${escapeHtml(l.url)}</a></div>
+        <div style="font-size:10.5px;color:#7E7E8F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:#9F8678">${escapeHtml(l.url)}</a></div>
       </div>
       <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="cmsRemoveLink(${i})"><i class="fas fa-times"></i></button>
     </div>`)
@@ -2884,66 +2892,66 @@ async function showMilestoneDetailsModal(id) {
 
     showModal(`
     <div class="modal-header">
-      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-flag" style="color:#FF7A45"></i> ${escapeHtml(m.title)}</h3>
+      <h3 style="display:flex;align-items:center;gap:8px"><i class="fas fa-flag" style="color:#A970FF"></i> ${escapeHtml(m.title)}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:12px;margin-bottom:14px">
-        <div style="padding:12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
-          <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Project</div>
+        <div style="padding:12px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
+          <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Project</div>
           <div style="font-size:14px;color:#e2e8f0;font-weight:600">${escapeHtml(tc(project.name) || '—')}</div>
-          <div style="font-size:11px;color:#64748b;margin-top:6px">Assignment: <strong style="color:#cbd5e1;text-transform:capitalize">${escapeHtml(project.assignment_type || '—')}</strong></div>
+          <div style="font-size:11px;color:#7E7E8F;margin-top:6px">Assignment: <strong style="color:#cbd5e1;text-transform:capitalize">${escapeHtml(project.assignment_type || '—')}</strong></div>
         </div>
-        <div style="padding:12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
-          <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Due Date</div>
+        <div style="padding:12px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
+          <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Due Date</div>
           <div style="font-size:14px;font-weight:600;color:${overdue?'#FF5E3A':'#e2e8f0'}">${fmtDate(m.due_date)}</div>
           <div style="margin-top:6px">${statusBadge(m.status)}${m.is_billable?` <span style="font-size:11px;background:rgba(88,198,138,.15);color:#58C68A;padding:2px 7px;border-radius:10px;margin-left:6px">₹${fmtNum(m.invoice_amount)}</span>`:''}</div>
         </div>
       </div>
 
-      ${m.description ? `<div style="padding:12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;margin-bottom:14px"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Description</div><div style="font-size:13px;color:#cbd5e1;line-height:1.5">${escapeHtml(m.description)}</div></div>` : ''}
+      ${m.description ? `<div style="padding:12px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px;margin-bottom:14px"><div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Description</div><div style="font-size:13px;color:#cbd5e1;line-height:1.5">${escapeHtml(m.description)}</div></div>` : ''}
 
       <div style="margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#7E7E8F;margin-bottom:6px">
           <span>Progress</span><span>${pct}% complete</span>
         </div>
         <div class="progress-bar lg"><div class="progress-fill ${pct>=100?'green':pct>=70?'blue':'amber'}" style="width:${pct}%"></div></div>
-        <div style="font-size:11px;color:#64748b;margin-top:8px"><i class="fas fa-circle-info"></i> Progress is auto-calculated from completed tasks. Mark a task "done" to advance the milestone.</div>
+        <div style="font-size:11px;color:#7E7E8F;margin-top:8px"><i class="fas fa-circle-info"></i> Progress is auto-calculated from completed tasks. Mark a task "done" to advance the milestone.</div>
       </div>
 
       <div style="margin-bottom:14px">
-        <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-tasks" style="color:#FF7A45;margin-right:6px"></i>Tasks (${tasks.length})</div>
+        <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-tasks" style="color:#A970FF;margin-right:6px"></i>Tasks (${tasks.length})</div>
         ${tasks.length ? `<div style="display:flex;flex-direction:column;gap:6px">${tasks.map((t)=>{
           const hasRefs = t.reference_url || t.attachment_url
           return `
-          <div style="background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+          <div style="background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
             <div style="display:grid;grid-template-columns:1.6fr 1.1fr 0.9fr 1fr;gap:8px;align-items:center">
               <div style="font-size:13px;color:#e2e8f0">${escapeHtml(t.title)}</div>
-              <div style="font-size:12px;color:#94a3b8"><i class="fas fa-user"></i> ${escapeHtml(t.assignee_name || 'Unassigned')}</div>
+              <div style="font-size:12px;color:#7E7E8F"><i class="fas fa-user"></i> ${escapeHtml(t.assignee_name || 'Unassigned')}</div>
               <div style="font-size:12px;color:#C56FE6;font-weight:600"><i class="fas fa-percentage"></i> ${Number(t.pct_of_milestone)||0}% of milestone</div>
               ${canEdit?`<select class="form-select" style="font-size:12px;padding:4px 6px" onchange="updateMilestoneTaskStatus('${m.id}','${t.id}',this.value)">
                 ${['todo','in_progress','in_review','done','blocked'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
-              </select>`:`<div style="font-size:12px;color:#94a3b8;text-transform:capitalize">${escapeHtml(String(t.status||'').replace('_',' '))}</div>`}
+              </select>`:`<div style="font-size:12px;color:#7E7E8F;text-transform:capitalize">${escapeHtml(String(t.status||'').replace('_',' '))}</div>`}
             </div>
             ${hasRefs ? `
-            <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:6px;border-top:1px dashed rgba(148,163,184,.18)">
-              ${t.reference_url ? `<a href="${escapeHtml(t.reference_url)}" target="_blank" rel="noopener" style="font-size:11px;color:#FFB347;text-decoration:none;padding:3px 8px;background:rgba(255,180,71,.1);border:1px solid rgba(255,180,71,.25);border-radius:6px"><i class="fas fa-link"></i> Reference</a>` : ''}
+            <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:6px;border-top:1px dashed rgba(179,136,255,.18)">
+              ${t.reference_url ? `<a href="${escapeHtml(t.reference_url)}" target="_blank" rel="noopener" style="font-size:11px;color:#C9A7FF;text-decoration:none;padding:3px 8px;background:rgba(169,112,255,.1);border:1px solid rgba(169,112,255,.25);border-radius:6px"><i class="fas fa-link"></i> Reference</a>` : ''}
               ${t.attachment_url ? `<a href="${escapeHtml(t.attachment_url)}" target="_blank" rel="noopener" style="font-size:11px;color:#86E0A8;text-decoration:none;padding:3px 8px;background:rgba(88,198,138,.1);border:1px solid rgba(88,198,138,.25);border-radius:6px"><i class="fas fa-paperclip"></i> ${escapeHtml(t.attachment_name || 'File')}</a>` : ''}
             </div>` : ''}
           </div>`
-        }).join('')}</div>` : '<div style="font-size:12px;color:#64748b;text-align:center;padding:14px;border:1px dashed rgba(148,163,184,.2);border-radius:8px">No tasks added under this milestone.</div>'}
+        }).join('')}</div>` : '<div style="font-size:12px;color:#7E7E8F;text-align:center;padding:14px;border:1px dashed rgba(179,136,255,.2);border-radius:8px">No tasks added under this milestone.</div>'}
       </div>
 
       ${attachments.length ? `
       <div style="margin-bottom:14px">
-        <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-paperclip" style="color:#FF7A45;margin-right:6px"></i>Attachments (${attachments.length})</div>
+        <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:8px"><i class="fas fa-paperclip" style="color:#A970FF;margin-right:6px"></i>Attachments (${attachments.length})</div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${attachments.map(f => `
-            <a href="${escapeHtml(f.file_url||'#')}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;text-decoration:none">
-              <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+            <a href="${escapeHtml(f.file_url||'#')}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px;text-decoration:none">
+              <i class="fas fa-file" style="color:#A970FF;font-size:14px"></i>
               <div style="flex:1;min-width:0">
                 <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(f.file_name || 'file')}</div>
-                <div style="font-size:10.5px;color:#64748b">${f.file_size?(Number(f.file_size)/(1024*1024)).toFixed(2)+' MB':''}${f.file_type?' • '+escapeHtml(f.file_type):''}</div>
+                <div style="font-size:10.5px;color:#7E7E8F">${f.file_size?(Number(f.file_size)/(1024*1024)).toFixed(2)+' MB':''}${f.file_type?' • '+escapeHtml(f.file_type):''}</div>
               </div>
               <i class="fas fa-external-link-alt" style="color:#9F8678;font-size:11px"></i>
             </a>`).join('')}
@@ -2951,23 +2959,23 @@ async function showMilestoneDetailsModal(id) {
       </div>` : ''}
 
       ${rating ? `
-      <div style="padding:14px;background:rgba(255,122,69,.08);border:1px solid rgba(255,122,69,.3);border-radius:10px;margin-bottom:10px">
+      <div style="padding:14px;background:rgba(169,112,255,.08);border:1px solid rgba(169,112,255,.3);border-radius:10px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div style="font-size:13px;font-weight:600;color:#FF7A45"><i class="fas fa-star"></i> Client Rating</div>
-          <div style="font-size:20px;font-weight:700;color:#FF7A45">${Number(rating.overall).toFixed(1)}<span style="font-size:12px;color:#94a3b8;font-weight:400">/10</span></div>
+          <div style="font-size:13px;font-weight:600;color:#A970FF"><i class="fas fa-star"></i> Client Rating</div>
+          <div style="font-size:20px;font-weight:700;color:#A970FF">${Number(rating.overall).toFixed(1)}<span style="font-size:12px;color:#7E7E8F;font-weight:400">/10</span></div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:12px">
-          ${[['Timing','timing'],['Team','team'],['Communication','communication'],['Quality','quality']].map(([l,k])=>`<div><div style="color:#64748b">${l}</div><div style="color:#e2e8f0;font-weight:600">${Number(rating[k]||0).toFixed(1)}/10</div></div>`).join('')}
+          ${[['Timing','timing'],['Team','team'],['Communication','communication'],['Quality','quality']].map(([l,k])=>`<div><div style="color:#7E7E8F">${l}</div><div style="color:#e2e8f0;font-weight:600">${Number(rating[k]||0).toFixed(1)}/10</div></div>`).join('')}
         </div>
         ${rating.comment?`<div style="font-size:12px;color:#cbd5e1;margin-top:10px;font-style:italic">"${escapeHtml(rating.comment)}"</div>`:''}
-        <div style="font-size:11px;color:#64748b;margin-top:8px">${rating.rated_by?'By '+escapeHtml(rating.rated_by)+' • ':''}${fmtDate(rating.rated_at)}</div>
+        <div style="font-size:11px;color:#7E7E8F;margin-top:8px">${rating.rated_by?'By '+escapeHtml(rating.rated_by)+' • ':''}${fmtDate(rating.rated_at)}</div>
       </div>` : ''}
 
       ${m.email_sent_at ? `<div style="font-size:12px;color:#58C68A;margin-bottom:10px"><i class="fas fa-check-circle"></i> Completion email sent to ${escapeHtml(m.email_sent_to||'client')} on ${fmtDate(m.email_sent_at)}</div>` : ''}
     </div>
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn btn-outline" onclick="closeModal()">Close</button>
-      ${pct>=100 && canEdit ? `<button class="btn" style="background:rgba(255,122,69,.15);color:#FF7A45;border:1px solid rgba(255,122,69,.4)" onclick="showMilestoneEmailModal('${m.id}')"><i class="fas fa-envelope"></i> ${m.email_sent_at?'Re-send Email':'Email Client'}</button>`:''}
+      ${pct>=100 && canEdit ? `<button class="btn" style="background:rgba(169,112,255,.15);color:#A970FF;border:1px solid rgba(169,112,255,.4)" onclick="showMilestoneEmailModal('${m.id}')"><i class="fas fa-envelope"></i> ${m.email_sent_at?'Re-send Email':'Email Client'}</button>`:''}
     </div>`, 'modal-lg')
   } catch(e) { toast(e.message, 'error') }
 }
@@ -3012,13 +3020,13 @@ async function showMilestoneEmailModal(id) {
     const defaultEmail = client.email || ''
 
     showModal(`
-    <div class="modal-header"><h3><i class="fas fa-envelope" style="color:#FF7A45"></i> Email Client — Milestone Complete</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h3><i class="fas fa-envelope" style="color:#A970FF"></i> Email Client — Milestone Complete</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
-      <div style="font-size:13px;color:#94a3b8;margin-bottom:14px">Notify the client that <strong style="color:#e2e8f0">${escapeHtml(m.title)}</strong> is now 100% complete.</div>
+      <div style="font-size:13px;color:#7E7E8F;margin-bottom:14px">Notify the client that <strong style="color:#e2e8f0">${escapeHtml(m.title)}</strong> is now 100% complete.</div>
       <div class="form-group"><label class="form-label">To *</label><input class="form-input" id="mse-to" value="${escapeHtml(defaultEmail)}" placeholder="client@example.com"/></div>
       <div class="form-group"><label class="form-label">CC</label><input class="form-input" id="mse-cc" placeholder="optional, comma-separated"/></div>
       <div class="form-group"><label class="form-label">Subject</label><input class="form-input" id="mse-subject" value="Milestone Completed: ${escapeHtml(m.title)}"/></div>
-      <div style="font-size:11px;color:#64748b">A summary of the milestone (project, due date, tasks, billing) will be included automatically.</div>
+      <div style="font-size:11px;color:#7E7E8F">A summary of the milestone (project, due date, tasks, billing) will be included automatically.</div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -3056,23 +3064,23 @@ async function showMilestoneRatingModal(id) {
 
     const slider = (key, label, value) => `
       <div style="margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;margin-bottom:6px">
-          <span>${label}</span><span id="mr-${key}-val" style="color:#FF7A45;font-weight:700">${Number(value||0).toFixed(1)}/10</span>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#7E7E8F;margin-bottom:6px">
+          <span>${label}</span><span id="mr-${key}-val" style="color:#A970FF;font-weight:700">${Number(value||0).toFixed(1)}/10</span>
         </div>
-        <input type="range" min="0" max="10" step="0.5" value="${Number(value||0)}" id="mr-${key}" style="width:100%;accent-color:#FF7A45" oninput="document.getElementById('mr-${key}-val').textContent=parseFloat(this.value).toFixed(1)+'/10';mrUpdateOverall()"/>
+        <input type="range" min="0" max="10" step="0.5" value="${Number(value||0)}" id="mr-${key}" style="width:100%;accent-color:#A970FF" oninput="document.getElementById('mr-${key}-val').textContent=parseFloat(this.value).toFixed(1)+'/10';mrUpdateOverall()"/>
       </div>`
 
     showModal(`
-    <div class="modal-header"><h3><i class="fas fa-star" style="color:#FF7A45"></i> Rate Milestone Delivery</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h3><i class="fas fa-star" style="color:#A970FF"></i> Rate Milestone Delivery</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
-      <div style="font-size:13px;color:#94a3b8;margin-bottom:14px">Rate the team's delivery on each criterion (1–10). The overall score is the average.</div>
+      <div style="font-size:13px;color:#7E7E8F;margin-bottom:14px">Rate the team's delivery on each criterion (1–10). The overall score is the average.</div>
       ${slider('timing','Timing / On-time delivery', r.timing)}
       ${slider('team','Team performance', r.team)}
       ${slider('communication','Communication / Behaviour', r.communication ?? r.behavior ?? 0)}
       ${slider('quality','Output quality', r.quality)}
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:rgba(255,122,69,.08);border:1px solid rgba(255,122,69,.3);border-radius:8px;margin:14px 0">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:rgba(169,112,255,.08);border:1px solid rgba(169,112,255,.3);border-radius:8px;margin:14px 0">
         <span style="font-size:13px;color:#e2e8f0;font-weight:600">Overall Rating</span>
-        <span id="mr-overall-val" style="font-size:22px;font-weight:700;color:#FF7A45">0.0<span style="font-size:12px;color:#94a3b8;font-weight:400">/10</span></span>
+        <span id="mr-overall-val" style="font-size:22px;font-weight:700;color:#A970FF">0.0<span style="font-size:12px;color:#7E7E8F;font-weight:400">/10</span></span>
       </div>
       <div class="form-group"><label class="form-label">Comments (optional)</label><textarea class="form-textarea" id="mr-comment" placeholder="Any feedback or notes from the client…">${escapeHtml(r.comment||'')}</textarea></div>
     </div>
@@ -3089,7 +3097,7 @@ function mrUpdateOverall() {
   const vals = keys.map(k => parseFloat(document.getElementById('mr-'+k)?.value || 0)).filter(n => n > 0)
   const overall = vals.length ? (vals.reduce((a,b)=>a+b,0) / vals.length) : 0
   const el = document.getElementById('mr-overall-val')
-  if (el) el.innerHTML = `${overall.toFixed(1)}<span style="font-size:12px;color:#94a3b8;font-weight:400">/10</span>`
+  if (el) el.innerHTML = `${overall.toFixed(1)}<span style="font-size:12px;color:#7E7E8F;font-weight:400">/10</span>`
 }
 
 async function doSubmitMilestoneRating(id) {
@@ -3113,7 +3121,7 @@ async function doSubmitMilestoneRating(id) {
 
 /* ── MY TASKS ────────────────────────────────────────────── */
 async function renderMyTasks(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const assigneeId = _user.role === 'developer' ? (_user.sub || _user.id || '') : ''
     const data = await API.get('/tasks' + (assigneeId?'?assignee_id='+assigneeId:''))
@@ -3145,14 +3153,14 @@ async function renderMyTasks(el) {
             <tr data-status="${t.status}" data-priority="${t.priority}">
               <td style="max-width:220px">
                 <div style="display:flex;align-items:center;gap:6px">${taskTypeIcon(t.task_type)}<span style="font-weight:500;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.title}</span></div>
-                ${t.sprint_name?`<div style="font-size:10px;color:#475569;margin-top:2px"><i class="fas fa-bolt"></i> ${t.sprint_name}</div>`:''}
+                ${t.sprint_name?`<div style="font-size:10px;color:#5A5A66;margin-top:2px"><i class="fas fa-bolt"></i> ${t.sprint_name}</div>`:''}
               </td>
-              <td><span style="font-size:12px;color:#94a3b8">${tc(t.project_name)||'—'}</span></td>
-              <td><span style="font-size:11px;text-transform:capitalize;color:#64748b">${t.task_type}</span></td>
+              <td><span style="font-size:12px;color:#7E7E8F">${tc(t.project_name)||'—'}</span></td>
+              <td><span style="font-size:11px;text-transform:capitalize;color:#7E7E8F">${t.task_type}</span></td>
               <td>${priorityBadge(t.priority)}</td>
               <td>${statusBadge(t.status)}</td>
-              <td>${t.assignee_name?`<div style="display:flex;align-items:center;gap:5px">${avatar(t.assignee_name,t.assignee_color,'sm')}<span style="font-size:12px">${t.assignee_name}</span></div>`:'<span style="color:#475569;font-size:12px">—</span>'}</td>
-              <td style="font-size:12px;color:${t.due_date&&new Date(t.due_date)<new Date()&&t.status!=='done'?'#FF5E3A':'#94a3b8'}">${fmtDate(t.due_date)}</td>
+              <td>${t.assignee_name?`<div style="display:flex;align-items:center;gap:5px">${avatar(t.assignee_name,t.assignee_color,'sm')}<span style="font-size:12px">${t.assignee_name}</span></div>`:'<span style="color:#5A5A66;font-size:12px">—</span>'}</td>
+              <td style="font-size:12px;color:${t.due_date&&new Date(t.due_date)<new Date()&&t.status!=='done'?'#FF5E3A':'#7E7E8F'}">${fmtDate(t.due_date)}</td>
               ${_user.role !== 'team' ? `<td style="font-size:12px">${t.logged_hours||0}/${t.estimated_hours||0}h</td>` : ''}
               <td><button class="btn btn-xs btn-outline" onclick="openTaskDrawer('${t.id}')"><i class="fas fa-eye"></i></button></td>
             </tr>`).join('')}
@@ -3187,7 +3195,7 @@ function filterTable(val, tableId) {
 
 /* ── RESOURCES VIEW ─────────────────────────────────────── */
 async function renderResourcesView(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const [usersData, proj, dash] = await Promise.all([API.get('/users?role=developer'), API.get('/projects'), API.get('/dashboard/pm')])
     const allUsers = usersData.users||usersData||[]
@@ -3206,10 +3214,10 @@ async function renderResourcesView(el) {
       <div><h1 class="page-title">Resource Allocation</h1><p class="page-subtitle">Team capacity, utilization, and allocation planning</p></div>
     </div>
     <div class="grid-4" style="margin-bottom:20px">
-      ${statCard('Total Developers', devs.length, 'fas fa-code', '#FF7A45', `${devs.filter(d=>d.is_active).length} active`)}
-      ${statCard('Total Allocated', fmtNum(d.hours?.total_allocated||0)+'h', 'fas fa-clock', '#F4C842', 'across all projects')}
+      ${statCard('Total Developers', devs.length, 'fas fa-code', '#A970FF', `${devs.filter(d=>d.is_active).length} active`)}
+      ${statCard('Total Allocated', fmtNum(d.hours?.total_allocated||0)+'h', 'fas fa-clock', '#C9A7FF', 'across all projects')}
       ${statCard('Consumed', fmtNum(d.hours?.total_consumed||0)+'h', 'fas fa-check', '#58C68A', 'logged and approved')}
-      ${statCard('Remaining', fmtNum(d.hours?.total_remaining||0)+'h', 'fas fa-hourglass-half', '#FFCB47', 'to be consumed')}
+      ${statCard('Remaining', fmtNum(d.hours?.total_remaining||0)+'h', 'fas fa-hourglass-half', '#C9A7FF', 'to be consumed')}
     </div>
     <div class="card">
       <div class="card-header"><span style="font-weight:600">Developer Utilization Matrix</span></div>
@@ -3223,13 +3231,13 @@ async function renderResourcesView(el) {
               const cap = Number(u.monthly_available_hours)||0
               const status = pct>=90 ? {color:'#FF5E3A',label:'⚡ Overloaded'}
                 : pct>=50 ? {color:'#58C68A',label:'✓ Healthy'}
-                : allocated===0 && cap>0 ? {color:'#94a3b8',label:'• No allocation'}
-                : pct>0 ? {color:'#FFCB47',label:'↓ Underutil.'}
-                : {color:'#94a3b8',label:'• Idle'}
+                : allocated===0 && cap>0 ? {color:'#7E7E8F',label:'• No allocation'}
+                : pct>0 ? {color:'#C9A7FF',label:'↓ Underutil.'}
+                : {color:'#7E7E8F',label:'• Idle'}
               return `
               <tr>
                 <td><div style="display:flex;align-items:center;gap:8px">${avatar(u.full_name,u.avatar_color,'sm')}<span style="font-weight:500;color:#e2e8f0">${u.full_name}</span></div></td>
-                <td><span style="font-size:12px;color:#94a3b8">${u.designation||'—'}</span></td>
+                <td><span style="font-size:12px;color:#7E7E8F">${u.designation||'—'}</span></td>
                 <td>${cap}h</td>
                 <td>${Number(u.monthly_consumed)||0}h</td>
                 <td style="min-width:160px">
@@ -3243,7 +3251,7 @@ async function renderResourcesView(el) {
                 <td><span style="color:${status.color};font-size:12px">${status.label}</span></td>
                 ${canManage?`<td><button class="btn btn-xs btn-outline" onclick="showEditDeveloperCapacityModal('${u.id||u.user_id}')" title="Edit capacity"><i class="fas fa-edit"></i> Edit</button></td>`:''}
               </tr>`
-            }).join('') || `<tr><td colspan="${canManage?9:8}" style="text-align:center;padding:30px;color:#64748b">No developers found.</td></tr>`}
+            }).join('') || `<tr><td colspan="${canManage?9:8}" style="text-align:center;padding:30px;color:#7E7E8F">No developers found.</td></tr>`}
           </tbody>
         </table>
         ${renderPager(pagination, 'goResourcesPage', 'goResourcesPage', 'developers', 'resources-view')}
@@ -3258,7 +3266,7 @@ async function showEditDeveloperCapacityModal(userId) {
     const u = data.user || data.data || data
     if (!u || !u.id) return toast('Developer not found', 'error')
     showModal(`
-    <div class="modal-header"><h3><i class="fas fa-user-edit" style="color:#FF7A45"></i> Edit ${escapeHtml(u.full_name||'Developer')}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h3><i class="fas fa-user-edit" style="color:#A970FF"></i> Edit ${escapeHtml(u.full_name||'Developer')}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <div class="form-row">
         <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="ed-name" value="${escapeHtml(u.full_name||'')}"/></div>
@@ -3304,7 +3312,7 @@ async function saveDeveloperCapacity(userId) {
 
 /* ── APPROVAL QUEUE ─────────────────────────────────────── */
 async function renderApprovalQueue(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const data = await API.get('/timesheets?approval_status=pending')
     const logs = data.timesheets||data||[]
@@ -3381,8 +3389,8 @@ async function renderApprovalQueue(el) {
             ${pagination.items.map(l=>`
             <tr id="log-row-${l.id}">
               <td><input type="checkbox" class="log-check table-check" value="${l.id}" onchange="updateApprovalSelectionState()"/></td>
-              <td><div style="display:flex;align-items:center;gap:8px">${avatar(l.full_name||'?',l.avatar_color||'#FF7A45','sm')}<span>${l.full_name||l.user_id}</span></div></td>
-              <td><span style="font-size:12px;color:#94a3b8">${tc(l.project_name)||l.project_id}</span></td>
+              <td><div style="display:flex;align-items:center;gap:8px">${avatar(l.full_name||'?',l.avatar_color||'#A970FF','sm')}<span>${l.full_name||l.user_id}</span></div></td>
+              <td><span style="font-size:12px;color:#7E7E8F">${tc(l.project_name)||l.project_id}</span></td>
               <td style="font-size:12px">${fmtDate(l.date)}</td>
               <td style="max-width:200px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${l.task_description}</div></td>
               <td><strong>${l.hours_consumed}h</strong></td>
@@ -3393,7 +3401,7 @@ async function renderApprovalQueue(el) {
                   <button class="btn btn-xs btn-danger" onclick="rejectLog('${l.id}')"><i class="fas fa-times"></i>Reject</button>
                 </div>
               </td>
-            </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;padding:30px;color:#64748b"><i class="fas fa-check-circle" style="margin-right:6px;color:#58C68A"></i>All timesheets approved!</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;padding:30px;color:#7E7E8F"><i class="fas fa-check-circle" style="margin-right:6px;color:#58C68A"></i>All timesheets approved!</td></tr>'}
           </tbody>
         </table>
         ${renderPager(pagination, 'goApprovalQueuePage', 'goApprovalQueuePage', 'approvals', 'approval-queue')}
@@ -3437,7 +3445,7 @@ function showRejectLogModal(id) {
   showModal(`
   <div class="modal-header"><h3><i class="fas fa-times-circle" style="color:#FF5E3A"></i> Reject Timesheet</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
   <div class="modal-body">
-    <div style="font-size:13px;color:#94a3b8;margin-bottom:12px">Tell the developer why this entry is being rejected. They'll see this note when they re-open the entry.</div>
+    <div style="font-size:13px;color:#7E7E8F;margin-bottom:12px">Tell the developer why this entry is being rejected. They'll see this note when they re-open the entry.</div>
     <div class="form-group"><label class="form-label">Rejection reason *</label><textarea id="rl-reason" class="form-textarea" rows="3" placeholder="e.g., Hours don't match the task progress; please re-log."></textarea></div>
   </div>
   <div class="modal-footer">
@@ -3483,7 +3491,7 @@ async function deleteClient(id, name) {
   }
 }
 async function renderClientsList(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const data = await API.get('/clients')
     const allClients = data.clients||[]
@@ -3514,21 +3522,21 @@ async function renderClientsList(el) {
               ${avatar(cl.company_name,cl.avatar_color,'lg')}
               <div style="min-width:0">
                 <div style="font-size:15px;font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.company_name}</div>
-                <div style="font-size:12px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.contact_name}</div>
-                <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.email}</div>
+                <div style="font-size:12px;color:#7E7E8F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.contact_name}</div>
+                <div style="font-size:12px;color:#7E7E8F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.email}</div>
               </div>
             </div>
             ${hasPermission('clients.delete') ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i> Login</button><button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Delete client"><i class="fas fa-trash"></i> Delete</button></div>` : ''}
           </div>
           <div style="display:grid;grid-template-columns:${cl.price !== undefined ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr'};gap:12px;margin-bottom:12px">
-            <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#e2e8f0">${cl.project_count||0}</div><div style="font-size:11px;color:#64748b">Projects</div></div>
-            ${cl.price !== undefined ? `<div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#FFB347">₹${cl.price?fmtNum(cl.price):'0'}</div><div style="font-size:11px;color:#64748b">Deal price</div></div>` : ''}
-            <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#58C68A">₹${cl.total_paid?fmtNum(cl.total_paid):'0'}</div><div style="font-size:11px;color:#64748b">Paid</div></div>
-            <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#FFCB47">₹${cl.total_billed?(fmtNum(cl.total_billed-cl.total_paid)):'0'}</div><div style="font-size:11px;color:#64748b">Pending</div></div>
+            <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#e2e8f0">${cl.project_count||0}</div><div style="font-size:11px;color:#7E7E8F">Projects</div></div>
+            ${cl.price !== undefined ? `<div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#C9A7FF">₹${cl.price?fmtNum(cl.price):'0'}</div><div style="font-size:11px;color:#7E7E8F">Deal price</div></div>` : ''}
+            <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#58C68A">₹${cl.total_paid?fmtNum(cl.total_paid):'0'}</div><div style="font-size:11px;color:#7E7E8F">Paid</div></div>
+            <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#C9A7FF">₹${cl.total_billed?(fmtNum(cl.total_billed-cl.total_paid)):'0'}</div><div style="font-size:11px;color:#7E7E8F">Pending</div></div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between">
             <span class="status-chip status-${cl.is_active?'active':'cancelled'}">${cl.is_active?'Active':'Inactive'}</span>
-            <span style="font-size:12px;color:#475569">${cl.industry||'—'}</span>
+            <span style="font-size:12px;color:#5A5A66">${cl.industry||'—'}</span>
           </div>
         </div>`).join('') || '<div class="empty-state"><i class="fas fa-building"></i><p>No clients in this view</p></div>'}
     </div>
@@ -3551,9 +3559,9 @@ const INDIAN_STATES = [
 function openCreateClientModal() {
   const stateOpts = INDIAN_STATES.map(([n, c]) => `<option value="${n}" data-code="${c}">${n} (${c})</option>`).join('')
   showModal(`
-    <div class="modal-header"><h3><i class="fas fa-building" style="color:#FF7A45"></i> Create Client</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h3><i class="fas fa-building" style="color:#A970FF"></i> Create Client</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
-      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Company &amp; Contact</div>
+      <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Company &amp; Contact</div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Company Name *</label><input class="form-input" id="client-company" placeholder="Enter Company Name"/></div>
         <div class="form-group"><label class="form-label">Contact Name *</label><input class="form-input" id="client-contact" placeholder="Enter Contact Name"/></div>
@@ -3568,10 +3576,10 @@ function openCreateClientModal() {
       </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Industry</label><input class="form-input" id="client-industry" placeholder="Enter Industry"/></div>
-        <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="client-color" type="color" value="#FF7A45" style="height:40px;padding:3px"/></div>
+        <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="client-color" type="color" value="#A970FF" style="height:40px;padding:3px"/></div>
       </div>
 
-      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
+      <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">GSTIN *</label><input class="form-input" id="client-gstin" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase" maxlength="15" required/></div>
         <div class="form-group"><label class="form-label">Country</label><input class="form-input" id="client-country" placeholder="Enter Country" value="India"/></div>
@@ -3585,11 +3593,11 @@ function openCreateClientModal() {
             ${stateOpts}
           </select>
         </div>
-        <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="client-state-code" placeholder="" maxlength="3" readonly style="background:rgba(15,23,42,.4)"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="client-state-code" placeholder="" maxlength="3" readonly style="background:rgba(11,11,13,.4)"/></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">PIN Code *</label><input class="form-input" id="client-pincode" placeholder="400001" maxlength="10" required/></div>
-        <div class="form-group"><label class="form-label">Deal Price * <span style="font-size:11px;color:#94a3b8;font-weight:400">(project value)</span></label><input class="form-input" id="client-price" type="number" min="0" step="0.01" placeholder="e.g. 120000" required/></div>
+        <div class="form-group"><label class="form-label">Deal Price * <span style="font-size:11px;color:#7E7E8F;font-weight:400">(project value)</span></label><input class="form-input" id="client-price" type="number" min="0" step="0.01" placeholder="e.g. 120000" required/></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -3674,9 +3682,9 @@ async function openEditClientModal(clientId) {
     const stateOpts = INDIAN_STATES.map(([n, c]) => `<option value="${n}" data-code="${c}" ${cl.state === n ? 'selected' : ''}>${n} (${c})</option>`).join('')
     closeModal()
     showModal(`
-      <div class="modal-header"><h3><i class="fas fa-building" style="color:#FF7A45"></i> Edit Client</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+      <div class="modal-header"><h3><i class="fas fa-building" style="color:#A970FF"></i> Edit Client</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
       <div class="modal-body">
-        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Company &amp; Contact</div>
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Company &amp; Contact</div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">Company Name *</label><input class="form-input" id="ec-company" value="${escapeHtml(cl.company_name||'')}"/></div>
           <div class="form-group"><label class="form-label">Contact Name *</label><input class="form-input" id="ec-contact" value="${escapeHtml(cl.contact_name||'')}"/></div>
@@ -3690,7 +3698,7 @@ async function openEditClientModal(clientId) {
           <div class="form-group"><label class="form-label">Industry</label><input class="form-input" id="ec-industry" value="${escapeHtml(cl.industry||'')}" placeholder="SaaS / Fintech"/></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="ec-color" type="color" value="${escapeHtml(cl.avatar_color||'#FF7A45')}" style="height:40px;padding:3px"/></div>
+          <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="ec-color" type="color" value="${escapeHtml(cl.avatar_color||'#A970FF')}" style="height:40px;padding:3px"/></div>
           <div class="form-group"><label class="form-label">Status</label>
             <select class="form-select" id="ec-active">
               <option value="1" ${cl.is_active ? 'selected' : ''}>Active</option>
@@ -3699,7 +3707,7 @@ async function openEditClientModal(clientId) {
           </div>
         </div>
 
-        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">GSTIN *</label><input class="form-input" id="ec-gstin" value="${escapeHtml(cl.gstin||'')}" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase" maxlength="15" required/></div>
           <div class="form-group"><label class="form-label">Country</label><input class="form-input" id="ec-country" value="${escapeHtml(cl.country||'India')}"/></div>
@@ -3713,11 +3721,11 @@ async function openEditClientModal(clientId) {
               ${stateOpts}
             </select>
           </div>
-          <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="ec-state-code" value="${escapeHtml(cl.state_code||'')}" maxlength="3" readonly style="background:rgba(15,23,42,.4)"/></div>
+          <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="ec-state-code" value="${escapeHtml(cl.state_code||'')}" maxlength="3" readonly style="background:rgba(11,11,13,.4)"/></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">PIN Code *</label><input class="form-input" id="ec-pincode" value="${escapeHtml(cl.pincode||'')}" maxlength="10" required/></div>
-          ${cl.price !== undefined ? `<div class="form-group"><label class="form-label">Deal Price * <span style="font-size:11px;color:#94a3b8;font-weight:400">(project value)</span></label><input class="form-input" id="ec-price" type="number" min="0" step="0.01" value="${cl.price ?? ''}" placeholder="e.g. 120000" required/></div>` : '<div class="form-group"></div>'}
+          ${cl.price !== undefined ? `<div class="form-group"><label class="form-label">Deal Price * <span style="font-size:11px;color:#7E7E8F;font-weight:400">(project value)</span></label><input class="form-input" id="ec-price" type="number" min="0" step="0.01" value="${cl.price ?? ''}" placeholder="e.g. 120000" required/></div>` : '<div class="form-group"></div>'}
         </div>
       </div>
       <div class="modal-footer">
@@ -3872,17 +3880,17 @@ async function showClientDetail(clientId) {
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body">
-        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Contact</div>
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Contact</div>
         <div class="grid-2" style="margin-bottom:14px">
           ${metaItem('Contact', escapeHtml(cl.contact_name || '—'))}
           ${metaItem('Email', escapeHtml(cl.email || '—'))}
           ${metaItem('Phone', escapeHtml(cl.phone || '—'))}
           ${metaItem('Industry', escapeHtml(cl.industry || '—'))}
-          ${metaItem('Website', cl.website ? `<a href="${escapeHtml(cl.website)}" target="_blank" style="color:#FF7A45">${escapeHtml(cl.website)}</a>` : '—')}
+          ${metaItem('Website', cl.website ? `<a href="${escapeHtml(cl.website)}" target="_blank" style="color:#A970FF">${escapeHtml(cl.website)}</a>` : '—')}
           ${metaItem('Status', cl.is_active ? '<span class="status-chip status-active">Active</span>' : '<span class="status-chip status-cancelled">Inactive</span>')}
         </div>
 
-        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Tax &amp; Address</div>
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Tax &amp; Address</div>
         <div class="grid-2" style="margin-bottom:14px">
           ${metaItem('GSTIN', cl.gstin ? `<span style="font-family:monospace">${escapeHtml(cl.gstin)}</span>` : '—')}
           ${metaItem('Country', escapeHtml(cl.country || '—'))}
@@ -3891,25 +3899,25 @@ async function showClientDetail(clientId) {
           ${metaItem('City', escapeHtml(cl.city || '—'))}
           ${metaItem('PIN Code', escapeHtml(cl.pincode || '—'))}
         </div>
-        ${fullAddress ? `<div style="padding:10px 12px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px;margin-bottom:14px;font-size:12.5px;color:#cbd5e1;line-height:1.55"><i class="fas fa-location-dot" style="color:#FF7A45;margin-right:6px"></i>${fullAddress}</div>` : ''}
+        ${fullAddress ? `<div style="padding:10px 12px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px;margin-bottom:14px;font-size:12.5px;color:#cbd5e1;line-height:1.55"><i class="fas fa-location-dot" style="color:#A970FF;margin-right:6px"></i>${fullAddress}</div>` : ''}
 
 
         <div class="grid-4" style="margin-bottom:16px;gap:8px">
-          <div style="padding:10px;background:rgba(255,122,69,.08);border:1px solid rgba(255,122,69,.25);border-radius:8px">
-            <div style="font-size:10px;color:#FFB347;text-transform:uppercase;letter-spacing:.05em">Billed</div>
+          <div style="padding:10px;background:rgba(169,112,255,.08);border:1px solid rgba(169,112,255,.25);border-radius:8px">
+            <div style="font-size:10px;color:#C9A7FF;text-transform:uppercase;letter-spacing:.05em">Billed</div>
             <div style="font-size:16px;font-weight:700;color:#e2e8f0;margin-top:4px">${fmtCurrency(totalBilled)}</div>
           </div>
           <div style="padding:10px;background:rgba(88,198,138,.08);border:1px solid rgba(88,198,138,.25);border-radius:8px">
             <div style="font-size:10px;color:#58C68A;text-transform:uppercase;letter-spacing:.05em">Paid</div>
             <div style="font-size:16px;font-weight:700;color:#e2e8f0;margin-top:4px">${fmtCurrency(totalPaid)}</div>
           </div>
-          <div style="padding:10px;background:rgba(255,203,71,.08);border:1px solid rgba(255,203,71,.25);border-radius:8px">
-            <div style="font-size:10px;color:#FFCB47;text-transform:uppercase;letter-spacing:.05em">Outstanding</div>
-            <div style="font-size:16px;font-weight:700;color:${totalDue > 0 ? '#FFCB47' : '#e2e8f0'};margin-top:4px">${fmtCurrency(totalDue)}</div>
+          <div style="padding:10px;background:rgba(169,112,255,.08);border:1px solid rgba(169,112,255,.25);border-radius:8px">
+            <div style="font-size:10px;color:#C9A7FF;text-transform:uppercase;letter-spacing:.05em">Outstanding</div>
+            <div style="font-size:16px;font-weight:700;color:${totalDue > 0 ? '#C9A7FF' : '#e2e8f0'};margin-top:4px">${fmtCurrency(totalDue)}</div>
           </div>
           <div style="padding:10px;background:rgba(255,94,58,.08);border:1px solid rgba(255,94,58,.25);border-radius:8px">
-            <div style="font-size:10px;color:#FF8866;text-transform:uppercase;letter-spacing:.05em">Open Tickets</div>
-            <div style="font-size:16px;font-weight:700;color:${openTickets > 0 ? '#FF8866' : '#e2e8f0'};margin-top:4px">${openTickets}</div>
+            <div style="font-size:10px;color:#A970FF;text-transform:uppercase;letter-spacing:.05em">Open Tickets</div>
+            <div style="font-size:16px;font-weight:700;color:${openTickets > 0 ? '#A970FF' : '#e2e8f0'};margin-top:4px">${openTickets}</div>
           </div>
         </div>
 
@@ -3929,13 +3937,13 @@ async function showClientDetail(clientId) {
                   <div style="font-weight:500;color:#e2e8f0">${escapeHtml(tc(p.name))}</div>
                   <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
                     ${statusBadge(p.status)}
-                    <span style="font-size:12px;color:#64748b">PM: ${escapeHtml(p.pm_name || '—')}</span>
-                    ${p.expected_end_date ? `<span style="font-size:12px;color:#64748b"><i class="fas fa-calendar"></i> ${fmtDate(p.expected_end_date)}</span>` : ''}
+                    <span style="font-size:12px;color:#7E7E8F">PM: ${escapeHtml(p.pm_name || '—')}</span>
+                    ${p.expected_end_date ? `<span style="font-size:12px;color:#7E7E8F"><i class="fas fa-calendar"></i> ${fmtDate(p.expected_end_date)}</span>` : ''}
                   </div>
                 </div>
                 <button class="btn btn-xs btn-outline" onclick="closeModal();showProjectDetail('${p.id}')" title="Open project"><i class="fas fa-arrow-right"></i></button>
               </div>
-            </div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No projects</p>'}
+            </div>`).join('') || '<p style="color:#7E7E8F;font-size:13px;padding:12px 0">No projects</p>'}
         </div>
 
         <div id="ct-milestones" class="tab-content">
@@ -3949,13 +3957,13 @@ async function showClientDetail(clientId) {
                 <div style="font-weight:500;color:#e2e8f0">${escapeHtml(m.title)}</div>
                 <div style="display:flex;gap:8px;align-items:center">
                   ${statusBadge(m.status)}
-                  <span style="font-size:12px;color:${pct >= 100 ? '#58C68A' : '#FFCB47'};font-weight:600">${pct}%</span>
+                  <span style="font-size:12px;color:${pct >= 100 ? '#58C68A' : '#C9A7FF'};font-weight:600">${pct}%</span>
                 </div>
               </div>
-              <div style="font-size:12px;color:#64748b">${escapeHtml(tc(m.project_name || projects.find(p => p.id === m.project_id)?.name || '—'))} · Due ${fmtDate(m.due_date)}${m.is_billable ? ` · ₹${fmtNum(m.invoice_amount)}` : ''}</div>
+              <div style="font-size:12px;color:#7E7E8F">${escapeHtml(tc(m.project_name || projects.find(p => p.id === m.project_id)?.name || '—'))} · Due ${fmtDate(m.due_date)}${m.is_billable ? ` · ₹${fmtNum(m.invoice_amount)}` : ''}</div>
               <div class="progress-bar" style="margin-top:6px"><div class="progress-fill ${pct >= 100 ? 'green' : pct >= 70 ? 'blue' : 'amber'}" style="width:${pct}%"></div></div>
             </div>`
-          }).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No milestones</p>'}
+          }).join('') || '<p style="color:#7E7E8F;font-size:13px;padding:12px 0">No milestones</p>'}
         </div>
 
         <div id="ct-invoices" class="tab-content">
@@ -3963,7 +3971,7 @@ async function showClientDetail(clientId) {
             <div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px">
               <div style="flex:1;min-width:0">
                 <div style="font-weight:500;color:#e2e8f0">${escapeHtml(i.invoice_number || '—')}</div>
-                <div style="font-size:12px;color:#64748b">${escapeHtml(i.title || '')} · Due ${fmtDate(i.due_date)}</div>
+                <div style="font-size:12px;color:#7E7E8F">${escapeHtml(i.title || '')} · Due ${fmtDate(i.due_date)}</div>
               </div>
               <div style="display:flex;align-items:center;gap:10px">
                 <div style="text-align:right">
@@ -3972,35 +3980,35 @@ async function showClientDetail(clientId) {
                 </div>
                 <span class="badge ${invoiceStatusClass(i.status)}">${escapeHtml(i.status)}</span>
               </div>
-            </div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No invoices</p>'}
+            </div>`).join('') || '<p style="color:#7E7E8F;font-size:13px;padding:12px 0">No invoices</p>'}
         </div>
 
         <div id="ct-documents" class="tab-content">
           ${docs.map(d => `
             <div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
-              <i class="fas fa-file" style="color:#FF7A45;width:24px;text-align:center"></i>
+              <i class="fas fa-file" style="color:#A970FF;width:24px;text-align:center"></i>
               <div style="flex:1;min-width:0">
                 <div style="font-size:13px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(d.title || d.file_name || 'Document')}</div>
-                <div style="font-size:11px;color:#64748b">${escapeHtml(tc(d.project_name) || '—')}${d.category ? ' · ' + escapeHtml(d.category) : ''}${d.uploaded_by_name ? ' · by ' + escapeHtml(d.uploaded_by_name) : ''}</div>
+                <div style="font-size:11px;color:#7E7E8F">${escapeHtml(tc(d.project_name) || '—')}${d.category ? ' · ' + escapeHtml(d.category) : ''}${d.uploaded_by_name ? ' · by ' + escapeHtml(d.uploaded_by_name) : ''}</div>
               </div>
               ${d.file_url ? `<a href="${escapeHtml(d.file_url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline"><i class="fas fa-external-link-alt"></i></a>` : ''}
-            </div>`).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No documents</p>'}
+            </div>`).join('') || '<p style="color:#7E7E8F;font-size:13px;padding:12px 0">No documents</p>'}
         </div>
 
         <div id="ct-tickets" class="tab-content">
           ${tickets.map(t => {
-            const pColor = { urgent: '#FF5E3A', high: '#FF7A45', medium: '#FFCB47', low: '#94a3b8' }[t.priority] || '#94a3b8'
+            const pColor = { urgent: '#FF5E3A', high: '#A970FF', medium: '#C9A7FF', low: '#7E7E8F' }[t.priority] || '#7E7E8F'
             return `
             <div style="padding:10px 0;border-bottom:1px solid var(--border);border-left:3px solid ${pColor};padding-left:10px;cursor:pointer" onclick="closeModal();openSupportDetail && openSupportDetail('${t.id}')">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
                 <div style="flex:1;min-width:0">
                   <div style="font-size:13px;color:#e2e8f0;font-weight:500">${escapeHtml(t.subject)}</div>
-                  <div style="font-size:11px;color:#64748b">#${String(t.id).slice(-6)} · ${escapeHtml(tc(t.project_name) || '—')} · ${fmtDate(t.created_at)}</div>
+                  <div style="font-size:11px;color:#7E7E8F">#${String(t.id).slice(-6)} · ${escapeHtml(tc(t.project_name) || '—')} · ${fmtDate(t.created_at)}</div>
                 </div>
                 <span class="badge" style="background:${pColor}22;color:${pColor};border:1px solid ${pColor}44;font-size:10px">${escapeHtml(t.status)}</span>
               </div>
             </div>`
-          }).join('') || '<p style="color:#64748b;font-size:13px;padding:12px 0">No tickets</p>'}
+          }).join('') || '<p style="color:#7E7E8F;font-size:13px;padding:12px 0">No tickets</p>'}
         </div>
       </div>`, 'modal-lg')
   } catch (e) { toast(e.message, 'error') }
@@ -4016,7 +4024,7 @@ function switchTab(btn, targetId) {
 
 /* ── BILLING ADMIN ──────────────────────────────────────── */
 async function renderBillingAdmin(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const data = await API.get('/invoices?page=' + _billingInvoicePage + '&limit=' + _billingInvoiceLimit)
     const invoices = data.invoices||[]
@@ -4035,9 +4043,9 @@ async function renderBillingAdmin(el) {
       </div>
     </div>
     <div class="grid-4" style="margin-bottom:20px">
-      ${statCard('Total Invoiced', fmtCurrency(s.total_value||0), 'fas fa-file-invoice', '#FF7A45', `${s.total_invoices||0} invoices`)}
+      ${statCard('Total Invoiced', fmtCurrency(s.total_value||0), 'fas fa-file-invoice', '#A970FF', `${s.total_invoices||0} invoices`)}
       ${statCard('Collected', fmtCurrency(s.total_paid||0), 'fas fa-check-circle', '#58C68A', 'payments received')}
-      ${statCard('Pending', fmtCurrency(s.total_pending||0), 'fas fa-clock', '#FFCB47', 'awaiting payment')}
+      ${statCard('Pending', fmtCurrency(s.total_pending||0), 'fas fa-clock', '#C9A7FF', 'awaiting payment')}
       ${statCard('Overdue', fmtCurrency(s.total_overdue||0), 'fas fa-exclamation-triangle', '#FF5E3A', `${s.overdue_count||0} overdue`)}
     </div>
       <div class="card billing-table-shell">
@@ -4071,15 +4079,15 @@ async function renderBillingAdmin(el) {
             <tbody>
               ${invoices.map(i=>`
               <tr data-status="${i.status||''}" data-project-id="${escapeHtml(i.project_id||'')}" data-paid-date="${i.paid_date||''}" data-paid-by="${escapeHtml(i.paid_marked_by_name||'')}" data-search="${escapeHtml(((i.invoice_number||'')+' '+(i.company_name||'')+' '+(i.project_name||'')+' '+(i.title||'')).toLowerCase())}">
-                <td><div style="font-weight:600;font-size:12px;font-family:monospace;color:#FFB347">${i.invoice_number}</div><div style="font-size:11px;color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.title}</div></td>
-                <td><div style="display:flex;align-items:center;gap:6px">${avatar(i.company_name||'?',i.client_color||'#FF7A45','sm')}<span style="font-size:12px">${i.company_name||'—'}</span></div></td>
-                <td><span style="font-size:12px;color:#94a3b8">${tc(i.project_name)||'—'}</span></td>
-                <td><strong style="color:#58C68A">${fmtCurrency(i.total_amount)}</strong>${i.paid_amount>0&&i.paid_amount<i.total_amount?`<div style="font-size:11px;color:#94a3b8">Paid: ${fmtCurrency(i.paid_amount)}</div>`:''}</td>
+                <td><div style="font-weight:600;font-size:12px;font-family:monospace;color:#C9A7FF">${i.invoice_number}</div><div style="font-size:11px;color:#7E7E8F;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.title}</div></td>
+                <td><div style="display:flex;align-items:center;gap:6px">${avatar(i.company_name||'?',i.client_color||'#A970FF','sm')}<span style="font-size:12px">${i.company_name||'—'}</span></div></td>
+                <td><span style="font-size:12px;color:#7E7E8F">${tc(i.project_name)||'—'}</span></td>
+                <td><strong style="color:#58C68A">${fmtCurrency(i.total_amount)}</strong>${i.paid_amount>0&&i.paid_amount<i.total_amount?`<div style="font-size:11px;color:#7E7E8F">Paid: ${fmtCurrency(i.paid_amount)}</div>`:''}</td>
                 <td><span class="badge ${invoiceStatusClass(i.status)}">${i.status}</span></td>
                 <td style="font-size:12px">${fmtDate(i.issue_date)}</td>
-                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#94a3b8'}">${fmtDate(i.due_date)}</td>
-                <td style="font-size:12px;color:${i.paid_date?'#58C68A':'#64748b'}">${i.paid_date?fmtDate(i.paid_date):'—'}</td>
-                <td style="font-size:12px;color:#94a3b8">${i.paid_marked_by_name?escapeHtml(i.paid_marked_by_name):'—'}</td>
+                <td style="font-size:12px;color:${new Date(i.due_date)<new Date()&&i.status!=='paid'?'#FF5E3A':'#7E7E8F'}">${fmtDate(i.due_date)}</td>
+                <td style="font-size:12px;color:${i.paid_date?'#58C68A':'#7E7E8F'}">${i.paid_date?fmtDate(i.paid_date):'—'}</td>
+                <td style="font-size:12px;color:#7E7E8F">${i.paid_marked_by_name?escapeHtml(i.paid_marked_by_name):'—'}</td>
                 <td>
                   <div style="display:flex;gap:4px">
                     ${_user.role==='admin'?`<button class="btn btn-xs btn-outline" title="Send Invoice" aria-label="Send Invoice" onclick="showSendInvoiceModal('${i.id}')"><i class="fas fa-paper-plane"></i></button>`:''}
@@ -4163,7 +4171,7 @@ async function showCreateInvoiceModal() {
     <div class="form-group">
       <label class="form-label">Milestone (optional)</label>
       ${searchableSelect('ci-milestone', [], '', { placeholder: 'Select a project first', onChange: onCreateInvoiceMilestoneChanged })}
-      <div style="font-size:11px;color:#64748b;margin-top:4px">Selecting a billable milestone will prefill the invoice title and amount — both stay editable.</div>
+      <div style="font-size:11px;color:#7E7E8F;margin-top:4px">Selecting a billable milestone will prefill the invoice title and amount — both stay editable.</div>
     </div>
     <div class="form-group"><label class="form-label">Invoice Title *</label><input class="form-input" id="ci-title" placeholder="Phase 1 – Delivery Invoice"/></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="ci-desc" placeholder="Invoice details…" style="min-height:60px"></textarea></div>
@@ -4313,31 +4321,31 @@ async function showSendInvoiceModal(id) {
     showModal(`
     <div class="modal-header"><h3>Send Invoice</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
-      <div style="background:linear-gradient(135deg, rgba(255,122,69,.12), rgba(88,198,138,.10));border:1px solid rgba(255,122,69,.18);border-radius:16px;padding:16px 18px;margin-bottom:18px">
-        <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.12em">Invoice Preview</div>
+      <div style="background:linear-gradient(135deg, rgba(169,112,255,.12), rgba(88,198,138,.10));border:1px solid rgba(169,112,255,.18);border-radius:16px;padding:16px 18px;margin-bottom:18px">
+        <div style="font-size:12px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.12em">Invoice Preview</div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px">
           <div>
-            <div style="font-size:11px;color:#64748b">Invoice</div>
+            <div style="font-size:11px;color:#7E7E8F">Invoice</div>
             <div style="font-weight:700;color:#e2e8f0">${escapeHtml(inv.invoice_number)}</div>
           </div>
           <div>
-            <div style="font-size:11px;color:#64748b">Amount</div>
+            <div style="font-size:11px;color:#7E7E8F">Amount</div>
             <div style="font-weight:700;color:#58C68A">${previewAmount}</div>
           </div>
           <div>
-            <div style="font-size:11px;color:#64748b">Client</div>
+            <div style="font-size:11px;color:#7E7E8F">Client</div>
             <div style="font-weight:700;color:#e2e8f0">${previewClient}</div>
           </div>
           <div>
-            <div style="font-size:11px;color:#64748b">Project</div>
+            <div style="font-size:11px;color:#7E7E8F">Project</div>
             <div style="font-weight:700;color:#e2e8f0">${previewProject}</div>
           </div>
           <div>
-            <div style="font-size:11px;color:#64748b">Due Date</div>
+            <div style="font-size:11px;color:#7E7E8F">Due Date</div>
             <div style="font-weight:700;color:#e2e8f0">${previewDue}</div>
           </div>
           <div>
-            <div style="font-size:11px;color:#64748b">Status</div>
+            <div style="font-size:11px;color:#7E7E8F">Status</div>
             <div style="font-weight:700;color:#e2e8f0">${escapeHtml(String(inv.status || 'pending').replace('_', ' '))}</div>
           </div>
         </div>
@@ -4349,13 +4357,13 @@ async function showSendInvoiceModal(id) {
       <div class="form-group">
         <label class="form-label">CC</label>
         <input class="form-input" id="se-cc" placeholder="finance@company.com, accounts@company.com"/>
-        <div style="font-size:12px;color:#64748b;margin-top:6px">Comma-separated emails supported.</div>
+        <div style="font-size:12px;color:#7E7E8F;margin-top:6px">Comma-separated emails supported.</div>
       </div>
       <div class="form-group">
         <label class="form-label">Subject</label>
         <input class="form-input" id="se-subject" value="${defaultSubject}" placeholder="Invoice subject"/>
       </div>
-      <div style="font-size:13px;color:#94a3b8;line-height:1.6">
+      <div style="font-size:13px;color:#7E7E8F;line-height:1.6">
         The invoice will be sent in the same billing format used by the system email template.
         A copy of the invoice is also attached as <code>invoice-${escapeHtml(inv.invoice_number)}.html</code> so the
         recipient can download it directly from the mail or print to PDF.
@@ -4494,7 +4502,7 @@ function showMarkPaidModal(id, num, total) {
   showModal(`
   <div class="modal-header"><h3>Mark Invoice Paid</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
   <div class="modal-body">
-    <p style="font-size:13px;color:#94a3b8;margin-bottom:16px">Invoice: <strong style="color:#e2e8f0">${num}</strong> • Total: <strong style="color:#58C68A">${fmtCurrency(total)}</strong></p>
+    <p style="font-size:13px;color:#7E7E8F;margin-bottom:16px">Invoice: <strong style="color:#e2e8f0">${num}</strong> • Total: <strong style="color:#58C68A">${fmtCurrency(total)}</strong></p>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Amount Received *</label><input class="form-input" type="number" id="mp-amount" value="${total}"/></div>
       <div class="form-group"><label class="form-label">Payment Date</label><input class="form-input" type="date" id="mp-date" value="${dayjs().format('YYYY-MM-DD')}"/></div>
@@ -4531,10 +4539,13 @@ const TEAM_ROLE_META = {
 let _teamOverviewRoleFilter = ''
 
 async function renderTeamOverview(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i></div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const data = await API.get('/users')
+    // External (role=team) members live on their own "External Team" page now.
+    // Drop them here so the Team Overview shows only internal staff.
     const users = (data.users || data.data || [])
+      .filter(u => String(u.role || '').toLowerCase() !== 'team')
     const roleCounts = users.reduce((acc, u) => {
       const key = String(u.role || 'other').toLowerCase()
       acc[key] = (acc[key] || 0) + 1
@@ -4561,7 +4572,7 @@ async function renderTeamOverview(el) {
       <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px">
         <div class="search-wrap" style="flex:1;min-width:240px"><i class="fas fa-search"></i><input class="search-bar" placeholder="Search members…" oninput="filterTable(this.value,'team-overview-table')"/></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${['', 'admin', 'pm', 'pc', 'developer', 'team', 'sales_manager', 'sales_tl', 'sales_agent', 'hr'].map(r => {
+          ${['', 'admin', 'pm', 'pc', 'developer', 'sales_manager', 'sales_tl', 'sales_agent', 'hr'].map(r => {
             const meta = r ? TEAM_ROLE_META[r] : { label: 'All' }
             const count = r ? (roleCounts[r] || 0) : users.length
             const active = _teamOverviewRoleFilter === r
@@ -4587,15 +4598,15 @@ async function renderTeamOverview(el) {
                     ${avatar(u.full_name, u.avatar_color, 'sm')}
                     <div>
                       <div style="font-weight:600;color:#e2e8f0">${u.full_name || '—'}</div>
-                      <div style="font-size:11px;color:#64748b">${u.phone || ''}</div>
+                      <div style="font-size:11px;color:#7E7E8F">${u.phone || ''}</div>
                     </div>
                   </div>
                 </td>
-                <td><span style="font-size:12px;color:#94a3b8">${u.email || '—'}</span></td>
+                <td><span style="font-size:12px;color:#7E7E8F">${u.email || '—'}</span></td>
                 <td><span class="badge badge-${meta.badge}">${meta.label}</span></td>
-                <td><span style="font-size:12px;color:#94a3b8">${u.designation || '—'}</span></td>
+                <td><span style="font-size:12px;color:#7E7E8F">${u.designation || '—'}</span></td>
                 <td><span style="font-size:12px">${u.monthly_available_hours || 0}h / mo</span></td>
-                <td><span style="font-size:12px;color:#94a3b8">${u.joining_date ? fmtDate(u.joining_date) : '—'}</span></td>
+                <td><span style="font-size:12px;color:#7E7E8F">${u.joining_date ? fmtDate(u.joining_date) : '—'}</span></td>
                 <td><span class="badge ${u.is_active ? 'badge-done' : 'badge-todo'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
                 ${canEdit ? `<td>
                   <div style="display:flex;gap:4px">
@@ -4607,7 +4618,7 @@ async function renderTeamOverview(el) {
                   </div>
                 </td>` : ''}
               </tr>`
-            }).join('') || `<tr><td colspan="${canEdit ? 8 : 7}" style="text-align:center;color:#64748b;padding:24px">No team members match the current filter.</td></tr>`}
+            }).join('') || `<tr><td colspan="${canEdit ? 8 : 7}" style="text-align:center;color:#7E7E8F;padding:24px">No team members match the current filter.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -4657,8 +4668,145 @@ async function deleteTeamMember(id, name) {
     toast('Team member deleted', 'success')
     const el = document.getElementById('page-team-overview')
     if (el) { el.dataset.loaded = ''; loadPage('team-overview', el) }
+    // External Team page reads from the same /users endpoint — invalidate it
+    // too so the deleted member doesn't linger if the admin tabs over there.
+    const ext = document.getElementById('page-external-team')
+    if (ext) { ext.dataset.loaded = '' }
   } catch (e) { toast('Failed to delete: ' + e.message, 'error') }
 }
+
+/* ── EXTERNAL TEAM ──────────────────────────────────────────
+   Shows users whose role === 'team' (external delivery partners).
+   They used to live inside Team Overview behind a "Team" filter chip;
+   admin wanted them on their own page so the internal-staff list and
+   the external-vendor list aren't intermixed.
+   ─────────────────────────────────────────────────────────── */
+async function renderExternalTeam(el) {
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
+  try {
+    const data = await API.get('/users')
+    const allUsers = (data.users || data.data || [])
+    const users = allUsers.filter(u => String(u.role || '').toLowerCase() === 'team')
+    const activeCount = users.filter(u => u.is_active).length
+    const pagination = paginateClient(users, _externalTeamPage, _externalTeamPageLimit)
+    _externalTeamPage = pagination.page
+    const isAdmin = hasPermission('users.create')
+    const canEdit = hasPermission('users.edit')
+
+    el.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">External Team</h1>
+        <p class="page-subtitle">${users.length} external members · ${activeCount} active · ${pagination.total} shown</p>
+      </div>
+      ${isAdmin ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" onclick="openImportUsersModal()"><i class="fas fa-file-csv"></i>Import CSV</button>
+        <button class="btn btn-primary btn-sm" onclick="openExternalTeamMemberModal()"><i class="fas fa-user-plus"></i>Add External Member</button>
+      </div>` : ''}
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px">
+        <div class="search-wrap" style="flex:1;min-width:240px"><i class="fas fa-search"></i><input class="search-bar" placeholder="Search external members…" oninput="filterTable(this.value,'external-team-table')"/></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body p-0 table-wrap">
+        <table class="data-table" id="external-team-table">
+          <thead><tr>
+            <th>Member</th><th>Email</th><th>Role</th><th>Designation</th>
+            <th>Capacity</th><th>Joined</th><th>Status</th>${canEdit ? '<th style="width:180px">Actions</th>' : ''}
+          </tr></thead>
+          <tbody>
+            ${pagination.items.map(u => {
+              const meta = TEAM_ROLE_META.team || { label: 'Team', badge: 'todo' }
+              return `<tr>
+                <td>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    ${avatar(u.full_name, u.avatar_color, 'sm')}
+                    <div>
+                      <div style="font-weight:600;color:#e2e8f0">${u.full_name || '—'}</div>
+                      <div style="font-size:11px;color:#7E7E8F">${u.phone || ''}</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span style="font-size:12px;color:#7E7E8F">${u.email || '—'}</span></td>
+                <td><span class="badge badge-${meta.badge}">${meta.label}</span></td>
+                <td><span style="font-size:12px;color:#7E7E8F">${u.designation || '—'}</span></td>
+                <td><span style="font-size:12px">${u.monthly_available_hours || 0}h / mo</span></td>
+                <td><span style="font-size:12px;color:#7E7E8F">${u.joining_date ? fmtDate(u.joining_date) : '—'}</span></td>
+                <td><span class="badge ${u.is_active ? 'badge-done' : 'badge-todo'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
+                ${canEdit ? `<td>
+                  <div style="display:flex;gap:4px">
+                    <button class="btn btn-xs btn-outline" title="Edit" onclick="openEditExternalTeamMember('${u.id}')"><i class="fas fa-edit"></i></button>
+                    ${isAdmin ? `<button class="btn btn-xs btn-outline" title="Reset password" onclick="openResetCredsModal('user','${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')"><i class="fas fa-key"></i></button>` : ''}
+                    ${isAdmin && u.is_active && String(u.id) !== String(_user?.sub||_user?.id||'') ? `<button class="btn btn-xs btn-primary" title="Login as ${(u.full_name||'').replace(/"/g,'&quot;')}" onclick="loginAsTeamMember('${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')"><i class="fas fa-user-secret"></i></button>` : ''}
+                    <button class="btn btn-xs ${u.is_active ? 'btn-outline' : 'btn-primary'}" title="${u.is_active ? 'Deactivate' : 'Activate'}" onclick="toggleExternalTeamMemberStatus('${u.id}',${!u.is_active})"><i class="fas fa-${u.is_active ? 'ban' : 'check'}"></i></button>
+                    ${isAdmin && String(u.id) !== String(_user?.sub||_user?.id||'') ? `<button class="btn btn-xs btn-outline" title="Delete" onclick="deleteExternalTeamMember('${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')" style="color:#FF5E3A"><i class="fas fa-trash"></i></button>` : ''}
+                  </div>
+                </td>` : ''}
+              </tr>`
+            }).join('') || `<tr><td colspan="${canEdit ? 8 : 7}" style="text-align:center;color:#7E7E8F;padding:24px">No external team members yet. Click "Add External Member" to invite one.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    ${renderPager(pagination, 'goExternalTeamPage', 'goExternalTeamPage', 'external members', 'external-team')}
+    `
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
+  }
+}
+
+function goExternalTeamPage(page) {
+  _externalTeamPage = Math.max(1, Number(page) || 1)
+  const el = document.getElementById('page-external-team')
+  if (el) { el.dataset.loaded = ''; loadPage('external-team', el) }
+}
+
+function openExternalTeamMemberModal() {
+  if (typeof openDeveloperModal !== 'function') { toast('User modal unavailable', 'error'); return }
+  // Force role=team — the developer modal lets the admin change it, but we
+  // pre-select it so a new member created from this page lands as external.
+  openDeveloperModal({ role: 'team' })
+}
+
+async function openEditExternalTeamMember(id) {
+  return guardedModalOpen('edit-user:' + id, async () => {
+    try {
+      const res = await API.get(`/users/${id}`)
+      if (typeof openDeveloperModal !== 'function') { toast('User modal unavailable', 'error'); return }
+      openDeveloperModal(res.data)
+    } catch (e) { toast(e.message, 'error') }
+  })
+}
+
+async function toggleExternalTeamMemberStatus(id, active) {
+  try {
+    await API.patch(`/users/${id}/status`, { is_active: active })
+    toast(`External member ${active ? 'activated' : 'deactivated'}`, 'success')
+    const el = document.getElementById('page-external-team')
+    if (el) { el.dataset.loaded = ''; loadPage('external-team', el) }
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+async function deleteExternalTeamMember(id, name) {
+  if (!window.confirm(`Delete external team member "${name}"? This action cannot be undone.`)) return
+  try {
+    await API.delete(`/users/${id}`)
+    toast('External member deleted', 'success')
+    const el = document.getElementById('page-external-team')
+    if (el) { el.dataset.loaded = ''; loadPage('external-team', el) }
+  } catch (e) { toast('Failed to delete: ' + e.message, 'error') }
+}
+
+window.renderExternalTeam = renderExternalTeam
+window.goExternalTeamPage = goExternalTeamPage
+window.openExternalTeamMemberModal = openExternalTeamMemberModal
+window.openEditExternalTeamMember = openEditExternalTeamMember
+window.toggleExternalTeamMemberStatus = toggleExternalTeamMemberStatus
+window.deleteExternalTeamMember = deleteExternalTeamMember
 
 // Admin-only password reset for any user. Used both manually from the Team
 // page and as the action an admin takes after a "password_reset_request"
@@ -4677,7 +4825,7 @@ function openAdminResetPasswordModal(userId, userName) {
         <label class="form-label">New Password *</label>
         <div style="position:relative">
           <input id="arp-new" type="password" class="form-input" autocomplete="new-password" placeholder="At least 8 characters"/>
-          <button type="button" onclick="togglePass('arp-new',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer"><i class="fas fa-eye"></i></button>
+          <button type="button" onclick="togglePass('arp-new',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#7E7E8F;cursor:pointer"><i class="fas fa-eye"></i></button>
         </div>
       </div>
       <div class="form-group" style="margin-bottom:0">
@@ -4715,11 +4863,11 @@ function openResetCredsModal(kind, entityId, displayName) {
   const payloadKey = isClient ? 'new_password' : 'new_password'
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-key" style="color:#FFCB47;margin-right:6px"></i>Reset password · ${escapeHtml(displayName || '')}</h3>
+      <h3><i class="fas fa-key" style="color:#C9A7FF;margin-right:6px"></i>Reset password · ${escapeHtml(displayName || '')}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
-      <div style="padding:10px 12px;border-radius:10px;background:rgba(255,203,71,.08);border:1px solid rgba(255,203,71,.25);font-size:12.5px;line-height:1.5;color:#FFD9A0">
+      <div style="padding:10px 12px;border-radius:10px;background:rgba(169,112,255,.08);border:1px solid rgba(169,112,255,.25);font-size:12.5px;line-height:1.5;color:#C9A7FF">
         <i class="fas fa-shield-halved" style="margin-right:6px"></i>
         Existing passwords can't be displayed — they're stored as a SHA-256 hash. Set a new temporary one below; you'll see the plaintext once after saving so you can share it.
       </div>
@@ -4731,7 +4879,7 @@ function openResetCredsModal(kind, entityId, displayName) {
           </div>
           <button type="button" class="btn btn-outline btn-sm" onclick="rcrAutoGen()" title="Generate a strong password"><i class="fas fa-wand-magic-sparkles"></i> Generate</button>
         </div>
-        <div style="font-size:11px;color:#64748b;margin-top:6px">Minimum 8 characters. The user can change it from their profile after signing in.</div>
+        <div style="font-size:11px;color:#7E7E8F;margin-top:6px">Minimum 8 characters. The user can change it from their profile after signing in.</div>
       </div>
       <div id="rcr-result" style="display:none"></div>
     </div>
@@ -4776,7 +4924,7 @@ async function rcrSubmit(kind, entityId) {
         <div style="padding:14px;border-radius:10px;background:rgba(88,198,138,.10);border:1px solid rgba(88,198,138,.30);color:#86E0A8">
           <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="fas fa-check-circle"></i> Password updated. Share this with the user securely:</div>
           <div style="display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.30);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px 10px">
-            <code id="rcr-shown-pwd" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#FFF1E6;word-break:break-all">${escapeHtml(newPwd)}</code>
+            <code id="rcr-shown-pwd" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#FFFFFF;word-break:break-all">${escapeHtml(newPwd)}</code>
             <button type="button" class="btn btn-sm btn-outline" onclick="rcrCopyShown()"><i class="fas fa-copy"></i> Copy</button>
           </div>
           <div style="font-size:11px;color:#9F8678;margin-top:6px">This is shown once — close the modal and it's gone forever.</div>
@@ -4814,8 +4962,8 @@ const IMPORT_TEMPLATES = {
     filename: 'users_import_template.csv',
     headers: 'full_name,email,role,designation,phone,daily_work_hours,monthly_available_hours,hourly_cost,joining_date,avatar_color,password',
     rows: [
-      'Rahul Sharma,rahul@example.com,developer,Senior Developer,+91-9876543210,8,160,800,2024-01-15,#FF7A45,Welcome@123',
-      'Priya Verma,priya@example.com,pm,Project Manager,+91-9876500001,8,160,1200,2023-06-01,#FFB347,Welcome@123',
+      'Rahul Sharma,rahul@example.com,developer,Senior Developer,+91-9876543210,8,160,800,2024-01-15,#A970FF,Welcome@123',
+      'Priya Verma,priya@example.com,pm,Project Manager,+91-9876500001,8,160,1200,2023-06-01,#C9A7FF,Welcome@123',
       'Aman Singh,aman@example.com,team,External Developer,+91-9876500002,8,160,600,,#C56FE6,Welcome@123',
     ],
   },
@@ -4823,8 +4971,8 @@ const IMPORT_TEMPLATES = {
     filename: 'clients_import_template.csv',
     headers: 'company_name,contact_name,email,phone,website,industry,gstin,address_line,city,state,state_code,pincode,country,avatar_color,password',
     rows: [
-      'Acme Corp,Anita Joshi,anita@acme.com,+91-9876543210,https://acme.com,SaaS,27AABCA1234F1Z5,12 MG Road,Mumbai,MAHARASHTRA,27,400001,India,#FF7A45,Welcome@123',
-      'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,29AABCG5678H1Z9,Plot 4 Sector 3,Bengaluru,KARNATAKA,29,560001,India,#FFB347,Welcome@123',
+      'Acme Corp,Anita Joshi,anita@acme.com,+91-9876543210,https://acme.com,SaaS,27AABCA1234F1Z5,12 MG Road,Mumbai,MAHARASHTRA,27,400001,India,#A970FF,Welcome@123',
+      'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,29AABCG5678H1Z9,Plot 4 Sector 3,Bengaluru,KARNATAKA,29,560001,India,#C9A7FF,Welcome@123',
     ],
   },
   projects: {
@@ -4873,7 +5021,7 @@ function _importModalHtml(kind) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div style="padding:12px 14px;border-radius:10px;background:rgba(255,180,120,0.10);border:1px solid rgba(255,180,120,0.25);font-size:12.5px;line-height:1.55;color:var(--text-secondary)">
+      <div style="padding:12px 14px;border-radius:10px;background:rgba(179,136,255,0.10);border:1px solid rgba(179,136,255,0.25);font-size:12.5px;line-height:1.55;color:var(--text-secondary)">
         <i class="fas fa-circle-info" style="color:var(--accent);margin-right:6px"></i>
         Upload a <strong>CSV file</strong> with a header row. Excel users: <em>File → Save As → CSV (UTF-8)</em>.<br/>
         <strong>Required columns:</strong> ${requires}<br/>
@@ -4942,7 +5090,7 @@ async function submitImportCsv(kind) {
           <div style="padding:12px 14px;border-radius:10px;background:rgba(88,198,138,0.10);border:1px solid rgba(88,198,138,0.30);color:#86E0A8;font-size:13px;margin-bottom:8px">
             <i class="fas fa-check-circle"></i> <strong>${created}</strong> ${kindLabel} imported successfully.
           </div>
-          <div style="padding:12px 14px;border-radius:10px;background:rgba(255,94,58,0.10);border:1px solid rgba(255,94,58,0.30);color:#FF8866;font-size:12.5px;line-height:1.5">
+          <div style="padding:12px 14px;border-radius:10px;background:rgba(255,94,58,0.10);border:1px solid rgba(255,94,58,0.30);color:#A970FF;font-size:12.5px;line-height:1.5">
             <i class="fas fa-triangle-exclamation"></i> <strong>${errCount}</strong> rows skipped:
             <ul style="margin:6px 0 0 18px;padding:0">
               ${errors.slice(0, 25).map(e => `<li>Row ${e.row}${e.email ? ' (' + _supEsc(e.email) + ')' : e.code ? ' (' + _supEsc(e.code) + ')' : ''}: ${_supEsc(e.error)}</li>`).join('')}
@@ -4976,7 +5124,7 @@ const TEAM_SECTION_CONFIG = {
     title: 'Sales Team',
     subtitle: 'Sales agents, team leads, and managers working the pipeline.',
     icon: 'fa-bullseye',
-    iconColor: '#FF7A45',
+    iconColor: '#A970FF',
     roles: ['sales_manager', 'sales_tl', 'sales_agent'],
     defaultCreateRole: 'sales_agent',
     workKind: 'leads',
@@ -5023,7 +5171,7 @@ async function renderDevTeamPage(el)     { return _renderTeamSection(el, TEAM_SE
 async function renderHRTeamPage(el)      { return _renderTeamSection(el, TEAM_SECTION_CONFIG['hr-team']) }
 
 async function _renderTeamSection(el, cfg) {
-  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading ${cfg.title.toLowerCase()}…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading ${cfg.title.toLowerCase()}…</div>`
   try {
     const res = await API.get('/users')
     const allUsers = res.users || res.data || []
@@ -5096,17 +5244,17 @@ function _teamMemberCard(m, cfg) {
         ${avatar(m.full_name, m.avatar_color || cfg.iconColor, 'md')}
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;color:#e2e8f0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(m.full_name || '—')}</div>
-          <div style="font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(m.designation || meta.label)}</div>
+          <div style="font-size:11.5px;color:#7E7E8F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(m.designation || meta.label)}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span>
         <span class="badge ${isActive ? 'badge-done' : 'badge-todo'}">${isActive ? 'Active' : 'Inactive'}</span>
       </div>
-      <div style="font-size:11.5px;color:#94a3b8;display:flex;flex-direction:column;gap:4px">
-        <div style="display:flex;align-items:center;gap:6px"><i class="fas fa-envelope" style="width:12px;color:#64748b"></i>${escapeHtml(m.email || '—')}</div>
-        ${m.phone ? `<div style="display:flex;align-items:center;gap:6px"><i class="fas fa-phone" style="width:12px;color:#64748b"></i>${escapeHtml(m.phone)}</div>` : ''}
-        ${m.joining_date ? `<div style="display:flex;align-items:center;gap:6px"><i class="fas fa-calendar" style="width:12px;color:#64748b"></i>Joined ${fmtDate(m.joining_date)}</div>` : ''}
+      <div style="font-size:11.5px;color:#7E7E8F;display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;align-items:center;gap:6px"><i class="fas fa-envelope" style="width:12px;color:#7E7E8F"></i>${escapeHtml(m.email || '—')}</div>
+        ${m.phone ? `<div style="display:flex;align-items:center;gap:6px"><i class="fas fa-phone" style="width:12px;color:#7E7E8F"></i>${escapeHtml(m.phone)}</div>` : ''}
+        ${m.joining_date ? `<div style="display:flex;align-items:center;gap:6px"><i class="fas fa-calendar" style="width:12px;color:#7E7E8F"></i>Joined ${fmtDate(m.joining_date)}</div>` : ''}
       </div>
       <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
         <button class="btn btn-outline btn-xs" style="flex:1;min-width:60px" onclick="event.stopPropagation();openTeamMemberDetail('${m.id}','${cfg.pageId}')">
@@ -5249,7 +5397,7 @@ async function openTeamMemberDetail(userId, pageId) {
   _teamDetailState = { userId, pageId, tab: 'active', cache: null }
   showModal(`
     <div id="team-member-detail-shell" style="min-height:520px">
-      <div style="padding:60px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading profile…</div>
+      <div style="padding:60px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading profile…</div>
     </div>
   `, 'modal-xl')
   await _loadTeamMemberDetail()
@@ -5292,7 +5440,7 @@ async function _loadTeamMemberDetail() {
     _renderTeamMemberDetailShell()
   } catch (e) {
     const shell = document.getElementById('team-member-detail-shell')
-    if (shell) shell.innerHTML = `<div style="padding:60px;text-align:center;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+    if (shell) shell.innerHTML = `<div style="padding:60px;text-align:center;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
   }
 }
 
@@ -5321,7 +5469,7 @@ function _renderTeamMemberDetailShell() {
       ${avatar(member.full_name, member.avatar_color || cfg.iconColor, 'lg')}
       <div style="flex:1">
         <h3 style="margin:0">${escapeHtml(member.full_name || '—')}</h3>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12.5px;color:#94a3b8">
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12.5px;color:#7E7E8F">
           <span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span>
           <span class="badge ${isActive ? 'badge-done' : 'badge-todo'}">${isActive ? 'Active' : 'Inactive'}</span>
           <span>${escapeHtml(member.designation || '')}</span>
@@ -5330,11 +5478,11 @@ function _renderTeamMemberDetailShell() {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:0">
-      <div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:#94a3b8">
-        ${member.email ? `<span><i class="fas fa-envelope" style="margin-right:6px;color:#64748b"></i>${escapeHtml(member.email)}</span>` : ''}
-        ${member.phone ? `<span><i class="fas fa-phone" style="margin-right:6px;color:#64748b"></i>${escapeHtml(member.phone)}</span>` : ''}
-        ${member.joining_date ? `<span><i class="fas fa-calendar" style="margin-right:6px;color:#64748b"></i>Joined ${fmtDate(member.joining_date)}</span>` : ''}
-        ${member.monthly_available_hours ? `<span><i class="fas fa-clock" style="margin-right:6px;color:#64748b"></i>${member.monthly_available_hours}h/mo</span>` : ''}
+      <div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:#7E7E8F">
+        ${member.email ? `<span><i class="fas fa-envelope" style="margin-right:6px;color:#7E7E8F"></i>${escapeHtml(member.email)}</span>` : ''}
+        ${member.phone ? `<span><i class="fas fa-phone" style="margin-right:6px;color:#7E7E8F"></i>${escapeHtml(member.phone)}</span>` : ''}
+        ${member.joining_date ? `<span><i class="fas fa-calendar" style="margin-right:6px;color:#7E7E8F"></i>Joined ${fmtDate(member.joining_date)}</span>` : ''}
+        ${member.monthly_available_hours ? `<span><i class="fas fa-clock" style="margin-right:6px;color:#7E7E8F"></i>${member.monthly_available_hours}h/mo</span>` : ''}
       </div>
       <div style="padding:14px 18px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,0.08)">
         ${tabBtn('active',    cfg.workKind === 'leads' ? 'Active Leads'    : 'Active Tasks',    active.length,    'fa-stream')}
@@ -5358,7 +5506,7 @@ function switchTeamMemberDetailTab(tab) {
 
 function _renderMemberWorkList(items, cfg, isActive) {
   if (!items.length) {
-    return `<div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-inbox"></i> ${isActive ? 'Nothing on their plate right now.' : 'No completed work yet.'}</div>`
+    return `<div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-inbox"></i> ${isActive ? 'Nothing on their plate right now.' : 'No completed work yet.'}</div>`
   }
   if (cfg.workKind === 'leads') {
     return `<table class="data-table">
@@ -5368,11 +5516,11 @@ function _renderMemberWorkList(items, cfg, isActive) {
           const key = String(l.status || 'new').toLowerCase()
           const meta = (typeof LEAD_STATUS_META !== 'undefined' && LEAD_STATUS_META[key]) || { label: key, badge: 'todo' }
           return `<tr>
-            <td><div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="closeModal();goLeadDetail('${l.id}')">${avatar(l.name, '#FF7A45', 'sm')}<div><div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div><div style="font-size:11px;color:#64748b">${escapeHtml(l.email || '')}</div></div></div></td>
+            <td><div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="closeModal();goLeadDetail('${l.id}')">${avatar(l.name, '#A970FF', 'sm')}<div><div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div><div style="font-size:11px;color:#7E7E8F">${escapeHtml(l.email || '')}</div></div></div></td>
             <td><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
-            <td style="font-size:12px;color:#94a3b8">${escapeHtml(l.source || '—')}</td>
-            <td style="font-size:12px;color:#94a3b8">${l.created_at ? fmtDate(l.created_at) : '—'}</td>
-            <td style="font-size:12px;color:#94a3b8">${l.updated_at ? fmtDate(l.updated_at) : '—'}</td>
+            <td style="font-size:12px;color:#7E7E8F">${escapeHtml(l.source || '—')}</td>
+            <td style="font-size:12px;color:#7E7E8F">${l.created_at ? fmtDate(l.created_at) : '—'}</td>
+            <td style="font-size:12px;color:#7E7E8F">${l.updated_at ? fmtDate(l.updated_at) : '—'}</td>
           </tr>`
         }).join('')}
       </tbody>
@@ -5390,10 +5538,10 @@ function _renderMemberWorkList(items, cfg, isActive) {
           : 'todo'
         return `<tr>
           <td><div style="font-weight:600;color:#e2e8f0">${escapeHtml(t.title || t.name || '—')}</div></td>
-          <td style="font-size:12px;color:#94a3b8">${escapeHtml(tc(t.project_name) || t.project_code || '—')}</td>
+          <td style="font-size:12px;color:#7E7E8F">${escapeHtml(tc(t.project_name) || t.project_code || '—')}</td>
           <td><span class="badge badge-${statusBadge}">${escapeHtml(t.status_label || t.status || '—')}</span></td>
-          <td style="font-size:12px;color:#94a3b8">${escapeHtml(t.priority || '—')}</td>
-          <td style="font-size:12px;color:#94a3b8">${t.due_date ? fmtDate(t.due_date) : '—'}</td>
+          <td style="font-size:12px;color:#7E7E8F">${escapeHtml(t.priority || '—')}</td>
+          <td style="font-size:12px;color:#7E7E8F">${t.due_date ? fmtDate(t.due_date) : '—'}</td>
         </tr>`
       }).join('')}
     </tbody>
@@ -5401,7 +5549,7 @@ function _renderMemberWorkList(items, cfg, isActive) {
 }
 
 function _renderMemberActivity(items, cfg) {
-  if (!items.length) return `<div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-clock-rotate-left"></i> No recent activity recorded.</div>`
+  if (!items.length) return `<div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-clock-rotate-left"></i> No recent activity recorded.</div>`
   return `<div style="display:flex;flex-direction:column;gap:8px">
     ${items.map((it) => {
       const title = cfg.workKind === 'leads' ? (it.name || '—') : (it.title || it.name || '—')
@@ -5411,9 +5559,9 @@ function _renderMemberActivity(items, cfg) {
         <div style="width:32px;height:32px;border-radius:50%;background:${cfg.iconColor}22;color:${cfg.iconColor};display:flex;align-items:center;justify-content:center"><i class="fas ${cfg.workKind === 'leads' ? 'fa-bullseye' : 'fa-list-check'}"></i></div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;color:#e2e8f0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(title)}</div>
-          <div style="font-size:11.5px;color:#94a3b8;margin-top:2px">${escapeHtml(subtitle)}</div>
+          <div style="font-size:11.5px;color:#7E7E8F;margin-top:2px">${escapeHtml(subtitle)}</div>
         </div>
-        <div style="font-size:11px;color:#64748b;white-space:nowrap">${when ? fmtDate(when) : ''}</div>
+        <div style="font-size:11px;color:#7E7E8F;white-space:nowrap">${when ? fmtDate(when) : ''}</div>
       </div>`
     }).join('')}
   </div>`
@@ -5430,16 +5578,16 @@ function _renderMemberStats(member, active, completed, cfg) {
     extra = `
       ${_statTile('Won', won, '#22c55e', 'fa-trophy')}
       ${_statTile('Lost', lost, '#FF5E3A', 'fa-snowflake')}
-      ${_statTile('Conversion', conversion + '%', '#FFB347', 'fa-percent')}`
+      ${_statTile('Conversion', conversion + '%', '#C9A7FF', 'fa-percent')}`
   } else {
     const overdue = active.filter((t) => t.due_date && new Date(t.due_date).getTime() < Date.now()).length
     extra = `
       ${_statTile('Overdue', overdue, '#FF5E3A', 'fa-triangle-exclamation')}
       ${_statTile('Capacity', (member.monthly_available_hours || 0) + 'h', '#3b82f6', 'fa-clock')}
-      ${_statTile('Hourly cost', '₹' + (member.hourly_cost || 0), '#FFB347', 'fa-indian-rupee-sign')}`
+      ${_statTile('Hourly cost', '₹' + (member.hourly_cost || 0), '#C9A7FF', 'fa-indian-rupee-sign')}`
   }
   return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
-    ${_statTile(cfg.workKind === 'leads' ? 'Total leads' : 'Total tasks', total, '#FF7A45', 'fa-list')}
+    ${_statTile(cfg.workKind === 'leads' ? 'Total leads' : 'Total tasks', total, '#A970FF', 'fa-list')}
     ${_statTile(cfg.workKind === 'leads' ? 'Active leads' : 'Active tasks', active.length, '#3b82f6', 'fa-stream')}
     ${_statTile(cfg.workKind === 'leads' ? 'Closed leads' : 'Completed', completed.length, '#22c55e', 'fa-check-circle')}
     ${_statTile('Completion', completedPct + '%', '#C56FE6', 'fa-chart-line')}
@@ -5451,7 +5599,7 @@ function _statTile(label, value, color, icon) {
   return `<div style="padding:14px;border-radius:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:12px">
     <div style="width:38px;height:38px;border-radius:10px;background:${color}22;color:${color};display:flex;align-items:center;justify-content:center"><i class="fas ${icon}"></i></div>
     <div>
-      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
+      <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
       <div style="font-size:20px;font-weight:700;color:#e2e8f0">${value}</div>
     </div>
   </div>`
@@ -5468,7 +5616,7 @@ let _portfolioSearch = ''
 let _portfolioCanManage = false
 
 async function renderPortfolioLibrary(el) {
-  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading portfolios…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading portfolios…</div>`
   try {
     const res = await API.get('/portfolios')
     const list = res.data || res.portfolios || []
@@ -5483,7 +5631,7 @@ async function renderPortfolioLibrary(el) {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title"><i class="fas fa-briefcase" style="color:#FFB347;margin-right:8px"></i>Portfolio Library</h1>
+          <h1 class="page-title"><i class="fas fa-briefcase" style="color:#C9A7FF;margin-right:8px"></i>Portfolio Library</h1>
           <p class="page-subtitle">${list.length} portfolio${list.length === 1 ? '' : 's'} · ready to send to any lead.</p>
         </div>
         <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
@@ -5524,17 +5672,17 @@ function _portfolioCard(p) {
   return `<div class="card">
     <div class="card-body" style="padding:16px">
       <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
-        <div style="width:46px;height:46px;border-radius:12px;background:rgba(255,179,71,0.18);color:#FFB347;display:flex;align-items:center;justify-content:center;font-size:20px"><i class="fas ${isImg ? 'fa-image' : 'fa-file-pdf'}"></i></div>
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(169,112,255,0.18);color:#C9A7FF;display:flex;align-items:center;justify-content:center;font-size:20px"><i class="fas ${isImg ? 'fa-image' : 'fa-file-pdf'}"></i></div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;color:#e2e8f0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.title)}</div>
-          <div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.file?.name || '—')} · ${formatBytes(p.file?.size || 0)}</div>
+          <div style="font-size:11px;color:#7E7E8F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.file?.name || '—')} · ${formatBytes(p.file?.size || 0)}</div>
         </div>
       </div>
       ${p.description ? `<div style="font-size:12.5px;color:#cbd5e1;line-height:1.5;margin-bottom:10px;max-height:60px;overflow:hidden">${escapeHtml(p.description)}</div>` : ''}
-      <div style="display:flex;gap:14px;font-size:11.5px;color:#94a3b8;margin-bottom:12px">
-        <span><i class="fas fa-paper-plane" style="margin-right:4px;color:#64748b"></i>${p.send_count || 0} sent</span>
-        ${p.last_sent_at ? `<span><i class="fas fa-clock" style="margin-right:4px;color:#64748b"></i>Last ${fmtDate(p.last_sent_at)}</span>` : ''}
-        ${p.created_by_name ? `<span><i class="fas fa-user" style="margin-right:4px;color:#64748b"></i>${escapeHtml(p.created_by_name)}</span>` : ''}
+      <div style="display:flex;gap:14px;font-size:11.5px;color:#7E7E8F;margin-bottom:12px">
+        <span><i class="fas fa-paper-plane" style="margin-right:4px;color:#7E7E8F"></i>${p.send_count || 0} sent</span>
+        ${p.last_sent_at ? `<span><i class="fas fa-clock" style="margin-right:4px;color:#7E7E8F"></i>Last ${fmtDate(p.last_sent_at)}</span>` : ''}
+        ${p.created_by_name ? `<span><i class="fas fa-user" style="margin-right:4px;color:#7E7E8F"></i>${escapeHtml(p.created_by_name)}</span>` : ''}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-primary btn-xs" onclick="openPortfolioSendModal('${p.id}')"><i class="fas fa-paper-plane"></i> Send</button>
@@ -5565,7 +5713,7 @@ async function openPortfolioEditModal(portfolioId) {
   }
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-briefcase" style="color:#FFB347;margin-right:6px"></i>${existing ? 'Edit' : 'Add'} Portfolio</h3>
+      <h3><i class="fas fa-briefcase" style="color:#C9A7FF;margin-right:6px"></i>${existing ? 'Edit' : 'Add'} Portfolio</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -5580,7 +5728,7 @@ async function openPortfolioEditModal(portfolioId) {
       <div class="form-group">
         <label class="form-label">File ${existing ? '(leave blank to keep current)' : '*'}</label>
         <input id="pf-file" type="file" class="form-input" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.ppt,.pptx" style="padding:6px"/>
-        ${existing?.file?.url ? `<div class="form-hint" style="margin-top:6px">Current: <a href="${escapeHtml(existing.file.url)}" target="_blank" rel="noopener" style="color:#FFB347">${escapeHtml(existing.file.name)}</a> · ${formatBytes(existing.file.size || 0)}</div>` : '<div class="form-hint">PDF, image, doc, or slides. Up to 10 MB.</div>'}
+        ${existing?.file?.url ? `<div class="form-hint" style="margin-top:6px">Current: <a href="${escapeHtml(existing.file.url)}" target="_blank" rel="noopener" style="color:#C9A7FF">${escapeHtml(existing.file.name)}</a> · ${formatBytes(existing.file.size || 0)}</div>` : '<div class="form-hint">PDF, image, doc, or slides. Up to 10 MB.</div>'}
       </div>
     </div>
     <div class="modal-footer">
@@ -5652,10 +5800,10 @@ let _portfolioSendCache = { portfolioId: '', leadId: '', leads: [] }
 async function openPortfolioSendModal(portfolioId) {
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-paper-plane" style="color:#FFB347;margin-right:6px"></i>Send Portfolio</h3>
+      <h3><i class="fas fa-paper-plane" style="color:#C9A7FF;margin-right:6px"></i>Send Portfolio</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div></div>
   `, 'modal-lg')
   try {
     const [pfRes, leadsRes] = await Promise.all([
@@ -5671,7 +5819,7 @@ async function openPortfolioSendModal(portfolioId) {
     if (!modal) return
     modal.innerHTML = `
       <div class="modal-header">
-        <h3><i class="fas fa-paper-plane" style="color:#FFB347;margin-right:6px"></i>Send "${escapeHtml(portfolio.title)}"</h3>
+        <h3><i class="fas fa-paper-plane" style="color:#C9A7FF;margin-right:6px"></i>Send "${escapeHtml(portfolio.title)}"</h3>
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body">
@@ -5698,7 +5846,7 @@ async function openPortfolioSendModal(portfolioId) {
           <label class="form-label">Message *</label>
           <textarea id="pf-send-body" class="form-input" rows="7"></textarea>
         </div>
-        <div style="padding:10px 12px;border-radius:8px;background:rgba(255,179,71,0.10);border:1px solid rgba(255,179,71,0.22);font-size:12px;color:#FFB347">
+        <div style="padding:10px 12px;border-radius:8px;background:rgba(169,112,255,0.10);border:1px solid rgba(169,112,255,0.22);font-size:12px;color:#C9A7FF">
           <i class="fas fa-paperclip"></i> Attachment: ${escapeHtml(portfolio.file?.name || '—')} · ${formatBytes(portfolio.file?.size || 0)}
         </div>
       </div>
@@ -5709,7 +5857,7 @@ async function openPortfolioSendModal(portfolioId) {
     `
   } catch (e) {
     const body = document.querySelector('.modal .modal-body')
-    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+    if (body) body.innerHTML = `<div style="padding:24px;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
   }
 }
 
@@ -5753,10 +5901,10 @@ async function submitPortfolioSend() {
 async function openPortfolioHistoryModal(portfolioId) {
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-clock-rotate-left" style="color:#FFB347;margin-right:6px"></i>Send History</h3>
+      <h3><i class="fas fa-clock-rotate-left" style="color:#C9A7FF;margin-right:6px"></i>Send History</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
   `, 'modal-lg')
   try {
@@ -5765,19 +5913,19 @@ async function openPortfolioHistoryModal(portfolioId) {
     const body = document.querySelector('.modal .modal-body')
     if (!body) return
     if (!sends.length) {
-      body.innerHTML = `<div class="empty-state" style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-inbox"></i><p>This portfolio hasn't been sent yet.</p></div>`
+      body.innerHTML = `<div class="empty-state" style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-inbox"></i><p>This portfolio hasn't been sent yet.</p></div>`
       return
     }
     body.innerHTML = `
-      <div style="font-size:12.5px;color:#94a3b8;margin-bottom:10px">${sends.length} send${sends.length === 1 ? '' : 's'} total</div>
+      <div style="font-size:12.5px;color:#7E7E8F;margin-bottom:10px">${sends.length} send${sends.length === 1 ? '' : 's'} total</div>
       <table class="data-table">
         <thead><tr><th>Lead</th><th>Recipient</th><th>Sent By</th><th>Sent</th><th>Status</th></tr></thead>
         <tbody>
           ${sends.map((s) => `<tr>
-            <td>${s.lead_name ? `<a href="javascript:void(0)" onclick="closeModal();goLeadDetail('${s.lead_id}')" style="color:#FFB347;font-weight:600">${escapeHtml(s.lead_name)}</a>` : '<span style="color:#64748b">— deleted —</span>'}</td>
-            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_to || '—')}</td>
-            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_by_name || '—')}</td>
-            <td style="font-size:12px;color:#94a3b8">${s.sent_at ? fmtDate(s.sent_at) : '—'}</td>
+            <td>${s.lead_name ? `<a href="javascript:void(0)" onclick="closeModal();goLeadDetail('${s.lead_id}')" style="color:#C9A7FF;font-weight:600">${escapeHtml(s.lead_name)}</a>` : '<span style="color:#7E7E8F">— deleted —</span>'}</td>
+            <td style="font-size:12px;color:#7E7E8F">${escapeHtml(s.sent_to || '—')}</td>
+            <td style="font-size:12px;color:#7E7E8F">${escapeHtml(s.sent_by_name || '—')}</td>
+            <td style="font-size:12px;color:#7E7E8F">${s.sent_at ? fmtDate(s.sent_at) : '—'}</td>
             <td>${s.success ? '<span class="badge badge-done">Sent</span>' : `<span class="badge badge-critical" title="${escapeHtml(s.error || 'failed')}">Failed</span>`}</td>
           </tr>`).join('')}
         </tbody>
@@ -5785,7 +5933,7 @@ async function openPortfolioHistoryModal(portfolioId) {
     `
   } catch (e) {
     const body = document.querySelector('.modal .modal-body')
-    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+    if (body) body.innerHTML = `<div style="padding:24px;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
   }
 }
 
@@ -5793,10 +5941,10 @@ async function openPortfolioHistoryModal(portfolioId) {
 async function openPortfolioPermissionsModal() {
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-user-shield" style="color:#FFB347;margin-right:6px"></i>Portfolio Permissions</h3>
+      <h3><i class="fas fa-user-shield" style="color:#C9A7FF;margin-right:6px"></i>Portfolio Permissions</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
   `, 'modal-lg')
   await _renderPortfolioPermissionsBody()
@@ -5805,7 +5953,7 @@ async function openPortfolioPermissionsModal() {
 async function _renderPortfolioPermissionsBody() {
   const body = document.querySelector('.modal .modal-body')
   if (!body) return
-  body.innerHTML = `<div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
+  body.innerHTML = `<div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
   try {
     const [permRes, usersRes] = await Promise.all([
       API.get('/portfolios/permissions'),
@@ -5836,7 +5984,7 @@ async function _renderPortfolioPermissionsBody() {
       </div>
 
       <div style="margin-top:18px">
-        <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px">Users with permission (${grants.length})</div>
+        <div style="font-size:12px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px">Users with permission (${grants.length})</div>
         ${grants.length ? `
           <table class="data-table">
             <thead><tr><th>User</th><th>Role</th><th>Granted</th><th style="width:90px"></th></tr></thead>
@@ -5844,19 +5992,19 @@ async function _renderPortfolioPermissionsBody() {
               ${grants.map((g) => `<tr>
                 <td>
                   <div style="font-weight:600;color:#e2e8f0">${escapeHtml(g.user_name || '—')}</div>
-                  <div style="font-size:11px;color:#94a3b8">${escapeHtml(g.user_email || '')}</div>
+                  <div style="font-size:11px;color:#7E7E8F">${escapeHtml(g.user_email || '')}</div>
                 </td>
-                <td style="font-size:12px;color:#94a3b8">${escapeHtml(g.user_role || '—')}</td>
-                <td style="font-size:12px;color:#94a3b8">${g.granted_at ? fmtDate(g.granted_at) : '—'}</td>
+                <td style="font-size:12px;color:#7E7E8F">${escapeHtml(g.user_role || '—')}</td>
+                <td style="font-size:12px;color:#7E7E8F">${g.granted_at ? fmtDate(g.granted_at) : '—'}</td>
                 <td><button class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="revokePortfolioPermission('${g.user_id}','${escapeHtml(g.user_name || '').replace(/'/g, "\\'")}')"><i class="fas fa-times"></i> Revoke</button></td>
               </tr>`).join('')}
             </tbody>
           </table>
-        ` : `<div style="padding:14px;color:#64748b;font-size:12.5px">No additional users yet — admins still have full access.</div>`}
+        ` : `<div style="padding:14px;color:#7E7E8F;font-size:12.5px">No additional users yet — admins still have full access.</div>`}
       </div>
     `
   } catch (e) {
-    body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load permissions')}</div>`
+    body.innerHTML = `<div style="padding:24px;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load permissions')}</div>`
   }
 }
 
@@ -5907,10 +6055,10 @@ function goToSalesLibraryPermissions() {
 function _libraryPermissionsModalShell(title) {
   return `
     <div class="modal-header">
-      <h3><i class="fas fa-user-shield" style="color:#FFB347;margin-right:6px"></i>${escapeHtml(title)}</h3>
+      <h3><i class="fas fa-user-shield" style="color:#C9A7FF;margin-right:6px"></i>${escapeHtml(title)}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
   `
 }
@@ -5918,7 +6066,7 @@ function _libraryPermissionsModalShell(title) {
 async function _renderLibraryPermissionsBody(endpointBase, refreshFn) {
   const body = document.querySelector('.modal .modal-body')
   if (!body) return
-  body.innerHTML = `<div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
+  body.innerHTML = `<div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
   try {
     const [permRes, usersRes] = await Promise.all([
       API.get(endpointBase + '/permissions'),
@@ -5947,7 +6095,7 @@ async function _renderLibraryPermissionsBody(endpointBase, refreshFn) {
         <button class="btn btn-primary" onclick="${refreshFn}_grant()"><i class="fas fa-plus"></i> Grant</button>
       </div>
       <div style="margin-top:18px">
-        <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px">Users with permission (${grants.length})</div>
+        <div style="font-size:12px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px">Users with permission (${grants.length})</div>
         ${grants.length ? `
           <table class="data-table">
             <thead><tr><th>User</th><th>Role</th><th>Granted</th><th style="width:90px"></th></tr></thead>
@@ -5955,19 +6103,19 @@ async function _renderLibraryPermissionsBody(endpointBase, refreshFn) {
               ${grants.map((g) => `<tr>
                 <td>
                   <div style="font-weight:600;color:#e2e8f0">${escapeHtml(g.user_name || '—')}</div>
-                  <div style="font-size:11px;color:#94a3b8">${escapeHtml(g.user_email || '')}</div>
+                  <div style="font-size:11px;color:#7E7E8F">${escapeHtml(g.user_email || '')}</div>
                 </td>
-                <td style="font-size:12px;color:#94a3b8">${escapeHtml(g.user_role || '—')}</td>
-                <td style="font-size:12px;color:#94a3b8">${g.granted_at ? fmtDate(g.granted_at) : '—'}</td>
+                <td style="font-size:12px;color:#7E7E8F">${escapeHtml(g.user_role || '—')}</td>
+                <td style="font-size:12px;color:#7E7E8F">${g.granted_at ? fmtDate(g.granted_at) : '—'}</td>
                 <td><button class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="${refreshFn}_revoke('${g.user_id}','${escapeHtml(g.user_name || '').replace(/'/g, "\\'")}')"><i class="fas fa-times"></i> Revoke</button></td>
               </tr>`).join('')}
             </tbody>
           </table>
-        ` : `<div style="padding:14px;color:#64748b;font-size:12.5px">No additional users yet — admins still have full access.</div>`}
+        ` : `<div style="padding:14px;color:#7E7E8F;font-size:12.5px">No additional users yet — admins still have full access.</div>`}
       </div>
     `
   } catch (e) {
-    body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load permissions')}</div>`
+    body.innerHTML = `<div style="padding:24px;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load permissions')}</div>`
   }
 }
 
@@ -5980,7 +6128,7 @@ let _scopeCanManage = false
 let _scopeSendCache = { scopeId: '', leadId: '', leads: [] }
 
 async function renderScopeLibrary(el) {
-  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading scopes…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading scopes…</div>`
   try {
     const res = await API.get('/scopes')
     const list = res.data || res.scopes || []
@@ -6037,16 +6185,16 @@ function _scopeCard(p) {
         <div style="width:46px;height:46px;border-radius:12px;background:rgba(59,130,246,0.18);color:#3b82f6;display:flex;align-items:center;justify-content:center;font-size:20px"><i class="fas fa-file-lines"></i></div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;color:#e2e8f0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.title)}</div>
-          ${p.client_name ? `<div style="font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">For ${escapeHtml(p.client_name)}</div>` : ''}
+          ${p.client_name ? `<div style="font-size:11.5px;color:#7E7E8F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">For ${escapeHtml(p.client_name)}</div>` : ''}
         </div>
       </div>
       ${p.overview ? `<div style="font-size:12.5px;color:#cbd5e1;line-height:1.5;margin-bottom:10px;max-height:60px;overflow:hidden">${escapeHtml(p.overview)}</div>` : ''}
-      <div style="display:flex;gap:14px;font-size:11.5px;color:#94a3b8;margin-bottom:12px;flex-wrap:wrap">
-        <span><i class="fas fa-list-ul" style="margin-right:4px;color:#64748b"></i>${secCount} section${secCount === 1 ? '' : 's'}</span>
-        <span><i class="fas fa-check" style="margin-right:4px;color:#64748b"></i>${delCount} deliverable${delCount === 1 ? '' : 's'}</span>
+      <div style="display:flex;gap:14px;font-size:11.5px;color:#7E7E8F;margin-bottom:12px;flex-wrap:wrap">
+        <span><i class="fas fa-list-ul" style="margin-right:4px;color:#7E7E8F"></i>${secCount} section${secCount === 1 ? '' : 's'}</span>
+        <span><i class="fas fa-check" style="margin-right:4px;color:#7E7E8F"></i>${delCount} deliverable${delCount === 1 ? '' : 's'}</span>
         ${p.file?.url ? `<a href="${escapeHtml(p.file.url)}" target="_blank" rel="noopener" style="color:#3b82f6" title="${escapeHtml(p.file.name)}"><i class="fas fa-paperclip" style="margin-right:4px"></i>File attached</a>` : ''}
-        <span><i class="fas fa-paper-plane" style="margin-right:4px;color:#64748b"></i>${p.send_count || 0} sent</span>
-        ${p.last_sent_at ? `<span><i class="fas fa-clock" style="margin-right:4px;color:#64748b"></i>${fmtDate(p.last_sent_at)}</span>` : ''}
+        <span><i class="fas fa-paper-plane" style="margin-right:4px;color:#7E7E8F"></i>${p.send_count || 0} sent</span>
+        ${p.last_sent_at ? `<span><i class="fas fa-clock" style="margin-right:4px;color:#7E7E8F"></i>${fmtDate(p.last_sent_at)}</span>` : ''}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-primary btn-xs" onclick="openScopeSendModal('${p.id}')"><i class="fas fa-paper-plane"></i> Send</button>
@@ -6129,7 +6277,7 @@ function _renderScopeEditorModal(scopeId) {
     </div>
     <div class="modal-body">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span style="font-size:11.5px;color:#94a3b8">Build a structured SOW with sections, tables, bullets and more.</span>
+        <span style="font-size:11.5px;color:#7E7E8F">Build a structured SOW with sections, tables, bullets and more.</span>
         <button class="btn btn-outline btn-xs" onclick="insertScopeSowTemplate()"><i class="fas fa-wand-magic-sparkles"></i> Insert SOW template</button>
       </div>
 
@@ -6164,7 +6312,7 @@ function _renderScopeEditorModal(scopeId) {
       <div id="scope-sections-wrap"></div>
 
       <details style="margin-top:14px">
-        <summary style="cursor:pointer;font-size:12.5px;color:#94a3b8;padding:8px 0">More document fields (deliverables, timeline, assumptions, footer)</summary>
+        <summary style="cursor:pointer;font-size:12.5px;color:#7E7E8F;padding:8px 0">More document fields (deliverables, timeline, assumptions, footer)</summary>
         <div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-top:8px;background:rgba(255,255,255,0.02)">
           <div class="grid-2">
             <div class="form-group">
@@ -6243,7 +6391,7 @@ function _rerenderScopeSections() {
         <input class="form-input" placeholder="Section heading (e.g. CRM & Lead Management Module)" value="${escapeHtml(s.heading || '')}" oninput="updateScopeSection(${i},'heading',this.value)" style="margin-bottom:10px;font-weight:600"/>
         <div id="scope-blocks-${i}" style="display:flex;flex-direction:column;gap:8px"></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,255,255,0.08)">
-          <span style="font-size:11px;color:#64748b;align-self:center;margin-right:4px">Add block:</span>
+          <span style="font-size:11px;color:#7E7E8F;align-self:center;margin-right:4px">Add block:</span>
           <button class="btn btn-xs btn-outline" onclick="addScopeBlock(${i},'paragraph')"><i class="fas fa-paragraph"></i> Paragraph</button>
           <button class="btn btn-xs btn-outline" onclick="addScopeBlock(${i},'subheading')"><i class="fas fa-heading"></i> Sub-heading</button>
           <button class="btn btn-xs btn-outline" onclick="addScopeBlock(${i},'bullets')"><i class="fas fa-list-ul"></i> Bullets</button>
@@ -6353,7 +6501,7 @@ function removeScopeTableRow(sectionIdx, blockIdx, rowIdx) {
 
 function _scopeBlockToolbar(sectionIdx, blockIdx, blocksLen, label, icon) {
   return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-    <span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;font-weight:600"><i class="fas ${icon}" style="margin-right:4px;color:#64748b"></i>${label}</span>
+    <span style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.4px;font-weight:600"><i class="fas ${icon}" style="margin-right:4px;color:#7E7E8F"></i>${label}</span>
     <div style="display:flex;gap:4px">
       <button class="btn btn-xs btn-outline" title="Move up" onclick="moveScopeBlock(${sectionIdx},${blockIdx},-1)" ${blockIdx === 0 ? 'disabled' : ''}><i class="fas fa-arrow-up"></i></button>
       <button class="btn btn-xs btn-outline" title="Move down" onclick="moveScopeBlock(${sectionIdx},${blockIdx},1)" ${blockIdx === blocksLen - 1 ? 'disabled' : ''}><i class="fas fa-arrow-down"></i></button>
@@ -6381,7 +6529,7 @@ function _renderScopeBlockEditor(sectionIdx, blockIdx, b, blocksLen) {
     const isNum = b.type === 'numbered'
     const itemsHtml = (b.items || []).map((it, i) => `
       <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center">
-        <span style="font-size:11px;color:#64748b;width:18px;text-align:right">${isNum ? (i + 1) + '.' : '•'}</span>
+        <span style="font-size:11px;color:#7E7E8F;width:18px;text-align:right">${isNum ? (i + 1) + '.' : '•'}</span>
         <input class="form-input" placeholder="Item" value="${escapeHtml(it || '')}" oninput="updateScopeListItem(${sectionIdx},${blockIdx},${i},this.value)" style="flex:1"/>
         <button class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="removeScopeListItem(${sectionIdx},${blockIdx},${i})"><i class="fas fa-times"></i></button>
       </div>`).join('')
@@ -6431,7 +6579,7 @@ function _rerenderScopeBlocks(sectionIdx) {
   if (!wrap || !s) return
   _ensureSectionBlocks(s)
   if (!s.blocks.length) {
-    wrap.innerHTML = `<div style="font-size:12px;color:#64748b;padding:10px;text-align:center;border:1px dashed rgba(255,255,255,0.10);border-radius:8px">No blocks yet — add a paragraph, table, or list using the buttons below.</div>`
+    wrap.innerHTML = `<div style="font-size:12px;color:#7E7E8F;padding:10px;text-align:center;border:1px dashed rgba(255,255,255,0.10);border-radius:8px">No blocks yet — add a paragraph, table, or list using the buttons below.</div>`
     return
   }
   wrap.innerHTML = s.blocks.map((b, bi) => _renderScopeBlockEditor(sectionIdx, bi, b, s.blocks.length)).join('')
@@ -6456,7 +6604,7 @@ function _rerenderScopeDeliverables() {
       <input class="form-input" placeholder="Deliverable ${i + 1}" value="${escapeHtml(dl || '')}" oninput="updateScopeDeliverable(${i},this.value)" style="flex:1"/>
       <button class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="removeScopeDeliverable(${i})"><i class="fas fa-times"></i></button>
     </div>
-  `).join('') : `<div style="font-size:11.5px;color:#64748b">No legacy deliverables. Prefer adding a Bullets block inside a section.</div>`
+  `).join('') : `<div style="font-size:11.5px;color:#7E7E8F">No legacy deliverables. Prefer adding a Bullets block inside a section.</div>`
 }
 
 async function submitScopeEditor(scopeId) {
@@ -6540,7 +6688,7 @@ function openScopeUploadModal(existing) {
       <div class="form-group">
         <label class="form-label">SOW file ${isEdit ? '(leave blank to keep current)' : '*'}</label>
         <input id="scope-up-file" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" class="form-input" style="padding:6px"/>
-        <div id="scope-up-file-meta" class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">
+        <div id="scope-up-file-meta" class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">
           ${_scopeUploadState.file?.url
             ? `<i class="fas fa-paperclip" style="color:#3b82f6"></i> Current: <a href="${escapeHtml(_scopeUploadState.file.url)}" target="_blank" rel="noopener" style="color:#3b82f6">${escapeHtml(_scopeUploadState.file.name)}</a> · ${formatBytes(_scopeUploadState.file.size || 0)}`
             : 'PDF / DOCX / image up to 10 MB. Attached to the email when you send this SOW to a lead.'}
@@ -6776,11 +6924,11 @@ function _openScopeFileViewer(s) {
   const isImg = /^image\//.test(mime) || /\.(png|jpe?g|gif|webp)$/i.test(name)
   const viewerHtml = url
     ? (isPdf
-        ? `<iframe src="${escapeHtml(url)}" style="width:100%;height:65vh;border:1px solid var(--border);border-radius:10px;background:#0f172a"></iframe>`
+        ? `<iframe src="${escapeHtml(url)}" style="width:100%;height:65vh;border:1px solid var(--border);border-radius:10px;background:#0B0B0D"></iframe>`
         : isImg
           ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:65vh;border-radius:10px;border:1px solid var(--border);display:block;margin:0 auto"/>`
-          : `<div style="padding:30px;text-align:center;color:#94a3b8;border:1px dashed var(--border);border-radius:10px"><i class="fas fa-file" style="font-size:32px;color:#3b82f6;margin-bottom:10px;display:block"></i>${escapeHtml(name)}<div style="margin-top:14px"><a class="btn btn-primary btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener"><i class="fas fa-download"></i> Open / Download</a></div></div>`)
-    : `<div style="padding:30px;text-align:center;color:#FF8866">No file attached on this entry.</div>`
+          : `<div style="padding:30px;text-align:center;color:#7E7E8F;border:1px dashed var(--border);border-radius:10px"><i class="fas fa-file" style="font-size:32px;color:#3b82f6;margin-bottom:10px;display:block"></i>${escapeHtml(name)}<div style="margin-top:14px"><a class="btn btn-primary btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener"><i class="fas fa-download"></i> Open / Download</a></div></div>`)
+    : `<div style="padding:30px;text-align:center;color:#A970FF">No file attached on this entry.</div>`
 
   showModal(`
     <div class="modal-header">
@@ -6788,9 +6936,9 @@ function _openScopeFileViewer(s) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div style="font-size:12.5px;color:#94a3b8;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap">
-        ${s.client_name ? `<span><i class="fas fa-user" style="margin-right:4px;color:#64748b"></i>${escapeHtml(s.client_name)}</span>` : ''}
-        ${f.size ? `<span><i class="fas fa-paperclip" style="margin-right:4px;color:#64748b"></i>${escapeHtml(name)} · ${formatBytes(f.size)}</span>` : ''}
+      <div style="font-size:12.5px;color:#7E7E8F;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap">
+        ${s.client_name ? `<span><i class="fas fa-user" style="margin-right:4px;color:#7E7E8F"></i>${escapeHtml(s.client_name)}</span>` : ''}
+        ${f.size ? `<span><i class="fas fa-paperclip" style="margin-right:4px;color:#7E7E8F"></i>${escapeHtml(name)} · ${formatBytes(f.size)}</span>` : ''}
         ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:#3b82f6"><i class="fas fa-up-right-from-square"></i> Open in new tab</a>` : ''}
       </div>
       ${s.overview ? `<div style="font-size:13px;color:#cbd5e1;line-height:1.6;padding:10px 12px;background:rgba(59,130,246,0.06);border-left:3px solid #3b82f6;border-radius:0 8px 8px 0;margin-bottom:12px;white-space:pre-wrap">${escapeHtml(s.overview)}</div>` : ''}
@@ -6821,8 +6969,8 @@ function _renderScopeBlockPreviewHtml(b) {
   if (b.type === 'table') {
     const cols = b.columns || []
     const headHtml = cols.length ? `
-      <thead><tr style="background:rgba(255,122,69,0.18)">
-        ${cols.map((c) => `<th style="padding:8px 10px;text-align:left;font-size:12px;font-weight:700;color:#e2e8f0;border:1px solid rgba(255,122,69,0.22)">${escapeHtml(c)}</th>`).join('')}
+      <thead><tr style="background:rgba(169,112,255,0.18)">
+        ${cols.map((c) => `<th style="padding:8px 10px;text-align:left;font-size:12px;font-weight:700;color:#e2e8f0;border:1px solid rgba(169,112,255,0.22)">${escapeHtml(c)}</th>`).join('')}
       </tr></thead>` : ''
     const colCount = cols.length || (b.rows?.[0]?.length ?? 1)
     const bodyHtml = (b.rows || []).map((r) => {
@@ -6835,7 +6983,7 @@ function _renderScopeBlockPreviewHtml(b) {
     return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin:10px 0">${headHtml}<tbody>${bodyHtml}</tbody></table></div>`
   }
   if (b.type === 'code') {
-    return `<pre style="margin:10px 0;padding:12px;background:rgba(15,23,42,0.7);color:#e2e8f0;border-radius:8px;font:12px/1.55 'IBM Plex Mono','Courier New',monospace;white-space:pre;overflow:auto">${escapeHtml(b.text || '')}</pre>`
+    return `<pre style="margin:10px 0;padding:12px;background:rgba(11,11,13,0.7);color:#e2e8f0;border-radius:8px;font:12px/1.55 'IBM Plex Mono','Courier New',monospace;white-space:pre;overflow:auto">${escapeHtml(b.text || '')}</pre>`
   }
   return ''
 }
@@ -6845,26 +6993,26 @@ function _openScopePreviewFromObject(s) {
   const projectName = s.project_name || s.title || ''
   const sectionsHtml = (s.sections || []).map((x, idx) => `
     <div style="margin-top:18px">
-      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #FF7A45;margin-bottom:8px">${idx + 1}. ${escapeHtml(x.heading || '')}</div>
+      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #A970FF;margin-bottom:8px">${idx + 1}. ${escapeHtml(x.heading || '')}</div>
       ${x.body ? `<div style="font-size:13.5px;color:#cbd5e1;line-height:1.65;margin:8px 0;white-space:pre-wrap">${escapeHtml(x.body)}</div>` : ''}
       ${(x.blocks || []).map(_renderScopeBlockPreviewHtml).join('')}
     </div>`).join('')
 
   const delHtml = (s.deliverables || []).length ? `
     <div style="margin-top:18px">
-      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #FF7A45;margin-bottom:8px">Deliverables</div>
+      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #A970FF;margin-bottom:8px">Deliverables</div>
       <ul style="margin:8px 0;padding-left:22px;color:#cbd5e1;font-size:13px;line-height:1.65">
         ${s.deliverables.map((d) => `<li style="margin-bottom:4px">${escapeHtml(d)}</li>`).join('')}
       </ul>
     </div>` : ''
   const timelineHtml = s.timeline_text ? `
     <div style="margin-top:18px">
-      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #FF7A45;margin-bottom:8px">Timeline</div>
+      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #A970FF;margin-bottom:8px">Timeline</div>
       <div style="font-size:13.5px;color:#cbd5e1;line-height:1.65;white-space:pre-wrap">${escapeHtml(s.timeline_text)}</div>
     </div>` : ''
   const assumptionsHtml = s.assumptions ? `
     <div style="margin-top:18px">
-      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #FF7A45;margin-bottom:8px">Assumptions &amp; Notes</div>
+      <div style="display:inline-block;font-weight:700;color:#e2e8f0;font-size:15px;padding-bottom:4px;border-bottom:2px solid #A970FF;margin-bottom:8px">Assumptions &amp; Notes</div>
       <div style="font-size:13.5px;color:#cbd5e1;line-height:1.65;white-space:pre-wrap">${escapeHtml(s.assumptions)}</div>
     </div>` : ''
 
@@ -6874,21 +7022,21 @@ function _openScopePreviewFromObject(s) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div style="text-align:center;padding-bottom:12px;border-bottom:2px solid #FF7A45;margin-bottom:14px">
+      <div style="text-align:center;padding-bottom:12px;border-bottom:2px solid #A970FF;margin-bottom:14px">
         <div style="font-size:20px;font-weight:800;color:#e2e8f0;letter-spacing:.5px">STATEMENT OF WORK (SOW)</div>
-        ${projectName ? `<div style="font-size:14px;font-weight:700;color:#FF7A45;margin-top:6px">${escapeHtml(projectName)}</div>` : ''}
+        ${projectName ? `<div style="font-size:14px;font-weight:700;color:#A970FF;margin-top:6px">${escapeHtml(projectName)}</div>` : ''}
       </div>
       <div style="font-size:13px;color:#cbd5e1;line-height:1.7;margin-bottom:14px">
         ${(s.client_name) ? `<div><strong style="color:#e2e8f0">Client:</strong> ${escapeHtml(s.client_name)}</div>` : ''}
         ${(s.spoc_name) ? `<div><strong style="color:#e2e8f0">SPOC:</strong> ${escapeHtml(s.spoc_name)}</div>` : ''}
         <div><strong style="color:#e2e8f0">Development Partner:</strong> Mariox Software</div>
       </div>
-      ${s.overview ? `<div style="font-size:13.5px;color:#cbd5e1;line-height:1.7;padding:12px 14px;border-left:3px solid #FF7A45;background:rgba(255,122,69,0.06);border-radius:0 8px 8px 0;margin-bottom:14px;white-space:pre-wrap">${escapeHtml(s.overview)}</div>` : ''}
+      ${s.overview ? `<div style="font-size:13.5px;color:#cbd5e1;line-height:1.7;padding:12px 14px;border-left:3px solid #A970FF;background:rgba(169,112,255,0.06);border-radius:0 8px 8px 0;margin-bottom:14px;white-space:pre-wrap">${escapeHtml(s.overview)}</div>` : ''}
       ${sectionsHtml}
       ${delHtml}
       ${timelineHtml}
       ${assumptionsHtml}
-      ${s.footer_text ? `<div style="margin-top:18px;font-size:13px;color:#94a3b8;line-height:1.6;white-space:pre-wrap">${escapeHtml(s.footer_text)}</div>` : ''}
+      ${s.footer_text ? `<div style="margin-top:18px;font-size:13px;color:#7E7E8F;line-height:1.6;white-space:pre-wrap">${escapeHtml(s.footer_text)}</div>` : ''}
     </div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
   `, 'modal-xl')
@@ -6897,7 +7045,7 @@ function _openScopePreviewFromObject(s) {
 async function openScopeSendModal(scopeId) {
   showModal(`
     <div class="modal-header"><h3><i class="fas fa-paper-plane" style="color:#3b82f6;margin-right:6px"></i>Send Scope</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
   `, 'modal-lg')
   try {
     const [scopeRes, leadsRes] = await Promise.all([
@@ -6934,7 +7082,7 @@ async function openScopeSendModal(scopeId) {
     `
   } catch (e) {
     const body = document.querySelector('.modal .modal-body')
-    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+    if (body) body.innerHTML = `<div style="padding:24px;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
   }
 }
 
@@ -6972,7 +7120,7 @@ async function submitScopeSend() {
 async function openScopeHistoryModal(scopeId) {
   showModal(`
     <div class="modal-header"><h3><i class="fas fa-clock-rotate-left" style="color:#3b82f6;margin-right:6px"></i>Send History</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
   `, 'modal-lg')
   try {
@@ -6980,24 +7128,24 @@ async function openScopeHistoryModal(scopeId) {
     const sends = res.data || res.sends || []
     const body = document.querySelector('.modal .modal-body')
     if (!body) return
-    if (!sends.length) { body.innerHTML = `<div class="empty-state" style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-inbox"></i><p>This scope hasn't been sent yet.</p></div>`; return }
+    if (!sends.length) { body.innerHTML = `<div class="empty-state" style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-inbox"></i><p>This scope hasn't been sent yet.</p></div>`; return }
     body.innerHTML = `
-      <div style="font-size:12.5px;color:#94a3b8;margin-bottom:10px">${sends.length} send${sends.length === 1 ? '' : 's'} total</div>
+      <div style="font-size:12.5px;color:#7E7E8F;margin-bottom:10px">${sends.length} send${sends.length === 1 ? '' : 's'} total</div>
       <table class="data-table">
         <thead><tr><th>Lead</th><th>Recipient</th><th>Sent By</th><th>Sent</th><th>Status</th></tr></thead>
         <tbody>
           ${sends.map((s) => `<tr>
-            <td>${s.lead_name ? `<a href="javascript:void(0)" onclick="closeModal();goLeadDetail('${s.lead_id}')" style="color:#3b82f6;font-weight:600">${escapeHtml(s.lead_name)}</a>` : '<span style="color:#64748b">— deleted —</span>'}</td>
-            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_to || '—')}</td>
-            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_by_name || '—')}</td>
-            <td style="font-size:12px;color:#94a3b8">${s.sent_at ? fmtDate(s.sent_at) : '—'}</td>
+            <td>${s.lead_name ? `<a href="javascript:void(0)" onclick="closeModal();goLeadDetail('${s.lead_id}')" style="color:#3b82f6;font-weight:600">${escapeHtml(s.lead_name)}</a>` : '<span style="color:#7E7E8F">— deleted —</span>'}</td>
+            <td style="font-size:12px;color:#7E7E8F">${escapeHtml(s.sent_to || '—')}</td>
+            <td style="font-size:12px;color:#7E7E8F">${escapeHtml(s.sent_by_name || '—')}</td>
+            <td style="font-size:12px;color:#7E7E8F">${s.sent_at ? fmtDate(s.sent_at) : '—'}</td>
             <td>${s.success ? '<span class="badge badge-done">Sent</span>' : `<span class="badge badge-critical" title="${escapeHtml(s.error || 'failed')}">Failed</span>`}</td>
           </tr>`).join('')}
         </tbody>
       </table>`
   } catch (e) {
     const body = document.querySelector('.modal .modal-body')
-    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+    if (body) body.innerHTML = `<div style="padding:24px;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
   }
 }
 
@@ -7040,7 +7188,7 @@ function _qFmt(n, code) {
 }
 
 async function renderQuotationLibrary(el) {
-  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading quotations…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading quotations…</div>`
   try {
     const res = await API.get('/quotations')
     const list = res.data || res.quotations || []
@@ -7096,19 +7244,19 @@ function _quoteCard(p) {
         <div style="width:46px;height:46px;border-radius:12px;background:rgba(34,197,94,0.18);color:#22c55e;display:flex;align-items:center;justify-content:center;font-size:20px"><i class="fas fa-file-invoice-dollar"></i></div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;color:#e2e8f0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.title)}</div>
-          <div style="font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.quote_number ? '#' + escapeHtml(p.quote_number) + ' · ' : ''}${escapeHtml(p.client_name || '—')}</div>
+          <div style="font-size:11.5px;color:#7E7E8F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.quote_number ? '#' + escapeHtml(p.quote_number) + ' · ' : ''}${escapeHtml(p.client_name || '—')}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.03)">
-        <span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Grand Total</span>
+        <span style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Grand Total</span>
         <span style="font-size:16px;font-weight:700;color:#22c55e">${_qFmt(p.grand_total, p.currency)}</span>
       </div>
-      <div style="display:flex;gap:14px;font-size:11.5px;color:#94a3b8;margin-bottom:12px;flex-wrap:wrap">
-        <span><i class="fas fa-list" style="margin-right:4px;color:#64748b"></i>${items} line${items === 1 ? '' : 's'}</span>
-        <span><i class="fas fa-percent" style="margin-right:4px;color:#64748b"></i>${p.tax_percent || 0}% tax</span>
-        ${p.validity_date ? `<span><i class="fas fa-calendar" style="margin-right:4px;color:#64748b"></i>Valid ${escapeHtml(p.validity_date)}</span>` : ''}
+      <div style="display:flex;gap:14px;font-size:11.5px;color:#7E7E8F;margin-bottom:12px;flex-wrap:wrap">
+        <span><i class="fas fa-list" style="margin-right:4px;color:#7E7E8F"></i>${items} line${items === 1 ? '' : 's'}</span>
+        <span><i class="fas fa-percent" style="margin-right:4px;color:#7E7E8F"></i>${p.tax_percent || 0}% tax</span>
+        ${p.validity_date ? `<span><i class="fas fa-calendar" style="margin-right:4px;color:#7E7E8F"></i>Valid ${escapeHtml(p.validity_date)}</span>` : ''}
         ${p.file?.url ? `<a href="${escapeHtml(p.file.url)}" target="_blank" rel="noopener" style="color:#22c55e" title="${escapeHtml(p.file.name)}"><i class="fas fa-paperclip" style="margin-right:4px"></i>File attached</a>` : ''}
-        <span><i class="fas fa-paper-plane" style="margin-right:4px;color:#64748b"></i>${p.send_count || 0} sent</span>
+        <span><i class="fas fa-paper-plane" style="margin-right:4px;color:#7E7E8F"></i>${p.send_count || 0} sent</span>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-primary btn-xs" onclick="openQuoteSendModal('${p.id}')"><i class="fas fa-paper-plane"></i> Send</button>
@@ -7318,21 +7466,21 @@ function _openQuoteFileViewer(q) {
   const isImg = /^image\//.test(mime) || /\.(png|jpe?g|gif|webp)$/i.test(name)
   const viewerHtml = url
     ? (isPdf
-        ? `<iframe src="${escapeHtml(url)}" style="width:100%;height:65vh;border:1px solid var(--border);border-radius:10px;background:#0f172a"></iframe>`
+        ? `<iframe src="${escapeHtml(url)}" style="width:100%;height:65vh;border:1px solid var(--border);border-radius:10px;background:#0B0B0D"></iframe>`
         : isImg
           ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:65vh;border-radius:10px;border:1px solid var(--border);display:block;margin:0 auto"/>`
-          : `<div style="padding:30px;text-align:center;color:#94a3b8;border:1px dashed var(--border);border-radius:10px"><i class="fas fa-file" style="font-size:32px;color:#22c55e;margin-bottom:10px;display:block"></i>${escapeHtml(name)}<div style="margin-top:14px"><a class="btn btn-primary btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener"><i class="fas fa-download"></i> Open / Download</a></div></div>`)
-    : `<div style="padding:30px;text-align:center;color:#FF8866">No file attached on this entry.</div>`
+          : `<div style="padding:30px;text-align:center;color:#7E7E8F;border:1px dashed var(--border);border-radius:10px"><i class="fas fa-file" style="font-size:32px;color:#22c55e;margin-bottom:10px;display:block"></i>${escapeHtml(name)}<div style="margin-top:14px"><a class="btn btn-primary btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener"><i class="fas fa-download"></i> Open / Download</a></div></div>`)
+    : `<div style="padding:30px;text-align:center;color:#A970FF">No file attached on this entry.</div>`
   showModal(`
     <div class="modal-header">
       <h3><i class="fas fa-eye" style="color:#22c55e;margin-right:6px"></i>${escapeHtml(q.title || 'Quotation')}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div style="font-size:12.5px;color:#94a3b8;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap">
-        ${q.quote_number ? `<span><i class="fas fa-hashtag" style="margin-right:4px;color:#64748b"></i>${escapeHtml(q.quote_number)}</span>` : ''}
-        ${q.client_name ? `<span><i class="fas fa-user" style="margin-right:4px;color:#64748b"></i>${escapeHtml(q.client_name)}</span>` : ''}
-        ${f.size ? `<span><i class="fas fa-paperclip" style="margin-right:4px;color:#64748b"></i>${escapeHtml(name)} · ${formatBytes(f.size)}</span>` : ''}
+      <div style="font-size:12.5px;color:#7E7E8F;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap">
+        ${q.quote_number ? `<span><i class="fas fa-hashtag" style="margin-right:4px;color:#7E7E8F"></i>${escapeHtml(q.quote_number)}</span>` : ''}
+        ${q.client_name ? `<span><i class="fas fa-user" style="margin-right:4px;color:#7E7E8F"></i>${escapeHtml(q.client_name)}</span>` : ''}
+        ${f.size ? `<span><i class="fas fa-paperclip" style="margin-right:4px;color:#7E7E8F"></i>${escapeHtml(name)} · ${formatBytes(f.size)}</span>` : ''}
         ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:#22c55e"><i class="fas fa-up-right-from-square"></i> Open in new tab</a>` : ''}
       </div>
       ${q.intro_text ? `<div style="font-size:13px;color:#cbd5e1;line-height:1.6;padding:10px 12px;background:rgba(34,197,94,0.06);border-left:3px solid #22c55e;border-radius:0 8px 8px 0;margin-bottom:12px;white-space:pre-wrap">${escapeHtml(q.intro_text)}</div>` : ''}
@@ -7383,7 +7531,7 @@ function openQuoteUploadModal(existing) {
       <div class="form-group">
         <label class="form-label">Quotation file ${isEdit ? '(leave blank to keep current)' : '*'}</label>
         <input id="quote-up-file" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xls,.xlsx" class="form-input" style="padding:6px"/>
-        <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">
+        <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">
           ${_quoteUploadState.file?.url
             ? `<i class="fas fa-paperclip" style="color:#22c55e"></i> Current: <a href="${escapeHtml(_quoteUploadState.file.url)}" target="_blank" rel="noopener" style="color:#22c55e">${escapeHtml(_quoteUploadState.file.name)}</a> · ${formatBytes(_quoteUploadState.file.size || 0)}`
             : 'PDF / DOCX / XLS / image up to 10 MB. Attached when you send this quote.'}
@@ -7521,9 +7669,9 @@ async function openQuotePreview(id) {
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
           <div>
             <div style="font-size:18px;font-weight:700;color:#e2e8f0">${escapeHtml(q.title)}</div>
-            ${q.client_name ? `<div style="font-size:12px;color:#94a3b8;margin-top:2px">Prepared for ${escapeHtml(q.client_name)}</div>` : ''}
+            ${q.client_name ? `<div style="font-size:12px;color:#7E7E8F;margin-top:2px">Prepared for ${escapeHtml(q.client_name)}</div>` : ''}
           </div>
-          <div style="text-align:right;font-size:12px;color:#94a3b8">
+          <div style="text-align:right;font-size:12px;color:#7E7E8F">
             ${q.quote_number ? `Quote #${escapeHtml(q.quote_number)}<br/>` : ''}
             ${q.validity_date ? `Valid till ${escapeHtml(q.validity_date)}` : ''}
           </div>
@@ -7548,7 +7696,7 @@ async function openQuotePreview(id) {
 async function openQuoteSendModal(quotationId) {
   showModal(`
     <div class="modal-header"><h3><i class="fas fa-paper-plane" style="color:#22c55e;margin-right:6px"></i>Send Quotation</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
   `, 'modal-lg')
   try {
     const [qRes, leadsRes] = await Promise.all([
@@ -7584,7 +7732,7 @@ async function openQuoteSendModal(quotationId) {
     `
   } catch (e) {
     const body = document.querySelector('.modal .modal-body')
-    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+    if (body) body.innerHTML = `<div style="padding:24px;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
   }
 }
 
@@ -7622,7 +7770,7 @@ async function submitQuoteSend() {
 async function openQuoteHistoryModal(quotationId) {
   showModal(`
     <div class="modal-header"><h3><i class="fas fa-clock-rotate-left" style="color:#22c55e;margin-right:6px"></i>Send History</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-    <div class="modal-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-body"><div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
   `, 'modal-lg')
   try {
@@ -7630,25 +7778,25 @@ async function openQuoteHistoryModal(quotationId) {
     const sends = res.data || res.sends || []
     const body = document.querySelector('.modal .modal-body')
     if (!body) return
-    if (!sends.length) { body.innerHTML = `<div class="empty-state" style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-inbox"></i><p>This quotation hasn't been sent yet.</p></div>`; return }
+    if (!sends.length) { body.innerHTML = `<div class="empty-state" style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-inbox"></i><p>This quotation hasn't been sent yet.</p></div>`; return }
     body.innerHTML = `
-      <div style="font-size:12.5px;color:#94a3b8;margin-bottom:10px">${sends.length} send${sends.length === 1 ? '' : 's'} total</div>
+      <div style="font-size:12.5px;color:#7E7E8F;margin-bottom:10px">${sends.length} send${sends.length === 1 ? '' : 's'} total</div>
       <table class="data-table">
         <thead><tr><th>Lead</th><th>Recipient</th><th>Total</th><th>Sent By</th><th>Sent</th><th>Status</th></tr></thead>
         <tbody>
           ${sends.map((s) => `<tr>
-            <td>${s.lead_name ? `<a href="javascript:void(0)" onclick="closeModal();goLeadDetail('${s.lead_id}')" style="color:#22c55e;font-weight:600">${escapeHtml(s.lead_name)}</a>` : '<span style="color:#64748b">— deleted —</span>'}</td>
-            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_to || '—')}</td>
+            <td>${s.lead_name ? `<a href="javascript:void(0)" onclick="closeModal();goLeadDetail('${s.lead_id}')" style="color:#22c55e;font-weight:600">${escapeHtml(s.lead_name)}</a>` : '<span style="color:#7E7E8F">— deleted —</span>'}</td>
+            <td style="font-size:12px;color:#7E7E8F">${escapeHtml(s.sent_to || '—')}</td>
             <td style="font-size:12px;color:#e2e8f0;font-weight:600">${_qFmt(s.grand_total || 0, s.currency || 'INR')}</td>
-            <td style="font-size:12px;color:#94a3b8">${escapeHtml(s.sent_by_name || '—')}</td>
-            <td style="font-size:12px;color:#94a3b8">${s.sent_at ? fmtDate(s.sent_at) : '—'}</td>
+            <td style="font-size:12px;color:#7E7E8F">${escapeHtml(s.sent_by_name || '—')}</td>
+            <td style="font-size:12px;color:#7E7E8F">${s.sent_at ? fmtDate(s.sent_at) : '—'}</td>
             <td>${s.success ? '<span class="badge badge-done">Sent</span>' : `<span class="badge badge-critical" title="${escapeHtml(s.error || 'failed')}">Failed</span>`}</td>
           </tr>`).join('')}
         </tbody>
       </table>`
   } catch (e) {
     const body = document.querySelector('.modal .modal-body')
-    if (body) body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+    if (body) body.innerHTML = `<div style="padding:24px;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
   }
 }
 
@@ -7699,7 +7847,7 @@ function _fmtINR(n) {
 
 async function renderSalesIncentivePage(el) {
   if (!_salesIncentivePeriod) _salesIncentivePeriod = _currentSalesIncentivePeriod()
-  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading incentive tracker…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading incentive tracker…</div>`
   try {
     const res = await API.get('/sales-incentives/summary?period=' + encodeURIComponent(_salesIncentivePeriod))
     _salesIncentiveCache = res
@@ -7725,10 +7873,10 @@ async function renderSalesIncentivePage(el) {
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">
         ${_siKpi('Total Target', _fmtINR(totals.target), '#3b82f6', 'fa-bullseye')}
-        ${_siKpi('Total Achieved', _fmtINR(totals.achieved), '#FFB347', 'fa-trophy')}
+        ${_siKpi('Total Achieved', _fmtINR(totals.achieved), '#C9A7FF', 'fa-trophy')}
         ${_siKpi('Earned (this period)', _fmtINR(totals.earned), '#22c55e', 'fa-money-bill-wave')}
-        ${_siKpi('Paid out', _fmtINR(totals.paid_amount), '#94a3b8', 'fa-check-circle')}
-        ${_siKpi('Pending payout', _fmtINR(totals.pending_amount), '#FF7A45', 'fa-hourglass-half')}
+        ${_siKpi('Paid out', _fmtINR(totals.paid_amount), '#7E7E8F', 'fa-check-circle')}
+        ${_siKpi('Pending payout', _fmtINR(totals.pending_amount), '#A970FF', 'fa-hourglass-half')}
       </div>
 
       <div style="padding:10px 14px;border-radius:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.18);color:#86efac;font-size:12.5px;margin-bottom:12px">
@@ -7767,7 +7915,7 @@ function _siKpi(label, value, color, icon) {
   return `<div class="card"><div class="card-body" style="padding:14px 16px;display:flex;align-items:center;gap:12px">
     <div style="width:42px;height:42px;border-radius:12px;background:${color}22;display:flex;align-items:center;justify-content:center;color:${color};font-size:18px"><i class="fas ${icon}"></i></div>
     <div>
-      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
+      <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
       <div style="font-size:18px;font-weight:700;color:#e2e8f0">${value}</div>
     </div>
   </div></div>`
@@ -7781,7 +7929,7 @@ function _siRow(r, canOverride, canMarkPaid) {
     ? `<span style="font-size:11px;color:#22c55e">+${_fmtINR(aboveTarget)}</span>`
     : aboveTarget < 0
       ? `<span style="font-size:11px;color:#FF5E3A">${_fmtINR(aboveTarget)}</span>`
-      : `<span style="font-size:11px;color:#64748b">on target</span>`
+      : `<span style="font-size:11px;color:#7E7E8F">on target</span>`
   // Stash the row in a lookup so the payment modal can render its history
   // without an extra fetch. Used by openSalesIncentivePayments below.
   if (!window._siRowsById) window._siRowsById = {}
@@ -7791,10 +7939,10 @@ function _siRow(r, canOverride, canMarkPaid) {
   return `<tr>
     <td>
       <div style="display:flex;align-items:center;gap:10px">
-        ${avatar(r.user_name, r.avatar_color || '#FF7A45', 'sm')}
+        ${avatar(r.user_name, r.avatar_color || '#A970FF', 'sm')}
         <div>
           <div style="font-weight:600;color:#e2e8f0">${escapeHtml(r.user_name || '—')}</div>
-          <div style="font-size:11px;color:#94a3b8">${escapeHtml(r.user_email || '')} · ${escapeHtml(r.user_role || '')}</div>
+          <div style="font-size:11px;color:#7E7E8F">${escapeHtml(r.user_email || '')} · ${escapeHtml(r.user_role || '')}</div>
         </div>
       </div>
     </td>
@@ -7802,21 +7950,21 @@ function _siRow(r, canOverride, canMarkPaid) {
     <td style="text-align:right">
       <div style="font-weight:600;color:#e2e8f0">${_fmtINR(r.achieved)}${overrideTag}</div>
       ${(r.user_role === 'sales_tl' || r.user_role === 'sales_manager') && r.achieved_override === null && Number(r.team_achieved || 0) > 0
-        ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px" title="Own bookings + team rollup">Own ${_fmtINR(r.own_achieved||0)} + Team ${_fmtINR(r.team_achieved||0)}</div>`
+        ? `<div style="font-size:10px;color:#7E7E8F;margin-top:2px" title="Own bookings + team rollup">Own ${_fmtINR(r.own_achieved||0)} + Team ${_fmtINR(r.team_achieved||0)}</div>`
         : ''}
       <div>${aboveBadge}</div>
     </td>
-    <td style="text-align:right;font-size:12px;color:#94a3b8" title="Percent of above-target value">${Number(r.incentive_rate || 0)}%</td>
+    <td style="text-align:right;font-size:12px;color:#7E7E8F" title="Percent of above-target value">${Number(r.incentive_rate || 0)}%</td>
     <td style="text-align:right">
       <div style="font-weight:700;color:#22c55e">${_fmtINR(r.earned)}</div>
-      ${(r.payments && r.payments.length) || paidAmt ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">Paid ${_fmtINR(paidAmt)}${(r.payments && r.payments.length > 0) ? ' · ' + r.payments.length + ' txn' : ''}</div>` : ''}
-      ${balance > 0 && r.earned > 0 ? `<div style="font-size:11px;color:#FF8866">Balance ${_fmtINR(balance)}</div>` : ''}
+      ${(r.payments && r.payments.length) || paidAmt ? `<div style="font-size:11px;color:#7E7E8F;margin-top:2px">Paid ${_fmtINR(paidAmt)}${(r.payments && r.payments.length > 0) ? ' · ' + r.payments.length + ' txn' : ''}</div>` : ''}
+      ${balance > 0 && r.earned > 0 ? `<div style="font-size:11px;color:#A970FF">Balance ${_fmtINR(balance)}</div>` : ''}
     </td>
     <td>
       ${r.paid
         ? `<span class="badge badge-done" title="${r.paid_at ? 'Last action ' + fmtDate(r.paid_at) : ''}">Paid</span>`
         : balance > 0 && paidAmt > 0
-          ? `<span class="badge" style="background:rgba(255,180,120,0.15);color:#FFB347">Partial</span>`
+          ? `<span class="badge" style="background:rgba(179,136,255,0.15);color:#C9A7FF">Partial</span>`
           : `<span class="badge badge-todo">Pending</span>`}
     </td>
     <td>
@@ -7864,27 +8012,27 @@ function _siEditPeriodModalHtml(opts) {
     <div class="form-group">
       <label class="form-label">Monthly target for this period (₹)</label>
       <input id="si-edit-target" type="text" inputmode="decimal" class="form-input" value="${opts.target}" placeholder="e.g. 500000"/>
-      <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Per-period target. Independent of the agent's profile setting.</div>
+      <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Per-period target. Independent of the agent's profile setting.</div>
     </div>` : `<div class="form-group"><label class="form-label">Monthly target (read-only)</label><input class="form-input" value="₹${Number(opts.target).toLocaleString('en-IN')}" disabled/></div>`
 
   const rateField = opts.canSetTarget ? `
     <div class="form-group">
       <label class="form-label">Incentive rate (% of above-target value)</label>
       <input id="si-edit-rate" type="text" inputmode="decimal" class="form-input" value="${opts.rate}" placeholder="e.g. 10"/>
-      <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">e.g. <strong>10</strong> = 10% commission. On ₹10,000 above target the agent earns ₹1,000.</div>
+      <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">e.g. <strong>10</strong> = 10% commission. On ₹10,000 above target the agent earns ₹1,000.</div>
     </div>` : `<div class="form-group"><label class="form-label">Incentive rate (read-only)</label><input class="form-input" value="${opts.rate}%" disabled/></div>`
 
   const overrideField = opts.canOverride ? `
     <div class="form-group">
       <label class="form-label">Achieved (₹) — override auto-calculated value</label>
       <input id="si-edit-achieved" type="text" inputmode="decimal" class="form-input" value="${opts.achievedOverride === null || opts.achievedOverride === undefined ? '' : opts.achievedOverride}" placeholder="leave blank for auto: ${opts.achievedAuto}"/>
-      <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Leave blank to auto-sum project revenue (${'₹' + Number(opts.achievedAuto).toLocaleString('en-IN')} this period).</div>
+      <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Leave blank to auto-sum project revenue (${'₹' + Number(opts.achievedAuto).toLocaleString('en-IN')} this period).</div>
     </div>` : ''
 
   return `
-    <div class="modal-header"><h3><i class="fas fa-pen" style="color:#FFB347;margin-right:6px"></i>${escapeHtml(opts.title)}</h3><button class="close-btn" onclick="${opts.onCancel}">✕</button></div>
+    <div class="modal-header"><h3><i class="fas fa-pen" style="color:#C9A7FF;margin-right:6px"></i>${escapeHtml(opts.title)}</h3><button class="close-btn" onclick="${opts.onCancel}">✕</button></div>
     <div class="modal-body">
-      ${(!opts.canSetTarget && !opts.canOverride) ? '<div style="padding:10px 12px;border-radius:8px;background:rgba(255,180,120,0.10);border:1px solid rgba(255,180,120,0.30);color:#FFB347;font-size:12.5px;margin-bottom:12px"><i class="fas fa-lock"></i> You don\'t have permission to edit any field. Settings → Roles & Permissions → Sales Incentive.</div>' : ''}
+      ${(!opts.canSetTarget && !opts.canOverride) ? '<div style="padding:10px 12px;border-radius:8px;background:rgba(179,136,255,0.10);border:1px solid rgba(179,136,255,0.30);color:#C9A7FF;font-size:12.5px;margin-bottom:12px"><i class="fas fa-lock"></i> You don\'t have permission to edit any field. Settings → Roles & Permissions → Sales Incentive.</div>' : ''}
       ${targetField}
       ${rateField}
       ${overrideField}
@@ -7970,18 +8118,18 @@ function _siPaymentsModalHtml(row, userId, period) {
           <div style="font-size:11px;color:#86efac;text-transform:uppercase;letter-spacing:.5px">Earned</div>
           <div style="font-size:18px;font-weight:700;color:#86efac">${_fmtINR(earned)}</div>
         </div>
-        <div style="padding:10px 12px;border-radius:8px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.22)">
+        <div style="padding:10px 12px;border-radius:8px;background:rgba(179,136,255,0.08);border:1px solid rgba(179,136,255,0.22)">
           <div style="font-size:11px;color:#cbd5e1;text-transform:uppercase;letter-spacing:.5px">Paid so far</div>
           <div style="font-size:18px;font-weight:700;color:#cbd5e1">${_fmtINR(paid)}</div>
         </div>
-        <div style="padding:10px 12px;border-radius:8px;background:${balance > 0 ? 'rgba(255,122,69,0.10);border:1px solid rgba(255,122,69,0.22)' : 'rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.22)'}">
-          <div style="font-size:11px;color:${balance > 0 ? '#FFB347' : '#86efac'};text-transform:uppercase;letter-spacing:.5px">Balance</div>
-          <div style="font-size:18px;font-weight:700;color:${balance > 0 ? '#FFB347' : '#86efac'}">${_fmtINR(balance)}</div>
+        <div style="padding:10px 12px;border-radius:8px;background:${balance > 0 ? 'rgba(169,112,255,0.10);border:1px solid rgba(169,112,255,0.22)' : 'rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.22)'}">
+          <div style="font-size:11px;color:${balance > 0 ? '#C9A7FF' : '#86efac'};text-transform:uppercase;letter-spacing:.5px">Balance</div>
+          <div style="font-size:18px;font-weight:700;color:${balance > 0 ? '#C9A7FF' : '#86efac'}">${_fmtINR(balance)}</div>
         </div>
       </div>
 
       ${payments.length ? `
-        <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Payment history (${payments.length})</div>
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Payment history (${payments.length})</div>
         <div style="max-height:220px;overflow-y:auto;border-radius:8px;border:1px solid rgba(255,255,255,0.06);margin-bottom:14px">
           <table class="data-table" style="margin:0;font-size:12.5px">
             <thead><tr><th>When</th><th>Amount</th><th>By</th><th>Note</th><th style="width:40px"></th></tr></thead>
@@ -7990,20 +8138,20 @@ function _siPaymentsModalHtml(row, userId, period) {
                 <td>${fmtDate(p.paid_at)}</td>
                 <td style="color:#86efac;font-weight:600">${_fmtINR(p.amount)}</td>
                 <td style="color:#cbd5e1">${escapeHtml(p.paid_by_name || '—')}</td>
-                <td style="color:#94a3b8">${escapeHtml(p.note || '')}</td>
+                <td style="color:#7E7E8F">${escapeHtml(p.note || '')}</td>
                 <td><button class="btn btn-icon btn-xs" title="Delete this payment" onclick="deleteIncentivePayment('${p.id}','${userId}','${period}')"><i class="fas fa-trash"></i></button></td>
               </tr>`).join('')}
             </tbody>
           </table>
-        </div>` : `<div style="padding:14px;text-align:center;color:#94a3b8;font-size:12.5px;margin-bottom:14px"><i class="fas fa-circle-info"></i> No payments yet for this period.</div>`}
+        </div>` : `<div style="padding:14px;text-align:center;color:#7E7E8F;font-size:12.5px;margin-bottom:14px"><i class="fas fa-circle-info"></i> No payments yet for this period.</div>`}
 
       ${balance > 0 ? `
-        <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Record a payment</div>
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Record a payment</div>
         <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px">
           <div class="form-group" style="margin:0">
             <label class="form-label">Amount (₹) *</label>
             <input id="si-pay-amount" type="number" min="0" step="0.01" class="form-input" placeholder="e.g. 5000" value="${balance}"/>
-            <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Pre-filled with the balance. Edit to record a partial payment.</div>
+            <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Pre-filled with the balance. Edit to record a partial payment.</div>
           </div>
           <div class="form-group" style="margin:0">
             <label class="form-label">Note (optional)</label>
@@ -8055,7 +8203,7 @@ async function openSalesIncentiveHistory(userId) {
   _salesIncentiveHistoryUserId = userId
   showModal(`
     <div class="modal-header"><h3><i class="fas fa-clock-rotate-left" style="color:#22c55e;margin-right:6px"></i>Month-by-month history</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-    <div class="modal-body" id="si-history-body"><div style="padding:30px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
+    <div class="modal-body" id="si-history-body"><div style="padding:30px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
   `, 'modal-xl')
   await _refreshSalesIncentiveHistoryBody()
@@ -8075,12 +8223,12 @@ async function _refreshSalesIncentiveHistoryBody() {
 
     body.innerHTML = `
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--border)">
-        ${avatar(u.full_name, u.avatar_color || '#FF7A45', 'md')}
+        ${avatar(u.full_name, u.avatar_color || '#A970FF', 'md')}
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;color:#e2e8f0;font-size:14px">${escapeHtml(u.full_name || '—')}</div>
-          <div style="font-size:11.5px;color:#94a3b8">${escapeHtml(u.email || '')} · ${escapeHtml(u.role || '')}</div>
+          <div style="font-size:11.5px;color:#7E7E8F">${escapeHtml(u.email || '')} · ${escapeHtml(u.role || '')}</div>
         </div>
-        <div style="text-align:right;font-size:11.5px;color:#94a3b8">
+        <div style="text-align:right;font-size:11.5px;color:#7E7E8F">
           <div>Current target: <strong style="color:#cbd5e1">${_fmtINR(u.monthly_target || 0)}</strong></div>
           <div>Current rate: <strong style="color:#cbd5e1">${Number(u.incentive_rate || 0)}%</strong> of above-target value</div>
         </div>
@@ -8088,8 +8236,8 @@ async function _refreshSalesIncentiveHistoryBody() {
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
         ${_siKpi('Earned (12 months)', _fmtINR(totals.earned), '#22c55e', 'fa-money-bill-wave')}
-        ${_siKpi('Paid out', _fmtINR(totals.paid_amount), '#94a3b8', 'fa-check-circle')}
-        ${_siKpi('Pending', _fmtINR(totals.pending_amount), '#FF7A45', 'fa-hourglass-half')}
+        ${_siKpi('Paid out', _fmtINR(totals.paid_amount), '#7E7E8F', 'fa-check-circle')}
+        ${_siKpi('Pending', _fmtINR(totals.pending_amount), '#A970FF', 'fa-hourglass-half')}
       </div>
 
       ${rows.length ? `
@@ -8110,7 +8258,7 @@ async function _refreshSalesIncentiveHistoryBody() {
       ` : `<div class="empty-state"><i class="fas fa-inbox"></i><p>No months to show.</p></div>`}
     `
   } catch (e) {
-    body.innerHTML = `<div style="padding:24px;color:#FF8866"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
+    body.innerHTML = `<div style="padding:24px;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
   }
 }
 
@@ -8121,20 +8269,20 @@ function _siHistoryRow(r, canOverride, canMarkPaid) {
   const balance = Number(r.balance || Math.max(0, r.earned - paid))
   const txnCount = Array.isArray(r.payments) ? r.payments.length : 0
   return `<tr>
-    <td><strong style="color:#e2e8f0">${escapeHtml(_formatSalesIncentivePeriodLabel(r.period))}</strong>${r.has_record ? '' : ` <span style="font-size:10px;color:#64748b">(no entry yet)</span>`}</td>
+    <td><strong style="color:#e2e8f0">${escapeHtml(_formatSalesIncentivePeriodLabel(r.period))}</strong>${r.has_record ? '' : ` <span style="font-size:10px;color:#7E7E8F">(no entry yet)</span>`}</td>
     <td style="text-align:right;color:#cbd5e1">${_fmtINR(r.target)}</td>
     <td style="text-align:right">${_fmtINR(r.achieved)}${overrideTag}</td>
-    <td style="text-align:right;font-size:12px;color:#94a3b8" title="Percent of above-target value">${Number(r.incentive_rate || 0)}%</td>
+    <td style="text-align:right;font-size:12px;color:#7E7E8F" title="Percent of above-target value">${Number(r.incentive_rate || 0)}%</td>
     <td style="text-align:right">
       <div style="font-weight:700;color:#22c55e">${_fmtINR(r.earned)}</div>
-      ${paid || txnCount ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">Paid ${_fmtINR(paid)}${txnCount ? ' · ' + txnCount + ' txn' : ''}</div>` : ''}
-      ${balance > 0 && r.earned > 0 ? `<div style="font-size:11px;color:#FF8866">Balance ${_fmtINR(balance)}</div>` : ''}
+      ${paid || txnCount ? `<div style="font-size:11px;color:#7E7E8F;margin-top:2px">Paid ${_fmtINR(paid)}${txnCount ? ' · ' + txnCount + ' txn' : ''}</div>` : ''}
+      ${balance > 0 && r.earned > 0 ? `<div style="font-size:11px;color:#A970FF">Balance ${_fmtINR(balance)}</div>` : ''}
     </td>
     <td>
       ${r.paid
         ? `<span class="badge badge-done">Paid</span>`
         : balance > 0 && paid > 0
-          ? `<span class="badge" style="background:rgba(255,180,120,0.15);color:#FFB347">Partial</span>`
+          ? `<span class="badge" style="background:rgba(179,136,255,0.15);color:#C9A7FF">Partial</span>`
           : `<span class="badge badge-todo">Pending</span>`}
     </td>
     <td>
@@ -8291,7 +8439,7 @@ async function _ensureMeetingUsers() {
 }
 
 async function renderMeetSetup(el) {
-  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading meetings…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading meetings…</div>`
   try {
     const params = []
     if (_meetingsState.statusFilter && _meetingsState.statusFilter !== 'all') params.push(`status=${encodeURIComponent(_meetingsState.statusFilter)}`)
@@ -8350,7 +8498,7 @@ async function renderMeetSetup(el) {
           <div class="card-body" style="padding:0">
             <table style="width:100%;border-collapse:collapse">
               <thead>
-                <tr style="background:rgba(255,255,255,0.04);text-transform:uppercase;font-size:11px;color:#94a3b8;letter-spacing:.5px">
+                <tr style="background:rgba(255,255,255,0.04);text-transform:uppercase;font-size:11px;color:#7E7E8F;letter-spacing:.5px">
                   <th style="padding:10px 14px;text-align:left">Title</th>
                   <th style="padding:10px 14px;text-align:left">Lead</th>
                   <th style="padding:10px 14px;text-align:left">When</th>
@@ -8382,8 +8530,8 @@ function _meetingRow(m) {
   const attendees = (m.attendee_details || []).map((a) => a.name || a.email || a.id).filter(Boolean)
   const attendeesHtml = attendees.length
     ? attendees.slice(0, 2).map((n) => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(167,139,250,0.18);color:#c4b5fd;font-size:11px;margin-right:4px">${escapeHtml(n)}</span>`).join('') +
-      (attendees.length > 2 ? `<span style="font-size:11px;color:#94a3b8">+${attendees.length - 2}</span>` : '')
-    : '<span style="font-size:12px;color:#64748b">—</span>'
+      (attendees.length > 2 ? `<span style="font-size:11px;color:#7E7E8F">+${attendees.length - 2}</span>` : '')
+    : '<span style="font-size:12px;color:#7E7E8F">—</span>'
   const inviteSent = m.invite_sent_at ? `<span style="font-size:10px;color:#22c55e;margin-left:6px" title="Invite sent ${_fmtMeetingTime(m.invite_sent_at)}"><i class="fas fa-paper-plane"></i></span>` : ''
   return `<tr style="border-top:1px solid rgba(255,255,255,0.06)">
     <td style="padding:12px 14px">
@@ -8392,7 +8540,7 @@ function _meetingRow(m) {
     </td>
     <td style="padding:12px 14px;font-size:12.5px;color:#cbd5e1">
       ${escapeHtml(m.lead_name || '—')}
-      ${m.lead_email ? `<div style="font-size:11px;color:#64748b">${escapeHtml(m.lead_email)}</div>` : ''}
+      ${m.lead_email ? `<div style="font-size:11px;color:#7E7E8F">${escapeHtml(m.lead_email)}</div>` : ''}
     </td>
     <td style="padding:12px 14px;font-size:12.5px;color:#cbd5e1">${_fmtMeetingTime(m.scheduled_at)}</td>
     <td style="padding:12px 14px;font-size:12.5px;color:#cbd5e1">${m.duration_mins} min</td>
@@ -8402,7 +8550,7 @@ function _meetingRow(m) {
       ${m.status === 'scheduled' ? `<button class="btn btn-outline btn-xs" onclick="openMeetingInviteModal('${m.id}')" title="Re-send invite to lead + attendees"><i class="fas fa-paper-plane"></i></button>` : ''}
       ${m.status === 'scheduled' && canEdit ? `<button class="btn btn-outline btn-xs" style="color:#3b82f6" onclick="openMeetingRescheduleModal('${m.id}')" title="Reschedule"><i class="fas fa-calendar-day"></i></button>` : ''}
       ${m.status === 'scheduled' && canEdit ? `<button class="btn btn-outline btn-xs" style="color:#22c55e" onclick="markMeetingStatus('${m.id}','completed')" title="Mark completed"><i class="fas fa-check"></i></button>` : ''}
-      ${m.status === 'scheduled' && canEdit ? `<button class="btn btn-outline btn-xs" style="color:#f59e0b" onclick="markMeetingStatus('${m.id}','cancelled')" title="Cancel"><i class="fas fa-ban"></i></button>` : ''}
+      ${m.status === 'scheduled' && canEdit ? `<button class="btn btn-outline btn-xs" style="color:#A970FF" onclick="markMeetingStatus('${m.id}','cancelled')" title="Cancel"><i class="fas fa-ban"></i></button>` : ''}
       ${canEdit ? `<button class="btn btn-outline btn-xs" onclick="openMeetingEditor('${m.id}')" title="Edit"><i class="fas fa-edit"></i></button>` : ''}
       ${canDelete ? `<button class="btn btn-outline btn-xs" style="color:#FF5E3A" onclick="deleteMeeting('${m.id}','${escapeHtml(m.title).replace(/'/g, "\\'")}')" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
     </td>
@@ -8482,7 +8630,7 @@ async function openMeetingEditor(meetingId) {
           <input id="mtg-link" class="form-input" style="flex:1" placeholder="https://meet.jit.si/… or paste Google Meet / Zoom URL" value="${escapeHtml(_meetingDraft.meeting_link)}" oninput="_meetingDraft.meeting_link=this.value"/>
           <button type="button" class="btn btn-outline btn-sm" onclick="generateMeetingLink()" title="Generate a free Jitsi Meet link"><i class="fas fa-wand-magic-sparkles"></i> Generate</button>
         </div>
-        <div class="form-hint">Click "Generate" for a free Jitsi Meet link, or paste your own Google Meet / Zoom / Teams URL. Leave blank for an offline meeting.<br/><strong style="color:#f59e0b">Jitsi note:</strong> when starting the meeting, click "Log-in" on Jitsi and sign in with your Google account once — that makes you the moderator and the lead can join.</div>
+        <div class="form-hint">Click "Generate" for a free Jitsi Meet link, or paste your own Google Meet / Zoom / Teams URL. Leave blank for an offline meeting.<br/><strong style="color:#A970FF">Jitsi note:</strong> when starting the meeting, click "Log-in" on Jitsi and sign in with your Google account once — that makes you the moderator and the lead can join.</div>
       </div>
       <div class="form-group">
         <label class="form-label">Agenda / notes</label>
@@ -8511,7 +8659,7 @@ function _renderAttendeeOptions(users, filter) {
     if (!f) return true
     return `${u.full_name || ''} ${u.email || ''} ${u.designation || ''}`.toLowerCase().includes(f)
   })
-  if (!filtered.length) return '<div style="padding:10px;color:#64748b;font-size:12px">No matches</div>'
+  if (!filtered.length) return '<div style="padding:10px;color:#7E7E8F;font-size:12px">No matches</div>'
   return filtered.map((u) => {
     const id = String(u.id)
     const checked = selected.has(id) ? 'checked' : ''
@@ -8519,7 +8667,7 @@ function _renderAttendeeOptions(users, filter) {
       <input type="checkbox" value="${escapeHtml(id)}" ${checked} onchange="toggleMeetingAttendee('${escapeHtml(id)}', this.checked)"/>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;color:#e2e8f0">${escapeHtml(u.full_name || u.email || id)}</div>
-        ${u.email ? `<div style="font-size:11px;color:#64748b">${escapeHtml(u.email)}${u.designation ? ' · ' + escapeHtml(u.designation) : ''}</div>` : ''}
+        ${u.email ? `<div style="font-size:11px;color:#7E7E8F">${escapeHtml(u.email)}${u.designation ? ' · ' + escapeHtml(u.designation) : ''}</div>` : ''}
       </div>
     </label>`
   }).join('')
@@ -8660,7 +8808,7 @@ async function openMeetingRescheduleModal(meetingId) {
     <div class="modal-body">
       <div style="padding:10px 12px;background:rgba(59,130,246,0.10);border-left:3px solid #3b82f6;border-radius:0 6px 6px 0;margin-bottom:14px">
         <div style="font-weight:600;color:#e2e8f0;font-size:13px">${escapeHtml(m.title)}</div>
-        <div style="font-size:12px;color:#94a3b8;margin-top:2px"><i class="fas fa-clock"></i> Current: ${_fmtMeetingTime(m.scheduled_at)} · ${m.duration_mins} min</div>
+        <div style="font-size:12px;color:#7E7E8F;margin-top:2px"><i class="fas fa-clock"></i> Current: ${_fmtMeetingTime(m.scheduled_at)} · ${m.duration_mins} min</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 140px;gap:10px">
         <div class="form-group">
@@ -8725,7 +8873,7 @@ async function openMeetingInviteModal(meetingId) {
     <div class="modal-body">
       <div style="padding:10px 12px;background:rgba(167,139,250,0.10);border-left:3px solid #a78bfa;border-radius:0 6px 6px 0;margin-bottom:12px">
         <div style="font-weight:600;color:#e2e8f0;font-size:13px">${escapeHtml(m.title)}</div>
-        <div style="font-size:12px;color:#94a3b8;margin-top:2px">${_fmtMeetingTime(m.scheduled_at)} · ${m.duration_mins} min</div>
+        <div style="font-size:12px;color:#7E7E8F;margin-top:2px">${_fmtMeetingTime(m.scheduled_at)} · ${m.duration_mins} min</div>
       </div>
       <div class="form-group">
         <label class="form-label">To *</label>

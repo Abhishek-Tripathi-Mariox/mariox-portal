@@ -51,20 +51,20 @@ async function renderHrDocumentsView(el) {
       </div>
 
       <div class="grid-4" style="margin-bottom:16px">
-        ${miniStatCard('Total',                   list.length, '#FF7A45', 'fa-folder-open')}
-        ${miniStatCard('Offer letters',           list.filter(d => d.document_type === 'offer_letter').length, '#FFCB47', 'fa-file-signature')}
+        ${miniStatCard('Total',                   list.length, '#A970FF', 'fa-folder-open')}
+        ${miniStatCard('Offer letters',           list.filter(d => d.document_type === 'offer_letter').length, '#C9A7FF', 'fa-file-signature')}
         ${miniStatCard('Experience certs',        list.filter(d => d.document_type === 'experience_certificate').length, '#58C68A', 'fa-award')}
         ${miniStatCard('Salary certs',            list.filter(d => d.document_type === 'salary_certificate').length, '#A8C8FF', 'fa-file-invoice-dollar')}
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
         ${hrFilterButtons([
-          { value: '',                        label: 'All',         activeStyle: 'background:rgba(255,122,69,.15);color:#FFB347' },
-          { value: 'offer_letter',            label: 'Offer',       activeStyle: 'background:rgba(255,203,71,.15);color:#FFD986' },
+          { value: '',                        label: 'All',         activeStyle: 'background:rgba(169,112,255,.15);color:#C9A7FF' },
+          { value: 'offer_letter',            label: 'Offer',       activeStyle: 'background:rgba(169,112,255,.15);color:#D5C0FF' },
           { value: 'experience_certificate',  label: 'Experience',  activeStyle: 'background:rgba(88,198,138,.15);color:#86E0A8' },
-          { value: 'salary_certificate',      label: 'Salary',      activeStyle: 'background:rgba(100,160,255,.15);color:#A8C8FF' },
-          { value: 'appointment_letter',      label: 'Appointment', activeStyle: 'background:rgba(255,150,80,.15);color:#FFC089' },
-          { value: 'relieving_letter',        label: 'Relieving',   activeStyle: 'background:rgba(255,94,58,.15);color:#FF8866' },
+          { value: 'salary_certificate',      label: 'Salary',      activeStyle: 'background:rgba(169,112,255,.15);color:#A8C8FF' },
+          { value: 'appointment_letter',      label: 'Appointment', activeStyle: 'background:rgba(169,112,255,.15);color:#C9A7FF' },
+          { value: 'relieving_letter',        label: 'Relieving',   activeStyle: 'background:rgba(255,94,58,.15);color:#A970FF' },
         ], _hrDocType, 'hrDocSetType')}
       </div>
 
@@ -90,10 +90,10 @@ async function renderHrDocumentsView(el) {
 function renderDocRow(d, canManage) {
   const name = d.full_name || d.email || 'Unknown'
   return `<tr>
-    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, d.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFF1E6">${escapeInbox(name)}</span></div></td>` : ''}
+    ${canManage ? `<td><div style="display:flex;align-items:center;gap:8px">${avatar(name, d.avatar_color, 'sm')}<span style="font-size:12.5px;color:#FFFFFF">${escapeInbox(name)}</span></div></td>` : ''}
     <td><span class="badge badge-blue"><i class="fas ${DOC_TYPE_ICON[d.document_type] || 'fa-file'}"></i> ${escapeInbox(DOC_TYPE_LABEL[d.document_type] || d.document_type)}</span></td>
     <td style="font-size:12px;color:#9F8678">${fmtDate(d.issued_date)}</td>
-    <td style="font-size:12px;color:#E8D2BD">${escapeInbox(d.signed_by || '—')}${d.signed_title ? `<div style="font-size:11px;color:#9F8678">${escapeInbox(d.signed_title)}</div>` : ''}</td>
+    <td style="font-size:12px;color:#E8D9FF">${escapeInbox(d.signed_by || '—')}${d.signed_title ? `<div style="font-size:11px;color:#9F8678">${escapeInbox(d.signed_title)}</div>` : ''}</td>
     <td>
       <div style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="btn btn-icon btn-xs" onclick="openDocPreview('${d.id}')" title="Preview / Print"><i class="fas fa-eye"></i></button>

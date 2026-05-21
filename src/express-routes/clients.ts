@@ -90,7 +90,7 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
       const country = body.country ? String(body.country).trim().slice(0, 80) : null
       const avatar_color = body.avatar_color
         ? validateHexColor(body.avatar_color, 'Avatar color')
-        : '#6366f1'
+        : '#9D6CFF'
 
       const [existingClient, existingUser] = await Promise.all([
         models.clients.findByEmail(email),
@@ -370,8 +370,8 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
   router.get('/import/template.csv', (_req, res) => {
     const sample = [
       'company_name,contact_name,email,phone,website,industry,gstin,address_line,city,state,state_code,pincode,country,avatar_color,password',
-      'Acme Corp,Anita Joshi,anita@acme.com,+91-9876543210,https://acme.com,SaaS,27AABCA1234F1Z5,12 MG Road,Mumbai,MAHARASHTRA,27,400001,India,#FF7A45,Welcome@123',
-      'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,29AABCG5678H1Z9,Plot 4 Sector 3,Bengaluru,KARNATAKA,29,560001,India,#FFB347,Welcome@123',
+      'Acme Corp,Anita Joshi,anita@acme.com,+91-9876543210,https://acme.com,SaaS,27AABCA1234F1Z5,12 MG Road,Mumbai,MAHARASHTRA,27,400001,India,#A970FF,Welcome@123',
+      'Globex Ltd,Karthik Iyer,karthik@globex.com,+91-9876500001,https://globex.com,Fintech,29AABCG5678H1Z9,Plot 4 Sector 3,Bengaluru,KARNATAKA,29,560001,India,#C9A7FF,Welcome@123',
     ].join('\n')
     res.setHeader('Content-Type', 'text/csv')
     res.setHeader('Content-Disposition', 'attachment; filename="clients_import_template.csv"')
@@ -456,7 +456,7 @@ export function createClientsRouter(models: MongoModels, jwtSecret: string, pass
             country: record.country ? String(record.country).trim().slice(0, 80) : null,
             avatar_color: record.avatar_color && /^#[0-9a-fA-F]{6}$/.test(record.avatar_color)
               ? record.avatar_color
-              : '#FF7A45',
+              : '#A970FF',
             is_active: 1,
             email_verified: 1,
           })

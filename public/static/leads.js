@@ -170,7 +170,7 @@ async function fetchSalesAssignees() {
 }
 
 async function renderLeadsView(el) {
-  el.innerHTML = `<div style="padding:24px;color:#64748b"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div>`
   try {
     await Promise.all([loadLeadStatuses(), loadLeadSources()])
     const [leadsRes, assignees] = await Promise.all([
@@ -265,7 +265,7 @@ async function renderLeadsView(el) {
               <th style="width:140px">Actions</th>
             </tr></thead>
             <tbody>
-              ${pagination.items.map((l) => renderLeadRow(l, canManage)).join('') || `<tr><td colspan="7" style="text-align:center;color:#64748b;padding:24px">No leads match the current filter.</td></tr>`}
+              ${pagination.items.map((l) => renderLeadRow(l, canManage)).join('') || `<tr><td colspan="7" style="text-align:center;color:#7E7E8F;padding:24px">No leads match the current filter.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -392,7 +392,7 @@ function openImportLeadsModal() {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
-      <div style="padding:12px 14px;border-radius:10px;background:rgba(255,180,120,0.10);border:1px solid rgba(255,180,120,0.25);font-size:12.5px;line-height:1.55;color:var(--text-secondary)">
+      <div style="padding:12px 14px;border-radius:10px;background:rgba(179,136,255,0.10);border:1px solid rgba(179,136,255,0.25);font-size:12.5px;line-height:1.55;color:var(--text-secondary)">
         <i class="fas fa-circle-info" style="color:var(--accent);margin-right:6px"></i>
         Upload a <strong>CSV file</strong> with a header row. Excel users: <em>File → Save As → CSV (UTF-8)</em>.<br/>
         <strong>Required columns:</strong> name, email, phone, source, requirement, assigned_to_name<br/>
@@ -449,7 +449,7 @@ async function submitImportLeads() {
           <div style="padding:12px 14px;border-radius:10px;background:rgba(88,198,138,0.10);border:1px solid rgba(88,198,138,0.30);color:#86E0A8;font-size:13px;margin-bottom:8px">
             <i class="fas fa-check-circle"></i> <strong>${created}</strong> leads imported successfully.
           </div>
-          <div style="padding:12px 14px;border-radius:10px;background:rgba(255,94,58,0.10);border:1px solid rgba(255,94,58,0.30);color:#FF8866;font-size:12.5px;line-height:1.5">
+          <div style="padding:12px 14px;border-radius:10px;background:rgba(255,94,58,0.10);border:1px solid rgba(255,94,58,0.30);color:#A970FF;font-size:12.5px;line-height:1.5">
             <i class="fas fa-triangle-exclamation"></i> <strong>${errCount}</strong> rows skipped:
             <ul style="margin:6px 0 0 18px;padding:0">
               ${errors.slice(0, 25).map(e => `<li>Row ${e.row}${e.email ? ' (' + escapeHtml(e.email) + ')' : ''}: ${escapeHtml(e.error)}</li>`).join('')}
@@ -479,21 +479,21 @@ function renderLeadRow(l, canManage) {
   return `<tr>
     <td>
       <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="goLeadDetail('${l.id}')" title="Open lead detail">
-        ${avatar(l.name, '#FF7A45', 'sm')}
+        ${avatar(l.name, '#A970FF', 'sm')}
         <div>
           <div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div>
-          <div style="font-size:11px;color:#64748b">${escapeHtml(String(l.requirement || '').slice(0, 80))}${(l.requirement || '').length > 80 ? '…' : ''}</div>
+          <div style="font-size:11px;color:#7E7E8F">${escapeHtml(String(l.requirement || '').slice(0, 80))}${(l.requirement || '').length > 80 ? '…' : ''}</div>
         </div>
       </div>
     </td>
     <td>
-      <div style="font-size:12px;color:#94a3b8">${escapeHtml(l.email || '—')}</div>
-      <div style="font-size:11px;color:#64748b">${escapeHtml(l.phone || '')}</div>
+      <div style="font-size:12px;color:#7E7E8F">${escapeHtml(l.email || '—')}</div>
+      <div style="font-size:11px;color:#7E7E8F">${escapeHtml(l.phone || '')}</div>
     </td>
-    <td><span style="font-size:12px;color:#94a3b8">${escapeHtml(l.source || '—')}</span></td>
-    <td>${l.assigned_to_name ? `<span style="font-size:12px">${escapeHtml(l.assigned_to_name)}</span>` : '<span style="color:#64748b">—</span>'}</td>
+    <td><span style="font-size:12px;color:#7E7E8F">${escapeHtml(l.source || '—')}</span></td>
+    <td>${l.assigned_to_name ? `<span style="font-size:12px">${escapeHtml(l.assigned_to_name)}</span>` : '<span style="color:#7E7E8F">—</span>'}</td>
     <td><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
-    <td><span style="font-size:12px;${overdue ? 'color:#FF5E3A;font-weight:600' : 'color:#94a3b8'}">${due}${overdue ? ' (overdue)' : ''}</span></td>
+    <td><span style="font-size:12px;${overdue ? 'color:#FF5E3A;font-weight:600' : 'color:#7E7E8F'}">${due}${overdue ? ' (overdue)' : ''}</span></td>
     <td>
       <div style="display:flex;gap:4px">
         <button class="btn btn-xs btn-outline" title="Open detail page" onclick="goLeadDetail('${l.id}')"><i class="fas fa-up-right-from-square"></i></button>
@@ -537,7 +537,7 @@ async function openCreateLeadModal() {
   }
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-bullseye" style="color:#FF7A45;margin-right:8px"></i>New Lead</h3>
+      <h3><i class="fas fa-bullseye" style="color:#A970FF;margin-right:8px"></i>New Lead</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -558,14 +558,14 @@ async function openCreateLeadModal() {
           <div style="margin-top:8px">
             <label class="form-label" style="font-size:12px;color:var(--text-muted)">Attach file (optional)</label>
             <input id="lead-file" type="file" class="form-input" style="padding:6px"/>
-            <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">PDFs, images, or docs — text and file are both supported.</div>
+            <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">PDFs, images, or docs — text and file are both supported.</div>
           </div>
         </div>
         <div class="form-group" style="grid-column:1/-1"><label class="form-label">Assign To *</label>
           <select id="lead-assigned-to" class="form-select">
             ${assignees.map((u) => `<option value="${u.id}">${escapeHtml(u.full_name)} — ${escapeHtml(u.role)}</option>`).join('')}
           </select>
-          <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:6px">Schedule follow-ups manually from the lead detail page.</div>
+          <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:6px">Schedule follow-ups manually from the lead detail page.</div>
         </div>
       </div>
     </div>
@@ -626,7 +626,7 @@ async function openEditLeadModal(id) {
     if (!lead) { toast('Lead not found', 'error'); return }
     showModal(`
       <div class="modal-header">
-        <h3><i class="fas fa-bullseye" style="color:#FF7A45;margin-right:8px"></i>Edit Lead</h3>
+        <h3><i class="fas fa-bullseye" style="color:#A970FF;margin-right:8px"></i>Edit Lead</h3>
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body">
@@ -656,7 +656,7 @@ async function openEditLeadModal(id) {
                 .map((k) => `<option value="${k}" ${lead.status === k ? 'selected' : ''}>${escapeHtml(LEAD_STATUS_META[k]?.label || k)}</option>`)
                 .join('')}
             </select>
-            ${lead.status !== 'closed' ? '<div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">To close this lead, use <strong>Close &amp; Convert to Client</strong> from the detail view — it collects client info and emails credentials.</div>' : ''}
+            ${lead.status !== 'closed' ? '<div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">To close this lead, use <strong>Close &amp; Convert to Client</strong> from the detail view — it collects client info and emails credentials.</div>' : ''}
           </div>
           <div class="form-group"><label class="form-label">Assign To *</label>
             <select id="lead-assigned-to" class="form-select">
@@ -669,12 +669,12 @@ async function openEditLeadModal(id) {
               <label class="form-label" style="font-size:12px;color:var(--text-muted)">Attach file (optional)</label>
               <div id="lead-existing-file-wrap" style="display:${lead.requirement_file?.url ? '' : 'none'};margin-bottom:6px;font-size:12px;color:#cbd5e1">
                 <i class="fas fa-paperclip"></i>
-                <a href="${lead.requirement_file?.url || ''}" target="_blank" rel="noopener" style="color:#FF7A45">${escapeHtml(lead.requirement_file?.name || '')}</a>
+                <a href="${lead.requirement_file?.url || ''}" target="_blank" rel="noopener" style="color:#A970FF">${escapeHtml(lead.requirement_file?.name || '')}</a>
                 <button type="button" class="btn btn-xs btn-outline" style="margin-left:8px" onclick="removeLeadExistingFile()">Remove</button>
                 <input type="hidden" id="lead-existing-file" value='${lead.requirement_file ? escapeHtml(JSON.stringify(lead.requirement_file)) : ''}'/>
               </div>
               <input id="lead-file" type="file" class="form-input" style="padding:6px"/>
-              <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Pick a new file to replace the current attachment, or leave blank to keep it.</div>
+              <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Pick a new file to replace the current attachment, or leave blank to keep it.</div>
             </div>
           </div>
         </div>
@@ -762,16 +762,16 @@ function renderLeadDetailFollowups(lead) {
         <strong style="font-size:13px">${escapeHtml(t.title)}</strong>
         <span class="badge badge-${tmeta.badge}">${escapeHtml(tmeta.label)}</span>
       </div>
-      <div style="font-size:12px;color:#94a3b8">Due: <span style="${overdue ? 'color:#FF5E3A;font-weight:600' : ''}">${fmtDateTime(t.due_date)}${overdue ? ' (overdue)' : ''}</span> · Alarm ${snooze}m before</div>
+      <div style="font-size:12px;color:#7E7E8F">Due: <span style="${overdue ? 'color:#FF5E3A;font-weight:600' : ''}">${fmtDateTime(t.due_date)}${overdue ? ' (overdue)' : ''}</span> · Alarm ${snooze}m before</div>
       ${t.notes ? `<div style="font-size:12px;color:#cbd5e1;margin-top:6px;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">${escapeHtml(t.notes)}</div>` : ''}
       ${canUpdate ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         ${_leadTaskStatusOrder.map((k) => `<button class="btn btn-xs ${t.status === k ? 'btn-primary' : 'btn-outline'}" onclick="updateLeadTaskStatus('${t.id}','${k}','${id}')">${escapeHtml(LEAD_TASK_STATUS_META[k]?.label || k)}</button>`).join('')}
-        <span style="font-size:11px;color:#64748b">Snooze:</span>
+        <span style="font-size:11px;color:#7E7E8F">Snooze:</span>
         <input type="number" min="0" max="1440" value="${snooze}" id="snooze-${t.id}" style="width:70px;padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:rgba(0,0,0,.25);color:#e2e8f0;font-size:12px"/>
         <button class="btn btn-xs btn-outline" onclick="updateFollowupSnooze('${t.id}','${id}')"><i class="fas fa-bell"></i> Save</button>
       </div>` : ''}
     </div>`
-  }).join('') || '<div style="font-size:12px;color:#64748b;padding:8px">No follow-up tasks yet.</div>'
+  }).join('') || '<div style="font-size:12px;color:#7E7E8F;padding:8px">No follow-up tasks yet.</div>'
 
   const canAdd = leadsCanManage() || String(lead.assigned_to) === String(_user?.sub || _user?.id || '')
   const addForm = canAdd ? `
@@ -786,7 +786,7 @@ function renderLeadDetailFollowups(lead) {
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-        <label style="font-size:11px;color:#64748b">Alarm minutes before</label>
+        <label style="font-size:11px;color:#7E7E8F">Alarm minutes before</label>
         <input id="new-followup-snooze" type="number" class="form-input" min="0" max="1440" value="10" style="width:90px"/>
         <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="submitNewFollowup('${id}')"><i class="fas fa-plus"></i> Schedule</button>
       </div>
@@ -807,10 +807,10 @@ async function switchLeadDetailTab(id, tab) {
       body.innerHTML = renderLeadDetailFollowups(lead)
     } catch (e) { body.innerHTML = `<div style="color:#FF5E3A">${e.message}</div>` }
   } else if (tab === 'comments') {
-    body.innerHTML = '<div style="color:#64748b;font-size:12px;padding:8px"><i class="fas fa-spinner fa-spin"></i> Loading comments…</div>'
+    body.innerHTML = '<div style="color:#7E7E8F;font-size:12px;padding:8px"><i class="fas fa-spinner fa-spin"></i> Loading comments…</div>'
     loadLeadComments(id)
   } else if (tab === 'timeline') {
-    body.innerHTML = '<div style="color:#64748b;font-size:12px;padding:8px"><i class="fas fa-spinner fa-spin"></i> Loading timeline…</div>'
+    body.innerHTML = '<div style="color:#7E7E8F;font-size:12px;padding:8px"><i class="fas fa-spinner fa-spin"></i> Loading timeline…</div>'
     loadLeadTimeline(id)
   }
   // Re-render tab buttons by reopening — cheaper than threading a partial diff.
@@ -833,13 +833,13 @@ async function loadLeadComments(id) {
     const comments = res.data || res.comments || []
     const list = comments.map((c) => `
       <div style="padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:rgba(255,255,255,.02)">
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-bottom:4px">
-          <span><strong style="color:#e2e8f0">${escapeHtml(c.author_name || 'Unknown')}</strong>${c.author_role ? ` <span style="color:#64748b">· ${escapeHtml(c.author_role)}</span>` : ''}</span>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#7E7E8F;margin-bottom:4px">
+          <span><strong style="color:#e2e8f0">${escapeHtml(c.author_name || 'Unknown')}</strong>${c.author_role ? ` <span style="color:#7E7E8F">· ${escapeHtml(c.author_role)}</span>` : ''}</span>
           <span>${fmtDateTime(c.created_at)}</span>
         </div>
         <div style="font-size:13px;color:#cbd5e1;white-space:pre-wrap">${escapeHtml(c.text || '')}</div>
       </div>
-    `).join('') || '<div style="font-size:12px;color:#64748b;padding:8px">No comments yet.</div>'
+    `).join('') || '<div style="font-size:12px;color:#7E7E8F;padding:8px">No comments yet.</div>'
     body.innerHTML = `
       ${list}
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
@@ -888,17 +888,17 @@ async function loadLeadTimeline(id) {
     }[k] || 'fa-circle')
     body.innerHTML = items.map((a) => `
       <div style="display:flex;gap:10px;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:rgba(255,255,255,.02)">
-        <div style="width:28px;height:28px;border-radius:50%;background:rgba(255,122,69,.15);color:#FF7A45;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <div style="width:28px;height:28px;border-radius:50%;background:rgba(169,112,255,.15);color:#A970FF;display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <i class="fas ${iconFor(a.kind)}"></i>
         </div>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;color:#e2e8f0">${escapeHtml(a.summary || a.kind || '')}</div>
-          <div style="font-size:11px;color:#64748b;margin-top:2px">
+          <div style="font-size:11px;color:#7E7E8F;margin-top:2px">
             <span>${escapeHtml(a.actor_name || 'system')}</span>${a.actor_role ? ` · <span>${escapeHtml(a.actor_role)}</span>` : ''} · <span>${fmtDateTime(a.created_at)}</span>
           </div>
         </div>
       </div>
-    `).join('') || '<div style="font-size:12px;color:#64748b;padding:8px">No activity yet.</div>'
+    `).join('') || '<div style="font-size:12px;color:#7E7E8F;padding:8px">No activity yet.</div>'
   } catch (e) {
     body.innerHTML = `<div style="color:#FF5E3A">${escapeHtml(e.message)}</div>`
   }
@@ -975,7 +975,7 @@ async function openCloseLeadModal(id) {
           A new client account will be created and login credentials emailed to <strong>${escapeHtml(lead.email)}</strong>. The lead will be marked as <strong>Closed</strong>.
         </div>
 
-        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Company &amp; Contact</div>
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Company &amp; Contact</div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">Company Name *</label><input class="form-input" id="close-company-name" placeholder="Enter Company Name"/></div>
           <div class="form-group"><label class="form-label">Contact Name *</label><input class="form-input" id="close-contact-name" placeholder="Enter Contact Name" value="${escapeHtml(lead.name || '')}"/></div>
@@ -995,10 +995,10 @@ async function openCloseLeadModal(id) {
         </div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">Industry</label><input class="form-input" id="close-industry" placeholder="Enter Industry"/></div>
-          <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="close-color" type="color" value="#FF7A45" style="height:40px;padding:3px"/></div>
+          <div class="form-group"><label class="form-label">Avatar Color</label><input class="form-input" id="close-color" type="color" value="#A970FF" style="height:40px;padding:3px"/></div>
         </div>
 
-        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Tax &amp; Address (used on invoices)</div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">GSTIN *</label><input class="form-input" id="close-gstin" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase" maxlength="15" required/></div>
           <div class="form-group"><label class="form-label">Country *</label><input class="form-input" id="close-country" placeholder="Enter Country" value="India" required/></div>
@@ -1012,14 +1012,14 @@ async function openCloseLeadModal(id) {
               ${stateOpts}
             </select>
           </div>
-          <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="close-state-code" placeholder="" maxlength="3" readonly style="background:rgba(15,23,42,.4)"/></div>
+          <div class="form-group" style="margin:0"><label class="form-label">State Code</label><input class="form-input" id="close-state-code" placeholder="" maxlength="3" readonly style="background:rgba(11,11,13,.4)"/></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">PIN Code *</label><input class="form-input" id="close-pincode" placeholder="400001" maxlength="10" required/></div>
           <div class="form-group"></div>
         </div>
 
-        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px;display:flex;align-items:center;gap:10px">
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px;display:flex;align-items:center;gap:10px">
           <span>Project (optional)</span>
           <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;text-transform:none;color:#cbd5e1;font-weight:500;letter-spacing:0">
             <input type="checkbox" id="close-create-project" onchange="onToggleCloseProject(this.checked)" checked/>
@@ -1109,18 +1109,18 @@ async function openCloseLeadModal(id) {
           </div>
 
           <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.02)">
-            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Attachments <span style="color:#94a3b8;text-transform:none;letter-spacing:0">(25 MB / file)</span></div>
+            <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Attachments <span style="color:#7E7E8F;text-transform:none;letter-spacing:0">(25 MB / file)</span></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <input id="close-proj-files-input" type="file" multiple style="display:none" onchange="closeProjAddFiles(this.files);this.value=''"/>
               <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('close-proj-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
-              <span style="color:#475569;font-size:11px">— or —</span>
+              <span style="color:#5A5A66;font-size:11px">— or —</span>
               <input id="close-proj-link-url" class="form-input" type="url" placeholder="Paste a document URL" style="flex:1;min-width:200px;padding:6px 10px;font-size:12.5px"/>
               <input id="close-proj-link-name" class="form-input" type="text" placeholder="Label" style="width:140px;padding:6px 10px;font-size:12.5px"/>
               <button type="button" class="btn btn-outline btn-sm" onclick="closeProjAddLink()"><i class="fas fa-link"></i> Add link</button>
             </div>
             <div id="close-proj-files-list" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
           </div>
-          ${lead.requirement_file?.url ? `<div style="margin-top:8px;font-size:12px;color:#cbd5e1;padding:8px;background:rgba(255,122,69,.08);border-radius:6px"><i class="fas fa-paperclip"></i> The lead's attached file (<a href="${escapeHtml(lead.requirement_file.url)}" target="_blank" rel="noopener" style="color:#FF7A45">${escapeHtml(lead.requirement_file.name || 'attachment')}</a>) is auto-added to the project's documents.</div>` : ''}
+          ${lead.requirement_file?.url ? `<div style="margin-top:8px;font-size:12px;color:#cbd5e1;padding:8px;background:rgba(169,112,255,.08);border-radius:6px"><i class="fas fa-paperclip"></i> The lead's attached file (<a href="${escapeHtml(lead.requirement_file.url)}" target="_blank" rel="noopener" style="color:#A970FF">${escapeHtml(lead.requirement_file.name || 'attachment')}</a>) is auto-added to the project's documents.</div>` : ''}
         </div>
       </div>
       <div class="modal-footer">
@@ -1209,20 +1209,20 @@ function closeProjRenderFilesList() {
   const fileRows = _closeProjFiles.map((f, i) => {
     const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
     const tooBig = f.size > 25 * 1024 * 1024
-    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
-      <i class="fas fa-file" style="color:#FF7A45;font-size:14px"></i>
+    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
+      <i class="fas fa-file" style="color:#A970FF;font-size:14px"></i>
       <div style="flex:1;min-width:0">
         <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(f.name)}</div>
-        <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#64748b'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
+        <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#7E7E8F'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
       </div>
       <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="closeProjRemoveFile(${i})"><i class="fas fa-times"></i></button>
     </div>`
   })
-  const linkRows = _closeProjLinks.map((l, i) => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.18);border-radius:8px">
+  const linkRows = _closeProjLinks.map((l, i) => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
     <i class="fas fa-link" style="color:#86E0A8;font-size:14px"></i>
     <div style="flex:1;min-width:0">
       <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(l.name)}</div>
-      <div style="font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:#9F8678">${escapeHtml(l.url)}</a></div>
+      <div style="font-size:10.5px;color:#7E7E8F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:#9F8678">${escapeHtml(l.url)}</a></div>
     </div>
     <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="closeProjRemoveLink(${i})"><i class="fas fa-times"></i></button>
   </div>`)
@@ -1280,7 +1280,7 @@ async function submitCloseLead(id) {
     company_name: document.getElementById('close-company-name').value.trim(),
     website: document.getElementById('close-website').value.trim(),
     industry: document.getElementById('close-industry').value.trim(),
-    avatar_color: document.getElementById('close-color')?.value || '#6366f1',
+    avatar_color: document.getElementById('close-color')?.value || '#9D6CFF',
     gstin: document.getElementById('close-gstin').value.trim().toUpperCase(),
     country: document.getElementById('close-country').value.trim(),
     address_line: document.getElementById('close-address').value.trim(),
@@ -1458,7 +1458,7 @@ async function openSendOutboundModal(leadId, kind) {
         <option value="">— Custom (attach files manually) —</option>
         ${_outboundPortfolios.map((p) => `<option value="${p.id}">${escapeHtml(p.title)}${p.file?.name ? ' · ' + escapeHtml(p.file.name) : ''}</option>`).join('')}
       </select>
-      <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">
+      <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">
         ${_outboundPortfolios.length
           ? 'Anyone with Sales-Library permission (Settings → Roles & Permissions) can add new portfolios here.'
           : 'No portfolios in the library yet. Add one from Sales CRM → Portfolio (admins manage permissions in Settings).'}
@@ -1468,7 +1468,7 @@ async function openSendOutboundModal(leadId, kind) {
 
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas ${isPortfolio ? 'fa-briefcase' : 'fa-paper-plane'}" style="color:#FF7A45;margin-right:8px"></i>${isPortfolio ? 'Send Portfolio' : 'Send Mail'} — ${escapeHtml(lead.name)}</h3>
+      <h3><i class="fas ${isPortfolio ? 'fa-briefcase' : 'fa-paper-plane'}" style="color:#A970FF;margin-right:8px"></i>${isPortfolio ? 'Send Portfolio' : 'Send Mail'} — ${escapeHtml(lead.name)}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -1483,7 +1483,7 @@ async function openSendOutboundModal(leadId, kind) {
         <label class="form-label">Attachments ${isPortfolio ? '(only needed in Custom mode)' : ''}</label>
         <input id="om-files" type="file" class="form-input" multiple style="padding:6px" onchange="handleOutboundAttachments(this.files)"/>
         <div id="om-attachment-list" style="margin-top:6px"></div>
-        <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Up to 10 MB per file. Hold Ctrl/Cmd to select multiple files.</div>
+        <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Up to 10 MB per file. Hold Ctrl/Cmd to select multiple files.</div>
       </div>
     </div>
     <div class="modal-footer">
@@ -1518,7 +1518,7 @@ function renderOutboundAttachmentList() {
   wrap.innerHTML = _outboundAttachments.map((att, i) => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;background:rgba(255,255,255,.02);font-size:12px">
       <i class="fas fa-paperclip"></i>
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(att.filename)} <span style="color:#64748b">· ${formatBytes(att.size)}</span></span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(att.filename)} <span style="color:#7E7E8F">· ${formatBytes(att.size)}</span></span>
       <button class="btn btn-xs btn-outline" onclick="removeOutboundAttachment(${i})"><i class="fas fa-times"></i></button>
     </div>
   `).join('')
@@ -1642,7 +1642,7 @@ async function openManageLeadStatusesModal() {
   await loadLeadStatuses(true)
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-tags" style="color:#FF7A45;margin-right:8px"></i>Manage Lead & Task Statuses</h3>
+      <h3><i class="fas fa-tags" style="color:#A970FF;margin-right:8px"></i>Manage Lead & Task Statuses</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -1674,15 +1674,15 @@ async function openManageLeadStatusesModal() {
 function renderStatusList(kind) {
   const order = kind === 'lead' ? _leadStatusOrder : _leadTaskStatusOrder
   const meta = kind === 'lead' ? LEAD_STATUS_META : LEAD_TASK_STATUS_META
-  if (!order.length) return '<div style="font-size:12px;color:#64748b;padding:8px">No statuses defined.</div>'
+  if (!order.length) return '<div style="font-size:12px;color:#7E7E8F;padding:8px">No statuses defined.</div>'
   return order.map((k) => {
     const m = meta[k]
     const id = m?.id || ''
     const isSystem = Number(m?.is_system || 0) === 1
     return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,.02)">
       <span class="badge badge-${m?.badge || 'todo'}">${escapeHtml(m?.label || k)}</span>
-      <span style="font-size:11px;color:#64748b;font-family:monospace">${escapeHtml(k)}</span>
-      ${isSystem ? '<span style="font-size:10px;color:#FF7A45;margin-left:auto">SYSTEM</span>' : `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="deleteLeadStatus('${kind}','${id}','${escapeHtml(m?.label || k).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
+      <span style="font-size:11px;color:#7E7E8F;font-family:monospace">${escapeHtml(k)}</span>
+      ${isSystem ? '<span style="font-size:10px;color:#A970FF;margin-left:auto">SYSTEM</span>' : `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="deleteLeadStatus('${kind}','${id}','${escapeHtml(m?.label || k).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
     </div>`
   }).join('')
 }
@@ -1733,7 +1733,7 @@ async function openManageLeadSourcesModal() {
   await loadLeadSources(true)
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-bullhorn" style="color:#FF7A45;margin-right:8px"></i>Manage Lead Sources</h3>
+      <h3><i class="fas fa-bullhorn" style="color:#A970FF;margin-right:8px"></i>Manage Lead Sources</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -1755,13 +1755,13 @@ async function openManageLeadSourcesModal() {
 }
 
 function renderSourceList() {
-  if (!_leadSources.length) return '<div style="font-size:12px;color:#64748b;padding:8px">No sources defined.</div>'
+  if (!_leadSources.length) return '<div style="font-size:12px;color:#7E7E8F;padding:8px">No sources defined.</div>'
   return _leadSources.map((s) => {
     const isSystem = Number(s.is_system || 0) === 1
     return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,.02)">
       <span style="font-weight:600;color:var(--text-primary)">${escapeHtml(s.label)}</span>
-      <span style="font-size:11px;color:#64748b;font-family:monospace">${escapeHtml(s.key)}</span>
-      ${isSystem ? '<span style="font-size:10px;color:#FF7A45;margin-left:auto">SYSTEM</span>' : `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="deleteLeadSource('${s.id}','${escapeHtml(s.label).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
+      <span style="font-size:11px;color:#7E7E8F;font-family:monospace">${escapeHtml(s.key)}</span>
+      ${isSystem ? '<span style="font-size:10px;color:#A970FF;margin-left:auto">SYSTEM</span>' : `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="deleteLeadSource('${s.id}','${escapeHtml(s.label).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
     </div>`
   }).join('')
 }
@@ -1876,8 +1876,8 @@ function showNextFollowupAlarm() {
   const overdueLabel = next.overdue ? ' <span style="color:#FF5E3A">(overdue)</span>' : ''
   const html = `
     <div id="followup-alarm-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:9999">
-      <div style="width:min(440px,92vw);background:#1A0E08;border:1px solid #FF7A45;border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.6);overflow:hidden">
-        <div style="padding:14px 18px;background:linear-gradient(90deg,#FF7A45,#FF5E3A);color:#fff;display:flex;align-items:center;gap:10px">
+      <div style="width:min(440px,92vw);background:#1A0E08;border:1px solid #A970FF;border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.6);overflow:hidden">
+        <div style="padding:14px 18px;background:linear-gradient(90deg,#A970FF,#FF5E3A);color:#fff;display:flex;align-items:center;gap:10px">
           <i class="fas fa-bell fa-shake" style="font-size:18px"></i>
           <div style="font-weight:700;letter-spacing:.5px">Follow-up Alarm</div>
         </div>
@@ -1886,11 +1886,11 @@ function showNextFollowupAlarm() {
             <strong>${escapeHtml(next.title || 'Follow up')}</strong>
           </div>
           <div style="font-size:13px;color:#cbd5e1;margin-bottom:6px">
-            <i class="fas fa-user" style="color:#94a3b8;margin-right:6px"></i>${escapeHtml(next.lead_name || '')}
+            <i class="fas fa-user" style="color:#7E7E8F;margin-right:6px"></i>${escapeHtml(next.lead_name || '')}
           </div>
-          ${next.lead_phone ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px"><i class="fas fa-phone" style="margin-right:6px"></i>${escapeHtml(next.lead_phone)}</div>` : ''}
-          ${next.lead_email ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px"><i class="fas fa-envelope" style="margin-right:6px"></i>${escapeHtml(next.lead_email)}</div>` : ''}
-          <div style="font-size:12px;color:#94a3b8;margin-top:8px"><i class="fas fa-clock" style="margin-right:6px"></i>Due ${dueText}${overdueLabel}</div>
+          ${next.lead_phone ? `<div style="font-size:12px;color:#7E7E8F;margin-bottom:4px"><i class="fas fa-phone" style="margin-right:6px"></i>${escapeHtml(next.lead_phone)}</div>` : ''}
+          ${next.lead_email ? `<div style="font-size:12px;color:#7E7E8F;margin-bottom:4px"><i class="fas fa-envelope" style="margin-right:6px"></i>${escapeHtml(next.lead_email)}</div>` : ''}
+          <div style="font-size:12px;color:#7E7E8F;margin-top:8px"><i class="fas fa-clock" style="margin-right:6px"></i>Due ${dueText}${overdueLabel}</div>
         </div>
         <div style="padding:12px 18px;background:rgba(255,255,255,.03);display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
           <button class="btn btn-outline btn-sm" onclick="openLeadFromAlarm('${next.lead_id}')"><i class="fas fa-eye"></i> Open Lead</button>
@@ -1993,20 +1993,20 @@ function goLeadDetail(id) {
 
 const LEAD_TEMP_BADGE = {
   new: { label: 'New', color: '#3b82f6' },
-  contacted: { label: 'Contacted', color: '#f59e0b' },
+  contacted: { label: 'Contacted', color: '#A970FF' },
   qualified: { label: 'Qualified', color: '#22c55e' },
-  proposal: { label: 'Proposal', color: '#8b5cf6' },
+  proposal: { label: 'Proposal', color: '#8B5CFF' },
   negotiation: { label: 'Negotiation', color: '#ec4899' },
   closed: { label: 'Closed', color: '#10b981' },
-  warm: { label: 'Warm', color: '#f59e0b' },
+  warm: { label: 'Warm', color: '#A970FF' },
   hot: { label: 'Hot', color: '#ef4444' },
-  cold: { label: 'Cold', color: '#60a5fa' },
+  cold: { label: 'Cold', color: '#A970FF' },
 }
 
 function leadHeaderBadge(statusKey) {
   const key = String(statusKey || 'new').toLowerCase()
   const meta = LEAD_STATUS_META[key]
-  const tone = LEAD_TEMP_BADGE[key] || { label: meta?.label || key, color: '#94a3b8' }
+  const tone = LEAD_TEMP_BADGE[key] || { label: meta?.label || key, color: '#7E7E8F' }
   return `<span class="badge" style="background:${tone.color}20;color:${tone.color};border:1px solid ${tone.color}40;padding:6px 12px;border-radius:999px;font-weight:600;font-size:12px">${escapeHtml(meta?.label || tone.label)}</span>`
 }
 
@@ -2065,7 +2065,7 @@ async function renderLeadDetailPage(el, id) {
     el.innerHTML = `<div class="empty-state"><p>No lead selected.</p><button class="btn btn-outline" onclick="Router.navigate('leads-view')"><i class="fas fa-arrow-left"></i> Back to Leads</button></div>`
     return
   }
-  el.innerHTML = `<div class="loading-state" style="padding:40px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading lead…</div>`
+  el.innerHTML = `<div class="loading-state" style="padding:40px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading lead…</div>`
   try {
     // Sources + assignees are needed by the now-inline edit fields. Cheap
     // to load alongside the lead so the detail page can render in a single
@@ -2104,21 +2104,21 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
       <div class="card" style="padding:18px">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">
           <div style="display:flex;align-items:center;gap:12px">
-            ${avatar(lead.name, '#FF7A45')}
+            ${avatar(lead.name, '#A970FF')}
             <div>
               <div style="font-size:18px;font-weight:700;color:#e2e8f0">${escape(lead.name)}</div>
-              <div style="font-size:12px;color:#64748b;margin-top:2px">${escape(lead.source || '—')} • ${escape(lead.id)}</div>
+              <div style="font-size:12px;color:#7E7E8F;margin-top:2px">${escape(lead.source || '—')} • ${escape(lead.id)}</div>
             </div>
           </div>
           ${leadHeaderBadge(lead.status)}
         </div>
         <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:#cbd5e1">
-          <div><i class="fas fa-envelope" style="width:18px;color:#94a3b8"></i> ${escape(lead.email || '—')}</div>
-          <div><i class="fas fa-phone" style="width:18px;color:#94a3b8"></i> ${escape(lead.phone || '—')}</div>
-          <div><i class="fas fa-user" style="width:18px;color:#94a3b8"></i> Assigned to: ${escape(lead.assigned_to_name || '—')}</div>
-          <div><i class="fas fa-calendar" style="width:18px;color:#94a3b8"></i> Created: ${fmtDateOnly(lead.created_at)}</div>
-          ${lead.requirement ? `<div style="margin-top:6px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Requirement</div><div style="white-space:pre-wrap">${escape(lead.requirement)}</div></div>` : ''}
-          ${lead.requirement_file?.url ? `<div><i class="fas fa-paperclip"></i> <a href="${escape(lead.requirement_file.url)}" target="_blank" rel="noopener" style="color:#FF7A45">${escape(lead.requirement_file.name || 'attachment')}</a></div>` : ''}
+          <div><i class="fas fa-envelope" style="width:18px;color:#7E7E8F"></i> ${escape(lead.email || '—')}</div>
+          <div><i class="fas fa-phone" style="width:18px;color:#7E7E8F"></i> ${escape(lead.phone || '—')}</div>
+          <div><i class="fas fa-user" style="width:18px;color:#7E7E8F"></i> Assigned to: ${escape(lead.assigned_to_name || '—')}</div>
+          <div><i class="fas fa-calendar" style="width:18px;color:#7E7E8F"></i> Created: ${fmtDateOnly(lead.created_at)}</div>
+          ${lead.requirement ? `<div style="margin-top:6px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)"><div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Requirement</div><div style="white-space:pre-wrap">${escape(lead.requirement)}</div></div>` : ''}
+          ${lead.requirement_file?.url ? `<div><i class="fas fa-paperclip"></i> <a href="${escape(lead.requirement_file.url)}" target="_blank" rel="noopener" style="color:#A970FF">${escape(lead.requirement_file.name || 'attachment')}</a></div>` : ''}
         </div>
       </div>
     `
@@ -2138,7 +2138,7 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
     <div class="card" style="padding:18px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
-          <i class="fas fa-bullseye" style="color:#FF7A45"></i>
+          <i class="fas fa-bullseye" style="color:#A970FF"></i>
           <h4 style="margin:0;font-size:14px;color:#e2e8f0">Lead Information</h4>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -2149,10 +2149,10 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
       </div>
 
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-        ${avatar(lead.name, '#FF7A45')}
+        ${avatar(lead.name, '#A970FF')}
         <div style="flex:1;min-width:0">
           <input id="lead-inline-name" class="form-input" style="font-size:16px;font-weight:600" value="${escape(lead.name)}" placeholder="Full name *"/>
-          <div style="font-size:11px;color:#64748b;margin-top:4px">ID: ${escape(lead.id)} · Created: ${fmtDateOnly(lead.created_at)}</div>
+          <div style="font-size:11px;color:#7E7E8F;margin-top:4px">ID: ${escape(lead.id)} · Created: ${fmtDateOnly(lead.created_at)}</div>
         </div>
       </div>
 
@@ -2182,7 +2182,7 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
                   ${lead.status === 'closed' ? 'disabled' : ''}>
             ${statusOptions}
           </select>
-          ${lead.status !== 'closed' && !lead.client_id ? '<div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Picking "Closed" opens the Close &amp; Convert form (client + project).</div>' : ''}
+          ${lead.status !== 'closed' && !lead.client_id ? '<div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Picking "Closed" opens the Close &amp; Convert form (client + project).</div>' : ''}
         </div>
         ${canManage ? `
         <div class="form-group" style="margin:0;grid-column:1/-1">
@@ -2192,7 +2192,7 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
           </select>
         </div>
         ` : `
-        <div style="grid-column:1/-1;font-size:12px;color:#94a3b8;padding:6px 0">
+        <div style="grid-column:1/-1;font-size:12px;color:#7E7E8F;padding:6px 0">
           <i class="fas fa-user" style="width:16px"></i> Assigned to: ${escape(lead.assigned_to_name || '—')}
         </div>
         `}
@@ -2204,12 +2204,12 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
           <label class="form-label" style="font-size:11px">Attachment (optional)</label>
           <div id="lead-inline-existing-file-wrap" style="display:${lead.requirement_file?.url ? '' : 'none'};margin-bottom:6px;font-size:12px;color:#cbd5e1">
             <i class="fas fa-paperclip"></i>
-            <a href="${lead.requirement_file?.url || ''}" target="_blank" rel="noopener" style="color:#FF7A45">${escape(lead.requirement_file?.name || '')}</a>
+            <a href="${lead.requirement_file?.url || ''}" target="_blank" rel="noopener" style="color:#A970FF">${escape(lead.requirement_file?.name || '')}</a>
             <button type="button" class="btn btn-xs btn-outline" style="margin-left:8px" onclick="removeInlineLeadExistingFile()">Remove</button>
             <input type="hidden" id="lead-inline-existing-file" value='${lead.requirement_file ? escape(JSON.stringify(lead.requirement_file)) : ''}'/>
           </div>
           <input id="lead-inline-file" type="file" class="form-input" style="padding:6px"/>
-          <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Pick a new file to replace the current attachment, or leave blank to keep it.</div>
+          <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Pick a new file to replace the current attachment, or leave blank to keep it.</div>
         </div>
       </div>
     </div>
@@ -2312,13 +2312,13 @@ function renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline, as
 
   const followupsHTML = followups.length
     ? followups.map((t) => renderFollowupRowDetail(lead.id, t)).join('')
-    : `<div style="padding:16px;color:#64748b;font-size:13px;text-align:center">No follow-ups scheduled yet.</div>`
+    : `<div style="padding:16px;color:#7E7E8F;font-size:13px;text-align:center">No follow-ups scheduled yet.</div>`
   const tasksHTML = generalTasks.length
     ? generalTasks.map((t) => renderTaskRowDetail(lead.id, t)).join('')
-    : `<div style="padding:16px;color:#64748b;font-size:13px;text-align:center">No tasks yet.</div>`
+    : `<div style="padding:16px;color:#7E7E8F;font-size:13px;text-align:center">No tasks yet.</div>`
   const timelineHTML = timeline.length
     ? renderTimelineList(timeline)
-    : `<div style="padding:24px;color:#64748b;font-size:13px;text-align:center">No activity yet.</div>`
+    : `<div style="padding:24px;color:#7E7E8F;font-size:13px;text-align:center">No activity yet.</div>`
 
   return `
   <div class="lead-detail-page" style="padding:0 4px">
@@ -2354,7 +2354,7 @@ function renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline, as
             <div style="display:flex;align-items:center;gap:8px"><i class="fas fa-calendar-check" style="color:#3b82f6"></i><h4 style="margin:0;font-size:14px;color:#e2e8f0">Follow-ups (${followups.length})</h4></div>
             ${canEdit ? `<button class="btn btn-xs btn-primary" onclick="openScheduleFollowupModal2('${lead.id}')"><i class="fas fa-plus"></i></button>` : ''}
           </div>
-          <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Scheduled</div>
+          <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Scheduled</div>
           <div style="display:flex;flex-direction:column;gap:8px">${followupsHTML}</div>
         </div>
 
@@ -2383,12 +2383,12 @@ function renderFollowupRowDetail(leadId, t) {
   const overdue = t.due_date && new Date(t.due_date).getTime() < Date.now() && t.status !== 'done'
   const statusKey = String(t.status || 'pending').toLowerCase()
   const meta = LEAD_TASK_STATUS_META[statusKey] || { label: statusKey, badge: 'todo' }
-  return `<div style="padding:10px;border:1px solid ${overdue ? '#FF5E3A40' : '#1e293b'};border-radius:8px;background:${overdue ? '#FF5E3A10' : '#0f172a40'}">
+  return `<div style="padding:10px;border:1px solid ${overdue ? '#FF5E3A40' : '#121216'};border-radius:8px;background:${overdue ? '#FF5E3A10' : '#0f172a40'}">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;color:#e2e8f0;font-weight:500">${escapeHtml(t.title || '')}</div>
-        ${t.description ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${escapeHtml(t.description).slice(0, 120)}</div>` : ''}
-        <div style="font-size:11px;color:${overdue ? '#FF5E3A' : '#64748b'};margin-top:4px"><i class="fas fa-calendar"></i> ${fmtDateTime(t.due_date)}${overdue ? ' (Overdue)' : ''}</div>
+        ${t.description ? `<div style="font-size:11px;color:#7E7E8F;margin-top:2px">${escapeHtml(t.description).slice(0, 120)}</div>` : ''}
+        <div style="font-size:11px;color:${overdue ? '#FF5E3A' : '#7E7E8F'};margin-top:4px"><i class="fas fa-calendar"></i> ${fmtDateTime(t.due_date)}${overdue ? ' (Overdue)' : ''}</div>
       </div>
       <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
         <span class="badge badge-${meta.badge}" style="font-size:10px">${escapeHtml(meta.label)}</span>
@@ -2404,12 +2404,12 @@ function renderTaskRowDetail(leadId, t) {
   const statusKey = String(t.status || 'pending').toLowerCase()
   const meta = LEAD_TASK_STATUS_META[statusKey] || { label: statusKey, badge: 'todo' }
   const priorityClass = ({ critical: 'badge-critical', high: 'badge-high', medium: 'badge-medium', low: 'badge-low' })[t.priority] || 'badge-medium'
-  return `<div style="padding:10px;border:1px solid #1e293b;border-radius:8px;background:#0f172a40">
+  return `<div style="padding:10px;border:1px solid #121216;border-radius:8px;background:#0f172a40">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;color:#e2e8f0;font-weight:500">${escapeHtml(t.title || '')}</div>
-        ${t.description ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${escapeHtml(t.description).slice(0, 120)}</div>` : ''}
-        <div style="font-size:11px;color:#64748b;margin-top:4px"><i class="fas fa-calendar"></i> ${fmtDateTime(t.due_date)}</div>
+        ${t.description ? `<div style="font-size:11px;color:#7E7E8F;margin-top:2px">${escapeHtml(t.description).slice(0, 120)}</div>` : ''}
+        <div style="font-size:11px;color:#7E7E8F;margin-top:4px"><i class="fas fa-calendar"></i> ${fmtDateTime(t.due_date)}</div>
       </div>
       <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
         ${t.priority ? `<span class="badge ${priorityClass}" style="font-size:10px">${escapeHtml(t.priority)}</span>` : ''}
@@ -2426,11 +2426,11 @@ function renderTimelineList(timeline) {
   return `<div style="display:flex;flex-direction:column;gap:14px;position:relative">
     ${timeline.map((a) => `
       <div style="display:flex;gap:12px">
-        <div style="flex-shrink:0;width:34px;height:34px;border-radius:50%;background:#1e293b;display:flex;align-items:center;justify-content:center;color:#94a3b8;border:1px solid #334155"><i class="fas ${activityIcon(a.kind)}"></i></div>
-        <div style="flex:1;min-width:0;padding:10px 12px;border-radius:8px;background:#0f172a40;border:1px solid #1e293b">
+        <div style="flex-shrink:0;width:34px;height:34px;border-radius:50%;background:#121216;display:flex;align-items:center;justify-content:center;color:#7E7E8F;border:1px solid #2B2B35"><i class="fas ${activityIcon(a.kind)}"></i></div>
+        <div style="flex:1;min-width:0;padding:10px 12px;border-radius:8px;background:#0f172a40;border:1px solid #121216">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <div style="font-size:13px;color:#e2e8f0;font-weight:600">${escapeHtml(a.actor_name || 'System')}</div>
-            <div style="font-size:11px;color:#64748b;white-space:nowrap" title="${escapeHtml(a.created_at || '')}">${fmtRelative(a.created_at)}</div>
+            <div style="font-size:11px;color:#7E7E8F;white-space:nowrap" title="${escapeHtml(a.created_at || '')}">${fmtRelative(a.created_at)}</div>
           </div>
           <div style="font-size:13px;color:#cbd5e1;margin-top:4px">${escapeHtml(a.summary || '')}</div>
           <div style="margin-top:6px"><span class="badge badge-todo" style="font-size:10px">${escapeHtml(a.kind || 'event')}</span></div>
@@ -2489,7 +2489,7 @@ async function openEditLeadTaskModal(leadId, taskId) {
     .join('')
   showModal(`
     <div class="modal-header">
-      <h3><i class="fas fa-edit" style="color:#FF7A45;margin-right:6px"></i>Edit ${kind === 'task' ? 'Task' : 'Follow-up'}</h3>
+      <h3><i class="fas fa-edit" style="color:#A970FF;margin-right:6px"></i>Edit ${kind === 'task' ? 'Task' : 'Follow-up'}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -2658,7 +2658,7 @@ async function openScheduleFollowupModal2(leadId) {
           </div>
           <div class="form-group" style="margin:0">
             <label class="form-label" style="font-size:11px">&nbsp;</label>
-            <div style="font-size:11px;color:#94a3b8;padding-top:6px">Lead + attendees auto-emailed</div>
+            <div style="font-size:11px;color:#7E7E8F;padding-top:6px">Lead + attendees auto-emailed</div>
           </div>
         </div>
         <div class="form-group" style="margin:0">
@@ -2687,7 +2687,7 @@ async function openScheduleFollowupModal2(leadId) {
         </div>
         <div class="form-group"><label class="form-label">Alarm minutes before</label>
           <input id="fu2-snooze" type="number" class="form-input" min="0" max="1440" value="10"/>
-          <div class="form-hint" style="font-size:11px;color:#94a3b8;margin-top:4px">Alert pops at follow-up time minus these minutes; rings until you acknowledge.</div>
+          <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Alert pops at follow-up time minus these minutes; rings until you acknowledge.</div>
         </div>
       </div>
     </div>
@@ -2710,13 +2710,13 @@ function _fu2RenderAttendeeOptions(users, filter) {
     if (!f) return true
     return `${u.full_name || ''} ${u.email || ''} ${u.designation || ''}`.toLowerCase().includes(f)
   })
-  if (!filtered.length) return '<div style="padding:6px;color:#64748b;font-size:11px">No matches</div>'
+  if (!filtered.length) return '<div style="padding:6px;color:#7E7E8F;font-size:11px">No matches</div>'
   return filtered.map((u) => {
     const id = String(u.id)
     const checked = selected.has(id) ? 'checked' : ''
     return `<label style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;font-size:12px">
       <input type="checkbox" value="${escapeHtml(id)}" ${checked} onchange="_fu2ToggleAttendee('${escapeHtml(id)}', this.checked)"/>
-      <span style="flex:1;min-width:0;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(u.full_name || u.email || id)}${u.email ? ` <span style="color:#64748b">· ${escapeHtml(u.email)}</span>` : ''}</span>
+      <span style="flex:1;min-width:0;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(u.full_name || u.email || id)}${u.email ? ` <span style="color:#7E7E8F">· ${escapeHtml(u.email)}</span>` : ''}</span>
     </label>`
   }).join('')
 }
@@ -2955,7 +2955,7 @@ let _salesTrackerFrom = ''
 let _salesTrackerTo = ''
 
 async function renderSalesTrackerPage(el) {
-  el.innerHTML = `<div style="padding:24px;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading sale tracker…</div>`
+  el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading sale tracker…</div>`
   try {
     await Promise.all([loadLeadStatuses(), loadLeadSources()])
     const res = await API.get('/leads')
@@ -3014,11 +3014,11 @@ async function renderSalesTrackerPage(el) {
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">
-        ${_trackerKpiCard('Total Leads', total, 'fa-bullseye', '#FF7A45')}
+        ${_trackerKpiCard('Total Leads', total, 'fa-bullseye', '#A970FF')}
         ${_trackerKpiCard('Open Pipeline', openCount, 'fa-stream', '#3b82f6')}
         ${_trackerKpiCard('Won', closedCount, 'fa-trophy', '#22c55e')}
-        ${_trackerKpiCard('Lost / Cold', lostCount, 'fa-snowflake', '#94a3b8')}
-        ${_trackerKpiCard('Conversion', conversion + '%', 'fa-percent', '#FFB347')}
+        ${_trackerKpiCard('Lost / Cold', lostCount, 'fa-snowflake', '#7E7E8F')}
+        ${_trackerKpiCard('Conversion', conversion + '%', 'fa-percent', '#C9A7FF')}
       </div>
 
       ${bodyHtml}
@@ -3047,7 +3047,7 @@ function _trackerKpiCard(label, value, icon, color) {
   return `<div class="card"><div class="card-body" style="padding:14px 16px;display:flex;align-items:center;gap:12px">
     <div style="width:42px;height:42px;border-radius:12px;background:${color}22;display:flex;align-items:center;justify-content:center;color:${color};font-size:18px"><i class="fas ${icon}"></i></div>
     <div>
-      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
+      <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
       <div style="font-size:22px;font-weight:700;color:#e2e8f0">${value}</div>
     </div>
   </div></div>`
@@ -3076,15 +3076,15 @@ function _renderTrackerPipeline(leads, byStatus) {
           <span style="font-size:18px;font-weight:700;color:#e2e8f0">${items.length}</span>
         </div>
         <div style="height:6px;border-radius:3px;background:rgba(255,255,255,0.08);overflow:hidden;margin-bottom:10px">
-          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#FF7A45,#FFB347)"></div>
+          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#A970FF,#C9A7FF)"></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto">
           ${items.slice(0, 8).map((l) => `
             <div onclick="goLeadDetail('${l.id}')" style="cursor:pointer;padding:8px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
               <div style="font-size:12.5px;font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div>
-              <div style="font-size:11px;color:#94a3b8;margin-top:2px">${escapeHtml(l.assigned_to_name || '—')} · ${escapeHtml(l.source || '—')}</div>
-            </div>`).join('') || `<div style="font-size:12px;color:#64748b;padding:8px">No leads in this stage.</div>`}
-          ${items.length > 8 ? `<div style="font-size:11px;color:#64748b;text-align:center">+${items.length - 8} more</div>` : ''}
+              <div style="font-size:11px;color:#7E7E8F;margin-top:2px">${escapeHtml(l.assigned_to_name || '—')} · ${escapeHtml(l.source || '—')}</div>
+            </div>`).join('') || `<div style="font-size:12px;color:#7E7E8F;padding:8px">No leads in this stage.</div>`}
+          ${items.length > 8 ? `<div style="font-size:11px;color:#7E7E8F;text-align:center">+${items.length - 8} more</div>` : ''}
         </div>
       </div></div>`
     }).join('')}
@@ -3108,9 +3108,9 @@ function _renderTrackerBySource(leads) {
             <td style="font-weight:600;color:#e2e8f0">${escapeHtml(src)}</td>
             <td>${items.length}</td>
             <td style="color:#22c55e">${won}</td>
-            <td style="color:#94a3b8">${lost}</td>
-            <td style="font-weight:600;color:${conv >= 30 ? '#22c55e' : conv >= 10 ? '#FFB347' : '#FF5E3A'}">${conv}%</td>
-            <td style="min-width:160px"><div style="height:8px;border-radius:4px;background:rgba(255,255,255,0.06);overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#FF7A45,#FFB347)"></div></div></td>
+            <td style="color:#7E7E8F">${lost}</td>
+            <td style="font-weight:600;color:${conv >= 30 ? '#22c55e' : conv >= 10 ? '#C9A7FF' : '#FF5E3A'}">${conv}%</td>
+            <td style="min-width:160px"><div style="height:8px;border-radius:4px;background:rgba(255,255,255,0.06);overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#A970FF,#C9A7FF)"></div></div></td>
           </tr>`
         }).join('')}
       </tbody>
@@ -3132,12 +3132,12 @@ function _renderTrackerByAssignee(leads) {
           const open = items.length - won - lost
           const conv = items.length ? Math.round((won / items.length) * 100) : 0
           return `<tr>
-            <td style="display:flex;align-items:center;gap:8px">${avatar(name, '#FF7A45', 'sm')} <span style="font-weight:600;color:#e2e8f0">${escapeHtml(name)}</span></td>
+            <td style="display:flex;align-items:center;gap:8px">${avatar(name, '#A970FF', 'sm')} <span style="font-weight:600;color:#e2e8f0">${escapeHtml(name)}</span></td>
             <td>${items.length}</td>
             <td style="color:#3b82f6">${open}</td>
             <td style="color:#22c55e">${won}</td>
-            <td style="color:#94a3b8">${lost}</td>
-            <td style="font-weight:600;color:${conv >= 30 ? '#22c55e' : conv >= 10 ? '#FFB347' : '#FF5E3A'}">${conv}%</td>
+            <td style="color:#7E7E8F">${lost}</td>
+            <td style="font-weight:600;color:${conv >= 30 ? '#22c55e' : conv >= 10 ? '#C9A7FF' : '#FF5E3A'}">${conv}%</td>
           </tr>`
         }).join('')}
       </tbody>
@@ -3157,11 +3157,11 @@ function _renderTrackerRecent(leads) {
           const key = String(l.status || 'new').toLowerCase()
           const meta = LEAD_STATUS_META[key] || { label: key, badge: 'todo' }
           return `<tr>
-            <td><div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="goLeadDetail('${l.id}')">${avatar(l.name, '#FF7A45', 'sm')}<div><div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div><div style="font-size:11px;color:#64748b">${escapeHtml(l.email || '')}</div></div></div></td>
+            <td><div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="goLeadDetail('${l.id}')">${avatar(l.name, '#A970FF', 'sm')}<div><div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div><div style="font-size:11px;color:#7E7E8F">${escapeHtml(l.email || '')}</div></div></div></td>
             <td><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
             <td>${escapeHtml(l.assigned_to_name || '—')}</td>
             <td>${escapeHtml(l.source || '—')}</td>
-            <td style="font-size:12px;color:#94a3b8">${fmtDateTime(l.updated_at || l.created_at)}</td>
+            <td style="font-size:12px;color:#7E7E8F">${fmtDateTime(l.updated_at || l.created_at)}</td>
             <td><button class="btn btn-xs btn-outline" onclick="goLeadDetail('${l.id}')"><i class="fas fa-up-right-from-square"></i></button></td>
           </tr>`
         }).join('')}
@@ -3232,7 +3232,7 @@ async function renderLeadTaskListPage(el, opts) {
   el.innerHTML = `<div class="page-header">
     <h1 class="page-title"><i class="fas ${opts.icon}" style="color:${opts.iconColor};margin-right:8px"></i>${opts.title}</h1>
   </div>
-  <div class="loading-state" style="padding:40px;text-align:center;color:#94a3b8"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
+  <div class="loading-state" style="padding:40px;text-align:center;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`
   try {
     await loadLeadStatuses()
     const res = await API.get(`/leads/tasks-list?kind=${encodeURIComponent(opts.kind)}`)
@@ -3253,23 +3253,23 @@ async function renderLeadTaskListPage(el, opts) {
     el.innerHTML = `<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div>
         <h1 class="page-title"><i class="fas ${opts.icon}" style="color:${opts.iconColor};margin-right:8px"></i>${opts.title}</h1>
-        <div style="font-size:12px;color:#94a3b8;margin-top:2px">${all.length} total · ${overdueCount} overdue</div>
+        <div style="font-size:12px;color:#7E7E8F;margin-top:2px">${all.length} total · ${overdueCount} overdue</div>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
         ${['open', 'done', 'all'].map((f) => `<button class="btn btn-sm ${filter === f ? 'btn-primary' : 'btn-outline'}" onclick="setLeadListFilter('${filterKey}','${f}')">${f === 'open' ? 'Open' : f === 'done' ? 'Completed' : 'All'}</button>`).join('')}
       </div>
     </div>
     ${visible.length === 0
-      ? `<div class="empty-state" style="padding:40px;text-align:center;color:#64748b"><i class="fas ${opts.icon}" style="font-size:32px;color:#475569"></i><p style="margin-top:10px">${opts.emptyMsg}</p></div>`
+      ? `<div class="empty-state" style="padding:40px;text-align:center;color:#7E7E8F"><i class="fas ${opts.icon}" style="font-size:32px;color:#5A5A66"></i><p style="margin-top:10px">${opts.emptyMsg}</p></div>`
       : `<div class="card" style="padding:0;overflow:hidden">
           <table class="data-table" style="width:100%;border-collapse:collapse">
             <thead><tr style="background:#0f172a40">
-              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Title</th>
-              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Lead</th>
-              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Assignee</th>
-              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Due</th>
-              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Status</th>
-              <th style="padding:10px 14px;text-align:right;font-size:11px;color:#64748b;text-transform:uppercase">Actions</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#7E7E8F;text-transform:uppercase">Title</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#7E7E8F;text-transform:uppercase">Lead</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#7E7E8F;text-transform:uppercase">Assignee</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#7E7E8F;text-transform:uppercase">Due</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;color:#7E7E8F;text-transform:uppercase">Status</th>
+              <th style="padding:10px 14px;text-align:right;font-size:11px;color:#7E7E8F;text-transform:uppercase">Actions</th>
             </tr></thead>
             <tbody>${visible.map((t) => renderLeadTaskListRow(t)).join('')}</tbody>
           </table>
@@ -3286,17 +3286,17 @@ function renderLeadTaskListRow(t) {
   const meta = LEAD_TASK_STATUS_META[statusKey] || { label: statusKey, badge: 'todo' }
   const isTerminal = statusKey === 'done' || statusKey === 'skipped' || statusKey === 'cancelled'
   const overdue = t.due_date && !isTerminal && new Date(t.due_date).getTime() < Date.now()
-  return `<tr style="border-top:1px solid #1e293b">
+  return `<tr style="border-top:1px solid #121216">
     <td style="padding:10px 14px">
       <div style="font-size:13px;color:#e2e8f0;font-weight:500">${escapeHtml(t.title || '')}</div>
-      ${t.notes ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${escapeHtml(String(t.notes).slice(0, 80))}${t.notes.length > 80 ? '…' : ''}</div>` : ''}
+      ${t.notes ? `<div style="font-size:11px;color:#7E7E8F;margin-top:2px">${escapeHtml(String(t.notes).slice(0, 80))}${t.notes.length > 80 ? '…' : ''}</div>` : ''}
     </td>
     <td style="padding:10px 14px">
-      <a style="color:#FF7A45;font-size:13px;cursor:pointer" onclick="goLeadDetail('${t.lead_id}')">${escapeHtml(t.lead_name || '—')}</a>
-      ${t.lead_phone ? `<div style="font-size:11px;color:#64748b">${escapeHtml(t.lead_phone)}</div>` : ''}
+      <a style="color:#A970FF;font-size:13px;cursor:pointer" onclick="goLeadDetail('${t.lead_id}')">${escapeHtml(t.lead_name || '—')}</a>
+      ${t.lead_phone ? `<div style="font-size:11px;color:#7E7E8F">${escapeHtml(t.lead_phone)}</div>` : ''}
     </td>
     <td style="padding:10px 14px;font-size:13px;color:#cbd5e1">${escapeHtml(t.assignee_name || '—')}</td>
-    <td style="padding:10px 14px;font-size:12px;${overdue ? 'color:#FF5E3A;font-weight:600' : 'color:#94a3b8'}">${fmtDateTime(t.due_date)}${overdue ? ' (overdue)' : ''}</td>
+    <td style="padding:10px 14px;font-size:12px;${overdue ? 'color:#FF5E3A;font-weight:600' : 'color:#7E7E8F'}">${fmtDateTime(t.due_date)}${overdue ? ' (overdue)' : ''}</td>
     <td style="padding:10px 14px"><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
     <td style="padding:10px 14px;text-align:right">
       <div style="display:inline-flex;gap:4px">
