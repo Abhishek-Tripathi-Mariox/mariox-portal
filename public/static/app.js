@@ -580,7 +580,16 @@ const Router = {
       if (this.current) sessionStorage.setItem('pmp_current_page', JSON.stringify(this.current))
       else sessionStorage.removeItem('pmp_current_page')
       if (this.current?.page) {
-        const targetHash = '#/' + this.current.page
+        // Encode params into the URL hash too — `#/page?id=xxx&name=yyy` —
+        // so a hard refresh restores the full route even if sessionStorage
+        // gets cleared by the browser. This is what keeps the kanban board
+        // on the same project after F5 / Cmd-R.
+        const params = this.current.params || {}
+        const qs = Object.keys(params)
+          .filter(k => params[k] !== undefined && params[k] !== null && params[k] !== '')
+          .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(String(params[k])))
+          .join('&')
+        const targetHash = '#/' + this.current.page + (qs ? '?' + qs : '')
         if (location.hash !== targetHash) {
           history.replaceState(null, '', targetHash)
         }
@@ -620,12 +629,33 @@ const Router = {
   }
 }
 
+// Expose Router on window so scripts loaded as separate <script> tags
+// (enterprise.js, pages.js, etc.) can reach it via `window.Router`. A
+// top-level `const Router = { … }` is NOT attached to window automatically,
+// which silently broke every `window.Router?.current?…` access in other
+// files (kanban project selection, drawer URL persistence, etc.).
+window.Router = Router
+
 window.addEventListener('hashchange', () => {
-  const m = (location.hash || '').match(/^#\/([\w-]+)/)
+  const m = (location.hash || '').match(/^#\/([\w-]+)(\?(.*))?/)
   if (!m) return
   const next = m[1]
-  if (Router.current?.page === next) return
-  if (_user) Router.navigate(next)
+  const params = {}
+  const qs = m[3] || ''
+  if (qs) {
+    for (const part of qs.split('&')) {
+      const [k, v = ''] = part.split('=')
+      if (k) {
+        try { params[decodeURIComponent(k)] = decodeURIComponent(v) }
+        catch { params[k] = v }
+      }
+    }
+  }
+  // Already on the same page+params? No-op so we don't fight our own
+  // history.replaceState in _persist.
+  const cur = Router.current
+  if (cur?.page === next && JSON.stringify(cur.params || {}) === JSON.stringify(params)) return
+  if (_user) Router.navigate(next, params)
 })
 
 // ── Colour helpers ───────────────────────────────────────────
@@ -749,6 +779,24 @@ function navItem(page, iconClass, label, badgeHtml = '') {
   if (!canSeePage(page)) return ''
   return `<a class="nav-item" data-page="${page}"><span class="nav-icon"><i class="fas ${iconClass}"></i></span>${label}${badgeHtml}</a>`
 }
+// A parent nav item that expands to reveal sub-items. Used for grouping
+// related pages (e.g. internal / external Team) under one entry without
+// taking two slots in the sidebar. Children that the user can't see are
+// dropped; if zero remain, the whole parent is suppressed.
+function navItemExpandable({ key, iconClass, label, defaultOpen = true, children = [] }) {
+  const filtered = children.filter(c => canSeePage(c.page)).map(c =>
+    `<a class="nav-item nav-subitem" data-page="${c.page}"><span class="nav-icon"><i class="fas ${c.iconClass}"></i></span>${c.label}</a>`
+  )
+  if (!filtered.length) return ''
+  return `<div class="nav-subgroup ${defaultOpen ? 'is-open' : ''}" data-nav-subgroup="${key}">
+    <button type="button" class="nav-item nav-subgroup-toggle" data-nav-subtoggle="${key}" aria-expanded="${defaultOpen ? 'true' : 'false'}">
+      <span class="nav-icon"><i class="fas ${iconClass}"></i></span>
+      ${label}
+      <i class="fas fa-chevron-down nav-subgroup-caret" style="margin-left:auto;font-size:11px;transition:transform .18s"></i>
+    </button>
+    <div class="nav-subgroup-body">${filtered.join('')}</div>
+  </div>`
+}
 function navSection({ key, heading, chip, expanded, items, icon }) {
   const body = items.filter(Boolean).join('')
   if (!body) return ''
@@ -776,8 +824,16 @@ function buildShell() {
       navItem('super-dashboard', 'fa-chart-pie', 'Overview'),
       navItem('clients-list',    'fa-building',   'Clients'),
       navItem('billing-admin',   'fa-file-invoice-dollar', 'Billing'),
-      navItem('team-overview',   'fa-users',      'Team'),
-      navItem('external-team',   'fa-user-tag',   'External Team'),
+      navItemExpandable({
+        key: 'admin-team',
+        iconClass: 'fa-users',
+        label: 'Team',
+        defaultOpen: true,
+        children: [
+          { page: 'team-overview', iconClass: 'fa-user',     label: 'Internal Team' },
+          { page: 'external-team', iconClass: 'fa-user-tag', label: 'External Team' },
+        ],
+      }),
     ],
   })
 
@@ -1041,6 +1097,17 @@ function bindNav() {
     const toggle = e.target.closest('[data-nav-toggle]')
     if (toggle) {
       toggleSidebarGroup(toggle.dataset.navToggle)
+      return
+    }
+    // Sub-group toggle (e.g. Team → Internal / External). Handle BEFORE
+    // [data-page] because the toggle button itself isn't a page link.
+    const subToggle = e.target.closest('[data-nav-subtoggle]')
+    if (subToggle) {
+      const wrap = subToggle.closest('[data-nav-subgroup]')
+      if (wrap) {
+        const isOpen = wrap.classList.toggle('is-open')
+        subToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
+      }
       return
     }
     const item = e.target.closest('[data-page]')
@@ -1691,7 +1758,26 @@ function openDrawer(html) {
 function closeDrawer() {
   document.getElementById('task-drawer').classList.remove('open')
   document.getElementById('drawer-overlay').classList.remove('show')
+  // Drop the `task` param from the URL so a follow-up refresh doesn't
+  // re-open the drawer for a task we just closed.
+  if (window.Router?.current?.params?.task) {
+    const next = { ...window.Router.current.params }
+    delete next.task
+    window.Router.current = { ...window.Router.current, params: next }
+    if (typeof window.Router._persist === 'function') window.Router._persist()
+  }
 }
+// Stash the currently-open task id on the URL so a refresh reopens the
+// same drawer. Called from openTaskDrawer right after it kicks off the
+// fetch — the drawer renders async, but the URL update is sync so the
+// browser bar already shows `?task=…` while the panel is still loading.
+function _persistTaskInUrl(taskId) {
+  if (!window.Router?.current) return
+  const params = { ...(window.Router.current.params || {}), task: taskId }
+  window.Router.current = { ...window.Router.current, params }
+  if (typeof window.Router._persist === 'function') window.Router._persist()
+}
+window._persistTaskInUrl = _persistTaskInUrl
 
 // ── Profile Modal ─────────────────────────────────────────────
 function showProfileModal() {
@@ -2239,16 +2325,34 @@ function loadPage(page, el) {
 function resolveInitialRoute() {
   let page = null
   let params = {}
-  // 1) Hash route wins (e.g. #/clients-list) — survives browser refresh
-  const hashMatch = (location.hash || '').match(/^#\/([\w-]+)/)
-  if (hashMatch) page = hashMatch[1]
+  // 1) Hash route wins (e.g. #/clients-list or #/kanban-board?id=xxx)
+  // The hash encodes both page and params so refresh restores the full route
+  // even if sessionStorage gets cleared.
+  const hashMatch = (location.hash || '').match(/^#\/([\w-]+)(\?(.*))?/)
+  if (hashMatch) {
+    page = hashMatch[1]
+    const qs = hashMatch[3] || ''
+    if (qs) {
+      for (const part of qs.split('&')) {
+        const [k, v = ''] = part.split('=')
+        if (k) {
+          try { params[decodeURIComponent(k)] = decodeURIComponent(v) }
+          catch { params[k] = v }
+        }
+      }
+    }
+  }
   // 2) sessionStorage fallback — also survives refresh and restores params
   // for parameterized routes like lead-detail.
   try {
     const cached = JSON.parse(sessionStorage.getItem('pmp_current_page') || 'null')
     if (cached?.page) {
       if (!page) page = cached.page
-      if (page === cached.page && cached.params) params = cached.params
+      if (page === cached.page && cached.params) {
+        // Merge: hash params take precedence (they're more visible/shareable),
+        // sessionStorage fills in anything missing.
+        params = { ...cached.params, ...params }
+      }
     }
   } catch {}
   // 3) Legacy path-based aliases
@@ -2311,8 +2415,15 @@ function init() {
           if (app) app.innerHTML = ''
           Router.current = null
           Router.history = []
-          const next = canSeePage(initialPage) ? initialPage : defaultPage()
-          Router.navigate(next)
+          // Preserve params (e.g. ?id=projXYZ) when re-navigating to the same
+          // page — without this, refreshing on a deep route (kanban board for
+          // a specific project) drops the project id and bounces to the picker
+          // or, if canSeePage fails, all the way to defaultPage(). The latter
+          // was making refresh on Kanban land users on Projects.
+          const stayOnInitial = canSeePage(initialPage)
+          const next = stayOnInitial ? initialPage : defaultPage()
+          const nextParams = stayOnInitial ? (initialRoute.params || {}) : {}
+          Router.navigate(next, nextParams)
           if (roleChanged && typeof toast === 'function') toast(`Your role changed to ${_user.role}`, 'info')
         } else if (Router.current && !canSeePage(Router.current.page)) {
           Router.current = null

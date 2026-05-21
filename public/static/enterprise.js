@@ -738,7 +738,11 @@ function openProjectBoard(projectId, name) {
   window._kanbanSprintId = ''
   const el = document.getElementById('page-kanban-board')
   if (el) { el.dataset.loaded = '' }
-  Router.navigate('kanban-board')
+  // Pass projectId + name into router params so the choice survives a refresh.
+  // resolveInitialRoute() restores params from sessionStorage on reload, which
+  // means the board re-opens straight to this project instead of bouncing back
+  // to the picker.
+  Router.navigate('kanban-board', { id: projectId, name: name || '' })
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -758,16 +762,42 @@ async function renderKanbanBoard(el) {
     const allSprints = spData.sprints || []
     const allMilestones = msData.milestones || []
 
-    // The board now requires the user to pick a project before loading data.
-    // Empty selProject renders a "Pick a project" prompt instead of the
-    // aggregated all-projects view.
-    if (window._kanbanProjectId === undefined) window._kanbanProjectId = ''
-    let selProject = window._kanbanProjectId
+    // The URL (Router.current.params) is the single source of truth for
+    // which project the board is on. The in-memory window._kanbanProjectId
+    // from a previous interaction must NEVER win over an empty URL —
+    // otherwise clicking "Kanban Board" in the sidebar (which navigates to
+    // /kanban-board with no params) would still render the previously-open
+    // board instead of the picker.
+    const routedId = window.Router?.current?.params?.id || ''
+    const routedName = window.Router?.current?.params?.name || ''
+    const routedTask = window.Router?.current?.params?.task || ''
+    window._kanbanProjectId = routedId
+    if (routedName) window._kanbanProjectName = routedName
+    let selProject = routedId
     const isAllProjects = !selProject
 
+    // If the URL points at a project we can't actually load (deleted,
+    // permissions revoked, etc.), drop back to the picker and clean the URL.
     if (!isAllProjects && !projects.find(p => p.id === selProject)) {
       window._kanbanProjectId = ''
       selProject = ''
+      if (window.Router?.current?.page === 'kanban-board') {
+        window.Router.current = { page: 'kanban-board', params: {} }
+        if (typeof window.Router._persist === 'function') window.Router._persist()
+      }
+    }
+
+    // Close any open task drawer if the URL no longer carries `?task=…`.
+    // Sidebar click on "Kanban Board" clears params → drawer must close even
+    // though it was open a moment ago.
+    if (!routedTask) {
+      const drawerEl = document.getElementById('task-drawer')
+      if (drawerEl && drawerEl.classList.contains('open') && typeof closeDrawer === 'function') {
+        // Close without re-clearing URL (it's already clean).
+        drawerEl.classList.remove('open')
+        const overlay = document.getElementById('drawer-overlay')
+        if (overlay) overlay.classList.remove('show')
+      }
     }
 
     // No project chosen yet → render the gallery of role-scoped projects as
@@ -828,7 +858,7 @@ async function renderKanbanBoard(el) {
               <input id="kanban-gallery-search" class="form-input" placeholder="Search projects by name or code…" oninput="filterKanbanGallery(this.value)"
                 style="padding-left:32px;min-width:260px;max-width:340px" autocomplete="off"/>
             </div>
-            <select class="form-select" style="min-width:200px;max-width:240px" onchange="switchBoardProject(this.value)">
+            <select class="form-select" id="kanban-gallery-filter" style="min-width:200px;max-width:240px" onchange="filterKanbanByProject(this.value)">
               <option value="" selected>— Or pick from list —</option>
               ${projects.map(p => `<option value="${p.id}">${tc(p.name)}</option>`).join('')}
             </select>
@@ -898,6 +928,7 @@ async function renderKanbanBoard(el) {
       <!-- Board Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:0 0 16px 0;flex-wrap:wrap;gap:10px">
         <div style="display:flex;align-items:center;gap:12px">
+          <button class="btn btn-outline btn-sm" onclick="switchBoardProject('')" title="Back to projects list" style="flex-shrink:0"><i class="fas fa-arrow-left"></i></button>
           <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#A970FF,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <i class="fas fa-columns" style="color:#fff;font-size:15px"></i>
           </div>
@@ -948,6 +979,15 @@ async function renderKanbanBoard(el) {
     </div>`
 
     setupKanbanDragDrop()
+
+    // If the URL carries `?task=…`, reopen that task drawer now that the
+    // board is rendered. This restores drawer state after a hard refresh.
+    // `routedTask` was captured at the top of this function (URL is source
+    // of truth). Re-open only if it's still set and the drawer isn't open.
+    const drawerEl = document.getElementById('task-drawer')
+    if (routedTask && drawerEl && !drawerEl.classList.contains('open')) {
+      openTaskDrawer(routedTask)
+    }
   } catch(e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle" style="color:#FF5E3A"></i><p style="color:#FF5E3A">${e.message}</p></div>`
   }
@@ -1205,10 +1245,58 @@ function _kanbanProjectCard(p, taskCount, doneCount, lastActivity) {
   </div>`
 }
 
+// Dropdown-driven filter for the picker gallery. Selecting a project from
+// the "— Or pick from list —" dropdown narrows the visible cards to just
+// that project — it does NOT navigate to the board. The user reaches the
+// board by clicking the card itself.
+function filterKanbanByProject(projectId) {
+  const target = String(projectId || '').trim()
+  const cards = document.querySelectorAll('#kanban-gallery-grid .kanban-gallery-card')
+  let shown = 0
+  cards.forEach(card => {
+    // The card's onclick is `switchBoardProject('<p.id>')` — pull the id
+    // out of it once and stash on the element so subsequent filters don't
+    // re-parse on every call.
+    if (!card.dataset.projectId) {
+      const m = (card.getAttribute('onclick') || '').match(/switchBoardProject\(['"]([^'"]+)['"]\)/)
+      if (m) card.dataset.projectId = m[1]
+    }
+    const match = !target || card.dataset.projectId === target
+    card.style.display = match ? '' : 'none'
+    if (match) shown++
+  })
+  // Reset the free-text search input when the dropdown filter activates so
+  // the two filters don't fight each other.
+  const search = document.getElementById('kanban-gallery-search')
+  if (search && target) search.value = ''
+  // Toggle a "no matches" line.
+  let noMatch = document.getElementById('kanban-gallery-nomatch')
+  if (shown === 0 && target) {
+    if (!noMatch) {
+      noMatch = document.createElement('div')
+      noMatch.id = 'kanban-gallery-nomatch'
+      noMatch.className = 'empty-inline'
+      noMatch.style.gridColumn = '1 / -1'
+      noMatch.innerHTML = `<i class="fas fa-search"></i><span>No project found.</span>`
+      document.getElementById('kanban-gallery-grid')?.appendChild(noMatch)
+    } else {
+      noMatch.style.display = ''
+    }
+  } else if (noMatch) {
+    noMatch.style.display = 'none'
+  }
+}
+window.filterKanbanByProject = filterKanbanByProject
+
 // Live filter for the gallery — operates on the rendered DOM so we don't
 // re-fetch / re-build cards on every keystroke.
 function filterKanbanGallery(query) {
   const q = String(query || '').trim().toLowerCase()
+  // Reset the dropdown filter when the user types in search so both filters
+  // don't end up fighting (search hides cards by name, dropdown hides cards
+  // by id — they'd compose into an empty intersection if both active).
+  const dropdown = document.getElementById('kanban-gallery-filter')
+  if (dropdown && q) dropdown.value = ''
   const cards = document.querySelectorAll('#kanban-gallery-grid .kanban-gallery-card')
   let shown = 0
   cards.forEach(card => {
@@ -1238,10 +1326,26 @@ function filterKanbanGallery(query) {
 }
 
 function switchBoardProject(id) {
-  window._kanbanProjectId = id
+  // Picking the placeholder (`""`) clears the selection → back to the picker.
+  // For a real id, we re-render the board with the new project AND update
+  // Router.current.params so the URL hash carries `?id=…`. That hash is the
+  // single source of truth on refresh: resolveInitialRoute() reads it before
+  // anything else and feeds the project back to renderKanbanBoard().
+  window._kanbanProjectId = id || ''
   window._kanbanSprintId = ''
   window._kanbanMilestoneId = ''
   window._kanbanProjectName = ''
+  // Drop any stale `task=…` param too — switching projects must not
+  // re-open a task drawer that belonged to the previous project.
+  if (typeof closeDrawer === 'function') {
+    const drawerEl = document.getElementById('task-drawer')
+    if (drawerEl && drawerEl.classList.contains('open')) closeDrawer()
+  }
+  if (window.Router?.current?.page === 'kanban-board') {
+    const nextParams = id ? { id } : {}
+    window.Router.current = { page: 'kanban-board', params: nextParams }
+    if (typeof window.Router._persist === 'function') window.Router._persist()
+  }
   const el = document.getElementById('page-kanban-board')
   if (el) { el.dataset.loaded = ''; loadPage('kanban-board', el) }
 }
@@ -1373,6 +1477,10 @@ function editColumnInline(colId, name, color, wipLimit, isDone) {
 
 /* ── TASK DRAWER ────────────────────────────────────────── */
 async function openTaskDrawer(taskId) {
+  // Encode the task id into the URL hash so refreshing reopens the same
+  // drawer instead of leaving the user on the bare board. closeDrawer()
+  // clears it back out.
+  if (typeof window._persistTaskInUrl === 'function') window._persistTaskInUrl(taskId)
   openDrawer(`<div style="padding:20px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading task…</div>`)
   try {
     const data = await API.get('/tasks/' + taskId)
