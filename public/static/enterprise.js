@@ -1548,6 +1548,13 @@ async function openTaskDrawer(taskId) {
           </div>`).join('')}
       </div>
     </div>` : ''}
+    ${activity.length ? `
+    <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
+      <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Activity (${activity.length})</div>
+      <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto">
+        ${activity.map(a => renderTaskActivityRow(a)).join('')}
+      </div>
+    </div>` : ''}
     ${buildAttachmentsSection(t)}
     ${subtasks.length ? `
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
@@ -1630,6 +1637,44 @@ async function openTaskDrawer(taskId) {
 
 function metaItem(label, value) {
   return `<div><div style="font-size:10px;font-weight:600;color:#5A5A66;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${label}</div><div style="font-size:13px;color:#e2e8f0;display:flex;align-items:center;gap:4px">${value}</div></div>`
+}
+
+// Render one row of a task's activity feed. The backend writes entries with
+// shape { action, actor_name, old_value, new_value, created_at }. We map each
+// action to a friendly icon + sentence so the user can see "Akash changed
+// priority from medium → high · 2m ago" instead of raw field diffs.
+function renderTaskActivityRow(a) {
+  const actor = escapeHtml(a.actor_name || 'System')
+  const when  = a.created_at ? timeAgo(a.created_at) : ''
+  const oldV  = escapeHtml(String(a.old_value ?? '—'))
+  const newV  = escapeHtml(String(a.new_value ?? '—'))
+  const map = {
+    created:                  { icon: 'fa-plus-circle',     color: '#45FFB2', text: `created this task` },
+    status_changed:           { icon: 'fa-arrow-right',     color: '#A970FF', text: `moved status <strong>${oldV.replace(/_/g,' ')}</strong> → <strong>${newV.replace(/_/g,' ')}</strong>` },
+    title_changed:            { icon: 'fa-pen',             color: '#C9A7FF', text: `renamed task: <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+    description_changed:      { icon: 'fa-align-left',      color: '#C9A7FF', text: `updated description` },
+    priority_changed:         { icon: 'fa-flag',            color: '#FFC857', text: `changed priority <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+    task_type_changed:        { icon: 'fa-shapes',          color: '#6CCBFF', text: `changed type <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+    assignee_changed:         { icon: 'fa-user',            color: '#A970FF', text: `reassigned <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+    due_date_changed:         { icon: 'fa-calendar',        color: '#6CCBFF', text: `changed due date <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+    estimated_hours_changed:  { icon: 'fa-clock',           color: '#6CCBFF', text: `changed estimate <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+    logged_hours_changed:     { icon: 'fa-stopwatch',       color: '#45FFB2', text: `logged hours <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+    story_points_changed:     { icon: 'fa-chart-simple',    color: '#C9A7FF', text: `changed story points <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+    sprint_changed:           { icon: 'fa-rotate',          color: '#A970FF', text: `moved to sprint <strong>${newV}</strong>` },
+    milestone_changed:        { icon: 'fa-flag-checkered',  color: '#A970FF', text: `linked milestone <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+    pct_changed:              { icon: 'fa-percent',         color: '#C9A7FF', text: `milestone share <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+    visibility_changed:       { icon: 'fa-eye',             color: '#6CCBFF', text: `visibility: <strong>${newV}</strong>` },
+    billable_changed:         { icon: 'fa-money-bill',      color: '#45FFB2', text: `billing: <strong>${newV}</strong>` },
+    labels_changed:           { icon: 'fa-tag',             color: '#C9A7FF', text: `labels <strong>${oldV}</strong> → <strong>${newV}</strong>` },
+  }
+  const info = map[a.action] || { icon: 'fa-circle-info', color: '#7E7E8F', text: `${escapeHtml(String(a.action || 'updated').replace(/_/g,' '))}${a.new_value ? `: <strong>${newV}</strong>` : ''}` }
+  return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:rgba(169,112,255,0.04)">
+    <i class="fas ${info.icon}" style="color:${info.color};font-size:11px;margin-top:3px;width:14px;text-align:center"></i>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12px;color:var(--text-primary);line-height:1.4"><strong>${actor}</strong> ${info.text}</div>
+      <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">${when}</div>
+    </div>
+  </div>`
 }
 
 async function updateTaskStatus(taskId, newStatus) {
@@ -1989,19 +2034,23 @@ async function onCommentInput(ev, taskId, projectId) {
   if (!ta || !box) return
   const pos = ta.selectionStart || 0
   const before = ta.value.slice(0, pos)
-  const m = before.match(/(?:^|\s)@([A-Za-z][A-Za-z0-9 ._-]{0,30})$/)
+  // Allow just "@" (empty query → show all) and "@partial" with up to two words.
+  const m = before.match(/(?:^|\s)@([A-Za-z0-9 ._-]{0,30})$/)
   if (!m) { box.style.display = 'none'; box.innerHTML = ''; return }
-  const query = m[1].toLowerCase()
+  const query = (m[1] || '').toLowerCase().trim()
   const pool = await loadCommentMentionPool(projectId)
-  const matches = pool.filter(u => (u.full_name || '').toLowerCase().includes(query)).slice(0, 6)
+  const matches = (query
+    ? pool.filter(u => (u.full_name || '').toLowerCase().includes(query))
+    : pool
+  ).slice(0, 6)
   window._commentMentionUsers = pool
   if (!matches.length) { box.style.display = 'none'; box.innerHTML = ''; return }
   box.innerHTML = matches.map(u => `
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border)" onmousedown="insertMention(event,'${taskId}','${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')" onmouseover="this.style.background='rgba(169,112,255,0.1)'" onmouseout="this.style.background='transparent'">
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border)" onmousedown="insertMention(event,'${taskId}','${u.id}','${(u.full_name||'').replace(/'/g,"\\'")}')" onmouseover="this.style.background='rgba(169,112,255,0.12)'" onmouseout="this.style.background='transparent'">
       ${avatar(u.full_name||'?', u.avatar_color||'#A970FF','sm')}
       <div style="flex:1;min-width:0">
-        <div style="font-size:12.5px;color:#e2e8f0">${escapeHtml(u.full_name||'')}</div>
-        <div style="font-size:10.5px;color:#7E7E8F;text-transform:capitalize">${escapeHtml(u.role||'')}</div>
+        <div style="font-size:12.5px;color:var(--text-primary)">${escapeHtml(u.full_name||'')}</div>
+        <div style="font-size:10.5px;color:var(--text-muted);text-transform:capitalize">${escapeHtml(u.role||'')}</div>
       </div>
     </div>`).join('')
   box.style.display = 'block'
@@ -2022,9 +2071,14 @@ function insertMention(ev, taskId, userId, name) {
   const pos = ta.selectionStart || 0
   const before = ta.value.slice(0, pos)
   const after = ta.value.slice(pos)
-  const replaced = before.replace(/(^|\s)@([A-Za-z][A-Za-z0-9 ._-]{0,30})$/, `$1@${name} `)
+  // Match the same pattern onCommentInput accepts — a bare "@" (no
+  // following letter yet) or "@partial". Replace it with "@Full Name ".
+  const replaced = before.replace(/(^|\s)@([A-Za-z0-9 ._-]{0,30})$/, `$1@${name} `)
   ta.value = replaced + after
-  ta.dispatchEvent(new Event('input'))
+  // Move the caret to just after the inserted name + space so the next
+  // keystroke continues the sentence instead of overwriting the mention.
+  const newPos = replaced.length
+  ta.setSelectionRange(newPos, newPos)
   ta.focus()
   if (box) { box.style.display = 'none'; box.innerHTML = '' }
 }

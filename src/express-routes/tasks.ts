@@ -548,6 +548,87 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
 
       await models.tasks.updateById(id, { $set: patch })
 
+      // Log activity entries for every meaningful field change so the task
+      // drawer's history can show "X changed Y from A → B". Status changes
+      // are logged below (separately) because they also fire notifications.
+      try {
+        const nowIso = new Date().toISOString()
+        const actorBase = {
+          project_id: oldTask.project_id,
+          entity_type: 'task',
+          entity_id: id,
+          actor_user_id: user?.sub,
+          actor_name: user?.name || null,
+          actor_role: user?.role || null,
+          created_at: nowIso,
+        }
+        // Resolve assignee names so the activity row reads as "John → Mary"
+        // instead of opaque user IDs.
+        const resolveUserName = async (uid: any): Promise<string | null> => {
+          if (!uid) return null
+          try {
+            const u = await models.users.findById(String(uid)) as any
+            return u?.full_name || u?.name || u?.email || String(uid)
+          } catch { return String(uid) }
+        }
+        // Field-level change tracking. Each entry: [bodyKey, action, formatter?].
+        const trackedFields: Array<{ key: string; action: string; format?: (v: any) => string }> = [
+          { key: 'title', action: 'title_changed' },
+          { key: 'priority', action: 'priority_changed' },
+          { key: 'task_type', action: 'task_type_changed' },
+          { key: 'due_date', action: 'due_date_changed', format: (v) => v ? String(v).slice(0, 10) : '—' },
+          { key: 'estimated_hours', action: 'estimated_hours_changed', format: (v) => v == null ? '—' : `${v}h` },
+          { key: 'logged_hours', action: 'logged_hours_changed', format: (v) => v == null ? '—' : `${v}h` },
+          { key: 'story_points', action: 'story_points_changed', format: (v) => v == null ? '—' : String(v) },
+          { key: 'sprint_id', action: 'sprint_changed' },
+          { key: 'milestone_id', action: 'milestone_changed' },
+          { key: 'pct_of_milestone', action: 'pct_changed', format: (v) => v == null ? '—' : `${v}%` },
+          { key: 'is_client_visible', action: 'visibility_changed', format: (v) => v ? 'visible to client' : 'internal only' },
+          { key: 'is_billable', action: 'billable_changed', format: (v) => v ? 'billable' : 'non-billable' },
+          { key: 'labels', action: 'labels_changed', format: (v) => Array.isArray(v) ? v.join(', ') : String(v || '—') },
+        ]
+        for (const f of trackedFields) {
+          if (!(f.key in body)) continue
+          const oldVal = (oldTask as any)[f.key]
+          const newVal = body[f.key]
+          if (String(oldVal ?? '') === String(newVal ?? '')) continue
+          await models.activityLogs.insertOne({
+            id: generateId('al'),
+            ...actorBase,
+            action: f.action,
+            old_value: f.format ? f.format(oldVal) : (oldVal == null ? '—' : String(oldVal)),
+            new_value: f.format ? f.format(newVal) : (newVal == null ? '—' : String(newVal)),
+          })
+        }
+        // Assignee changes — resolve both old and new to display names.
+        if ('assignee_id' in body && String(oldTask.assignee_id ?? '') !== String(body.assignee_id ?? '')) {
+          const [oldName, newName] = await Promise.all([
+            resolveUserName(oldTask.assignee_id),
+            resolveUserName(body.assignee_id),
+          ])
+          await models.activityLogs.insertOne({
+            id: generateId('al'),
+            ...actorBase,
+            action: 'assignee_changed',
+            old_value: oldName || 'Unassigned',
+            new_value: newName || 'Unassigned',
+          })
+        }
+        // Description changes — record a marker activity (the full diff is
+        // already captured separately in description_history).
+        if (descChanged) {
+          await models.activityLogs.insertOne({
+            id: generateId('al'),
+            ...actorBase,
+            action: 'description_changed',
+            old_value: String(oldTask.description || '').slice(0, 120),
+            new_value: String(body.description || '').slice(0, 120),
+          })
+        }
+      } catch (e) {
+        console.warn('[tasks] field-change activity log failed:', e)
+      }
+
       // Auto-update milestone progress based on completed tasks' percentages.
       // This is the contract: each milestone task carries pct_of_milestone, and
       // the milestone's completion_pct is the sum of pct_of_milestone for tasks

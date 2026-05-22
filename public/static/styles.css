@@ -1493,7 +1493,9 @@ body.sidebar-collapsed .sidebar-reopen-fab {
 .comment-box {
   border: 1.5px solid var(--border);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  /* overflow must stay visible so the @mention dropdown (position:absolute;
+     bottom:100%) can render above the box without being clipped. */
+  overflow: visible;
   background: var(--surface);
 }
 .comment-box textarea {
@@ -5334,13 +5336,28 @@ body.theme-light .glass-card,
 body.theme-light .stat-card,
 body.theme-light .summary-card,
 body.theme-light .modal,
-body.theme-light .drawer {
+body.theme-light .drawer,
+body.theme-light .task-detail,
+body.theme-light #task-drawer,
+body.theme-light #task-drawer.task-detail,
+body.theme-light .comment-box {
   background: #FFFFFF !important;
   border: 1px solid #E5E7EB !important;
   box-shadow: 0 1px 3px rgba(15,23,42,0.04), 0 8px 22px rgba(15,23,42,0.06) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+body.theme-light .comment-box textarea { background: transparent !important; color: #0F0F12 !important; }
+body.theme-light .comment-box textarea::placeholder { color: #9CA3AF !important; }
+body.theme-light .comment-box-footer {
+  background: #F8F9FB !important;
+  border-top: 1px solid #E5E7EB !important;
+}
+body.theme-light .task-detail .detail-header,
+body.theme-light .task-detail .task-meta-row { border-bottom: 1px solid #E5E7EB !important; }
+body.theme-light .task-detail .task-title-lg { color: #0F0F12 !important; }
+body.theme-light .task-detail .meta-label { color: #6B7280 !important; }
+body.theme-light .task-detail .meta-value { color: #0F0F12 !important; }
 body.theme-light .stat-card:hover,
 body.theme-light .summary-card:hover,
 body.theme-light .card:hover {
@@ -5771,3 +5788,48 @@ body.theme-light a:hover { color: #5A2BD6; }
 body.theme-light .nav-subgroup-toggle { color: #4B5563; }
 body.theme-light .nav-subgroup-toggle:hover { background: rgba(169,112,255,0.08); }
 
+/* ── DARK-MODE de-brown sweep ─────────────────────────────────
+   A bunch of JS-built inline styles still ship leftover Oranji
+   warm-brown hexes (#1F0F08, #2A1812, #150A05, #100804, #1A0E08,
+   #3A1A14). Even in dark mode these read as a brown tab strip /
+   brown card border, which violates the AMOLED-lavender palette.
+   The light-theme override block above already handles light;
+   this block flips the same hexes to their AMOLED equivalents
+   for the default (dark) theme. New code should switch to
+   var(--bg-elev) / var(--border) instead of these hexes.       */
+body:not(.theme-light) [style*="background:#1F0F08"],
+body:not(.theme-light) [style*="background: #1F0F08"],
+body:not(.theme-light) [style*="background:#1A0E08"],
+body:not(.theme-light) [style*="background: #1A0E08"] {
+  background: #1A1A22 !important;
+}
+body:not(.theme-light) [style*="background:#150A05"],
+body:not(.theme-light) [style*="background: #150A05"] {
+  background: #0B0B0D !important;
+}
+body:not(.theme-light) [style*="background:#100804"],
+body:not(.theme-light) [style*="background: #100804"] {
+  background: #050505 !important;
+}
+body:not(.theme-light) [style*="background:#2A1812"],
+body:not(.theme-light) [style*="background: #2A1812"],
+body:not(.theme-light) [style*="background:#3A1A14"],
+body:not(.theme-light) [style*="background: #3A1A14"] {
+  background: #20202A !important;
+}
+body:not(.theme-light) [style*="border:1px solid #2A1812"],
+body:not(.theme-light) [style*="border: 1px solid #2A1812"],
+body:not(.theme-light) [style*="border:1px solid #1F0F08"],
+body:not(.theme-light) [style*="border: 1px solid #1F0F08"],
+body:not(.theme-light) [style*="border:1px solid #3A1A14"],
+body:not(.theme-light) [style*="border: 1px solid #3A1A14"] {
+  border-color: #2B2B35 !important;
+}
+body:not(.theme-light) [style*="border-bottom:1px solid #2A1812"],
+body:not(.theme-light) [style*="border-bottom: 1px solid #2A1812"],
+body:not(.theme-light) [style*="border-top:1px solid #2A1812"],
+body:not(.theme-light) [style*="border-top: 1px solid #2A1812"],
+body:not(.theme-light) [style*="border-right:1px solid #2A1812"],
+body:not(.theme-light) [style*="border-right: 1px solid #2A1812"] {
+  border-color: #2B2B35 !important;
+}
