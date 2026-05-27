@@ -182,6 +182,7 @@ const VIEW_ONLY_PERMISSION_KEYS = new Set<string>([
   'bids.view',
   'leads.view_own',
   'leads.assign_to_others',
+  'leads.manage_statuses', 'leads.manage_sources',
   'leaves.delete_own', 'leaves.delete_any',
   'sales.tracker.view',
   'dashboards.dev.view',

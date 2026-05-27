@@ -183,6 +183,19 @@ function leadsCanDelete() {
   return typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.delete'])
 }
 
+// Manage Statuses / Sources buttons each have their own permission key now —
+// admin/pm/pc remain default, anyone else needs the explicit grant.
+function leadsCanManageStatuses() {
+  const role = String(_user?.role || '').toLowerCase()
+  if (role === 'admin' || ['pm', 'pc'].includes(role)) return true
+  return typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.manage_statuses'])
+}
+function leadsCanManageSources() {
+  const role = String(_user?.role || '').toLowerCase()
+  if (role === 'admin' || ['pm', 'pc'].includes(role)) return true
+  return typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.manage_sources'])
+}
+
 function leadsCanCreate() {
   const role = String(_user?.role || '').toLowerCase()
   if (['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'].includes(role)) return true
@@ -246,9 +259,9 @@ async function renderLeadsView(el) {
         <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-secondary btn-sm" onclick="exportLeadsCsv()" title="Download filtered leads as CSV"><i class="fas fa-file-export"></i> Export</button>
           ${canManage ? `<button class="btn btn-secondary btn-sm" onclick="openImportLeadsModal()"><i class="fas fa-file-csv"></i> Import</button>` : ''}
-          ${canManage ? `<button class="btn btn-secondary btn-sm" onclick="openManageLeadStatusesModal()"><i class="fas fa-tags"></i> Manage Statuses</button>
-          <button class="btn btn-secondary btn-sm" onclick="openManageLeadSourcesModal()"><i class="fas fa-bullhorn"></i> Manage Sources</button>
-          <button class="btn btn-primary btn-sm" onclick="openCreateLeadModal()"><i class="fas fa-plus"></i> New Lead</button>` : ''}
+          ${leadsCanManageStatuses() ? `<button class="btn btn-secondary btn-sm" onclick="openManageLeadStatusesModal()"><i class="fas fa-tags"></i> Manage Statuses</button>` : ''}
+          ${leadsCanManageSources() ? `<button class="btn btn-secondary btn-sm" onclick="openManageLeadSourcesModal()"><i class="fas fa-bullhorn"></i> Manage Sources</button>` : ''}
+          ${canManage ? `<button class="btn btn-primary btn-sm" onclick="openCreateLeadModal()"><i class="fas fa-plus"></i> New Lead</button>` : ''}
         </div>
       </div>
 
@@ -799,7 +812,7 @@ function goLeadsPage(page) {
 }
 
 async function openCreateLeadModal() {
-  await loadLeadSources()
+  await Promise.all([loadLeadSources(), loadLeadStatuses()])
   const role = String(_user?.role || '').toLowerCase()
   // Show the assignee picker only to users with the leads.assign_to_others
   // permission (admin / PM / PC / sales_manager / sales_tl by default; admin
@@ -835,6 +848,15 @@ async function openCreateLeadModal() {
             <input id="lead-source-other" class="form-input" placeholder="Specify source"/>
           </div>
         </div>
+        <div class="form-group"><label class="form-label">Status</label>
+          <select id="lead-status" class="form-select">
+            ${(_leadStatusOrder.length ? _leadStatusOrder : ['new']).filter((k) => k !== 'closed').map((k) => {
+              const meta = LEAD_STATUS_META[k] || { label: k }
+              return `<option value="${escapeHtml(k)}" ${k === 'new' ? 'selected' : ''}>${escapeHtml(meta.label || k)}</option>`
+            }).join('')}
+          </select>
+          <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Optional — defaults to "New". "Closed" must use the Close &amp; Convert flow.</div>
+        </div>
         <div class="form-group" style="grid-column:1/-1"><label class="form-label">Requirement *</label>
           <textarea id="lead-requirement" class="form-input" rows="3" placeholder="What is the lead looking for?"></textarea>
           <div style="margin-top:8px">
@@ -862,11 +884,13 @@ async function openCreateLeadModal() {
 
 async function submitNewLead() {
   const source = resolveLeadSource()
+  const status = (document.getElementById('lead-status')?.value || 'new').trim() || 'new'
   const payload = {
     name: document.getElementById('lead-name').value.trim(),
     email: document.getElementById('lead-email').value.trim(),
     phone: document.getElementById('lead-phone').value.trim(),
     source,
+    status,
     requirement: document.getElementById('lead-requirement').value.trim(),
     assigned_to: document.getElementById('lead-assigned-to').value,
   }

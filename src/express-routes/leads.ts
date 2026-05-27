@@ -268,8 +268,26 @@ export function createLeadsRouter(
     }
   })
 
-  router.post('/statuses/:kind', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  // Permission gate shared by every status / source mutation. admin/pm/pc
+  // keep working as legacy defaults; anyone else needs the explicit grant.
+  async function gateLeadStatusManage(req: any, res: any): Promise<boolean> {
+    const role = lower((req.user as any)?.role)
+    if (role === 'admin' || ['pm', 'pc'].includes(role)) return true
+    if (await userHasAnyPermission(models, req.user, 'leads.manage_statuses')) return true
+    res.status(403).json({ error: 'Not allowed to manage lead statuses' })
+    return false
+  }
+  async function gateLeadSourceManage(req: any, res: any): Promise<boolean> {
+    const role = lower((req.user as any)?.role)
+    if (role === 'admin' || ['pm', 'pc'].includes(role)) return true
+    if (await userHasAnyPermission(models, req.user, 'leads.manage_sources')) return true
+    res.status(403).json({ error: 'Not allowed to manage lead sources' })
+    return false
+  }
+
+  router.post('/statuses/:kind', async (req, res) => {
     try {
+      if (!(await gateLeadStatusManage(req, res))) return
       const repo = statusRepo(String(req.params.kind))
       if (!repo) return res.status(400).json({ error: 'Invalid status kind' })
       const body = req.body || {}
@@ -302,8 +320,9 @@ export function createLeadsRouter(
     }
   })
 
-  router.delete('/statuses/:kind/:id', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.delete('/statuses/:kind/:id', async (req, res) => {
     try {
+      if (!(await gateLeadStatusManage(req, res))) return
       const repo = statusRepo(String(req.params.kind))
       if (!repo) return res.status(400).json({ error: 'Invalid status kind' })
       const id = String(req.params.id)
@@ -339,8 +358,9 @@ export function createLeadsRouter(
     }
   })
 
-  router.post('/sources', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.post('/sources', async (req, res) => {
     try {
+      if (!(await gateLeadSourceManage(req, res))) return
       const body = req.body || {}
       const label = validateLength(String(body.label || '').trim(), 2, 40, 'Label')
       const key = sanitizeStatusKey(body.key || body.label)
@@ -366,8 +386,9 @@ export function createLeadsRouter(
     }
   })
 
-  router.delete('/sources/:id', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.delete('/sources/:id', async (req, res) => {
     try {
+      if (!(await gateLeadSourceManage(req, res))) return
       const id = String(req.params.id)
       const source = await models.leadSources.findById(id) as any
       if (!source) return res.status(404).json({ error: 'Source not found' })
@@ -500,6 +521,18 @@ export function createLeadsRouter(
         return res.status(400).json({ error: 'Assigned user not found' })
       }
 
+      // Initial status — optional in the create form, defaults to "new". The
+      // "closed" status is reserved for the Close & Convert flow (which needs
+      // client + project details), so we refuse it here.
+      let initialStatus = 'new'
+      if (body.status) {
+        const requested = String(body.status).trim().toLowerCase()
+        if (requested === 'closed') {
+          return res.status(400).json({ error: 'Use the Close & Convert flow to create a closed lead' })
+        }
+        if (requested) initialStatus = requested.slice(0, 60)
+      }
+
       const now = new Date()
       const nowIso = now.toISOString()
       const leadId = generateId('lead')
@@ -511,7 +544,7 @@ export function createLeadsRouter(
         requirement,
         requirement_file: requirementFile && requirementFile.url ? requirementFile : null,
         source,
-        status: 'new',
+        status: initialStatus,
         assigned_to: assignedTo,
         created_by: user?.sub || null,
         created_at: nowIso,
