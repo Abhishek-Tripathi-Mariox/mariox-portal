@@ -389,26 +389,24 @@ const API = {
   function lock(el){
     if (!el || el.dataset.busy === '1') return
     el.dataset.busy = '1'
-    el.dataset.prevDisabled = el.disabled ? '1' : '0'
     el.dataset.prevAriaBusy = el.getAttribute('aria-busy') || ''
     el.setAttribute('aria-busy', 'true')
     el.classList.add('is-busy')
-    // Defer the actual .disabled = true to a microtask so the current click's
-    // inline onclick handler still fires. Capture-phase guard below blocks any
-    // subsequent click before this microtask resolves anyway.
-    queueMicrotask(() => {
-      if (el.dataset.busy === '1' && 'disabled' in el) el.disabled = true
-    })
+    // IMPORTANT: do NOT set el.disabled = true here. Doing so (even via a
+    // microtask) causes the click's "activation behavior" — e.g. submitting
+    // the parent form on a <button type="submit"> — to be skipped because
+    // the browser checks .disabled during activation. The CSS class
+    // pointer-events:none + the dataset.busy capture-phase guard below
+    // already eat subsequent clicks; that's enough to prevent duplicates
+    // without breaking the FIRST click's default action.
   }
 
   function release(el){
     if (!el || el.dataset.busy !== '1') return
     el.dataset.busy = ''
-    if ('disabled' in el) el.disabled = el.dataset.prevDisabled === '1'
     if (el.dataset.prevAriaBusy) el.setAttribute('aria-busy', el.dataset.prevAriaBusy)
     else el.removeAttribute('aria-busy')
     el.classList.remove('is-busy')
-    delete el.dataset.prevDisabled
     delete el.dataset.prevAriaBusy
   }
 
