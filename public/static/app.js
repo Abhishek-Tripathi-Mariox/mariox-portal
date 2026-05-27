@@ -1383,20 +1383,35 @@ function _notifPlayDing(type) {
   _notifPlaySynthChime()
 }
 
-function _tryPlayCategorySound(cat) {
+// Build the Audio element once + ask the browser to start fetching the
+// bytes immediately. Called from _tryPlayCategorySound on first use AND
+// eagerly via preloadNotifSounds() so the first real notification doesn't
+// have to wait for a 200-500ms network round-trip.
+function _ensureCategoryAudio(cat) {
+  if (_notifAudioEls[cat] || _notifAudioFailed[cat]) return _notifAudioEls[cat]
   try {
     const url = NOTIF_SOUND_FILES[cat] || NOTIF_SOUND_FILES.other
-    if (!_notifAudioEls[cat]) {
-      const el = new Audio(url)
-      el.preload = 'auto'
-      el.volume = 0.7
-      el.addEventListener('error', () => {
-        _notifAudioFailed[cat] = true
-        delete _notifAudioEls[cat]
-      })
-      _notifAudioEls[cat] = el
-    }
-    const el = _notifAudioEls[cat]
+    const el = new Audio(url)
+    el.preload = 'auto'
+    el.volume = 0.7
+    el.addEventListener('error', () => {
+      _notifAudioFailed[cat] = true
+      delete _notifAudioEls[cat]
+    })
+    // Force the network fetch + decode now so play() later is instant.
+    try { el.load() } catch {}
+    _notifAudioEls[cat] = el
+    return el
+  } catch {
+    _notifAudioFailed[cat] = true
+    return null
+  }
+}
+
+function _tryPlayCategorySound(cat) {
+  try {
+    const el = _ensureCategoryAudio(cat)
+    if (!el) return false
     el.currentTime = 0
     const p = el.play()
     if (p && typeof p.catch === 'function') {
@@ -1408,6 +1423,52 @@ function _tryPlayCategorySound(cat) {
     return false
   }
 }
+
+// Eagerly fetch every category's audio at app startup so the first real
+// notification plays instantly. Without this, browser waits ~200-500ms to
+// fetch + decode the .wav on the FIRST ding — which is exactly when the
+// user is most likely to notice the delay.
+function preloadNotifSounds() {
+  for (const cat of Object.keys(NOTIF_SOUND_FILES)) _ensureCategoryAudio(cat)
+  // Prime the AudioContext too so the synth-fallback chime is ready if
+  // the .wav files ever fail. Resume on first user gesture (browsers
+  // require a gesture before audio can play).
+  const wakeCtx = () => {
+    try {
+      if (!_notifState.audioCtx) {
+        const Ctor = window.AudioContext || window.webkitAudioContext
+        if (Ctor) _notifState.audioCtx = new Ctor()
+      }
+      if (_notifState.audioCtx?.state === 'suspended') {
+        _notifState.audioCtx.resume().catch(() => {})
+      }
+      // Also tickle each <Audio> with a silent play() then pause so the
+      // browser marks it as "user-activated" — subsequent play() calls
+      // from SSE callbacks won't be blocked by autoplay policy.
+      for (const el of Object.values(_notifAudioEls)) {
+        if (!el) continue
+        const wasMuted = el.muted
+        el.muted = true
+        const p = el.play()
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            el.pause()
+            el.currentTime = 0
+            el.muted = wasMuted
+          }).catch(() => { el.muted = wasMuted })
+        } else {
+          el.pause()
+          el.muted = wasMuted
+        }
+      }
+    } catch {}
+    document.removeEventListener('click', wakeCtx)
+    document.removeEventListener('keydown', wakeCtx)
+  }
+  document.addEventListener('click', wakeCtx, { once: true })
+  document.addEventListener('keydown', wakeCtx, { once: true })
+}
+window.preloadNotifSounds = preloadNotifSounds
 
 function _notifPlaySynthChime() {
   // Light "ding" via Web Audio API — used if the audio file is missing.
@@ -1556,6 +1617,10 @@ function _notifAutoRefreshActiveView(freshItems) {
 
 function startNotificationPoller() {
   if (_notifState.timer) return
+  // Eagerly fetch the .wav files so the FIRST notification's ding plays
+  // instantly — without this the browser blocks the play() while it
+  // streams the audio over the network (200-500ms delay users notice).
+  preloadNotifSounds()
   // Fallback polling. SSE handles the real-time path; this catches anything
   // missed while the stream was disconnected or in flight. 4s keeps it tight
   // without thrashing the API — most users hit SSE first anyway.
