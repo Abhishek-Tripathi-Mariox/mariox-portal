@@ -3688,7 +3688,11 @@ async function renderClientsList(el) {
                 <div style="font-size:12px;color:#7E7E8F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.email}</div>
               </div>
             </div>
-            ${hasPermission('clients.delete') ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i> Login</button><button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Delete client"><i class="fas fa-trash"></i> Delete</button></div>` : ''}
+            ${hasPermission('clients.delete') ? `<div style="display:flex;flex-direction:column;gap:4px">
+              <button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i> Login</button>
+              ${String(_user?.role||'').toLowerCase() === 'admin' ? `<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();openResetCredsModal('client','${cl.id}','${escapeHtml(cl.company_name||cl.contact_name||'').replace(/'/g,"\\'")}')" title="Reset client password"><i class="fas fa-key"></i> Password</button>` : ''}
+              <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Delete client"><i class="fas fa-trash"></i> Delete</button>
+            </div>` : ''}
           </div>
           <div style="display:grid;grid-template-columns:${cl.price !== undefined ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr'};gap:12px;margin-bottom:12px">
             <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#e2e8f0">${cl.project_count||0}</div><div style="font-size:11px;color:#7E7E8F">Projects</div></div>
@@ -4038,6 +4042,7 @@ async function showClientDetail(clientId) {
       <div class="modal-header">
         ${avatar(cl.company_name, cl.avatar_color)}
         <h3 style="margin-left:8px;flex:1">${escapeHtml(cl.company_name)}</h3>
+        ${isAdmin ? `<button class="btn btn-outline btn-sm" style="margin-right:8px" onclick="openResetCredsModal('client','${cl.id}','${escapeHtml(cl.company_name||cl.contact_name||'').replace(/'/g,"\\'")}')" title="Reset client portal password"><i class="fas fa-key"></i> Reset Password</button>` : ''}
         ${canEdit ? `<button class="btn btn-outline btn-sm" style="margin-right:8px" onclick="openEditClientModal('${cl.id}')"><i class="fas fa-pen"></i> Edit</button>` : ''}
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
