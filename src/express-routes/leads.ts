@@ -10,7 +10,7 @@ import {
 } from '../validators'
 import { sendSmtpEmail, type SmtpAttachment, type SmtpEnv } from '../utils/smtp'
 import { LEADS_GLOBAL_ROLES, ROLES } from '../constants'
-import { createUserNotification } from './notifications'
+import { createUserNotification, createUserNotifications } from './notifications'
 
 const DEFAULT_FOLLOWUP_SNOOZE_MINUTES = 10
 const MAX_LEAD_MAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024 // 10 MB per attachment
@@ -168,16 +168,42 @@ async function enrichLeads(models: MongoModels, leads: any[]) {
   const users = await models.users.find({}) as any[]
   const usersById = new Map(users.map((u) => [String(u.id), u]))
   const leadIds = leads.map((l) => String(l.id))
-  const tasks = await models.leadTasks.find({ lead_id: { $in: leadIds } }) as any[]
+  const [tasks, allNotes, allActivities] = await Promise.all([
+    models.leadTasks.find({ lead_id: { $in: leadIds } }) as Promise<any[]>,
+    // History notes (POST /:id/notes collection) — used for "latest note" preview.
+    models.leadNotes.find({ lead_id: { $in: leadIds } }) as Promise<any[]>,
+    // Activity log — used both for "latest_note from inline notes save" fallback
+    // and the activity-kinds filter on the list view.
+    models.leadActivities.find({ lead_id: { $in: leadIds } }) as Promise<any[]>,
+  ])
   const tasksByLead = new Map<string, any[]>()
   for (const t of tasks) {
     const list = tasksByLead.get(String(t.lead_id)) || []
     list.push(t)
     tasksByLead.set(String(t.lead_id), list)
   }
+  // Latest note per lead (by created_at desc) — used to surface a one-line
+  // preview in the leads list view.
+  const latestNoteByLead = new Map<string, any>()
+  for (const n of allNotes) {
+    const key = String(n.lead_id)
+    const cur = latestNoteByLead.get(key)
+    if (!cur || String(n.created_at || '') > String(cur.created_at || '')) {
+      latestNoteByLead.set(key, n)
+    }
+  }
+  // Distinct activity kinds per lead (e.g. ['note_added','portfolio_sent']).
+  const activityKindsByLead = new Map<string, Set<string>>()
+  for (const a of allActivities) {
+    const key = String(a.lead_id)
+    if (!activityKindsByLead.has(key)) activityKindsByLead.set(key, new Set())
+    activityKindsByLead.get(key)!.add(String(a.kind || ''))
+  }
   return leads.map((l) => {
     const assignee = usersById.get(String(l.assigned_to)) as any
     const creator = usersById.get(String(l.created_by)) as any
+    const latestNote = latestNoteByLead.get(String(l.id)) || null
+    const kinds = Array.from(activityKindsByLead.get(String(l.id)) || []).filter(Boolean)
     return {
       ...l,
       assigned_to_name: assignee?.full_name || null,
@@ -187,6 +213,12 @@ async function enrichLeads(models: MongoModels, leads: any[]) {
       tasks: (tasksByLead.get(String(l.id)) || []).sort(
         (a, b) => String(a.due_date || '').localeCompare(String(b.due_date || ''))
       ),
+      latest_note: latestNote ? {
+        text: String(latestNote.text || ''),
+        author_name: latestNote.author_name || null,
+        created_at: latestNote.created_at || null,
+      } : null,
+      activity_kinds: kinds,
     }
   })
 }
@@ -450,7 +482,16 @@ export function createLeadsRouter(
             size: Number(body.requirement_file.size || 0),
           }
         : null
-      const assignedTo = String(body.assigned_to || '').trim()
+      // Users without leads.assign_to_others can only create leads owned by
+      // themselves — the body.assigned_to value is ignored. Admins always have
+      // full assignment power. This replaces the older hardcoded role check
+      // that locked sales_agent to self-assignment.
+      const selfId = String(user?.sub || user?.id || '')
+      const canAssignOthers = role === 'admin'
+        || await userHasAnyPermission(models, user, 'leads.assign_to_others')
+      const assignedTo = canAssignOthers
+        ? String(body.assigned_to || '').trim()
+        : selfId
       if (!assignedTo) {
         return res.status(400).json({ error: 'Assignee is required' })
       }
@@ -505,7 +546,7 @@ export function createLeadsRouter(
     }
   })
 
-  router.put('/:id', requireRole('admin', 'pm', 'pc', 'sales_manager', 'sales_tl'), async (req, res) => {
+  router.put('/:id', requireRole('admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'), async (req, res) => {
     try {
       const id = String(req.params.id)
       const body = req.body || {}
@@ -531,7 +572,18 @@ export function createLeadsRouter(
           : null
       }
       if ('source' in body) patch.source = validateLength(String(body.source || '').trim(), 1, 80, 'Source')
-      if ('notes' in body) patch.notes = String(body.notes || '').trim().slice(0, 5000)
+      // When the inline `notes` field changes, also push the new text onto the
+      // leadNotes history collection so the lead detail page's "Notes history"
+      // shows every save (not just the latest overwrite). Empty/whitespace
+      // changes are skipped — those happen when the user just refocuses the
+      // textarea without typing anything new.
+      let pushNoteHistoryText: string | null = null
+      if ('notes' in body) {
+        const next = String(body.notes || '').trim().slice(0, 5000)
+        const prev = String(lead.notes || '').trim()
+        patch.notes = next
+        if (next && next !== prev) pushNoteHistoryText = next
+      }
       let nextStatus: string | null = null
       if ('status' in body) {
         nextStatus = String(body.status || 'new').trim().toLowerCase()
@@ -559,6 +611,22 @@ export function createLeadsRouter(
       await models.leads.updateById(id, { $set: patch })
 
       const actor = req.user as any
+      if (pushNoteHistoryText) {
+        const noteId = generateId('lnote')
+        const noteCreatedAt = new Date().toISOString()
+        await models.leadNotes.insertOne({
+          id: noteId,
+          lead_id: id,
+          text: pushNoteHistoryText,
+          author_id: actor?.sub || actor?.id || null,
+          author_name: actor?.name || actor?.full_name || null,
+          author_role: lower(actor?.role) || null,
+          created_at: noteCreatedAt,
+        })
+        await logLeadActivity(models, id, actor, 'note_added',
+          `Note: ${pushNoteHistoryText.length > 120 ? pushNoteHistoryText.slice(0, 117) + '…' : pushNoteHistoryText}`,
+          { note_id: noteId, source: 'inline_notes' })
+      }
       if (nextStatus && nextStatus !== lower(lead.status)) {
         await logLeadActivity(models, id, actor, 'status_changed', `Status changed to ${nextStatus}`, {
           from: lead.status,
@@ -584,6 +652,51 @@ export function createLeadsRouter(
         }
       }
       return res.json({ message: 'Lead updated' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // ── Admin-only revenue-credit handover ───────────────────────
+  // Reassigns sales-report / incentive attribution for a lead (and every
+  // project it produced) to another user without touching the actual
+  // lead.assigned_to or any downstream ownership. Set credit_to=null to
+  // clear the handover and revert credit to the original assignee.
+  router.post('/:id/handover', requireRole('admin'), async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const lead = await models.leads.findById(id) as any
+      if (!lead) return res.status(404).json({ error: 'Lead not found' })
+      const body = req.body || {}
+      const rawCreditTo = body.credit_to === null || body.credit_to === ''
+        ? null
+        : String(body.credit_to || '').trim()
+      let creditToUser: any = null
+      if (rawCreditTo) {
+        creditToUser = await models.users.findById(rawCreditTo) as any
+        if (!creditToUser) return res.status(400).json({ error: 'Target user not found' })
+      }
+      await models.leads.updateById(id, {
+        $set: {
+          revenue_credit_to: rawCreditTo,
+          revenue_credit_to_name: creditToUser?.full_name || null,
+          revenue_credit_set_at: new Date().toISOString(),
+          revenue_credit_set_by: (req.user as any)?.sub || null,
+          updated_at: new Date().toISOString(),
+        },
+      })
+      const summary = creditToUser
+        ? `Revenue credit handed over to ${creditToUser.full_name}`
+        : `Revenue credit handover cleared — credit returns to original assignee`
+      await logLeadActivity(models, id, req.user, 'handover_credit', summary, {
+        credit_to: rawCreditTo,
+        credit_to_name: creditToUser?.full_name || null,
+        previous_credit_to: lead.revenue_credit_to || null,
+      })
+      return res.json({
+        message: summary,
+        data: { revenue_credit_to: rawCreditTo, revenue_credit_to_name: creditToUser?.full_name || null },
+      })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }
@@ -729,15 +842,20 @@ export function createLeadsRouter(
         if (projectInput.billable !== undefined) {
           projectBillable = projectInput.billable ? 1 : 0
         }
-        if (projectInput.pm_id) {
-          const pm = await models.users.findById(String(projectInput.pm_id)) as any
-          if (!pm) return res.status(400).json({ error: 'Selected PM not found' })
-          projectPmId = String(pm.id)
-        }
-        if (projectInput.pc_id) {
-          const pc = await models.users.findById(String(projectInput.pc_id)) as any
-          if (!pc) return res.status(400).json({ error: 'Selected PC not found' })
-          projectPcId = String(pc.id)
+        // PM / PC are admin-only fields. If the closer is not an admin we
+        // ignore whatever the request sent (stale frontends, scripted calls)
+        // and queue an admin assignment notification after the lead closes.
+        if (lower((req.user as any)?.role) === 'admin') {
+          if (projectInput.pm_id) {
+            const pm = await models.users.findById(String(projectInput.pm_id)) as any
+            if (!pm) return res.status(400).json({ error: 'Selected PM not found' })
+            projectPmId = String(pm.id)
+          }
+          if (projectInput.pc_id) {
+            const pc = await models.users.findById(String(projectInput.pc_id)) as any
+            if (!pc) return res.status(400).json({ error: 'Selected PC not found' })
+            projectPcId = String(pc.id)
+          }
         }
         if (projectInput.sold_by) {
           projectSoldBy = validateLength(String(projectInput.sold_by).trim(), 1, 200, 'Sold by')
@@ -891,6 +1009,39 @@ export function createLeadsRouter(
           ? `Lead closed → client (${created.email}) + project "${createdProject.name}" (${createdProject.code}) created`
           : `Lead closed and converted to client (${created.email})`,
         { client_id: created.id, project_id: createdProject?.id || null, email: created.email })
+
+      // If a non-admin closed the lead and produced a project without PM/PC,
+      // notify every admin so someone takes ownership of the assignment.
+      if (createdProject && (!createdProject.pm_id || !createdProject.pc_id) && lower((req.user as any)?.role) !== 'admin') {
+        try {
+          const admins = await models.users.find({ role: 'admin' }) as any[]
+          const adminIds = admins
+            .filter((u) => Number(u.is_active ?? 1) === 1)
+            .map((u) => String(u.id))
+          const actor = req.user as any
+          const missing = [
+            !createdProject.pm_id ? 'PM' : null,
+            !createdProject.pc_id ? 'PC' : null,
+          ].filter(Boolean).join(' & ')
+          await createUserNotifications(models, adminIds, {
+            type: 'project_assignment_needed',
+            title: `Assign ${missing} for "${createdProject.name}"`,
+            body: `${actor?.name || actor?.full_name || 'A user'} closed lead "${lead.name}" and created project ${createdProject.code}. Please assign ${missing}.`,
+            link: `project:${createdProject.id}`,
+            actor_id: actor?.sub || null,
+            actor_name: actor?.name || actor?.full_name || null,
+            meta: {
+              project_id: createdProject.id,
+              project_code: createdProject.code,
+              lead_id: id,
+              missing_pm: !createdProject.pm_id,
+              missing_pc: !createdProject.pc_id,
+            },
+          })
+        } catch (notifyErr) {
+          console.warn('[leads/close] admin PM/PC notification failed:', notifyErr)
+        }
+      }
 
       const rawLoginUrl = String(
         runtimeEnv.CLIENT_LOGIN_URL ||

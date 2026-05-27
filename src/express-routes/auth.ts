@@ -100,6 +100,9 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
           avatar_color: user.avatar_color,
           must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
           theme: normalizeTheme(user.theme),
+          photo: user.photo || null,
+          signature: user.signature || null,
+          attachment: user.attachment || null,
           permissions,
           impersonated_by: null,
         },
@@ -116,7 +119,7 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
       if (!token) return res.status(400).json({ valid: false })
       const payload = (await jwtVerify(token, encoder.encode(jwtSecret))).payload as any
       const user = await models.users.findActiveById(payload.sub, {
-        projection: { id: 1, email: 1, full_name: 1, role: 1, designation: 1, avatar_color: 1, must_change_password: 1, theme: 1 },
+        projection: { id: 1, email: 1, full_name: 1, role: 1, designation: 1, avatar_color: 1, must_change_password: 1, theme: 1, photo: 1, signature: 1, attachment: 1 },
       }) as any
       if (!user) return res.status(401).json({ valid: false })
       // Cache-busting so a stale 200 can't sit in any proxy/browser cache —
@@ -141,6 +144,9 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
           avatar_color: user.avatar_color,
           must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
           theme: normalizeTheme(user.theme),
+          photo: user.photo || null,
+          signature: user.signature || null,
+          attachment: user.attachment || null,
           permissions,
           impersonated_by: impersonatedBy,
         },
@@ -290,6 +296,62 @@ export function createAuthRouter(models: MongoModels, jwtSecret: string, passwor
       const theme = normalizeTheme(req.body?.theme)
       await models.users.updateById(userCtx.sub, { $set: { theme, updated_at: new Date().toISOString() } })
       return res.json({ theme })
+    } catch (error) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Sales roles upload a head-shot, signature image, and one supporting
+  // document to their profile. Each field is the {url,name,mime,size}
+  // object the /api/uploads endpoint hands back; null clears the slot.
+  // Only the three sales roles can self-edit these — other roles ignore
+  // any payload that comes through (no error, just no-op) so a stray UI
+  // doesn't accidentally wipe a field for staff who shouldn't have one.
+  router.patch('/profile-media', authMiddleware, async (req, res) => {
+    try {
+      const userCtx = req.user as any
+      const role = String(userCtx?.role || '').toLowerCase()
+      const allowed = ['sales_agent', 'sales_tl', 'sales_manager']
+      if (!allowed.includes(role)) {
+        return res.status(403).json({ error: 'Profile media uploads are only available for sales roles' })
+      }
+      const sanitize = (raw: unknown) => {
+        if (raw === null) return null
+        if (!raw || typeof raw !== 'object') return undefined
+        const f = raw as Record<string, unknown>
+        const url = String(f.url || '')
+        if (!url) return null
+        return {
+          url,
+          name: String(f.name || f.original_name || 'attachment'),
+          mime: String(f.mime || f.mime_type || ''),
+          size: Number(f.size || 0),
+        }
+      }
+      const body = (req.body || {}) as Record<string, unknown>
+      const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+      if ('photo' in body) {
+        const v = sanitize(body.photo)
+        if (v !== undefined) updates.photo = v
+      }
+      if ('signature' in body) {
+        const v = sanitize(body.signature)
+        if (v !== undefined) updates.signature = v
+      }
+      if ('attachment' in body) {
+        const v = sanitize(body.attachment)
+        if (v !== undefined) updates.attachment = v
+      }
+      if (Object.keys(updates).length === 1) {
+        return res.status(400).json({ error: 'No profile fields to update' })
+      }
+      await models.users.updateById(userCtx.sub, { $set: updates })
+      const fresh = await models.users.findById(userCtx.sub) as any
+      return res.json({
+        photo: fresh?.photo || null,
+        signature: fresh?.signature || null,
+        attachment: fresh?.attachment || null,
+      })
     } catch (error) {
       return respondWithError(res, error, 500)
     }

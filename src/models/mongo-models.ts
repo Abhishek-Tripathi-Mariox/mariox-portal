@@ -53,6 +53,14 @@ export interface UserRecord extends BaseRecord {
   // User-chosen UI theme — 'dark' (AMOLED lavender, default) or 'light'.
   // Persisted so the choice survives a fresh login on a different device.
   theme?: string
+  // Profile media — currently used by the sales hierarchy
+  // (sales_agent / sales_tl / sales_manager) to attach a head-shot,
+  // signature image and one optional supporting document (ID proof,
+  // appointment letter, etc.) to their profile. Stored as the same
+  // {url,name,mime,size} shape produced by the /api/uploads endpoint.
+  photo?: { url: string; name?: string; mime?: string; size?: number } | null
+  signature?: { url: string; name?: string; mime?: string; size?: number } | null
+  attachment?: { url: string; name?: string; mime?: string; size?: number } | null
 }
 
 export interface ClientRecord extends BaseRecord {

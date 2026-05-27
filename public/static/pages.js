@@ -223,7 +223,7 @@ async function openDeveloperModal(dev = null) {
         <div class="form-group"><label class="form-label">Skill Tags (comma separated)</label>
           <input id="dev-skills" class="form-input" value="${Array.isArray(skills) ? skills.join(', ') : ''}" placeholder="Skill Tags" autocomplete="off"/></div>
       </div>
-      <div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px"><i class="fas fa-clock" style="color:#a855f7"></i> Shift Timing (HR)</label>
+      <div id="dev-shift-wrap" class="form-group" style="display:${selectedRole === 'team' ? 'none' : ''}"><label class="form-label" style="display:flex;align-items:center;gap:6px"><i class="fas fa-clock" style="color:#a855f7"></i> Shift Timing (HR)</label>
         <div class="grid-2">
           <input id="dev-shift-start" class="form-input" type="time" value="${dev?.shift_start||''}" placeholder="Start"/>
           <input id="dev-shift-end" class="form-input" type="time" value="${dev?.shift_end||''}" placeholder="End"/>
@@ -288,6 +288,9 @@ function onDevRoleChange(role) {
   if (tlWrap) tlWrap.style.display = role === 'sales_agent' ? '' : 'none'
   if (mgrSel) mgrSel.disabled = false
   if (role === 'sales_agent') onDevManagerChange()
+  // External team members don't punch in/out through this portal — hide shift.
+  const shiftWrap = document.getElementById('dev-shift-wrap')
+  if (shiftWrap) shiftWrap.style.display = role === 'team' ? 'none' : ''
 }
 
 // Sales agent flow: pick Manager first, then the TL dropdown is filtered to
@@ -356,13 +359,20 @@ async function saveDeveloper(id) {
       payload.incentive_rate = Number(r) || 0
     }
     if (!id && document.getElementById('dev-password')) payload.password = document.getElementById('dev-password').value
-    // Shift assignment (HR). Send empty string as null so backend clears the field.
-    const shStart = document.getElementById('dev-shift-start')?.value || ''
-    const shEnd = document.getElementById('dev-shift-end')?.value || ''
-    payload.shift_start = shStart || null
-    payload.shift_end = shEnd || null
-    payload.shift_days = Array.from(document.querySelectorAll('.dev-shift-day'))
-      .filter(el => el.checked).map(el => Number(el.value))
+    // Shift assignment (HR). External team members are excluded — their shift
+    // is owned by their own organization, not us.
+    if (role === 'team') {
+      payload.shift_start = null
+      payload.shift_end = null
+      payload.shift_days = []
+    } else {
+      const shStart = document.getElementById('dev-shift-start')?.value || ''
+      const shEnd = document.getElementById('dev-shift-end')?.value || ''
+      payload.shift_start = shStart || null
+      payload.shift_end = shEnd || null
+      payload.shift_days = Array.from(document.querySelectorAll('.dev-shift-day'))
+        .filter(el => el.checked).map(el => Number(el.value))
+    }
     let res
     if (id) res = await API.put(`/users/${id}`, payload)
     else res = await API.post('/users', payload)
@@ -793,12 +803,17 @@ function openProjectModal(id = null) {
             <div class="card" id="proj-team-assignment-card">
               <div class="card-header"><h3>Team Assignment</h3></div>
               <div class="card-body">
+                ${(String(state.user?.role || '').toLowerCase() === 'admin') ? `
                 <div class="grid-2" style="gap:12px;margin-bottom:16px">
                   <div class="form-group"><label class="form-label">Project Manager *</label>
                     <select id="proj-pm" class="form-select">${pms.length ? '<option value="">Select PM</option>' : '<option value="">No PMs available — add one in Team</option>'}${pms.map(p=>`<option value="${p.id}" ${proj?.pm_id===p.id?'selected':''}>${esc(p.full_name)} (${esc(String(p.role || '').toUpperCase())})</option>`).join('')}</select></div>
                   <div class="form-group"><label class="form-label">Product Coordinator</label>
                     <select id="proj-pc" class="form-select"><option value="">None</option>${pcs.map(c=>`<option value="${c.id}" ${proj?.pc_id===c.id?'selected':''}>${esc(c.full_name)}</option>`).join('')}</select></div>
-                </div>
+                </div>` : `
+                <div style="padding:10px 12px;margin-bottom:16px;background:rgba(169,112,255,0.10);border:1px solid rgba(169,112,255,0.25);border-radius:6px;font-size:12.5px;color:var(--text-secondary);display:flex;align-items:center;gap:8px">
+                  <i class="fas fa-info-circle" style="color:#C9A7FF"></i>
+                  <span>Project Manager and Product Coordinator will be assigned by the admin after the project is created. They'll be notified automatically.</span>
+                </div>`}
 
                 <div class="form-group">
                   <label class="form-label">Assignment Type *</label>
@@ -1158,8 +1173,8 @@ async function saveProject(id) {
       external_assignee_type: externalAssigneeType,
       total_allocated_hours: Number(existing?.total_allocated_hours) || 0,
       estimated_budget_hours: Number(existing?.estimated_budget_hours) || 0,
-      pm_id: document.getElementById('proj-pm').value||null,
-      pc_id: document.getElementById('proj-pc').value||null,
+      pm_id: document.getElementById('proj-pm')?.value || null,
+      pc_id: document.getElementById('proj-pc')?.value || null,
       team_lead_id: null,
       revenue: Number(existing?.revenue) || 0,
       billable: document.getElementById('proj-billable').value==='1',

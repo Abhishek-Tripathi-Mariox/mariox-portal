@@ -10,7 +10,31 @@ let _leadsFromDate = ''
 let _leadsToDate = ''
 let _leadsAssigneeFilter = ''
 let _leadsSourceFilter = ''
+// Activity filter is multi-select with AND logic — a lead must have EVERY
+// selected activity kind in its history to appear in the filtered list. Empty
+// array means "no activity filter applied".
+let _leadsActivityFilter = []
 let _leadsAssigneeOptionsCache = []
+
+// Activity filter options — shown as a single high-level dropdown on the
+// leads list. Each entry maps a human label to the activity-log `kind`
+// recorded by the backend. Selecting one filters leads to those that have
+// at least one matching activity in their history.
+const LEAD_ACTIVITY_FILTER_OPTIONS = [
+  ['note_added',       'Note added'],
+  ['comment_added',    'Comment added'],
+  ['portfolio_sent',   'Portfolio sent'],
+  ['scope_sent',       'SOW / Scope sent'],
+  ['quotation_sent',   'Quotation sent'],
+  ['mail_sent',        'Mail sent'],
+  ['followup_added',   'Follow-up scheduled'],
+  ['followup_updated', 'Follow-up updated'],
+  ['task_added',       'Task added'],
+  ['status_changed',   'Status changed'],
+  ['reassigned',       'Reassigned'],
+  ['handover_credit',  'Revenue handover'],
+  ['lead_closed',      'Lead closed'],
+]
 
 // Statuses are seeded on the server (5 defaults each) and editable via
 // the "Manage Statuses" modal. Cached after the first fetch and refreshed
@@ -169,6 +193,12 @@ async function fetchSalesAssignees() {
   }
 }
 
+// Stashed so the partial-refresh helpers (toggle a filter chip / activity
+// kind) can re-render the table without re-fetching from /api/leads — that
+// avoids the brief "Loading leads…" flash that flickered every time the user
+// toggled a checkbox in the Activity dropdown.
+let _leadsViewCache = { leads: [], assignees: [], el: null }
+
 async function renderLeadsView(el) {
   el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div>`
   try {
@@ -179,6 +209,7 @@ async function renderLeadsView(el) {
     ])
     _leadsAssigneeOptionsCache = assignees
     const leads = leadsRes.data || leadsRes.leads || []
+    _leadsViewCache = { leads, assignees, el }
     const statusCounts = leads.reduce((acc, l) => {
       const key = String(l.status || 'new').toLowerCase()
       acc[key] = (acc[key] || 0) + 1
@@ -193,7 +224,8 @@ async function renderLeadsView(el) {
       (_leadsFromDate ? 1 : 0) +
       (_leadsToDate ? 1 : 0) +
       (_leadsAssigneeFilter ? 1 : 0) +
-      (_leadsSourceFilter ? 1 : 0)
+      (_leadsSourceFilter ? 1 : 0) +
+      (_leadsActivityFilter.length ? 1 : 0)
 
     el.innerHTML = `
       <div class="page-header">
@@ -248,6 +280,15 @@ async function renderLeadsView(el) {
               ${LEAD_SOURCE_OPTIONS.filter((s) => s !== 'Other').map((s) => `<option value="${escapeHtml(s)}" ${_leadsSourceFilter === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
             </select>
           </div>
+          <div class="form-group" style="margin:0;min-width:220px">
+            <label class="form-label" style="font-size:11px">Activity</label>
+            <button type="button" id="leads-filter-activity-btn" class="form-select" data-no-lock style="text-align:left;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer" onclick="toggleLeadsActivityPanel(event)">
+              <span id="leads-filter-activity-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_leadsActivityFilter.length
+                ? escapeHtml(_leadsActivityLabel())
+                : 'All activity'}</span>
+              <i class="fas fa-chevron-down" style="font-size:10px;opacity:.6;flex-shrink:0"></i>
+            </button>
+          </div>
           ${activeFilterCount ? `<button class="btn btn-outline btn-sm" onclick="clearLeadsFilters()" style="margin-bottom:2px"><i class="fas fa-times"></i> Clear (${activeFilterCount})</button>` : ''}
         </div>
       </div>
@@ -256,11 +297,11 @@ async function renderLeadsView(el) {
         <div class="card-body p-0 table-wrap">
           <table class="data-table" id="leads-table">
             <thead><tr>
-              <th>Name</th>
-              <th>Contact</th>
+              <th>Name &amp; Contact</th>
               <th>Source</th>
               <th>Assigned To</th>
               <th>Status</th>
+              <th>Last Note</th>
               <th>Follow-up Due</th>
               <th style="width:140px">Actions</th>
             </tr></thead>
@@ -270,7 +311,7 @@ async function renderLeadsView(el) {
           </table>
         </div>
       </div>
-      ${renderPager(pagination, 'goLeadsPage', 'goLeadsPage', 'leads', 'leads-view')}
+      <div id="leads-pager-wrap">${renderPager(pagination, 'goLeadsPage', 'goLeadsPage', 'leads', 'leads-view')}</div>
     `
   } catch (e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
@@ -282,6 +323,11 @@ function applyLeadsFilters(leads) {
     if (_leadsStatusFilter && String(l.status || '').toLowerCase() !== _leadsStatusFilter) return false
     if (_leadsAssigneeFilter && String(l.assigned_to || '') !== String(_leadsAssigneeFilter)) return false
     if (_leadsSourceFilter && String(l.source || '') !== _leadsSourceFilter) return false
+    if (_leadsActivityFilter.length) {
+      // AND logic: lead must have EVERY selected kind in its history.
+      const kinds = Array.isArray(l.activity_kinds) ? l.activity_kinds : []
+      if (!_leadsActivityFilter.every((k) => kinds.includes(k))) return false
+    }
     if (_leadsFromDate) {
       const created = l.created_at ? new Date(l.created_at).getTime() : 0
       const from = new Date(_leadsFromDate + 'T00:00:00').getTime()
@@ -301,6 +347,7 @@ function onLeadsFilterChange() {
   _leadsToDate = document.getElementById('leads-filter-to')?.value || ''
   _leadsAssigneeFilter = document.getElementById('leads-filter-assignee')?.value || ''
   _leadsSourceFilter = document.getElementById('leads-filter-source')?.value || ''
+  // Activity filter is managed by the custom panel — don't read from DOM here.
   _leadsPage = 1
   const el = document.getElementById('page-leads-view')
   if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
@@ -311,10 +358,166 @@ function clearLeadsFilters() {
   _leadsToDate = ''
   _leadsAssigneeFilter = ''
   _leadsSourceFilter = ''
+  _leadsActivityFilter = []
   _leadsPage = 1
   const el = document.getElementById('page-leads-view')
   if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
 }
+
+// Build the label shown on the activity filter button. Compact "N selected"
+// fallback once the user picks more than two kinds so it fits the dropdown.
+function _leadsActivityLabel() {
+  if (!_leadsActivityFilter.length) return 'All activity'
+  if (_leadsActivityFilter.length <= 2) {
+    const labelsByKey = Object.fromEntries(LEAD_ACTIVITY_FILTER_OPTIONS)
+    return _leadsActivityFilter.map((k) => labelsByKey[k] || k).join(', ')
+  }
+  return `${_leadsActivityFilter.length} activities`
+}
+
+// Activity multi-select panel is rendered into <body> as a fixed-position
+// overlay so it isn't clipped by any ancestor's overflow:hidden (the leads
+// card body was eating the bottom rows when the panel was an absolutely
+// positioned child).
+let _leadsActivityPanelEl = null
+let _leadsActivityPanelOutsideHandler = null
+let _leadsActivityPanelReposition = null
+
+function _renderLeadsActivityPanelHTML() {
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid var(--border,#E5E7EB);font-size:11px;color:var(--text-muted);background:var(--surface-2,#F8F9FB);border-top-left-radius:8px;border-top-right-radius:8px">
+      <span>${_leadsActivityFilter.length} selected · matches ALL</span>
+      ${_leadsActivityFilter.length ? `<button type="button" class="btn btn-xs btn-outline" onclick="clearLeadsActivityFilter()">Clear</button>` : ''}
+    </div>
+    <div style="max-height:280px;overflow:auto">
+      ${LEAD_ACTIVITY_FILTER_OPTIONS.map(([kind, label]) => {
+        const checked = _leadsActivityFilter.includes(kind)
+        return `<label style="display:flex;align-items:center;gap:8px;padding:8px 14px;cursor:pointer;font-size:13px;${checked ? 'background:rgba(169,112,255,0.10)' : ''}" onmouseover="this.style.background='rgba(169,112,255,0.08)'" onmouseout="this.style.background='${checked ? 'rgba(169,112,255,0.10)' : 'transparent'}'">
+          <input type="checkbox" value="${kind}" ${checked ? 'checked' : ''} onchange="onLeadsActivityToggle('${kind}', this.checked)" style="margin:0;accent-color:#A970FF"/>
+          <span>${escapeHtml(label)}</span>
+        </label>`
+      }).join('')}
+    </div>`
+}
+
+function _positionLeadsActivityPanel() {
+  const btn = document.getElementById('leads-filter-activity-btn')
+  if (!btn || !_leadsActivityPanelEl) return
+  const rect = btn.getBoundingClientRect()
+  // Pin under the button, capped to viewport width minus a small gutter so
+  // we never spill off the right edge.
+  const minWidth = Math.max(rect.width, 240)
+  const maxRight = window.innerWidth - 8
+  const left = Math.min(rect.left, maxRight - minWidth)
+  _leadsActivityPanelEl.style.top = `${rect.bottom + 4}px`
+  _leadsActivityPanelEl.style.left = `${Math.max(8, left)}px`
+  _leadsActivityPanelEl.style.minWidth = `${minWidth}px`
+}
+
+function toggleLeadsActivityPanel(ev) {
+  if (ev) ev.stopPropagation()
+  if (_leadsActivityPanelEl) { closeLeadsActivityPanel(); return }
+  const panel = document.createElement('div')
+  panel.id = 'leads-filter-activity-panel'
+  panel.style.cssText = 'position:fixed;background:var(--surface,#fff);border:1px solid var(--border,#E5E7EB);border-radius:8px;box-shadow:0 16px 40px rgba(0,0,0,.30);z-index:10000;padding:0;overflow:visible'
+  panel.innerHTML = _renderLeadsActivityPanelHTML()
+  document.body.appendChild(panel)
+  _leadsActivityPanelEl = panel
+  _positionLeadsActivityPanel()
+  // Outside-click closes the panel. Reposition on scroll / resize so the
+  // panel sticks to the button as the user scrolls the leads card.
+  _leadsActivityPanelOutsideHandler = (e) => {
+    const btn = document.getElementById('leads-filter-activity-btn')
+    if (panel.contains(e.target) || btn?.contains(e.target)) return
+    closeLeadsActivityPanel()
+  }
+  _leadsActivityPanelReposition = () => _positionLeadsActivityPanel()
+  // Defer the listener install one tick so the click that opened the panel
+  // doesn't immediately close it.
+  setTimeout(() => document.addEventListener('click', _leadsActivityPanelOutsideHandler), 0)
+  window.addEventListener('scroll', _leadsActivityPanelReposition, true)
+  window.addEventListener('resize', _leadsActivityPanelReposition)
+}
+
+function closeLeadsActivityPanel() {
+  if (!_leadsActivityPanelEl) return
+  _leadsActivityPanelEl.remove()
+  _leadsActivityPanelEl = null
+  if (_leadsActivityPanelOutsideHandler) {
+    document.removeEventListener('click', _leadsActivityPanelOutsideHandler)
+    _leadsActivityPanelOutsideHandler = null
+  }
+  if (_leadsActivityPanelReposition) {
+    window.removeEventListener('scroll', _leadsActivityPanelReposition, true)
+    window.removeEventListener('resize', _leadsActivityPanelReposition)
+    _leadsActivityPanelReposition = null
+  }
+}
+
+// Toggle a kind and refresh only the table — keeps the panel open and avoids
+// the "Loading leads…" flicker that a full page-reload caused.
+function onLeadsActivityToggle(kind, checked) {
+  const idx = _leadsActivityFilter.indexOf(kind)
+  if (checked && idx === -1) _leadsActivityFilter.push(kind)
+  else if (!checked && idx !== -1) _leadsActivityFilter.splice(idx, 1)
+  _leadsPage = 1
+  refreshLeadsViewIncremental()
+  // Re-render the panel content so the "N selected" header + row highlight
+  // reflect the new state without re-creating the overlay.
+  if (_leadsActivityPanelEl) {
+    _leadsActivityPanelEl.innerHTML = _renderLeadsActivityPanelHTML()
+    _positionLeadsActivityPanel()
+  }
+}
+
+function clearLeadsActivityFilter() {
+  _leadsActivityFilter = []
+  _leadsPage = 1
+  refreshLeadsViewIncremental()
+  if (_leadsActivityPanelEl) {
+    _leadsActivityPanelEl.innerHTML = _renderLeadsActivityPanelHTML()
+    _positionLeadsActivityPanel()
+  }
+}
+
+// Partial refresh: re-run the client-side filter on the cached leads and
+// repaint the table body + count chips + filter button label. No fetch, no
+// loading state — the panel stays open across the update.
+function refreshLeadsViewIncremental() {
+  const { leads, el } = _leadsViewCache
+  if (!Array.isArray(leads) || !el) {
+    // Fallback to a full reload if we don't have a cache (first paint, or
+    // user landed here from a deep link before initial render finished).
+    const page = document.getElementById('page-leads-view')
+    if (page) { page.dataset.loaded = ''; loadPage('leads-view', page) }
+    return
+  }
+  const filtered = applyLeadsFilters(leads)
+  const pagination = paginateClient(filtered, _leadsPage, 10)
+  _leadsPage = pagination.page
+  const canManage = leadsCanManage()
+  // Rebuild table body.
+  const tbody = el.querySelector('#leads-table tbody')
+  if (tbody) {
+    tbody.innerHTML = pagination.items.map((l) => renderLeadRow(l, canManage)).join('')
+      || `<tr><td colspan="7" style="text-align:center;color:#7E7E8F;padding:24px">No leads match the current filter.</td></tr>`
+  }
+  // Update header subtitle ("N total · M shown").
+  const subtitle = el.querySelector('.page-header .page-subtitle')
+  if (subtitle) subtitle.textContent = `${leads.length} total leads · ${pagination.total} shown`
+  // Update the activity button label.
+  const labelEl = document.getElementById('leads-filter-activity-label')
+  if (labelEl) labelEl.textContent = _leadsActivityFilter.length ? _leadsActivityLabel() : 'All activity'
+  // Update the pager.
+  const pagerWrap = el.querySelector('#leads-pager-wrap')
+  if (pagerWrap && typeof renderPager === 'function') {
+    pagerWrap.innerHTML = renderPager(pagination, 'goLeadsPage', 'goLeadsPage', 'leads', 'leads-view')
+  }
+}
+
+window.toggleLeadsActivityPanel = toggleLeadsActivityPanel
+window.onLeadsActivityToggle = onLeadsActivityToggle
+window.clearLeadsActivityFilter = clearLeadsActivityFilter
 
 // ── CSV Export ──────────────────────────────────────────────
 async function exportLeadsCsv() {
@@ -470,29 +673,87 @@ async function submitImportLeads() {
   }
 }
 
+// Threshold above which the last-note cell collapses behind a "See more" link.
+const LEAD_LAST_NOTE_PREVIEW_LEN = 90
+
+// Per-row note cache keyed by lead id — lets openLeadNoteModal pull the full
+// note text + author meta without poking at table cells (which only carry
+// the truncated preview attributes).
+window._leadNoteCache = window._leadNoteCache || {}
+
+// Open the full last-note in a modal. Expanding inline made the table row
+// blow up vertically and shoved every other column out of alignment, so we
+// surface long notes in their own dialog instead.
+function openLeadNoteModal(leadId) {
+  const entry = window._leadNoteCache[leadId]
+  if (!entry) return
+  const meta = entry.created_at
+    ? `${escapeHtml(entry.author_name || 'Unknown')} · ${escapeHtml(fmtRelative(entry.created_at))}`
+    : ''
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-sticky-note" style="color:#C9A7FF;margin-right:6px"></i>Last note${entry.lead_name ? ` — ${escapeHtml(entry.lead_name)}` : ''}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      ${meta ? `<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:10px">${meta}</div>` : ''}
+      <div style="font-size:13.5px;color:var(--text-primary);white-space:pre-wrap;word-break:break-word;line-height:1.55">${escapeHtml(entry.text || '')}</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      ${entry.lead_id ? `<button class="btn btn-primary" onclick="closeModal();goLeadDetail('${entry.lead_id}')"><i class="fas fa-up-right-from-square"></i> Open lead</button>` : ''}
+    </div>
+  `)
+}
+window.openLeadNoteModal = openLeadNoteModal
+
 function renderLeadRow(l, canManage) {
   const key = String(l.status || 'new').toLowerCase()
   const meta = LEAD_STATUS_META[key] || { label: key, badge: 'todo' }
   const openTask = (l.tasks || []).find((t) => t.status !== 'done' && t.status !== 'skipped')
   const due = openTask?.due_date ? fmtDateTime(openTask.due_date) : '—'
   const overdue = openTask?.due_date && new Date(openTask.due_date).getTime() < Date.now()
+  // Last note preview: prefer the history entry from leadNotes (set by
+  // enrichLeads); fall back to the inline lead.notes blob if the lead is old
+  // and has never had a history entry created.
+  const lastNoteRaw = (l.latest_note && l.latest_note.text)
+    ? String(l.latest_note.text)
+    : String(l.notes || '')
+  const isLong = lastNoteRaw.length > LEAD_LAST_NOTE_PREVIEW_LEN
+  const lastNotePreview = isLong
+    ? escapeHtml(lastNoteRaw.slice(0, LEAD_LAST_NOTE_PREVIEW_LEN - 3) + '…')
+    : escapeHtml(lastNoteRaw || '—')
+  // Stash the full note + author meta so openLeadNoteModal can surface them
+  // in a dialog when the user clicks "See more" — keeps the table row tidy.
+  window._leadNoteCache[l.id] = {
+    text: lastNoteRaw,
+    author_name: l.latest_note?.author_name || null,
+    created_at: l.latest_note?.created_at || null,
+    lead_name: l.name,
+    lead_id: l.id,
+  }
+  const lastNoteMeta = l.latest_note?.created_at
+    ? `${escapeHtml(l.latest_note.author_name || 'Unknown')} · ${escapeHtml(fmtRelative(l.latest_note.created_at))}`
+    : ''
   return `<tr>
     <td>
       <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="goLeadDetail('${l.id}')" title="Open lead detail">
         ${avatar(l.name, '#A970FF', 'sm')}
-        <div>
+        <div style="min-width:0">
           <div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div>
-          <div style="font-size:11px;color:#7E7E8F">${escapeHtml(String(l.requirement || '').slice(0, 80))}${(l.requirement || '').length > 80 ? '…' : ''}</div>
+          <div style="font-size:12px;color:#7E7E8F">${escapeHtml(l.email || '—')}</div>
+          ${l.phone ? `<div style="font-size:11px;color:#7E7E8F">${escapeHtml(l.phone)}</div>` : ''}
         </div>
       </div>
-    </td>
-    <td>
-      <div style="font-size:12px;color:#7E7E8F">${escapeHtml(l.email || '—')}</div>
-      <div style="font-size:11px;color:#7E7E8F">${escapeHtml(l.phone || '')}</div>
     </td>
     <td><span style="font-size:12px;color:#7E7E8F">${escapeHtml(l.source || '—')}</span></td>
     <td>${l.assigned_to_name ? `<span style="font-size:12px">${escapeHtml(l.assigned_to_name)}</span>` : '<span style="color:#7E7E8F">—</span>'}</td>
     <td><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
+    <td style="max-width:260px">
+      <div style="font-size:12px;color:#cbd5e1;white-space:pre-wrap;word-break:break-word">${lastNotePreview}</div>
+      ${isLong ? `<button type="button" onclick="openLeadNoteModal('${l.id}')" style="background:none;border:none;color:#A970FF;font-size:11px;padding:2px 0;cursor:pointer;font-weight:600">See more</button>` : ''}
+      ${lastNoteMeta ? `<div style="font-size:10.5px;color:#7E7E8F;margin-top:2px">${lastNoteMeta}</div>` : ''}
+    </td>
     <td><span style="font-size:12px;${overdue ? 'color:#FF5E3A;font-weight:600' : 'color:#7E7E8F'}">${due}${overdue ? ' (overdue)' : ''}</span></td>
     <td>
       <div style="display:flex;gap:4px">
@@ -524,17 +785,28 @@ function filterLeadsByStatus(status) {
 
 function goLeadsPage(page) {
   _leadsPage = Math.max(1, Number(page) || 1)
-  const el = document.getElementById('page-leads-view')
-  if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+  refreshLeadsViewIncremental()
 }
 
 async function openCreateLeadModal() {
   await loadLeadSources()
-  const assignees = await fetchSalesAssignees()
-  if (!assignees.length) {
-    toast('No sales agents available — create one first.', 'error')
-    return
+  const role = String(_user?.role || '').toLowerCase()
+  // Show the assignee picker only to users with the leads.assign_to_others
+  // permission (admin / PM / PC / sales_manager / sales_tl by default; admin
+  // can grant it to anyone in Settings → Roles & Permissions). Everyone else
+  // creates leads owned by themselves — the backend re-enforces this so a
+  // stale UI can't bypass it.
+  const canAssignOthers = role === 'admin'
+    || (typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.assign_to_others']))
+  let assignees = []
+  if (canAssignOthers) {
+    assignees = await fetchSalesAssignees()
+    if (!assignees.length) {
+      toast('No sales agents available — create one first.', 'error')
+      return
+    }
   }
+  const selfId = String(_user?.id || _user?.sub || '')
   showModal(`
     <div class="modal-header">
       <h3><i class="fas fa-bullseye" style="color:#A970FF;margin-right:8px"></i>New Lead</h3>
@@ -561,12 +833,14 @@ async function openCreateLeadModal() {
             <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">PDFs, images, or docs — text and file are both supported.</div>
           </div>
         </div>
-        <div class="form-group" style="grid-column:1/-1"><label class="form-label">Assign To *</label>
-          <select id="lead-assigned-to" class="form-select">
-            ${assignees.map((u) => `<option value="${u.id}">${escapeHtml(u.full_name)} — ${escapeHtml(u.role)}</option>`).join('')}
-          </select>
-          <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:6px">Schedule follow-ups manually from the lead detail page.</div>
-        </div>
+        ${canAssignOthers
+          ? `<div class="form-group" style="grid-column:1/-1"><label class="form-label">Assign To *</label>
+              <select id="lead-assigned-to" class="form-select">
+                ${assignees.map((u) => `<option value="${u.id}">${escapeHtml(u.full_name)} — ${escapeHtml(u.role)}</option>`).join('')}
+              </select>
+              <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:6px">Schedule follow-ups manually from the lead detail page.</div>
+            </div>`
+          : `<input type="hidden" id="lead-assigned-to" value="${escapeHtml(selfId)}"/>`}
       </div>
     </div>
     <div class="modal-footer">
@@ -936,10 +1210,13 @@ async function submitNewFollowup(leadId) {
 
 async function openCloseLeadModal(id) {
   try {
+    const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
     const [res, pmsRes, pcsRes, salesPersons] = await Promise.all([
       API.get(`/leads/${id}`),
-      API.get('/users?role=pm').catch(() => ({ users: [] })),
-      API.get('/users?role=pc').catch(() => ({ users: [] })),
+      // Only admins pick PM/PC at close-time. For everyone else we skip these
+      // fetches entirely — backend will queue an admin assignment task.
+      isAdmin ? API.get('/users?role=pm').catch(() => ({ users: [] })) : Promise.resolve({ users: [] }),
+      isAdmin ? API.get('/users?role=pc').catch(() => ({ users: [] })) : Promise.resolve({ users: [] }),
       fetchSalesAssignees(),
     ])
     const lead = res.data || res.lead
@@ -1069,6 +1346,7 @@ async function openCloseLeadModal(id) {
             <div class="form-group"><label class="form-label">Start Date *</label><input class="form-input" id="close-proj-start" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
             <div class="form-group"><label class="form-label">Expected End Date</label><input class="form-input" id="close-proj-end" type="date"/></div>
           </div>
+          ${isAdmin ? `
           <div class="form-row">
             <div class="form-group"><label class="form-label">Project Manager</label>
               <select class="form-select" id="close-proj-pm">
@@ -1082,7 +1360,15 @@ async function openCloseLeadModal(id) {
                 ${pcs.map(c => `<option value="${c.id}">${escapeHtml(c.full_name)}</option>`).join('')}
               </select>
             </div>
-          </div>
+          </div>` : `
+          <div class="form-row">
+            <div class="form-group" style="grid-column:span 2">
+              <div style="padding:10px 12px;background:rgba(169,112,255,0.10);border:1px solid rgba(169,112,255,0.25);border-radius:6px;font-size:12.5px;color:var(--text-secondary);display:flex;align-items:center;gap:8px">
+                <i class="fas fa-info-circle" style="color:#C9A7FF"></i>
+                <span>Project Manager and Product Coordinator will be assigned by the admin after this lead is closed. They'll be notified automatically.</span>
+              </div>
+            </div>
+          </div>`}
           <div class="form-row">
             <div class="form-group"><label class="form-label">Project Amount (₹) *</label><input class="form-input" id="close-proj-amount" type="number" min="0" step="0.01" placeholder="e.g. 120000" required/></div>
             <div class="form-group"><label class="form-label">Billable</label>
@@ -2024,15 +2310,10 @@ function fmtRelative(value) {
   try {
     const d = new Date(value)
     if (Number.isNaN(d.getTime())) return ''
-    const diff = Date.now() - d.getTime()
-    const mins = Math.round(diff / 60000)
-    if (mins < 1) return 'just now'
-    if (mins < 60) return `${mins} min ago`
-    const hrs = Math.round(mins / 60)
-    if (hrs < 24) return `${hrs}h ago`
-    const days = Math.round(hrs / 24)
-    if (days < 30) return `${days}d ago`
-    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+    return d.toLocaleString(undefined, {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    })
   } catch { return '' }
 }
 
@@ -2088,6 +2369,7 @@ async function renderLeadDetailPage(el, id) {
     const notes = notesRes.data || notesRes.notes || []
     const timeline = timelineRes.data || timelineRes.timeline || []
     el.innerHTML = renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline, assignees)
+    if (timeline.length > LEAD_TIMELINE_PAGE_SIZE) _wireLeadTimelineAutoLoad(lead.id)
   } catch (e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message)}</p><button class="btn btn-outline" onclick="Router.navigate('leads-view')">Back to Leads</button></div>`
   }
@@ -2198,7 +2480,7 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
         `}
         <div class="form-group" style="margin:0;grid-column:1/-1">
           <label class="form-label" style="font-size:11px">Requirement *</label>
-          <textarea id="lead-inline-requirement" class="form-input" rows="3">${escape(lead.requirement || '')}</textarea>
+          <textarea id="lead-inline-requirement" class="form-textarea" rows="3" style="min-height:80px;max-height:220px;resize:vertical">${escape(lead.requirement || '')}</textarea>
         </div>
         <div class="form-group" style="margin:0;grid-column:1/-1">
           <label class="form-label" style="font-size:11px">Attachment (optional)</label>
@@ -2306,6 +2588,7 @@ async function submitInlineLeadEdit(id) {
 function renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline, assignees) {
   const role = String(_user?.role || '').toLowerCase()
   const canManage = ['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'].includes(role)
+  const isAdmin = role === 'admin'
   const isOwner = String(lead.assigned_to || '') === String(_user?.id || _user?.sub || '')
   const canEdit = canManage || isOwner
   const assigneeList = Array.isArray(assignees) ? assignees : []
@@ -2317,8 +2600,16 @@ function renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline, as
     ? generalTasks.map((t) => renderTaskRowDetail(lead.id, t)).join('')
     : `<div style="padding:16px;color:#7E7E8F;font-size:13px;text-align:center">No tasks yet.</div>`
   const timelineHTML = timeline.length
-    ? renderTimelineList(timeline)
+    ? renderTimelineList(timeline, lead.id)
     : `<div style="padding:24px;color:#7E7E8F;font-size:13px;text-align:center">No activity yet.</div>`
+
+  const handoverBanner = lead.revenue_credit_to
+    ? `<div class="card" style="padding:10px 14px;margin-bottom:14px;border-left:3px solid #A970FF;background:rgba(169,112,255,0.08);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+         <i class="fas fa-arrow-right-arrow-left" style="color:#C9A7FF"></i>
+         <span style="font-size:13px">Revenue/incentive credit for this lead is handed over to <strong>${escapeHtml(lead.revenue_credit_to_name || '(user)')}</strong>. Lead assignment unchanged.</span>
+         ${isAdmin ? `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="openLeadHandoverModal('${lead.id}')">Change / clear</button>` : ''}
+       </div>`
+    : ''
 
   return `
   <div class="lead-detail-page" style="padding:0 4px">
@@ -2327,8 +2618,10 @@ function renderLeadDetailHTML(lead, followups, generalTasks, notes, timeline, as
       <div style="flex:1"></div>
       <button class="btn btn-outline btn-sm" onclick="openSendPortfolioModal('${lead.id}')"><i class="fas fa-briefcase"></i> Send Portfolio</button>
       <button class="btn btn-outline btn-sm" onclick="openSendMailModal('${lead.id}')"><i class="fas fa-paper-plane"></i> Send Mail</button>
+      ${isAdmin ? `<button class="btn btn-outline btn-sm" onclick="openLeadHandoverModal('${lead.id}')" title="Hand over revenue/incentive credit"><i class="fas fa-arrow-right-arrow-left"></i> Handover credit</button>` : ''}
       ${canEdit && !lead.client_id ? `<button class="btn btn-success btn-sm" onclick="openCloseLeadModal('${lead.id}')"><i class="fas fa-handshake"></i> Close &amp; Convert</button>` : ''}
     </div>
+    ${handoverBanner}
 
     <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:20px">
       <!-- LEFT COLUMN -->
@@ -2422,22 +2715,95 @@ function renderTaskRowDetail(leadId, t) {
   </div>`
 }
 
-function renderTimelineList(timeline) {
-  return `<div style="display:flex;flex-direction:column;gap:14px;position:relative">
-    ${timeline.map((a) => `
-      <div style="display:flex;gap:12px">
-        <div style="flex-shrink:0;width:34px;height:34px;border-radius:50%;background:#121216;display:flex;align-items:center;justify-content:center;color:#7E7E8F;border:1px solid #2B2B35"><i class="fas ${activityIcon(a.kind)}"></i></div>
-        <div style="flex:1;min-width:0;padding:10px 12px;border-radius:8px;background:#0f172a40;border:1px solid #121216">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div style="font-size:13px;color:#e2e8f0;font-weight:600">${escapeHtml(a.actor_name || 'System')}</div>
-            <div style="font-size:11px;color:#7E7E8F;white-space:nowrap" title="${escapeHtml(a.created_at || '')}">${fmtRelative(a.created_at)}</div>
-          </div>
-          <div style="font-size:13px;color:#cbd5e1;margin-top:4px">${escapeHtml(a.summary || '')}</div>
-          <div style="margin-top:6px"><span class="badge badge-todo" style="font-size:10px">${escapeHtml(a.kind || 'event')}</span></div>
+// How many timeline entries we show before the "Load more" sentinel kicks in.
+// Auto-load-on-scroll fires once the sentinel scrolls into view, so the UX
+// feels like infinite scroll without an upfront cost for long histories.
+const LEAD_TIMELINE_PAGE_SIZE = 15
+
+// In-memory store of the full timeline per lead detail render so the
+// load-more click can hydrate the next page without re-fetching.
+window._leadTimelineCache = window._leadTimelineCache || {}
+
+function _renderTimelineItem(a) {
+  return `
+    <div style="display:flex;gap:12px">
+      <div class="lead-timeline-icon" style="flex-shrink:0;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center"><i class="fas ${activityIcon(a.kind)}"></i></div>
+      <div class="lead-timeline-card" style="flex:1;min-width:0;padding:10px 12px;border-radius:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div class="lead-timeline-actor" style="font-size:13px;font-weight:600">${escapeHtml(a.actor_name || 'System')}</div>
+          <div class="lead-timeline-time" style="font-size:11px;white-space:nowrap" title="${escapeHtml(a.created_at || '')}">${fmtRelative(a.created_at)}</div>
         </div>
+        <div class="lead-timeline-summary" style="font-size:13px;margin-top:4px">${escapeHtml(a.summary || '')}</div>
+        <div style="margin-top:6px"><span class="badge badge-todo" style="font-size:10px">${escapeHtml(a.kind || 'event')}</span></div>
       </div>
-    `).join('')}
+    </div>`
+}
+
+function renderTimelineList(timeline, leadId) {
+  const list = Array.isArray(timeline) ? timeline : []
+  // Stash so loadMoreLeadTimeline() can fetch the next slice.
+  if (leadId) window._leadTimelineCache[leadId] = list
+  const total = list.length
+  const initial = list.slice(0, LEAD_TIMELINE_PAGE_SIZE)
+  const remaining = Math.max(0, total - initial.length)
+  return `<div class="lead-timeline-list" data-lead-id="${escapeHtml(String(leadId || ''))}" data-shown="${initial.length}" data-total="${total}" style="display:flex;flex-direction:column;gap:14px;position:relative">
+    <div class="lead-timeline-items" style="display:flex;flex-direction:column;gap:14px">
+      ${initial.map(_renderTimelineItem).join('')}
+    </div>
+    ${remaining > 0 ? `<div class="lead-timeline-more-wrap" style="display:flex;justify-content:center;padding:6px 0 2px">
+      <button type="button" class="btn btn-sm btn-outline lead-timeline-more" onclick="loadMoreLeadTimeline('${escapeHtml(String(leadId || ''))}')"><i class="fas fa-arrow-down"></i> Load ${Math.min(remaining, LEAD_TIMELINE_PAGE_SIZE)} more <span style="opacity:.6;margin-left:4px">(${remaining} hidden)</span></button>
+    </div>` : ''}
   </div>`
+}
+
+// Click handler for the "Load more" button. Also fires automatically via
+// IntersectionObserver — see _wireLeadTimelineAutoLoad below.
+function loadMoreLeadTimeline(leadId) {
+  const list = window._leadTimelineCache[leadId]
+  if (!Array.isArray(list)) return
+  const wrap = document.querySelector(`.lead-timeline-list[data-lead-id="${CSS.escape(String(leadId))}"]`)
+  if (!wrap) return
+  const itemsEl = wrap.querySelector('.lead-timeline-items')
+  const moreWrap = wrap.querySelector('.lead-timeline-more-wrap')
+  if (!itemsEl) return
+  const shown = Number(wrap.dataset.shown || 0)
+  const total = list.length
+  const next = list.slice(shown, shown + LEAD_TIMELINE_PAGE_SIZE)
+  if (!next.length) return
+  itemsEl.insertAdjacentHTML('beforeend', next.map(_renderTimelineItem).join(''))
+  const newShown = shown + next.length
+  wrap.dataset.shown = String(newShown)
+  const remaining = Math.max(0, total - newShown)
+  if (remaining === 0) {
+    if (moreWrap) moreWrap.remove()
+  } else {
+    const btn = moreWrap?.querySelector('.lead-timeline-more')
+    if (btn) btn.innerHTML = `<i class="fas fa-arrow-down"></i> Load ${Math.min(remaining, LEAD_TIMELINE_PAGE_SIZE)} more <span style="opacity:.6;margin-left:4px">(${remaining} hidden)</span>`
+  }
+}
+window.loadMoreLeadTimeline = loadMoreLeadTimeline
+
+// Auto-fire "Load more" when the sentinel scrolls into view, so users get
+// infinite-scroll feel without losing the explicit button.
+function _wireLeadTimelineAutoLoad(leadId) {
+  if (typeof IntersectionObserver === 'undefined') return
+  const wrap = document.querySelector(`.lead-timeline-list[data-lead-id="${CSS.escape(String(leadId))}"]`)
+  if (!wrap) return
+  const io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      const button = entry.target.querySelector?.('.lead-timeline-more')
+      if (button) loadMoreLeadTimeline(leadId)
+    }
+  }, { rootMargin: '120px 0px' })
+  const observe = () => {
+    const moreWrap = wrap.querySelector('.lead-timeline-more-wrap')
+    if (moreWrap) io.observe(moreWrap)
+  }
+  observe()
+  // Re-observe whenever loadMoreLeadTimeline replaces the button text.
+  const mo = new MutationObserver(observe)
+  mo.observe(wrap, { childList: true, subtree: true })
 }
 
 async function saveLeadInlineNotes(leadId) {
@@ -2448,6 +2814,61 @@ async function saveLeadInlineNotes(leadId) {
     toast('Notes saved', 'success')
   } catch (e) {
     toast('Failed to save notes: ' + e.message, 'error')
+  }
+}
+
+// Admin-only modal that re-attributes a lead's revenue/incentive credit to a
+// different user without touching lead.assigned_to or any downstream
+// ownership. Hits POST /leads/:id/handover.
+async function openLeadHandoverModal(leadId) {
+  let lead = null
+  try {
+    const res = await API.get(`/leads/${leadId}`)
+    lead = res.data || res.lead || res
+  } catch (e) {
+    toast('Failed to load lead: ' + (e.message || ''), 'error'); return
+  }
+  const users = await fetchSalesAssignees()
+  const currentCredit = String(lead.revenue_credit_to || '')
+  const currentAssignee = String(lead.assigned_to || '')
+  const options = users.map((u) => {
+    const tag = String(u.id) === currentAssignee ? ' (current lead owner)' : ''
+    const sel = String(u.id) === currentCredit ? ' selected' : ''
+    return `<option value="${escapeHtml(String(u.id))}"${sel}>${escapeHtml(u.full_name || u.email || u.id)}${tag}</option>`
+  }).join('')
+  showModal(`
+    <div class="modal-header"><h3>Handover revenue credit</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <div style="font-size:13px;color:var(--text-secondary)">
+        This only changes who gets <strong>sales-report and incentive credit</strong> for this lead and any projects it produced.
+        The lead's actual assignee, client ownership, and project assignments stay unchanged.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Credit to</label>
+        <select id="lead-handover-user" class="form-select">
+          <option value="">— Use original assignee (clear handover) —</option>
+          ${options}
+        </select>
+      </div>
+      ${currentCredit ? `<div style="font-size:12px;color:var(--text-muted)">Currently credited to: <strong>${escapeHtml(lead.revenue_credit_to_name || currentCredit)}</strong></div>` : ''}
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitLeadHandover('${leadId}')"><i class="fas fa-check"></i> Save handover</button>
+    </div>
+  `, 'modal-sm')
+}
+
+async function submitLeadHandover(leadId) {
+  const sel = document.getElementById('lead-handover-user')
+  const value = sel ? sel.value : ''
+  try {
+    const res = await API.post(`/leads/${leadId}/handover`, { credit_to: value || null })
+    toast(res?.message || 'Handover saved', 'success')
+    closeModal()
+    refreshLeadDetailPage(leadId)
+  } catch (e) {
+    toast('Failed to save handover: ' + (e.message || ''), 'error')
   }
 }
 

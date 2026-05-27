@@ -1424,12 +1424,12 @@ function cpInvoiceBadge(s) {
 
 function fmtDateRelative(dateStr) {
   if (!dateStr) return '—'
-  const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000)
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return Math.floor(diff/60) + 'm ago'
-  if (diff < 86400) return Math.floor(diff/3600) + 'h ago'
-  if (diff < 604800) return Math.floor(diff/86400) + 'd ago'
-  return fmtDate(dateStr)
+  const d = new Date(dateStr)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString(undefined, {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  })
 }
 
 // Close notifications when clicking outside

@@ -5776,6 +5776,7 @@ function _statTile(label, value, color, icon) {
 
 let _portfolioSearch = ''
 let _portfolioCanManage = false
+let _portfolioPerms = { canCreate: false, canEdit: false, canDelete: false, canEditOwn: false, canDeleteOwn: false }
 
 async function renderPortfolioLibrary(el) {
   el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading portfolios…</div>`
@@ -5783,6 +5784,7 @@ async function renderPortfolioLibrary(el) {
     const res = await API.get('/portfolios')
     const list = res.data || res.portfolios || []
     _portfolioCanManage = !!res.can_manage
+    _portfolioPerms = Object.assign(_portfolioPerms, res.perms || {})
     const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
 
     const q = (_portfolioSearch || '').toLowerCase()
@@ -5827,8 +5829,8 @@ function _portfolioCard(p) {
   const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
   const userId = String(_user?.sub || _user?.id || '')
   const isOwner = String(p.created_by || '') === userId
-  const canEdit = isAdmin || isOwner || _portfolioCanManage
-  const canDelete = isAdmin || isOwner
+  const canEdit = isAdmin || _portfolioPerms.canEdit || (_portfolioPerms.canEditOwn && isOwner)
+  const canDelete = isAdmin || _portfolioPerms.canDelete || (_portfolioPerms.canDeleteOwn && isOwner)
   const ext = (p.file?.name || '').split('.').pop()?.toLowerCase() || ''
   const isImg = /^(png|jpe?g|gif|webp)$/.test(ext)
   return `<div class="card">
@@ -5957,7 +5959,10 @@ async function deletePortfolioEntry(id, title) {
 }
 
 // ── SEND TO LEAD ───────────────────────────────────────────
-let _portfolioSendCache = { portfolioId: '', leadId: '', leads: [] }
+// Extras: files + pasted links the user wants to attach alongside the
+// portfolio's stored file. Kept in module scope so the AddFile / AddLink /
+// Remove handlers can mutate the same lists across renders.
+let _portfolioSendCache = { portfolioId: '', leadId: '', leads: [], extraFiles: [], extraLinks: [] }
 
 async function openPortfolioSendModal(portfolioId) {
   showModal(`
@@ -5975,7 +5980,7 @@ async function openPortfolioSendModal(portfolioId) {
     const portfolio = (pfRes.data || pfRes.portfolios || []).find((p) => String(p.id) === String(portfolioId))
     const leads = leadsRes.data || leadsRes.leads || []
     if (!portfolio) throw new Error('Portfolio not found')
-    _portfolioSendCache = { portfolioId, leadId: '', leads }
+    _portfolioSendCache = { portfolioId, leadId: '', leads, extraFiles: [], extraLinks: [] }
 
     const modal = document.querySelector('.modal .modal-body')?.parentElement
     if (!modal) return
@@ -5985,38 +5990,59 @@ async function openPortfolioSendModal(portfolioId) {
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body">
-        <div class="form-group">
+        <div class="form-group" style="position:relative">
           <label class="form-label">Lead *</label>
-          <select id="pf-send-lead" class="form-select" onchange="onPortfolioLeadPick(this.value)">
-            <option value="">— Choose a lead —</option>
-            ${leads.map((l) => `<option value="${l.id}">${escapeHtml(l.name)} · ${escapeHtml(l.email || '—')}</option>`).join('')}
-          </select>
+          <input id="pf-send-lead-search" class="form-input" placeholder="Click to browse or type to search…" autocomplete="off" oninput="onPortfolioLeadSearch(this.value)" onclick="onPortfolioLeadSearch(this.value, true)" onfocus="onPortfolioLeadSearch(this.value, true)" onkeydown="if(event.key==='Escape')closePortfolioLeadList()"/>
+          <div id="pf-send-lead-list" hidden style="position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--surface,#fff);border:1px solid var(--border,#E5E7EB);border-radius:8px;box-shadow:0 12px 28px rgba(0,0,0,.25);max-height:240px;overflow:auto;z-index:1000"></div>
+          <div id="pf-send-lead-selected" hidden style="margin-top:6px;font-size:12px;color:var(--text-muted)"></div>
         </div>
-        <div class="form-group">
-          <label class="form-label">To *</label>
-          <input id="pf-send-to" class="form-input" placeholder="recipient@example.com"/>
+        <div class="form-group" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:rgba(169,112,255,0.06);border:1px solid rgba(169,112,255,0.18)">
+          <input id="pf-send-via-email" type="checkbox" checked onchange="onPortfolioSendViaEmailToggle(this.checked)" style="margin:0;accent-color:#A970FF;width:16px;height:16px"/>
+          <label for="pf-send-via-email" style="margin:0;font-size:13px;color:var(--text-primary);cursor:pointer">Send via email — uncheck to just record the share on the lead timeline (shared via WhatsApp / in-person etc.)</label>
         </div>
-        <div class="form-group">
-          <label class="form-label">Cc (comma separated)</label>
-          <input id="pf-send-cc" class="form-input" placeholder="optional"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Subject *</label>
-          <input id="pf-send-subject" class="form-input" value="Mariox Software — ${escapeHtml(portfolio.title)}"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Message *</label>
-          <textarea id="pf-send-body" class="form-input" rows="7"></textarea>
-        </div>
-        <div style="padding:10px 12px;border-radius:8px;background:rgba(169,112,255,0.10);border:1px solid rgba(169,112,255,0.22);font-size:12px;color:#C9A7FF">
-          <i class="fas fa-paperclip"></i> Attachment: ${escapeHtml(portfolio.file?.name || '—')} · ${formatBytes(portfolio.file?.size || 0)}
+        <div id="pf-send-email-fields">
+          <div class="form-group">
+            <label class="form-label">To <span id="pf-send-to-required">*</span></label>
+            <input id="pf-send-to" class="form-input" placeholder="recipient@example.com"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cc (comma separated)</label>
+            <input id="pf-send-cc" class="form-input" placeholder="optional"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subject <span id="pf-send-subject-required">*</span></label>
+            <input id="pf-send-subject" class="form-input" value="Mariox Software — ${escapeHtml(portfolio.title)}"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Message <span id="pf-send-body-required">*</span></label>
+            <textarea id="pf-send-body" class="form-input" rows="7"></textarea>
+          </div>
+          <div style="padding:10px 12px;border-radius:8px;background:rgba(169,112,255,0.10);border:1px solid rgba(169,112,255,0.22);font-size:12px;color:#C9A7FF;margin-bottom:10px">
+            <i class="fas fa-paperclip"></i> Portfolio attachment: ${escapeHtml(portfolio.file?.name || '—')} · ${formatBytes(portfolio.file?.size || 0)}
+          </div>
+          <!-- Extra attachments: extra files + pasted links — same UX as the close-lead modal. -->
+          <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.02)">
+            <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Add more attachments <span style="color:#7E7E8F;text-transform:none;letter-spacing:0">(10 MB / file)</span></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input id="pf-send-extra-files-input" type="file" multiple style="display:none" onchange="pfAddExtraFiles(this.files);this.value=''"/>
+              <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('pf-send-extra-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
+              <span style="color:#5A5A66;font-size:11px">— or —</span>
+              <input id="pf-send-extra-link-url" class="form-input" type="url" placeholder="Paste a document URL" style="flex:1;min-width:200px;padding:6px 10px;font-size:12.5px"/>
+              <input id="pf-send-extra-link-name" class="form-input" type="text" placeholder="Label" style="width:140px;padding:6px 10px;font-size:12.5px"/>
+              <button type="button" class="btn btn-outline btn-sm" onclick="pfAddExtraLink()"><i class="fas fa-link"></i> Add link</button>
+            </div>
+            <div id="pf-send-extra-list" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" id="pf-send-btn" onclick="submitPortfolioSend()"><i class="fas fa-paper-plane"></i> Send</button>
+        <button class="btn btn-primary" id="pf-send-btn" onclick="submitPortfolioSend()"><i class="fas fa-paper-plane"></i> <span id="pf-send-btn-label">Send</span></button>
       </div>
     `
+    // List stays hidden on first paint — only opens once the user types or
+    // explicitly focuses the search. Showing it eagerly buried the rest of
+    // the form and gave no way to dismiss without picking a lead.
   } catch (e) {
     const body = document.querySelector('.modal .modal-body')
     if (body) body.innerHTML = `<div style="padding:24px;color:#A970FF"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || 'Failed to load')}</div>`
@@ -6029,33 +6055,216 @@ function onPortfolioLeadPick(leadId) {
   if (!lead) return
   const toEl = document.getElementById('pf-send-to')
   const bodyEl = document.getElementById('pf-send-body')
+  const searchEl = document.getElementById('pf-send-lead-search')
+  const listEl = document.getElementById('pf-send-lead-list')
+  const selectedEl = document.getElementById('pf-send-lead-selected')
   if (toEl) toEl.value = lead.email || ''
   if (bodyEl && !bodyEl.value.trim()) {
     bodyEl.value = `Hi ${lead.name},\n\nThanks for your time. As discussed, please find our portfolio attached for your reference.\n\nLet us know if you have any questions or would like to schedule a follow-up.\n\nRegards,\n${_user?.full_name || _user?.name || 'Mariox Team'}`
   }
+  // Collapse the typeahead list, surface the picked lead as a chip-like row.
+  if (searchEl) searchEl.value = `${lead.name} · ${lead.email || ''}`
+  if (listEl) listEl.hidden = true
+  if (selectedEl) {
+    selectedEl.hidden = false
+    selectedEl.innerHTML = `<i class="fas fa-check-circle" style="color:#58C68A"></i> Selected: <strong>${escapeHtml(lead.name)}</strong> · ${escapeHtml(lead.email || '—')}`
+  }
+  closePortfolioLeadList()
 }
 
+// Type-ahead lead search. Matches name + email + phone, prefix-insensitive.
+// Shows up to 30 matches in a popover under the input so the dropdown stays
+// usable even with hundreds of leads. `openOnEmpty=true` (click / focus) shows
+// the full list when the input is empty; `oninput` events leave it hidden so
+// the rest of the form isn't permanently obscured after typing-then-clearing.
+function onPortfolioLeadSearch(query, openOnEmpty) {
+  const listEl = document.getElementById('pf-send-lead-list')
+  if (!listEl) return
+  const q = String(query || '').trim().toLowerCase()
+  const leads = _portfolioSendCache.leads || []
+  let matches
+  if (!q) {
+    if (!openOnEmpty) { closePortfolioLeadList(); return }
+    matches = leads.slice(0, 30)
+  } else {
+    matches = leads.filter((l) =>
+      String(l.name || '').toLowerCase().includes(q) ||
+      String(l.email || '').toLowerCase().includes(q) ||
+      String(l.phone || '').toLowerCase().includes(q),
+    ).slice(0, 30)
+  }
+  if (!matches.length) {
+    listEl.hidden = false
+    listEl.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--text-muted)">${q ? `No leads match "${escapeHtml(query)}"` : 'No leads available'}</div>`
+  } else {
+    listEl.hidden = false
+    listEl.innerHTML = matches.map((l) => `<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)" onmouseover="this.style.background='rgba(169,112,255,0.10)'" onmouseout="this.style.background=''" onclick="onPortfolioLeadPick('${l.id}')">
+      <div style="color:var(--text-primary);font-weight:500">${escapeHtml(l.name)}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(l.email || '—')}${l.phone ? ' · ' + escapeHtml(l.phone) : ''}</div>
+    </div>`).join('')
+  }
+  _wirePortfolioLeadOutsideClick()
+}
+window.onPortfolioLeadSearch = onPortfolioLeadSearch
+
+// Close the lead-search dropdown — used by outside-click, Escape, and
+// onPortfolioLeadPick. Removes the outside-click handler so we don't leak
+// listeners when the modal closes.
+function closePortfolioLeadList() {
+  const listEl = document.getElementById('pf-send-lead-list')
+  if (listEl) listEl.hidden = true
+  if (_portfolioLeadOutsideHandler) {
+    document.removeEventListener('mousedown', _portfolioLeadOutsideHandler)
+    _portfolioLeadOutsideHandler = null
+  }
+}
+window.closePortfolioLeadList = closePortfolioLeadList
+let _portfolioLeadOutsideHandler = null
+
+function _wirePortfolioLeadOutsideClick() {
+  if (_portfolioLeadOutsideHandler) return
+  _portfolioLeadOutsideHandler = (e) => {
+    const list = document.getElementById('pf-send-lead-list')
+    const input = document.getElementById('pf-send-lead-search')
+    if (!list || list.hidden) return
+    if (list.contains(e.target) || input?.contains(e.target)) return
+    closePortfolioLeadList()
+  }
+  document.addEventListener('mousedown', _portfolioLeadOutsideHandler)
+}
+
+// Extra attachments — bookkeeping mirrors closeProj* helpers in leads.js so
+// the UX is familiar (choose files + paste links + remove individual rows).
+const PF_EXTRA_MAX_BYTES = 10 * 1024 * 1024 // backend caps at 10 MB per file
+
+function pfAddExtraFiles(fileList) {
+  for (const f of fileList) {
+    if (f.size > PF_EXTRA_MAX_BYTES) {
+      toast(`"${f.name}" exceeds the 10 MB limit`, 'error')
+      continue
+    }
+    _portfolioSendCache.extraFiles.push(f)
+  }
+  pfRenderExtraList()
+}
+window.pfAddExtraFiles = pfAddExtraFiles
+
+function pfAddExtraLink() {
+  const urlEl = document.getElementById('pf-send-extra-link-url')
+  const nameEl = document.getElementById('pf-send-extra-link-name')
+  const url = (urlEl?.value || '').trim()
+  if (!url) { toast('Paste a URL first', 'error'); return }
+  if (!/^https?:\/\//i.test(url)) { toast('URL must start with http:// or https://', 'error'); return }
+  let display = (nameEl?.value || '').trim()
+  if (!display) {
+    try { const u = new URL(url); display = u.hostname + (u.pathname && u.pathname !== '/' ? u.pathname : '') }
+    catch { display = url }
+  }
+  _portfolioSendCache.extraLinks.push({ url, name: display })
+  if (urlEl) urlEl.value = ''
+  if (nameEl) nameEl.value = ''
+  pfRenderExtraList()
+}
+window.pfAddExtraLink = pfAddExtraLink
+
+function pfRemoveExtraFile(idx) {
+  _portfolioSendCache.extraFiles.splice(idx, 1)
+  pfRenderExtraList()
+}
+function pfRemoveExtraLink(idx) {
+  _portfolioSendCache.extraLinks.splice(idx, 1)
+  pfRenderExtraList()
+}
+window.pfRemoveExtraFile = pfRemoveExtraFile
+window.pfRemoveExtraLink = pfRemoveExtraLink
+
+function pfRenderExtraList() {
+  const wrap = document.getElementById('pf-send-extra-list')
+  if (!wrap) return
+  const files = _portfolioSendCache.extraFiles
+  const links = _portfolioSendCache.extraLinks
+  if (!files.length && !links.length) { wrap.innerHTML = ''; return }
+  const fileRows = files.map((f, i) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,.04);border-radius:6px;font-size:12.5px">
+    <i class="fas fa-file" style="color:#C9A7FF"></i>
+    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.name)}</span>
+    <span style="color:#7E7E8F;font-size:11px">${formatBytes(f.size)}</span>
+    <button type="button" class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="pfRemoveExtraFile(${i})"><i class="fas fa-times"></i></button>
+  </div>`).join('')
+  const linkRows = links.map((l, i) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,.04);border-radius:6px;font-size:12.5px">
+    <i class="fas fa-link" style="color:#C9A7FF"></i>
+    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(l.name)}</span>
+    <button type="button" class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="pfRemoveExtraLink(${i})"><i class="fas fa-times"></i></button>
+  </div>`).join('')
+  wrap.innerHTML = fileRows + linkRows
+}
+
+// Toggle visibility of the email-only fields when the user flips "Send via
+// email" off — share-only mode just records the timeline event so the email
+// form is irrelevant.
+function onPortfolioSendViaEmailToggle(checked) {
+  const fields = document.getElementById('pf-send-email-fields')
+  const label = document.getElementById('pf-send-btn-label')
+  if (fields) fields.style.display = checked ? '' : 'none'
+  if (label) label.textContent = checked ? 'Send' : 'Record share'
+  // Drop the * markers when the fields aren't required.
+  for (const id of ['pf-send-to-required', 'pf-send-subject-required', 'pf-send-body-required']) {
+    const el = document.getElementById(id)
+    if (el) el.style.display = checked ? '' : 'none'
+  }
+}
+window.onPortfolioSendViaEmailToggle = onPortfolioSendViaEmailToggle
+
 async function submitPortfolioSend() {
-  const { portfolioId, leadId } = _portfolioSendCache
+  const { portfolioId, leadId, extraFiles, extraLinks } = _portfolioSendCache
   if (!portfolioId) { toast('Portfolio missing', 'error'); return }
   if (!leadId) { toast('Pick a lead first', 'error'); return }
+  const sendEmail = document.getElementById('pf-send-via-email')?.checked !== false
   const to = (document.getElementById('pf-send-to')?.value || '').trim()
   const ccRaw = (document.getElementById('pf-send-cc')?.value || '').trim()
   const subject = (document.getElementById('pf-send-subject')?.value || '').trim()
   const text = (document.getElementById('pf-send-body')?.value || '').trim()
-  if (!to || !subject || !text) { toast('Recipient, subject and message are required', 'error'); return }
+  if (sendEmail && (!to || !subject || !text)) {
+    toast('Recipient, subject and message are required when sending by email', 'error')
+    return
+  }
   const cc = ccRaw ? ccRaw.split(',').map((s) => s.trim()).filter(Boolean) : []
   const btn = document.getElementById('pf-send-btn')
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
+  if (btn) {
+    btn.disabled = true
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${sendEmail ? 'Sending…' : 'Recording…'}`
+  }
   try {
-    await API.post(`/portfolios/${portfolioId}/send/${leadId}`, { to, cc, subject, text })
-    toast('Portfolio sent — logged on the lead timeline', 'success')
+    // Upload extra files first so we can pass their public URLs to the
+    // send endpoint as attachments alongside the stored portfolio file.
+    const uploadedFiles = []
+    for (const f of extraFiles || []) {
+      const r = await uploadLeadFile(f)
+      uploadedFiles.push({
+        url: r.url || r.file_url || '',
+        name: r.original_name || r.name || f.name,
+        mime: r.mime_type || r.mime || f.type,
+        size: f.size,
+      })
+    }
+    const res = await API.post(`/portfolios/${portfolioId}/send/${leadId}`, {
+      send_email: sendEmail,
+      to: sendEmail ? to : '',
+      cc: sendEmail ? cc : [],
+      subject: sendEmail ? subject : '',
+      text: sendEmail ? text : '',
+      extra_attachments: uploadedFiles,
+      extra_links: extraLinks || [],
+    })
+    toast(res?.message || (sendEmail ? 'Portfolio sent' : 'Portfolio share recorded'), 'success')
     closeModal()
     const el = document.getElementById('page-portfolio-library')
     if (el) { el.dataset.loaded = ''; loadPage('portfolio-library', el) }
   } catch (e) {
-    toast('Send failed: ' + (e.message || 'unknown'), 'error')
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send' }
+    toast((sendEmail ? 'Send failed: ' : 'Failed to record share: ') + (e.message || 'unknown'), 'error')
+    if (btn) {
+      btn.disabled = false
+      btn.innerHTML = `<i class="fas fa-paper-plane"></i> ${sendEmail ? 'Send' : 'Record share'}`
+    }
   }
 }
 
@@ -6287,6 +6496,7 @@ async function _renderLibraryPermissionsBody(endpointBase, refreshFn) {
 
 let _scopeSearch = ''
 let _scopeCanManage = false
+let _scopePerms = { canCreate: false, canEdit: false, canDelete: false, canEditOwn: false, canDeleteOwn: false }
 let _scopeSendCache = { scopeId: '', leadId: '', leads: [] }
 
 async function renderScopeLibrary(el) {
@@ -6295,6 +6505,7 @@ async function renderScopeLibrary(el) {
     const res = await API.get('/scopes')
     const list = res.data || res.scopes || []
     _scopeCanManage = !!res.can_manage
+    _scopePerms = Object.assign(_scopePerms, res.perms || {})
     const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
     const q = (_scopeSearch || '').toLowerCase()
     const filtered = q ? list.filter((p) => (`${p.title || ''} ${p.overview || ''} ${p.client_name || ''}`).toLowerCase().includes(q)) : list
@@ -6337,8 +6548,8 @@ function _scopeCard(p) {
   const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
   const userId = String(_user?.sub || _user?.id || '')
   const isOwner = String(p.created_by || '') === userId
-  const canEdit = isAdmin || isOwner || _scopeCanManage
-  const canDelete = isAdmin || isOwner
+  const canEdit = isAdmin || _scopePerms.canEdit || (_scopePerms.canEditOwn && isOwner)
+  const canDelete = isAdmin || _scopePerms.canDelete || (_scopePerms.canDeleteOwn && isOwner)
   const secCount = Array.isArray(p.sections) ? p.sections.length : 0
   const delCount = Array.isArray(p.deliverables) ? p.deliverables.length : 0
   return `<div class="card">
@@ -7333,6 +7544,7 @@ async function scope_revoke(userId, name) {
 
 let _quoteSearch = ''
 let _quoteCanManage = false
+let _quotePerms = { canCreate: false, canEdit: false, canDelete: false, canEditOwn: false, canDeleteOwn: false }
 let _quoteDraft = null
 let _quoteSendCache = { quotationId: '', leadId: '', leads: [] }
 
@@ -7355,6 +7567,7 @@ async function renderQuotationLibrary(el) {
     const res = await API.get('/quotations')
     const list = res.data || res.quotations || []
     _quoteCanManage = !!res.can_manage
+    _quotePerms = Object.assign(_quotePerms, res.perms || {})
     const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
     const q = (_quoteSearch || '').toLowerCase()
     const filtered = q ? list.filter((p) => (`${p.title || ''} ${p.client_name || ''} ${p.quote_number || ''}`).toLowerCase().includes(q)) : list
@@ -7397,8 +7610,8 @@ function _quoteCard(p) {
   const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
   const userId = String(_user?.sub || _user?.id || '')
   const isOwner = String(p.created_by || '') === userId
-  const canEdit = isAdmin || isOwner || _quoteCanManage
-  const canDelete = isAdmin || isOwner
+  const canEdit = isAdmin || _quotePerms.canEdit || (_quotePerms.canEditOwn && isOwner)
+  const canDelete = isAdmin || _quotePerms.canDelete || (_quotePerms.canDeleteOwn && isOwner)
   const items = Array.isArray(p.line_items) ? p.line_items.length : 0
   return `<div class="card">
     <div class="card-body" style="padding:16px">
@@ -8548,7 +8761,7 @@ async function submitSalesIncentiveMarkPaidFromHistory(userId, period) {
 let _meetingsState = {
   list: [],
   canManage: false,
-  perms: { canCreate: false, canEdit: false, canDelete: false },
+  perms: { canCreate: false, canEdit: false, canDelete: false, canEditOwn: false, canDeleteOwn: false },
   statusFilter: 'all',        // all | scheduled | completed | cancelled
   leadFilter: '',
   search: '',
@@ -8687,8 +8900,9 @@ function _meetingRow(m) {
   const userId = String(_user?.sub || _user?.id || '')
   const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
   const isOwner = String(m.created_by || '') === userId
-  const canEdit = isAdmin || isOwner || _meetingsState.perms.canEdit
-  const canDelete = isAdmin || isOwner || _meetingsState.perms.canDelete
+  const p = _meetingsState.perms
+  const canEdit = isAdmin || p.canEdit || (p.canEditOwn && isOwner)
+  const canDelete = isAdmin || p.canDelete || (p.canDeleteOwn && isOwner)
   const attendees = (m.attendee_details || []).map((a) => a.name || a.email || a.id).filter(Boolean)
   const attendeesHtml = attendees.length
     ? attendees.slice(0, 2).map((n) => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(167,139,250,0.18);color:#c4b5fd;font-size:11px;margin-right:4px">${escapeHtml(n)}</span>`).join('') +

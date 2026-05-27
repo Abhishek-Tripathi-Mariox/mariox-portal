@@ -80,3 +80,60 @@ export function requireAnyPermission(models: MongoModels, ...keys: string[]) {
     }
   }
 }
+
+// Ownership-scoped permission check.
+//
+// Modules like portfolios / scopes / quotations / meetings expose three tiers:
+//   - <module>.<action>_own → only records the user created themselves
+//   - <module>.<action>     → full access (legacy "edit any" / "delete any")
+//   - <module>.<action>_all → full access (new explicit name)
+//
+// Pass the action key ("edit", "delete", "view") and the record (which must
+// have a `created_by` field). Returns true if the user can perform the action
+// on that specific record. Admin always passes.
+//
+// For meetings the "owner" check is delegated via an optional isOwner override
+// because participants are also considered owners for view purposes.
+export async function userCanActOn(
+  models: MongoModels,
+  user: any,
+  module: string,
+  action: 'view' | 'edit' | 'delete',
+  record: any,
+  opts: { isOwner?: (r: any) => boolean } = {},
+): Promise<boolean> {
+  if (!record) return false
+  const role = String(user?.role || '').toLowerCase().trim()
+  if (role === 'admin') return true
+  const userId = String(user?.sub || user?.id || '')
+  if (!userId) return false
+  // Full-access keys: <module>.<action>_all + legacy <module>.<action>
+  // (the latter exists for edit/delete only — view never had a legacy key).
+  const fullKeys: string[] = [`${module}.${action}_all`]
+  if (action !== 'view') fullKeys.push(`${module}.${action}`)
+  if (await userHasAnyPermission(models, user, ...fullKeys)) return true
+  // Scoped key: requires the user to own the record.
+  const ownKey = `${module}.${action}_own`
+  if (!(await userHasAnyPermission(models, user, ownKey))) return false
+  if (opts.isOwner) return opts.isOwner(record)
+  return String(record.created_by || '') === userId
+}
+
+// List-scoping helper. Returns one of:
+//   - 'all'   → user can see every record
+//   - 'own'   → user only sees records they own
+//   - 'none'  → user has no read access at all
+//
+// Same precedence as userCanActOn.
+export async function userViewScope(
+  models: MongoModels,
+  user: any,
+  module: string,
+): Promise<'all' | 'own' | 'none'> {
+  const role = String(user?.role || '').toLowerCase().trim()
+  if (role === 'admin') return 'all'
+  const fullKeys = [`${module}.view_all`, `${module}.edit_all`, `${module}.edit`, `${module}.delete_all`, `${module}.delete`]
+  if (await userHasAnyPermission(models, user, ...fullKeys)) return 'all'
+  if (await userHasAnyPermission(models, user, `${module}.view_own`, `${module}.edit_own`, `${module}.delete_own`)) return 'own'
+  return 'none'
+}

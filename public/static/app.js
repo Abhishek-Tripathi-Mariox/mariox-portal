@@ -152,22 +152,32 @@ const PAGE_PERMISSIONS = {
 // Pages NOT listed here keep pure role-based gating (Leads pages,
 // role-specific dashboards, etc.) because they're inherently scoped to
 // a role family rather than a feature permission.
+// Every sidebar page is gated by at least one permission key. canSeePage
+// requires the user's role document to grant ONE of these keys — admin
+// always bypasses. Removing the only matching permission from a role hides
+// the tab immediately on the next page refresh.
 const NAV_PERMISSION_MAP = {
   // Admin areas
   'super-dashboard':   ['reports.view_admin_dashboard'],
   'clients-list':      ['clients.create', 'clients.view_all', 'clients.edit', 'clients.delete'],
   'billing-admin':     ['invoices.create', 'invoices.view_all', 'invoices.send', 'invoices.mark_paid', 'invoices.delete'],
-  'team-overview':     ['users.view_all'],
-  'external-team':     ['users.view_all'],
-  // Team directories — gate on user-list visibility
-  'sales-team':        ['users.view_all'],
-  'project-team':      ['users.view_all'],
-  'dev-team':          ['users.view_all'],
-  'hr-team':           ['users.view_all'],
+  'team-overview':     ['team.view_overview'],
+  'external-team':     ['team.view_external'],
+  // Team directories — each has its own view permission so admin can grant
+  // one tab without exposing the others.
+  'sales-team':        ['team.view_sales'],
+  'project-team':      ['team.view_project'],
+  'dev-team':          ['team.view_dev'],
+  'hr-team':           ['team.view_hr'],
   // PM / work
   'pm-dashboard':      ['reports.view_pm_dashboard'],
+  'dev-dashboard':     ['dashboards.dev.view'],
+  'team-dashboard':    ['dashboards.team.view'],
   'projects-list':     ['projects.create', 'projects.view_all', 'projects.edit', 'projects.delete', 'projects.manage_team', 'projects.manage_kanban_perms'],
   'kanban-board':      ['tasks.create', 'tasks.edit_any', 'tasks.edit_own', 'tasks.move', 'tasks.comment'],
+  'my-tasks':          ['tasks.view_project'],
+  'personal-tasks':    ['personal_tasks.view'],
+  'bidding-view':      ['bids.view'],
   'documents-center':  ['documents.upload', 'documents.view_all', 'documents.delete'],
   'resources-view':    ['reports.view_resources'],
   'reports-view':      ['reports.export', 'reports.view_admin_dashboard', 'reports.view_pm_dashboard', 'reports.view_resources'],
@@ -183,9 +193,10 @@ const NAV_PERMISSION_MAP = {
   'quotation-library': ['quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.manage'],
   'meet-setup':        ['meetings.create', 'meetings.edit', 'meetings.delete'],
   // HR module pages — show in sidebar to anyone with the corresponding
-  // manage permission. Calendar is intentionally open to all (handled below
-  // by the role allowlist in PAGE_PERMISSIONS) so the entry isn't mapped here.
+  // manage permission. Calendar now has its own .view permission so admin
+  // can hide it from any role.
   'hr-attendance':     ['hr.attendance.manage'],
+  'hr-calendar':       ['hr.calendar.view', 'hr.calendar.manage'],
   'hr-warnings':       ['hr.warnings.manage'],
   'hr-pips':           ['hr.pips.manage'],
   'hr-salary-slips':   ['hr.salary_slips.manage'],
@@ -195,23 +206,15 @@ const NAV_PERMISSION_MAP = {
   'sales-incentive':   ['sales_incentive.view_all', 'sales_incentive.set_target', 'sales_incentive.override', 'sales_incentive.mark_paid'],
   // Settings page — visible if user has ANY settings.* permission.
   'settings-view':     ['settings.manage_company', 'settings.manage_holidays', 'settings.manage_tech_stacks', 'settings.manage_invites', 'settings.manage_roles'],
-  // Leads pages: visible to the sales family by role (PAGE_PERMISSIONS) plus
-  // anyone admin granted a leads.* permission to.
-  'leads-view':     ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
-  'lead-detail':    ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
-  'lead-followups': ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
-  'lead-tasks':     ['leads.create', 'leads.edit', 'leads.delete', 'leads.view_all'],
-  // Sprint / Milestone pages: visible to PM/PC by role (PAGE_PERMISSIONS) plus
-  // anyone admin granted a sprints.* / milestones.* permission to.
+  // Leads / sales tracker
+  'leads-view':     ['leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit', 'leads.delete'],
+  'lead-detail':    ['leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit', 'leads.delete'],
+  'lead-followups': ['leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit', 'leads.delete'],
+  'lead-tasks':     ['leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit', 'leads.delete'],
+  'sales-tracker':  ['sales.tracker.view'],
+  // Sprint / Milestone pages
   'sprints-view':    ['sprints.create', 'sprints.edit'],
   'milestones-view': ['milestones.create', 'milestones.edit'],
-  // Pages intentionally NOT mapped (role-based only):
-  //   sales-tracker
-  //   → role-bound to sales family; no granular catalog entry yet
-  //   dev-dashboard / team-dashboard / my-tasks
-  //   → role-specific landing pages
-  //   bidding-view, sprints-view, milestones-view
-  //   → no catalog entry yet; admin can keep role-based default
 }
 
 function hasAnyPermission(keys) {
@@ -228,14 +231,17 @@ function canSeePage(page) {
   const role = String(_user?.role || '').toLowerCase()
   // Admin bypasses every gate — they see and do everything.
   if (role === 'admin') return true
-  // Permission OR role: a granular-permission grant unlocks the page even if
-  // the role isn't in the default list. Conversely, the built-in role list
-  // still applies so PM/PC don't lose their default tabs the moment a page
-  // gets added to NAV_PERMISSION_MAP.
+  // Strict, permission-authoritative gating: when a page is in
+  // NAV_PERMISSION_MAP the user MUST have one of the listed permission
+  // keys. The role-allowlist in PAGE_PERMISSIONS is only consulted for
+  // pages that aren't permission-mapped (kept for forward compatibility
+  // with future routes; the sidebar today maps every visible tab).
   const perms = NAV_PERMISSION_MAP[page]
-  if (perms && perms.length && hasAnyPermission(perms)) return true
+  if (perms && perms.length) {
+    return hasAnyPermission(perms)
+  }
   const allowed = PAGE_PERMISSIONS[page]
-  if (!allowed) return !!(perms && perms.length) ? false : true
+  if (!allowed) return true
   return allowed.includes(role)
 }
 
@@ -322,6 +328,182 @@ const API = {
   patch:  (u, b) => API.req('PATCH', u, b),
   delete: (u) => API.req('DELETE', u),
 }
+
+// ── Global click-loader ──────────────────────────────────────
+// Prevents double-clicks on action buttons. Every <button> / .btn click is
+// intercepted: the element is marked busy (visually shows a spinner overlay
+// via .is-busy CSS) and a second click is swallowed at capture phase until
+// the action completes. Async work is tracked by wrapping window.fetch — any
+// fetch initiated synchronously inside the click handler extends the lock
+// until the network call resolves. For sync-only handlers we release after
+// a short minimum so the lock still absorbs rapid duplicate clicks.
+//
+// Pure UI affordances (sidebar toggles, modal close, topbar icons, nav links,
+// tab switches, pagination) are excluded so they remain responsive.
+;(function installClickLoader(){
+  if (window.__clickLoaderInstalled) return
+  window.__clickLoaderInstalled = true
+
+  // Pure UI affordances — never lock these. They're toggles/navigation, not
+  // actions, and locking would block rapid UI interaction without preventing
+  // any duplicate-submission risk.
+  const SKIP_SELECTOR = [
+    '[data-no-lock]',
+    '.no-loader',
+    '.close-btn',
+    '.sidebar-reopen-fab',
+    '.topbar-hamburger',
+    '.icon-btn',
+    '.tab-btn',
+    '.nav-link',
+    '.notif-btn',
+    '.menu-item',
+    '.dropdown-item',
+  ].join(',')
+
+  // Ancestor containers whose buttons are pure UI (sidebar nav, topbar icons,
+  // drawer chrome, popover menus). Modals are NOT in this list — modal action
+  // buttons (Save/Submit/Delete) must lock.
+  const SKIP_ANCESTOR = '.sidebar, #sidebar, .topbar, .drawer-overlay, .dropdown-menu, .menu-popover, .modal-header'
+
+  // onclick handlers that are *only* a UI toggle/opener (not a mutation).
+  // Compound handlers like `logout();closeModal()` still lock because the
+  // first call (`logout`) doesn't match this prefix.
+  // Generic "this is just a UI toggle, don't show a loader" prefix match.
+  // toggle*Foo / show*Modal / open*Modal / hide*Foo / cancelEdit* are all
+  // pure-client operations that should never be lock-and-spin.
+  const SKIP_ONCLICK = /^\s*(closeModal|closeDrawer|closeSidebar|openSidebar|switchTab|Router\.(back|navigate)|onProfileSetTheme|cpNavigate|cpBack|copyInviteLink|loadPage|toggle[A-Z][a-zA-Z]*|show[A-Z][a-zA-Z]*Modal|open[A-Z][a-zA-Z]*Modal|hide[A-Z][a-zA-Z]*|cancelEdit[A-Z]?[a-zA-Z]*)\s*\(/
+
+  let _owner = null         // button currently "owning" the active click
+  let _inflight = 0         // fetches in flight initiated under this owner
+  let _minTimer = null
+
+  function shouldSkip(el){
+    if (el.matches(SKIP_SELECTOR)) return true
+    if (el.closest(SKIP_ANCESTOR)) return true
+    const oc = el.getAttribute('onclick')
+    if (oc && SKIP_ONCLICK.test(oc)) return true
+    return false
+  }
+
+  function lock(el){
+    if (!el || el.dataset.busy === '1') return
+    el.dataset.busy = '1'
+    el.dataset.prevDisabled = el.disabled ? '1' : '0'
+    el.dataset.prevAriaBusy = el.getAttribute('aria-busy') || ''
+    el.setAttribute('aria-busy', 'true')
+    el.classList.add('is-busy')
+    // Defer the actual .disabled = true to a microtask so the current click's
+    // inline onclick handler still fires. Capture-phase guard below blocks any
+    // subsequent click before this microtask resolves anyway.
+    queueMicrotask(() => {
+      if (el.dataset.busy === '1' && 'disabled' in el) el.disabled = true
+    })
+  }
+
+  function release(el){
+    if (!el || el.dataset.busy !== '1') return
+    el.dataset.busy = ''
+    if ('disabled' in el) el.disabled = el.dataset.prevDisabled === '1'
+    if (el.dataset.prevAriaBusy) el.setAttribute('aria-busy', el.dataset.prevAriaBusy)
+    else el.removeAttribute('aria-busy')
+    el.classList.remove('is-busy')
+    delete el.dataset.prevDisabled
+    delete el.dataset.prevAriaBusy
+  }
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('button, .btn, [data-click-lock]')
+    if (!el) return
+    // Second click while still busy → eat it. This is the core duplicate-action
+    // guard: even if browser hasn't applied disabled yet, capture phase fires
+    // before bubble so we stop the handler chain here.
+    if (el.dataset.busy === '1' || el.disabled) {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      return
+    }
+    if (shouldSkip(el)) return
+    // Only lock things that actually do something — having an onclick attr or
+    // being a submit button is a good proxy. Plain layout buttons get skipped.
+    const isAction = el.hasAttribute('onclick')
+      || el.type === 'submit'
+      || el.hasAttribute('data-click-lock')
+    if (!isAction) return
+
+    lock(el)
+    _owner = el
+    _inflight = 0
+    clearTimeout(_minTimer)
+    // After the synchronous dispatch any fetch() calls have already bumped
+    // _inflight via the wrapper. Decide release strategy on the next microtask.
+    queueMicrotask(() => {
+      if (_inflight > 0) return // fetch wrapper will release when count hits 0
+      // Sync-only handler — release after a short minimum lock so rapid
+      // duplicate clicks are still absorbed.
+      _minTimer = setTimeout(() => {
+        if (_owner === el && _inflight === 0) {
+          release(el)
+          _owner = null
+        }
+      }, 350)
+    })
+  }, true)
+
+  // Wrap fetch so the lock extends for the duration of the network call.
+  if (typeof window.fetch === 'function') {
+    const _origFetch = window.fetch.bind(window)
+    window.fetch = function patchedFetch(){
+      const captured = _owner
+      if (!captured) return _origFetch.apply(this, arguments)
+      _inflight++
+      const p = _origFetch.apply(this, arguments)
+      const done = () => {
+        _inflight = Math.max(0, _inflight - 1)
+        if (_inflight === 0) {
+          // One paint frame after the last fetch so post-action re-render runs
+          // before we re-enable the button.
+          requestAnimationFrame(() => {
+            if (_inflight === 0 && _owner === captured) {
+              release(captured)
+              _owner = null
+            }
+          })
+        }
+      }
+      p.then(done, done)
+      return p
+    }
+  }
+
+  // Form submit safety net — if a form submits natively (rare here), lock its
+  // submit button briefly so it can't be re-submitted.
+  document.addEventListener('submit', (e) => {
+    const form = e.target
+    if (!(form instanceof HTMLFormElement)) return
+    if (form.dataset.busy === '1') {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      return
+    }
+    if (form.matches('[data-no-lock]')) return
+    form.dataset.busy = '1'
+    const submitter = e.submitter || form.querySelector('button[type=submit], input[type=submit]')
+    if (submitter) lock(submitter)
+    setTimeout(() => {
+      form.dataset.busy = ''
+      if (submitter) release(submitter)
+    }, 1500)
+  }, true)
+
+  // Public helper for code paths that run outside the click pipeline (timers,
+  // websocket triggers, programmatic actions): await withButtonLoader(btn, fn).
+  window.withButtonLoader = async function(btn, fn){
+    if (!btn) return fn()
+    try { lock(btn); return await fn() }
+    finally { release(btn) }
+  }
+})()
 
 // After any successful mutation we reload the visible page so listings reflect
 // the change without a full browser refresh. Coalesce multiple bursts (e.g.
@@ -681,13 +863,20 @@ function taskTypeIcon(t) {
 function fmtDate(d) { if (!d) return '—'; return dayjs(d).format('DD MMM YYYY') }
 function fmtNum(n) { return Number(n||0).toLocaleString('en-IN') }
 function fmtCurrency(n, cur='INR') { return '₹' + fmtNum(n) }
+// Absolute timestamp formatter — replaces the old "3m ago" relative output.
+// The team prefers exact date+time everywhere so users can correlate events
+// across systems without recomputing the wall-clock. Format: "12 Mar 2026, 04:35 PM".
 function timeAgo(d) {
   if (!d) return ''
-  const diff = Date.now() - new Date(d)
-  if (diff < 60000) return 'just now'
-  if (diff < 3600000) return Math.floor(diff/60000) + 'm ago'
-  if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago'
-  return Math.floor(diff/86400000) + 'd ago'
+  const date = new Date(d)
+  if (Number.isNaN(date.getTime())) return ''
+  if (typeof dayjs === 'function') {
+    return dayjs(date).format('DD MMM YYYY, hh:mm A')
+  }
+  return date.toLocaleString(undefined, {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  })
 }
 function pctColor(p) { return p >= 90 ? '#FF5E3A' : p >= 70 ? '#C9A7FF' : '#58C68A' }
 function docCategoryIcon(cat) {
@@ -1370,21 +1559,27 @@ function _notifAutoRefreshActiveView(freshItems) {
 
 function startNotificationPoller() {
   if (_notifState.timer) return
-  // Notifications keep arriving until the user manually logs out — so we
-  // poll regardless of tab visibility instead of pausing on hidden tabs.
-  // 10s feels real-time without hammering the API.
-  _notifState.timer = setInterval(() => { pollNotifications() }, 10000)
+  // Fallback polling. SSE handles the real-time path; this catches anything
+  // missed while the stream was disconnected or in flight. 4s keeps it tight
+  // without thrashing the API — most users hit SSE first anyway.
+  _notifState.timer = setInterval(() => { pollNotifications() }, 4000)
   // Refresh immediately when the tab becomes visible again, so the badge
   // catches up without waiting for the next interval tick.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') pollNotifications()
+    if (document.visibilityState === 'visible') {
+      pollNotifications()
+      // Tab woke up; reconnect SSE if the browser killed it while hidden.
+      if (!_notifState.stream) startNotificationStream()
+    }
   })
   startNotificationStream()
 }
 
-// Live push channel — replaces the 10s lag with instant updates when the
-// server emits a notification (e.g. lead assigned). Falls back to polling
-// transparently if EventSource is blocked or the connection fails.
+// Live push channel. The server emits each new notification onto an SSE
+// stream the moment createUserNotification runs, so this normally fires
+// within a few ms of the originating action. We process the pushed payload
+// in place (no extra round-trip) so the badge / toast / sound update
+// instantly. The fallback poller above still runs as a safety net.
 function startNotificationStream() {
   if (_notifState.stream) return
   if (typeof EventSource === 'undefined') return
@@ -1392,23 +1587,63 @@ function startNotificationStream() {
   try {
     const src = new EventSource('/api/notifications/stream?token=' + encodeURIComponent(_token))
     _notifState.stream = src
-    src.addEventListener('notification', () => {
-      // We don't trust the pushed payload to update state directly —
-      // pollNotifications() pulls the canonical recent list so toast / sound /
-      // auto-refresh logic stays in one place.
-      pollNotifications()
+    _notifState.streamRetry = 0
+    src.addEventListener('notification', (ev) => {
+      let doc = null
+      try { doc = JSON.parse(ev.data) } catch { /* malformed payload */ }
+      if (doc && doc.id) {
+        _applyPushedNotification(doc)
+      } else {
+        // Payload missing — fall back to a poll so we still surface something.
+        pollNotifications()
+      }
     })
+    src.onopen = () => { _notifState.streamRetry = 0 }
     src.onerror = () => {
-      // Browser auto-reconnects on transient errors. If the channel ends up
-      // permanently broken, the 10s poller keeps the badge correct.
+      // Reconnect with exponential backoff (1s, 2s, 4s, capped at 30s). The
+      // EventSource browser-default reconnect is opaque and sometimes never
+      // fires, so we close + retry ourselves to keep the channel hot.
+      try { src.close() } catch {}
+      _notifState.stream = null
+      const delay = Math.min(30000, 1000 * Math.pow(2, _notifState.streamRetry++))
+      clearTimeout(_notifState.streamTimer)
+      _notifState.streamTimer = setTimeout(startNotificationStream, delay)
     }
   } catch { /* ignore — poller covers us */ }
+}
+
+// Apply a newly-pushed notification doc to UI state without re-fetching.
+// Mirrors what pollNotifications() does on detecting a fresh item but skips
+// the network round-trip — that's the real-time win over polling.
+function _applyPushedNotification(doc) {
+  // Skip if we've already seen this one (SSE + poll can race on slow tabs).
+  if (_notifState.recent.some((n) => n.id === doc.id)) return
+  // Prepend to recent list (capped to 50 so memory doesn't grow forever).
+  _notifState.recent = [doc, ...(_notifState.recent || [])].slice(0, 50)
+  if (!doc.is_read) _notifSetBadge((_notifState.unreadCount || 0) + 1)
+  _notifState.lastSeenId = doc.id
+  _notifState.lastSeenAt = doc.created_at || new Date().toISOString()
+  _notifState.initialized = true
+  _notifPlayDing(doc.type)
+  _notifShowToast(doc)
+  // Re-render the open notifications panel + active page (e.g. leaves view)
+  // so the new item appears without the user reopening the bell or refreshing.
+  _notifAutoRefreshActiveView([doc])
+  // The bell panel is rendered via showModal; detect it via the unique
+  // summary span and refresh in place.
+  if (document.getElementById('notif-panel-summary') && typeof showNotifications === 'function') {
+    showNotifications()
+  }
 }
 
 function stopNotificationPoller() {
   if (_notifState.timer) {
     clearInterval(_notifState.timer)
     _notifState.timer = null
+  }
+  if (_notifState.streamTimer) {
+    clearTimeout(_notifState.streamTimer)
+    _notifState.streamTimer = null
   }
   if (_notifState.stream) {
     try { _notifState.stream.close() } catch {}
@@ -1782,10 +2017,12 @@ window._persistTaskInUrl = _persistTaskInUrl
 // ── Profile Modal ─────────────────────────────────────────────
 function showProfileModal() {
   const currentTheme = String(_user?.theme || 'dark').toLowerCase() === 'light' ? 'light' : 'dark'
+  const role = String(_user?.role || '').toLowerCase()
+  const isSalesRole = ['sales_agent', 'sales_tl', 'sales_manager'].includes(role)
   showModal(`
     <div class="modal-header"><h3>My Profile</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div class="modal-body" style="text-align:center">
-      ${avatar(_user.name||_user.full_name, _user.avatar_color||'#A970FF','xl')}
+      <div id="profile-avatar-wrap">${renderProfileAvatar()}</div>
       <div style="margin-top:14px">
         <div style="font-size:18px;font-weight:700;color:var(--text-primary,#fff)">${_user.name||_user.full_name}</div>
         <div style="font-size:13px;color:var(--text-muted,#7E7E8F);text-transform:capitalize;margin-top:2px">${_user.role} • ${_user.designation||'DevPortal'}</div>
@@ -1805,11 +2042,155 @@ function showProfileModal() {
         </div>
       </div>
 
+      ${isSalesRole ? renderProfileMediaSection() : ''}
+
       <div style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="openChangePasswordModal()"><i class="fas fa-key"></i> Change Password</button>
         <button class="btn btn-danger" onclick="logout();closeModal()"><i class="fas fa-sign-out-alt"></i> Logout</button>
       </div>
     </div>`)
+}
+
+// Render the avatar (photo if uploaded, else initials disc) at the top of
+// the profile modal. Kept in its own helper so the photo upload handler
+// can re-render just the avatar without reopening the modal.
+function renderProfileAvatar() {
+  const photoUrl = _user?.photo?.url || ''
+  if (photoUrl) {
+    return `<div class="avatar xl" style="background:#fff;overflow:hidden"><img src="${photoUrl}" alt="Profile photo" style="width:100%;height:100%;object-fit:cover;display:block"/></div>`
+  }
+  return avatar(_user.name||_user.full_name, _user.avatar_color||'#A970FF','xl')
+}
+
+// Profile media block — photo, signature and supporting attachment.
+// Shown only to sales roles (agent / TL / manager). Each row has a
+// preview, an upload button, and a remove button. Server endpoint is
+// /api/auth/profile-media which only accepts these three fields.
+function renderProfileMediaSection() {
+  return `
+    <div style="margin-top:14px;padding:14px 16px;border:1px solid var(--border,rgba(179,136,255,0.12));border-radius:14px;text-align:left">
+      <div style="font-size:13px;font-weight:700;color:var(--text-primary,#fff);margin-bottom:10px"><i class="fas fa-id-card" style="color:#A970FF;margin-right:6px"></i>Profile Media</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        ${renderProfileMediaRow('photo', 'Profile Photo', 'image/*')}
+        ${renderProfileMediaRow('signature', 'Signature', 'image/*')}
+        ${renderProfileMediaRow('attachment', 'Attachment', '')}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted,#7E7E8F);margin-top:10px">Photo & signature should be image files. Attachment can be any supporting document (PDF/image/doc).</div>
+    </div>`
+}
+
+function renderProfileMediaRow(field, label, accept) {
+  const file = _user?.[field]
+  const isImage = file?.mime?.startsWith('image/') && file?.url
+  let preview = ''
+  if (isImage) {
+    preview = `<img src="${file.url}" alt="${label}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid var(--border,#2B2B35);background:#fff"/>`
+  } else if (file?.url) {
+    preview = `<div style="width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--surface-2,#1A1A22);border:1px solid var(--border,#2B2B35);color:#A970FF"><i class="fas fa-file fa-lg"></i></div>`
+  } else {
+    preview = `<div style="width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--surface-2,#1A1A22);border:1px dashed var(--border,#2B2B35);color:var(--text-muted,#7E7E8F)"><i class="fas fa-${field === 'photo' ? 'user' : field === 'signature' ? 'signature' : 'paperclip'}"></i></div>`
+  }
+  const fileName = file?.name ? `<a href="${file.url}" target="_blank" rel="noopener" style="font-size:12px;color:var(--text-secondary,#9CA3AF);text-decoration:none;word-break:break-all">${escapeHtml(file.name)}</a>` : `<span style="font-size:12px;color:var(--text-muted,#7E7E8F)">Not uploaded</span>`
+  return `
+    <div style="display:flex;align-items:center;gap:12px">
+      ${preview}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text-primary,#fff)">${label}</div>
+        <div style="margin-top:2px">${fileName}</div>
+      </div>
+      <input type="file" id="profile-media-input-${field}" ${accept ? `accept="${accept}"` : ''} style="display:none" onchange="onProfileMediaSelected('${field}', this)"/>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-xs btn-outline" onclick="document.getElementById('profile-media-input-${field}').click()"><i class="fas fa-upload"></i> ${file?.url ? 'Replace' : 'Upload'}</button>
+        ${file?.url ? `<button class="btn btn-xs btn-outline" style="color:#FF5E3A" onclick="onProfileMediaRemove('${field}')"><i class="fas fa-times"></i></button>` : ''}
+      </div>
+    </div>`
+}
+
+async function onProfileMediaSelected(field, input) {
+  const f = input?.files?.[0]
+  if (!f) return
+  try {
+    const uploaded = await uploadProfileMediaFile(f)
+    await saveProfileMedia({ [field]: uploaded })
+    toast(`${field.charAt(0).toUpperCase() + field.slice(1)} updated`, 'success')
+    refreshProfileMediaUI()
+  } catch (e) {
+    toast('Upload failed: ' + (e?.message || ''), 'error')
+  } finally {
+    if (input) input.value = ''
+  }
+}
+window.onProfileMediaSelected = onProfileMediaSelected
+
+async function onProfileMediaRemove(field) {
+  try {
+    await saveProfileMedia({ [field]: null })
+    toast(`${field.charAt(0).toUpperCase() + field.slice(1)} removed`, 'success')
+    refreshProfileMediaUI()
+  } catch (e) {
+    toast('Failed: ' + (e?.message || ''), 'error')
+  }
+}
+window.onProfileMediaRemove = onProfileMediaRemove
+
+function uploadProfileMediaFile(file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/uploads', true)
+    if (_token) xhr.setRequestHeader('Authorization', 'Bearer ' + _token)
+    xhr.onload = () => {
+      let data = {}
+      try { data = JSON.parse(xhr.responseText) } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve({
+          url: data.url || data.file_url || '',
+          name: data.original_name || data.name || file.name,
+          mime: data.mime_type || data.mime || file.type,
+          size: Number(data.size || file.size || 0),
+        })
+      } else {
+        reject(new Error(data?.error || `HTTP ${xhr.status}`))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Network error during upload'))
+    const fd = new FormData()
+    fd.append('file', file)
+    xhr.send(fd)
+  })
+}
+
+async function saveProfileMedia(patch) {
+  const res = await API.patch('/auth/profile-media', patch)
+  // Server returns the canonical {photo, signature, attachment} block —
+  // mirror it into the cached _user so the next profile modal open and
+  // any future code that reads _user.photo sees the fresh state.
+  if (res && _user) {
+    _user = {
+      ..._user,
+      photo: 'photo' in patch ? res.photo : _user.photo,
+      signature: 'signature' in patch ? res.signature : _user.signature,
+      attachment: 'attachment' in patch ? res.attachment : _user.attachment,
+    }
+    try { localStorage.setItem('devportal_user', JSON.stringify(_user)) } catch {}
+  }
+}
+
+// Re-render only the affected pieces of the profile modal — the avatar
+// at the top and the Profile Media block. Avoids the full reopen blink
+// and keeps the user's scroll position inside the modal.
+function refreshProfileMediaUI() {
+  const av = document.getElementById('profile-avatar-wrap')
+  if (av) av.innerHTML = renderProfileAvatar()
+  // Find the profile media section by its sentinel icon class and replace
+  // the whole block. Simpler than threading IDs through each row.
+  const body = document.querySelector('.modal-body')
+  if (!body) return
+  const blocks = body.querySelectorAll('div[style*="border-radius:14px"]')
+  blocks.forEach((block) => {
+    if (block.querySelector('.fa-id-card')) {
+      block.outerHTML = renderProfileMediaSection()
+    }
+  })
 }
 
 async function onProfileSetTheme(theme) {
@@ -1927,21 +2308,14 @@ function _notifIcon(type) {
     leave_rejected:          { icon: 'fa-times-circle', color: '#A970FF' },
     password_reset_request:  { icon: 'fa-key', color: '#C9A7FF' },
     password_reset_done:     { icon: 'fa-key', color: '#86E0A8' },
+    project_assignment_needed: { icon: 'fa-user-tag', color: '#C9A7FF' },
   }
   return map[type] || { icon: 'fa-bell', color: '#C9A7FF' }
 }
 
 function _notifTimeAgo(iso) {
   if (!iso) return ''
-  const ms = Math.max(0, Date.now() - new Date(iso).getTime())
-  const m = Math.floor(ms / 60000)
-  if (m < 1) return 'just now'
-  if (m < 60) return m + 'm ago'
-  const h = Math.floor(m / 60)
-  if (h < 24) return h + 'h ago'
-  const d = Math.floor(h / 24)
-  if (d < 30) return d + 'd ago'
-  return new Date(iso).toLocaleDateString()
+  return timeAgo(iso)
 }
 
 function _notifEsc(s) {

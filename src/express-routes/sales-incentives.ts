@@ -39,6 +39,10 @@ const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 // project was created. Manually-created projects (no source_lead_id) and
 // projects with zero revenue are ignored — they aren't sales achievements.
 //
+// Admin-handover override: if a lead has `revenue_credit_to` set, that user
+// takes the credit instead of `assigned_to`. The lead's actual assignment
+// stays unchanged — only the revenue/incentive attribution moves.
+//
 // Returns: agentId → Map(period → revenue total).
 async function buildRevenueByAgentPeriod(models: MongoModels) {
   const [leads, projects] = await Promise.all([
@@ -46,7 +50,10 @@ async function buildRevenueByAgentPeriod(models: MongoModels) {
     models.projects.find({}) as Promise<any[]>,
   ])
   const leadAssignee = new Map<string, string>()
-  for (const l of leads) leadAssignee.set(String(l.id), String(l.assigned_to || ''))
+  for (const l of leads) {
+    const creditTo = String(l.revenue_credit_to || '').trim()
+    leadAssignee.set(String(l.id), creditTo || String(l.assigned_to || ''))
+  }
 
   const out = new Map<string, Map<string, number>>()
   for (const p of projects) {

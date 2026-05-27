@@ -392,17 +392,12 @@ function _supBuildTimeline(events, comments) {
 
 function _supRelativeTime(iso) {
   if (!iso) return ''
-  const then = new Date(iso).getTime()
-  const now = Date.now()
-  const diff = Math.max(0, now - then)
-  const min = Math.floor(diff / 60000)
-  if (min < 1) return 'just now'
-  if (min < 60) return `${min}m ago`
-  const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr}h ago`
-  const d = Math.floor(hr / 24)
-  if (d < 30) return `${d}d ago`
-  return new Date(iso).toLocaleDateString()
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString(undefined, {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  })
 }
 
 function _supEventLabel(ev) {

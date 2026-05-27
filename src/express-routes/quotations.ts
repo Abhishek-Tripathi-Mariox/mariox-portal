@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
+import { createAuthMiddleware, requireRole, userCanActOn, userViewScope } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
 import { validateLength, respondWithError } from '../validators'
 import { sendSmtpEmail, type SmtpEnv } from '../utils/smtp'
@@ -24,10 +24,11 @@ function lower(value: any): string {
 // compat with old installs.
 async function getQuotationPerms(models: MongoModels, user: any): Promise<{
   canCreate: boolean; canEdit: boolean; canDelete: boolean;
+  canEditOwn: boolean; canDeleteOwn: boolean;
 }> {
   const role = lower(user?.role)
   if (role === 'admin') {
-    return { canCreate: true, canEdit: true, canDelete: true }
+    return { canCreate: true, canEdit: true, canDelete: true, canEditOwn: true, canDeleteOwn: true }
   }
   let perms: string[] = []
   if (role) {
@@ -39,10 +40,14 @@ async function getQuotationPerms(models: MongoModels, user: any): Promise<{
     ? !!(await models.quotationPermissions.findOne({ user_id: userId }))
     : false
   const hasManage = perms.includes('quotations.manage') || legacyGrant
+  const canEditAll = hasManage || perms.includes('quotations.edit') || perms.includes('quotations.edit_all')
+  const canDeleteAll = hasManage || perms.includes('quotations.delete') || perms.includes('quotations.delete_all')
   return {
     canCreate: hasManage || perms.includes('quotations.create'),
-    canEdit:   hasManage || perms.includes('quotations.edit'),
-    canDelete: hasManage || perms.includes('quotations.delete'),
+    canEdit:   canEditAll,
+    canDelete: canDeleteAll,
+    canEditOwn:   canEditAll || perms.includes('quotations.edit_own'),
+    canDeleteOwn: canDeleteAll || perms.includes('quotations.delete_own'),
   }
 }
 
@@ -220,7 +225,16 @@ export function createQuotationsRouter(
   // ── LIST ─────────────────────────────────────────────────
   router.get('/', async (req, res) => {
     try {
-      const quotations = (await models.quotations.find({})) as any[]
+      const user = req.user as any
+      const scope = await userViewScope(models, user, 'quotations')
+      if (scope === 'none') {
+        return res.json({ data: [], quotations: [], can_manage: false })
+      }
+      const userId = String(user?.sub || user?.id || '')
+      const allQuotations = (await models.quotations.find({})) as any[]
+      const quotations = scope === 'all'
+        ? allQuotations
+        : allQuotations.filter((p) => String(p.created_by || '') === userId)
       quotations.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
 
       const creatorIds = [...new Set(quotations.map((p) => String(p.created_by || '')).filter(Boolean))]
@@ -248,10 +262,9 @@ export function createQuotationsRouter(
         last_sent_at: lastSent.get(String(p.id)) || null,
       }))
 
-      const user = req.user as any
       const perms = await getQuotationPerms(models, user)
       const canManage = perms.canCreate || perms.canEdit || perms.canDelete
-      return res.json({ data: enriched, quotations: enriched, can_manage: canManage })
+      return res.json({ data: enriched, quotations: enriched, can_manage: canManage, scope, perms })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }
@@ -354,10 +367,7 @@ export function createQuotationsRouter(
       const existing = (await models.quotations.findOne({ id })) as any
       if (!existing) return res.status(404).json({ error: 'Quotation not found' })
 
-      const isAdmin = lower(user?.role) === 'admin'
-      const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      const perms = await getQuotationPerms(models, user)
-      if (!isAdmin && !isOwner && !perms.canEdit) {
+      if (!(await userCanActOn(models, user, 'quotations', 'edit', existing))) {
         return res.status(403).json({ error: 'Not allowed to edit this quotation' })
       }
 
@@ -376,10 +386,7 @@ export function createQuotationsRouter(
       const id = String(req.params.id)
       const existing = (await models.quotations.findOne({ id })) as any
       if (!existing) return res.status(404).json({ error: 'Quotation not found' })
-      const isAdmin = lower(user?.role) === 'admin'
-      const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      const perms = await getQuotationPerms(models, user)
-      if (!isAdmin && !isOwner && !perms.canDelete) {
+      if (!(await userCanActOn(models, user, 'quotations', 'delete', existing))) {
         return res.status(403).json({ error: 'Not allowed to delete this quotation' })
       }
       await models.quotations.deleteOne({ id })

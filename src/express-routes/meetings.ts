@@ -10,7 +10,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware } from '../express-middleware/auth'
+import { createAuthMiddleware, userCanActOn, userViewScope } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
 import { validateLength, respondWithError } from '../validators'
 import { createUserNotifications } from './notifications'
@@ -25,20 +25,25 @@ function lower(value: any): string {
 // `meetings.create | edit | delete`. Admin always passes.
 async function getMeetingPerms(models: MongoModels, user: any): Promise<{
   canCreate: boolean; canEdit: boolean; canDelete: boolean;
+  canEditOwn: boolean; canDeleteOwn: boolean;
 }> {
   const role = lower(user?.role)
   if (role === 'admin') {
-    return { canCreate: true, canEdit: true, canDelete: true }
+    return { canCreate: true, canEdit: true, canDelete: true, canEditOwn: true, canDeleteOwn: true }
   }
   let perms: string[] = []
   if (role) {
     const roleDoc = (await models.roles.findOne({ key: role })) as any
     perms = Array.isArray(roleDoc?.permissions) ? roleDoc.permissions : []
   }
+  const canEditAll = perms.includes('meetings.edit') || perms.includes('meetings.edit_all')
+  const canDeleteAll = perms.includes('meetings.delete') || perms.includes('meetings.delete_all')
   return {
     canCreate: perms.includes('meetings.create'),
-    canEdit:   perms.includes('meetings.edit'),
-    canDelete: perms.includes('meetings.delete'),
+    canEdit:   canEditAll,
+    canDelete: canDeleteAll,
+    canEditOwn:   canEditAll || perms.includes('meetings.edit_own'),
+    canDeleteOwn: canDeleteAll || perms.includes('meetings.delete_own'),
   }
 }
 
@@ -397,6 +402,10 @@ export function createMeetingsRouter(
   router.get('/', async (req, res) => {
     try {
       const user = req.user as any
+      const scope = await userViewScope(models, user, 'meetings')
+      if (scope === 'none') {
+        return res.json({ data: [], meetings: [], can_manage: false })
+      }
       const filter: Record<string, any> = {}
       const leadId = String(req.query.lead_id || '').trim()
       const status = String(req.query.status || '').trim().toLowerCase()
@@ -405,6 +414,19 @@ export function createMeetingsRouter(
       if (['scheduled', 'completed', 'cancelled'].includes(status)) filter.status = status
       if (mine && user?.sub) {
         filter.$or = [{ created_by: String(user.sub) }, { attendees: String(user.sub) }]
+      }
+      // Scope: own scope means the user must be the creator OR a listed
+      // attendee. Apply via an additional $or filter so we still respect the
+      // ?lead_id / ?status / ?mine filters above.
+      if (scope === 'own' && user?.sub) {
+        const ownFilter = { $or: [{ created_by: String(user.sub) }, { attendees: String(user.sub) }] }
+        if (filter.$or) {
+          // Already have a mine=1 $or — replace with the same expression (it's
+          // equivalent), keeping it once.
+          filter.$or = ownFilter.$or
+        } else {
+          Object.assign(filter, ownFilter)
+        }
       }
 
       const meetings = (await models.meetings.find(filter)) as any[]
@@ -438,7 +460,7 @@ export function createMeetingsRouter(
 
       const perms = await getMeetingPerms(models, user)
       const canManage = perms.canCreate || perms.canEdit || perms.canDelete
-      return res.json({ data: enriched, meetings: enriched, can_manage: canManage, perms })
+      return res.json({ data: enriched, meetings: enriched, can_manage: canManage, perms, scope })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }
@@ -562,10 +584,7 @@ export function createMeetingsRouter(
       const existing = (await models.meetings.findOne({ id })) as any
       if (!existing) return res.status(404).json({ error: 'Meeting not found' })
 
-      const isAdmin = lower(user?.role) === 'admin'
-      const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      const perms = await getMeetingPerms(models, user)
-      if (!isAdmin && !isOwner && !perms.canEdit) {
+      if (!(await userCanActOn(models, user, 'meetings', 'edit', existing))) {
         return res.status(403).json({ error: 'Not allowed to edit this meeting' })
       }
 
@@ -622,10 +641,7 @@ export function createMeetingsRouter(
       const id = String(req.params.id)
       const existing = (await models.meetings.findOne({ id })) as any
       if (!existing) return res.status(404).json({ error: 'Meeting not found' })
-      const isAdmin = lower(user?.role) === 'admin'
-      const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      const perms = await getMeetingPerms(models, user)
-      if (!isAdmin && !isOwner && !perms.canEdit) {
+      if (!(await userCanActOn(models, user, 'meetings', 'edit', existing))) {
         return res.status(403).json({ error: 'Not allowed to edit this meeting' })
       }
       const status = String((req.body || {}).status || '').toLowerCase()
@@ -646,10 +662,7 @@ export function createMeetingsRouter(
       const id = String(req.params.id)
       const existing = (await models.meetings.findOne({ id })) as any
       if (!existing) return res.status(404).json({ error: 'Meeting not found' })
-      const isAdmin = lower(user?.role) === 'admin'
-      const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      const perms = await getMeetingPerms(models, user)
-      if (!isAdmin && !isOwner && !perms.canDelete) {
+      if (!(await userCanActOn(models, user, 'meetings', 'delete', existing))) {
         return res.status(403).json({ error: 'Not allowed to delete this meeting' })
       }
       await models.meetings.deleteOne({ id })
@@ -672,10 +685,7 @@ export function createMeetingsRouter(
       const existing = (await models.meetings.findOne({ id })) as any
       if (!existing) return res.status(404).json({ error: 'Meeting not found' })
 
-      const isAdmin = lower(user?.role) === 'admin'
-      const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      const perms = await getMeetingPerms(models, user)
-      if (!isAdmin && !isOwner && !perms.canEdit) {
+      if (!(await userCanActOn(models, user, 'meetings', 'edit', existing))) {
         return res.status(403).json({ error: 'Not allowed to reschedule this meeting' })
       }
       if (existing.status !== 'scheduled') {

@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
+import { createAuthMiddleware, requireRole, userCanActOn, userViewScope } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
 import { validateLength, respondWithError } from '../validators'
 import { sendSmtpEmail, type SmtpEnv } from '../utils/smtp'
@@ -24,10 +24,11 @@ function lower(value: any): string {
 // installs.
 async function getScopePerms(models: MongoModels, user: any): Promise<{
   canCreate: boolean; canEdit: boolean; canDelete: boolean;
+  canEditOwn: boolean; canDeleteOwn: boolean;
 }> {
   const role = lower(user?.role)
   if (role === 'admin') {
-    return { canCreate: true, canEdit: true, canDelete: true }
+    return { canCreate: true, canEdit: true, canDelete: true, canEditOwn: true, canDeleteOwn: true }
   }
   let perms: string[] = []
   if (role) {
@@ -39,10 +40,14 @@ async function getScopePerms(models: MongoModels, user: any): Promise<{
     ? !!(await models.scopePermissions.findOne({ user_id: userId }))
     : false
   const hasManage = perms.includes('scopes.manage') || legacyGrant
+  const canEditAll = hasManage || perms.includes('scopes.edit') || perms.includes('scopes.edit_all')
+  const canDeleteAll = hasManage || perms.includes('scopes.delete') || perms.includes('scopes.delete_all')
   return {
     canCreate: hasManage || perms.includes('scopes.create'),
-    canEdit:   hasManage || perms.includes('scopes.edit'),
-    canDelete: hasManage || perms.includes('scopes.delete'),
+    canEdit:   canEditAll,
+    canDelete: canDeleteAll,
+    canEditOwn:   canEditAll || perms.includes('scopes.edit_own'),
+    canDeleteOwn: canDeleteAll || perms.includes('scopes.delete_own'),
   }
 }
 
@@ -307,7 +312,16 @@ export function createScopesRouter(
   // ── LIST ─────────────────────────────────────────────────
   router.get('/', async (req, res) => {
     try {
-      const scopes = (await models.scopes.find({})) as any[]
+      const user = req.user as any
+      const scope = await userViewScope(models, user, 'scopes')
+      if (scope === 'none') {
+        return res.json({ data: [], scopes: [], can_manage: false })
+      }
+      const userId = String(user?.sub || user?.id || '')
+      const allScopes = (await models.scopes.find({})) as any[]
+      const scopes = scope === 'all'
+        ? allScopes
+        : allScopes.filter((p) => String(p.created_by || '') === userId)
       scopes.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
 
       const creatorIds = [...new Set(scopes.map((p) => String(p.created_by || '')).filter(Boolean))]
@@ -335,10 +349,9 @@ export function createScopesRouter(
         last_sent_at: lastSent.get(String(p.id)) || null,
       }))
 
-      const user = req.user as any
       const perms = await getScopePerms(models, user)
       const canManage = perms.canCreate || perms.canEdit || perms.canDelete
-      return res.json({ data: enriched, scopes: enriched, can_manage: canManage })
+      return res.json({ data: enriched, scopes: enriched, can_manage: canManage, scope, perms })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }
@@ -440,10 +453,7 @@ export function createScopesRouter(
       const existing = (await models.scopes.findOne({ id })) as any
       if (!existing) return res.status(404).json({ error: 'Scope not found' })
 
-      const isAdmin = lower(user?.role) === 'admin'
-      const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      const perms = await getScopePerms(models, user)
-      if (!isAdmin && !isOwner && !perms.canEdit) {
+      if (!(await userCanActOn(models, user, 'scopes', 'edit', existing))) {
         return res.status(403).json({ error: 'Not allowed to edit this scope' })
       }
 
@@ -462,10 +472,7 @@ export function createScopesRouter(
       const id = String(req.params.id)
       const existing = (await models.scopes.findOne({ id })) as any
       if (!existing) return res.status(404).json({ error: 'Scope not found' })
-      const isAdmin = lower(user?.role) === 'admin'
-      const isOwner = String(existing.created_by || '') === String(user?.sub || '')
-      const perms = await getScopePerms(models, user)
-      if (!isAdmin && !isOwner && !perms.canDelete) {
+      if (!(await userCanActOn(models, user, 'scopes', 'delete', existing))) {
         return res.status(403).json({ error: 'Not allowed to delete this scope' })
       }
       await models.scopes.deleteOne({ id })

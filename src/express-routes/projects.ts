@@ -3,6 +3,7 @@ import type { MongoModels } from '../models/mongo-models'
 import { createAuthMiddleware, userHasAnyPermission } from '../express-middleware/auth'
 import { DEFAULT_KANBAN_COLUMNS } from '../constants'
 import { generateId } from '../utils/helpers'
+import { createUserNotifications } from './notifications'
 import {
   validateName,
   validateLength,
@@ -51,7 +52,7 @@ function applyCommercialVisibility<T extends Record<string, any>>(project: T, ro
   return rest as T
 }
 
-function isProjectLinkedToUser(project: any, user: any, assignments: any[]) {
+export function isProjectLinkedToUser(project: any, user: any, assignments: any[]) {
   const userId = String(user?.sub || '')
   if (!userId) return false
   return assignments.some((a) => String(a.user_id || '') === userId) ||
@@ -328,6 +329,14 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         ? body.commercial_visible_to.map((r: any) => String(r).trim().toLowerCase()).filter(Boolean)
         : []
 
+      // PM / PC are admin-only fields. Non-admin creators get null and a
+      // notification is queued to every admin so someone takes ownership of
+      // the assignment.
+      const creatorRole = String(user?.role || '').toLowerCase()
+      const isAdminCreator = creatorRole === 'admin'
+      const pmId = isAdminCreator && body.pm_id ? String(body.pm_id) : null
+      const pcId = isAdminCreator && body.pc_id ? String(body.pc_id) : null
+
       const id = generateId('proj')
       const now = new Date().toISOString()
       const project = {
@@ -346,8 +355,8 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         total_allocated_hours: totalAllocatedHours,
         estimated_budget_hours: estimatedBudgetHours,
         team_lead_id: body.team_lead_id || null,
-        pm_id: body.pm_id || null,
-        pc_id: body.pc_id || null,
+        pm_id: pmId,
+        pc_id: pcId,
         assignment_type: assignmentType,
         external_team_id: assignmentType === 'external' ? (body.external_team_id || null) : null,
         external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,
@@ -364,6 +373,34 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         updated_at: now,
       }
       await models.projects.insertOne(project)
+
+      // If a non-admin created the project, PM/PC were dropped above. Notify
+      // every admin so someone takes ownership of the assignment.
+      if (!isAdminCreator && (!pmId || !pcId)) {
+        try {
+          const admins = await models.users.find({ role: 'admin' }) as any[]
+          const adminIds = admins
+            .filter((u: any) => Number(u.is_active ?? 1) === 1)
+            .map((u: any) => String(u.id))
+          const missing = [!pmId ? 'PM' : null, !pcId ? 'PC' : null].filter(Boolean).join(' & ')
+          await createUserNotifications(models, adminIds, {
+            type: 'project_assignment_needed',
+            title: `Assign ${missing} for "${name}"`,
+            body: `${user?.name || user?.full_name || 'A user'} created project ${code}. Please assign ${missing}.`,
+            link: `project:${id}`,
+            actor_id: user?.sub || null,
+            actor_name: user?.name || user?.full_name || null,
+            meta: {
+              project_id: id,
+              project_code: code,
+              missing_pm: !pmId,
+              missing_pc: !pcId,
+            },
+          })
+        } catch (notifyErr) {
+          console.warn('[projects] admin PM/PC notification failed:', notifyErr)
+        }
+      }
 
       // Persist any attachments uploaded with the project as project documents
       // so they appear in Documents Center filtered by this project.
@@ -661,8 +698,15 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         total_allocated_hours: totalAllocatedHours,
         estimated_budget_hours: estimatedBudgetHours,
         team_lead_id: body.team_lead_id || null,
-        pm_id: body.pm_id || null,
-        pc_id: body.pc_id || null,
+        // PM / PC are admin-only. For non-admins keep whatever was already on
+        // the project — they have no UI to change it and the request body
+        // wouldn't include the field anyway.
+        pm_id: String(user?.role || '').toLowerCase() === 'admin'
+          ? (body.pm_id || null)
+          : (project.pm_id || null),
+        pc_id: String(user?.role || '').toLowerCase() === 'admin'
+          ? (body.pc_id || null)
+          : (project.pc_id || null),
         assignment_type: assignmentType,
         external_team_id: assignmentType === 'external' ? (body.external_team_id || null) : null,
         external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,

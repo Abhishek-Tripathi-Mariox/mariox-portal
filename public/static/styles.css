@@ -5833,3 +5833,129 @@ body:not(.theme-light) [style*="border-right:1px solid #2A1812"],
 body:not(.theme-light) [style*="border-right: 1px solid #2A1812"] {
   border-color: #2B2B35 !important;
 }
+
+/* ── Lead activity timeline (theme-aware) ─────────────────────
+   The right-side card on the lead detail page. Was using hard
+   inline colors that left light-theme text black-on-dark-blue
+   and unreadable. These rules give it readable defaults in both
+   themes without overriding inline geometry styles. */
+.lead-timeline-icon {
+  background: #121216;
+  color: #7E7E8F;
+  border: 1px solid #2B2B35;
+}
+.lead-timeline-card {
+  background: #0f172a40;
+  border: 1px solid #121216;
+}
+.lead-timeline-actor   { color: #e2e8f0; }
+.lead-timeline-summary { color: #cbd5e1; }
+.lead-timeline-time    { color: #7E7E8F; }
+
+body.theme-light .lead-timeline-icon {
+  background: #F3F4F6 !important;
+  color: #6B7280 !important;
+  border: 1px solid #E5E7EB !important;
+}
+body.theme-light .lead-timeline-card {
+  background: #F8F9FB !important;
+  border: 1px solid #E5E7EB !important;
+}
+body.theme-light .lead-timeline-actor   { color: #0F0F12 !important; }
+body.theme-light .lead-timeline-summary { color: #374151 !important; }
+body.theme-light .lead-timeline-time    { color: #6B7280 !important; }
+
+/* ─────────────────────────────────────────────────────────────
+   Light-theme inline-style escape hatch.
+   Large parts of leads.js / enterprise.js / pages.js use inline
+   style="color:#e2e8f0" (dark-theme off-white) and dark glass
+   backgrounds like rgba(0,0,0,.2) directly in template strings.
+   In dark theme they render fine; in light theme the text vanishes
+   into the white card surface and the "glass" panels appear as
+   solid black blocks. Override via attribute selectors with
+   !important — that beats inline-style specificity.
+   ───────────────────────────────────────────────────────────── */
+body.theme-light [style*="color:#e2e8f0"],
+body.theme-light [style*="color: #e2e8f0"],
+body.theme-light [style*="color:#f1f5f9"],
+body.theme-light [style*="color: #f1f5f9"] {
+  color: #0F0F12 !important;
+}
+body.theme-light [style*="color:#cbd5e1"],
+body.theme-light [style*="color: #cbd5e1"],
+body.theme-light [style*="color:#94a3b8"],
+body.theme-light [style*="color: #94a3b8"] {
+  color: #4B5563 !important;
+}
+body.theme-light [style*="color:#0f172a40"],
+body.theme-light [style*="background:#0f172a40"],
+body.theme-light [style*="background:#0f172a"],
+body.theme-light [style*="background: #0f172a"],
+body.theme-light [style*="background:rgba(0,0,0,.2)"],
+body.theme-light [style*="background:rgba(0,0,0,0.2)"],
+body.theme-light [style*="background:rgba(0,0,0,.25)"],
+body.theme-light [style*="background:rgba(0,0,0,0.25)"] {
+  background: #F8F9FB !important;
+  border-color: #E5E7EB !important;
+}
+body.theme-light [style*="border:1px solid #121216"],
+body.theme-light [style*="border: 1px solid #121216"] {
+  border-color: #E5E7EB !important;
+}
+/* Activity-timeline section heading inside lead detail card — explicit
+   selector for the most user-visible spot ("Activity Timeline" h4). */
+body.theme-light .lead-timeline-list,
+body.theme-light #lead-timeline-body,
+body.theme-light #lead-timeline-body h4,
+body.theme-light .lead-timeline-list h4 {
+  color: #0F0F12 !important;
+}
+body.theme-light #lead-timeline-body .badge.badge-todo {
+  background: rgba(123,77,255,0.12) !important;
+  color: #4B3FA0 !important;
+  border: 1px solid rgba(123,77,255,0.22) !important;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Global click-loader: any button that triggered an in-flight action
+   is locked and shows a lavender spinner overlay so the user can't
+   fire the same action twice. Driven by app.js (installClickLoader).
+   ────────────────────────────────────────────────────────────── */
+.is-busy {
+  position: relative !important;
+  pointer-events: none !important;
+  cursor: progress !important;
+  color: transparent !important;
+  text-shadow: none !important;
+  opacity: 0.9;
+}
+.is-busy > *,
+.is-busy i,
+.is-busy svg {
+  visibility: hidden !important;
+}
+.is-busy::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  border: 2px solid rgba(201,167,255,0.30);
+  border-top-color: #C9A7FF;
+  animation: spin 0.7s linear infinite;
+  visibility: visible !important;
+  z-index: 2;
+}
+.is-busy.btn-primary::after,
+.is-busy.btn-danger::after,
+.is-busy.btn-success::after,
+.is-busy.btn-warning::after {
+  border-color: rgba(255,255,255,0.40);
+  border-top-color: #ffffff;
+}
+button:disabled, .btn:disabled, [disabled].btn {
+  cursor: not-allowed;
+}

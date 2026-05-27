@@ -14,6 +14,7 @@ import {
   respondWithError,
 } from '../validators'
 import { createUserNotifications } from './notifications'
+import { isProjectLinkedToUser } from './projects'
 
 const TASK_TYPES = ['task', 'bug', 'feature', 'epic', 'story', 'subtask'] as const
 const TASK_PRIORITIES = ['critical', 'high', 'medium', 'low'] as const
@@ -183,6 +184,23 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       const projectId = req.params.project_id
       const sprintId = typeof req.query.sprint_id === 'string' ? req.query.sprint_id : undefined
 
+      // Gate: a user must either have `projects.view_all` or be directly
+      // linked to this project (assignment / PM / PC / TL / external owner).
+      // Without this gate, anyone holding "View Project Tasks tab" could pull
+      // any project board by guessing its id.
+      const user = req.user as any
+      const canViewAll = await userHasAnyPermission(models, user, 'projects.view_all')
+      if (!canViewAll) {
+        const [project, projectAssignments] = await Promise.all([
+          models.projects.findById(projectId) as Promise<any>,
+          models.projectAssignments.find({ project_id: projectId, is_active: 1 }) as Promise<any[]>,
+        ])
+        if (!project) return res.status(404).json({ error: 'Project not found' })
+        if (!isProjectLinkedToUser(project, user, projectAssignments)) {
+          return res.status(403).json({ error: 'You do not have access to this project' })
+        }
+      }
+
       await ensureColumns(models, projectId)
       // tasksList holds the board view (optionally sprint-filtered). projectTasks
       // is the full project task set we need for subtask counts when a sprint
@@ -294,6 +312,8 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
 
   router.get('/', async (req, res) => {
     try {
+      const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
       const { project_id, sprint_id, milestone_id, assignee_id, status, priority, type } = req.query as Record<string, string | undefined>
       const filter: any = {}
       if (project_id) filter.project_id = project_id
@@ -305,27 +325,64 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       if (type) filter.task_type = type
 
       const hasFilter = Object.keys(filter).length > 0
-      const [tasksList, users, projects, sprints, subtasksAllMaybe] = await Promise.all([
+      const canViewAll = await userHasAnyPermission(models, user, 'projects.view_all')
+      const [tasksListRaw, users, projects, sprints, assignments, subtasksAllMaybe] = await Promise.all([
         models.tasks.find(filter) as Promise<any[]>,
         models.users.find({}) as Promise<any[]>,
         models.projects.find({}) as Promise<any[]>,
         models.sprints.find({}) as Promise<any[]>,
+        // Project-assignment table backs the "developer assigned to project"
+        // check inside isProjectLinkedToUser. Skip the query if we already know
+        // we'll show everything.
+        canViewAll
+          ? Promise.resolve([] as any[])
+          : (models.projectAssignments.find({ is_active: 1 }) as Promise<any[]>),
         hasFilter
           ? (models.tasks.find({}) as Promise<any[]>)
           : Promise.resolve(null),
       ])
+
+      // Scope tasks to projects the user can actually see. Without this gate
+      // anyone granted the "View Project Tasks tab" permission was seeing every
+      // task in the database, not just the ones in their assigned projects.
+      let tasksList = tasksListRaw
+      if (!canViewAll) {
+        const myAssignmentProjectIds = new Set(
+          assignments.filter((a: any) => String(a.user_id) === String(user?.sub)).map((a: any) => String(a.project_id)),
+        )
+        const projectsById = new Map(projects.map((p: any) => [String(p.id), p]))
+        const isLinked = (projectId: string) => {
+          const p = projectsById.get(projectId)
+          if (!p) return false
+          if (role === 'team') return p.external_team_id === user?.sub || p.awarded_to_user_id === user?.sub
+          if (role === 'developer') {
+            if (myAssignmentProjectIds.has(String(p.id))) return true
+            return p.pm_id === user?.sub || p.pc_id === user?.sub || p.team_lead_id === user?.sub
+          }
+          return isProjectLinkedToUser(p, user, assignments)
+        }
+        // Fallback: even outside their projects, a user should still see tasks
+        // explicitly assigned to them (e.g. a one-off support task on someone
+        // else's project) so My Tasks doesn't go empty.
+        tasksList = tasksListRaw.filter((t: any) => {
+          if (String(t.assignee_id || '') === String(user?.sub)) return true
+          if (String(t.reporter_id || '') === String(user?.sub)) return true
+          return isLinked(String(t.project_id || ''))
+        })
+      }
+
       // When no filter, tasksList already contains everything — reuse it for the
       // parent_task_id → subtask count map instead of issuing a second find({}).
       const subtasksAll = subtasksAllMaybe || tasksList
       // Scope comments to the visible task set. Without this we fetch every task
       // comment in the entire database just to build the count map.
-      const visibleTaskIds = tasksList.map((t) => t.id)
+      const visibleTaskIds = tasksList.map((t: any) => t.id)
       const comments = visibleTaskIds.length
         ? await (models.comments.find({ entity_type: 'task', entity_id: { $in: visibleTaskIds } }) as Promise<any[]>)
         : []
-      const usersById = new Map(users.map((u) => [String(u.id), u]))
-      const projectsById = new Map(projects.map((p) => [String(p.id), p]))
-      const sprintsById = new Map(sprints.map((s) => [String(s.id), s]))
+      const usersById = new Map(users.map((u: any) => [String(u.id), u]))
+      const projectsById = new Map(projects.map((p: any) => [String(p.id), p]))
+      const sprintsById = new Map(sprints.map((s: any) => [String(s.id), s]))
       const subtaskCounts = new Map<string, number>()
       for (const t of subtasksAll) {
         if (!t.parent_task_id) continue
@@ -338,8 +395,8 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       }
 
       const enriched = tasksList
-        .filter((t) => !t.parent_task_id)
-        .map((t) => {
+        .filter((t: any) => !t.parent_task_id)
+        .map((t: any) => {
           const a = usersById.get(String(t.assignee_id)) as any
           const r = usersById.get(String(t.reporter_id)) as any
           const p = projectsById.get(String(t.project_id)) as any
@@ -378,6 +435,23 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       ])
       const usersById = new Map(users.map((u) => [String(u.id), u]))
       const project = projects.find((p) => p.id === task.project_id) as any
+
+      // Gate: same scope as the board endpoint. A user can see this task only
+      // if they have `projects.view_all`, are linked to its project, or the
+      // task is directly assigned to / reported by them.
+      const user = req.user as any
+      const canViewAll = await userHasAnyPermission(models, user, 'projects.view_all')
+      if (!canViewAll) {
+        const directlyOwn = String(task.assignee_id || '') === String(user?.sub)
+          || String(task.reporter_id || '') === String(user?.sub)
+        if (!directlyOwn) {
+          if (!project) return res.status(403).json({ error: 'You do not have access to this task' })
+          const projectAssignments = await models.projectAssignments.find({ project_id: project.id, is_active: 1 }) as any[]
+          if (!isProjectLinkedToUser(project, user, projectAssignments)) {
+            return res.status(403).json({ error: 'You do not have access to this task' })
+          }
+        }
+      }
       const sprint = sprints.find((s) => s.id === task.sprint_id) as any
       const assignee = usersById.get(String(task.assignee_id)) as any
       const reporter = usersById.get(String(task.reporter_id)) as any

@@ -166,6 +166,39 @@ async function ensureLeadSources(models: MongoModels) {
   console.log('[bootstrap] Lead sources seeded')
 }
 
+// View-only permission keys introduced when the sidebar was made fully
+// permission-gated. We backfill these onto existing system roles so an
+// upgrade doesn't suddenly hide their default tabs — but we DON'T touch
+// any other keys (admin may have customized the manage permissions on
+// the role and we don't want to undo that).
+//
+// Also includes the new ownership-scoped *.view_own / *.view_all / *.edit_own
+// keys for portfolios / scopes / quotations / meetings so an upgrade doesn't
+// suddenly hide a sales user's existing tabs — the seed defaults take effect
+// for every existing role record that didn't already have these grants.
+const VIEW_ONLY_PERMISSION_KEYS = new Set<string>([
+  'tasks.view_project',
+  'personal_tasks.view',
+  'bids.view',
+  'leads.view_own',
+  'leads.assign_to_others',
+  'sales.tracker.view',
+  'dashboards.dev.view',
+  'dashboards.team.view',
+  'team.view_overview',
+  'team.view_external',
+  'team.view_sales',
+  'team.view_project',
+  'team.view_dev',
+  'team.view_hr',
+  'hr.calendar.view',
+  // Ownership-scoped artefact permissions (backfilled from seeds).
+  'portfolios.view_own', 'portfolios.view_all', 'portfolios.edit_own',
+  'scopes.view_own', 'scopes.view_all', 'scopes.edit_own',
+  'quotations.view_own', 'quotations.view_all', 'quotations.edit_own',
+  'meetings.view_own', 'meetings.view_all', 'meetings.edit_own',
+])
+
 async function ensureSystemRoles(models: MongoModels) {
   const now = new Date().toISOString()
   for (const seed of SYSTEM_ROLE_SEEDS) {
@@ -179,8 +212,25 @@ async function ensureSystemRoles(models: MongoModels) {
       if (!existing.name) patch.name = seed.name
       if (!existing.description) patch.description = seed.description
       if (!Array.isArray(existing.permissions)) patch.permissions = seed.permissions
-      if (existing.key === 'pc' && Array.isArray(existing.permissions)) {
-        patch.permissions = Array.from(new Set(existing.permissions.map((p: unknown) => String(p)).filter((p: string) => p && p !== 'projects.view_all')))
+      if (Array.isArray(existing.permissions)) {
+        // Strip the legacy pc.projects.view_all grant (kept from earlier
+        // migration), then merge in any NEW view-only keys from the seed
+        // so the upgrade preserves admin's existing tab visibility.
+        const current = new Set<string>(
+          existing.permissions
+            .map((p: unknown) => String(p))
+            .filter((p: string) => p && !(existing.key === 'pc' && p === 'projects.view_all')),
+        )
+        let mutated = existing.key === 'pc' && !current.has('projects.view_all')
+          ? current.size !== existing.permissions.length
+          : false
+        for (const key of seed.permissions) {
+          if (VIEW_ONLY_PERMISSION_KEYS.has(key) && !current.has(key)) {
+            current.add(key)
+            mutated = true
+          }
+        }
+        if (mutated) patch.permissions = Array.from(current)
       }
       await models.roles.updateById(existing.id, { $set: patch })
       continue
