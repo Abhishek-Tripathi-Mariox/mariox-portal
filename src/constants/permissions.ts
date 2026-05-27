@@ -182,6 +182,10 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
       { key: 'leaves.create_own', label: 'Apply for leave' },
       { key: 'leaves.approve',    label: 'Approve / reject leaves' },
       { key: 'leaves.view_all',   label: 'View all leaves' },
+      { key: 'leaves.delete_own', label: 'Withdraw own leave',
+        description: 'Delete / withdraw a leave application the user submitted themselves while it is still pending.' },
+      { key: 'leaves.delete_any', label: 'Delete any leave',
+        description: 'Delete leave records for any employee (admin / HR clean-up).' },
     ],
   },
   {
@@ -357,7 +361,7 @@ const PM_PERMS: PermissionKey[] = [
   'reports.view_pm_dashboard', 'reports.view_resources', 'reports.export',
   'sprints.create', 'sprints.edit', 'milestones.create', 'milestones.edit',
   'allocations.create', 'allocations.edit', 'allocations.view',
-  'leaves.create_own', 'leaves.approve', 'leaves.view_all',
+  'leaves.create_own', 'leaves.delete_own', 'leaves.approve', 'leaves.view_all', 'leaves.delete_any',
   'portfolios.create', 'portfolios.view_all', 'portfolios.edit', 'portfolios.delete',
   'scopes.create', 'scopes.view_all', 'scopes.edit', 'scopes.delete',
   'quotations.create', 'quotations.view_all', 'quotations.edit', 'quotations.delete',
@@ -380,7 +384,7 @@ const PC_PERMS: PermissionKey[] = [
   'reports.view_pm_dashboard',
   'sprints.create', 'sprints.edit', 'milestones.create', 'milestones.edit',
   'allocations.view',
-  'leaves.create_own',
+  'leaves.create_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -391,7 +395,7 @@ const DEV_PERMS: PermissionKey[] = [
   'timesheets.log_own',
   'tickets.create',
   'documents.upload',
-  'leaves.create_own',
+  'leaves.create_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -403,7 +407,7 @@ const TEAM_PERMS: PermissionKey[] = [
   'timesheets.log_own',
   'tickets.create',
   'documents.upload',
-  'leaves.create_own',
+  'leaves.create_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -420,7 +424,7 @@ const SALES_AGENT_PERMS: PermissionKey[] = [
   'quotations.view_own', 'quotations.edit_own',
   'meetings.view_own', 'meetings.edit_own',
   'timesheets.log_own',
-  'leaves.create_own',
+  'leaves.create_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -444,7 +448,7 @@ const SALES_MANAGER_PERMS: PermissionKey[] = [
   'tasks.edit_own', 'tasks.move', 'tasks.comment',
   'tasks.view_project', 'personal_tasks.view',
   'timesheets.log_own',
-  'leaves.create_own',
+  'leaves.create_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -465,7 +469,7 @@ const SALES_TL_PERMS: PermissionKey[] = [
   'tasks.edit_own', 'tasks.move', 'tasks.comment',
   'tasks.view_project', 'personal_tasks.view',
   'timesheets.log_own',
-  'leaves.create_own',
+  'leaves.create_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -478,7 +482,7 @@ const HR_PERMS: PermissionKey[] = [
   'hr.documents.manage', 'hr.assets.manage',
   'users.view_all',
   'team.view_hr',
-  'leaves.create_own', 'leaves.approve', 'leaves.view_all',
+  'leaves.create_own', 'leaves.delete_own', 'leaves.approve', 'leaves.view_all', 'leaves.delete_any',
   'tasks.edit_own', 'tasks.move', 'tasks.comment',
   'personal_tasks.view',
   'timesheets.log_own',

@@ -1100,8 +1100,17 @@ export function createLeadsRouter(
     }
   })
 
-  router.delete('/:id', requireRole('admin', 'pm', 'pc'), async (req, res) => {
+  router.delete('/:id', async (req, res) => {
     try {
+      const user = req.user as any
+      const role = lower(user?.role)
+      // Permission-based gate: admin always; anyone with `leads.delete` granted
+      // in Settings → Roles & Permissions; plus pm/pc as legacy defaults so the
+      // existing system roles keep working without a re-seed.
+      const allowed = role === 'admin'
+        || ['pm', 'pc'].includes(role)
+        || await userHasAnyPermission(models, user, 'leads.delete')
+      if (!allowed) return res.status(403).json({ error: 'Not allowed to delete leads' })
       const id = String(req.params.id)
       await models.leadTasks.deleteMany({ lead_id: id })
       await models.leads.deleteById(id)

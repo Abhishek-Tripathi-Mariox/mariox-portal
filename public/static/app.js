@@ -1165,7 +1165,6 @@ function buildShell() {
     </div>
   </div>
   <div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
-  <button class="sidebar-reopen-fab" onclick="toggleSidebar()" title="Show sidebar"><i class="fas fa-bars"></i><span>Menu</span></button>
   <div id="topbar">
     <button class="topbar-hamburger" onclick="toggleSidebar()" id="menu-toggle" aria-label="Toggle sidebar" style="display:flex"><i class="fas fa-bars"></i></button>
     <button class="icon-btn" id="back-btn" onclick="Router.back()" style="display:none" data-tip="Go Back"><i class="fas fa-arrow-left"></i></button>

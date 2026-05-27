@@ -1121,7 +1121,16 @@ router.register('leaves', async () => {
           <table class="data-table">
             <thead><tr><th>Developer</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
-              ${leaves.map(l=>`<tr>
+              ${leaves.map(l => {
+                const myId = String(_user?.sub || _user?.id || '')
+                const isOwner = String(l.user_id) === myId
+                const role = String(_user?.role || '').toLowerCase()
+                const hp = (k) => typeof hasAnyPermission === 'function' && hasAnyPermission([k])
+                const canDelAny = role === 'admin' || hp('leaves.delete_any')
+                const canWithdraw = isOwner && l.status === 'pending'
+                  && (hp('leaves.delete_own') || hp('leaves.create_own'))
+                const canDelete = canDelAny || canWithdraw
+                return `<tr>
                 <td><div style="display:flex;align-items:center;gap:8px">
                   <div class="avatar avatar-sm" style="background:${l.avatar_color}">${utils.getInitials(l.full_name)}</div>
                   <span style="font-size:13px;font-weight:600">${l.full_name}</span>
@@ -1133,12 +1142,13 @@ router.register('leaves', async () => {
                 <td style="font-size:12px;color:var(--text-secondary);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.reason||'-'}</td>
                 <td><span class="badge ${l.status==='approved'?'badge-green':l.status==='rejected'?'badge-red':'badge-yellow'}">${l.status}</span></td>
                 <td>
-                  ${(l.status === 'pending' && String(l.user_id) !== String(_user?.sub || _user?.id || '')) ? `
+                  ${(l.status === 'pending' && !isOwner) ? `
                   <button class="btn btn-success btn-xs" onclick="approveLeave('${l.id}','approved')"><i class="fas fa-check"></i></button>
                   <button class="btn btn-danger btn-xs" onclick="approveLeave('${l.id}','rejected')"><i class="fas fa-times"></i></button>` : ''}
-                  <button class="btn btn-danger btn-xs" onclick="deleteLeave('${l.id}')"><i class="fas fa-trash"></i></button>
+                  ${canDelete ? `<button class="btn btn-danger btn-xs" onclick="deleteLeave('${l.id}')" title="${canDelAny ? 'Delete leave' : 'Withdraw your pending leave'}"><i class="fas fa-trash"></i></button>` : ''}
                 </td>
-              </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:20px">No leaves found</td></tr>'}
+              </tr>`
+              }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:20px">No leaves found</td></tr>'}
             </tbody>
           </table>
         </div>

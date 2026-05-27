@@ -2308,7 +2308,15 @@ function renderLeaveRow(l, currentRole, isManager) {
       : '<span class="badge badge-yellow">Pending</span>'
   const myId = _user?.sub || _user?.id
   const isOwner = l.user_id === myId
-  const canDelete = isOwner || _user?.role === 'admin'
+  // Two-tier permission gate (mirrors backend): admin/leaves.delete_any can
+  // wipe any leave at any state; the leave's owner can withdraw their own
+  // only while it's still pending and only if they hold leaves.delete_own.
+  const role = String(_user?.role || '').toLowerCase()
+  const _hasPerm = (k) => typeof hasAnyPermission === 'function' && hasAnyPermission([k])
+  const canDeleteAny = role === 'admin' || _hasPerm('leaves.delete_any')
+  const canWithdrawOwn = isOwner && l.status === 'pending'
+    && (_hasPerm('leaves.delete_own') || _hasPerm('leaves.create_own'))
+  const canDelete = canDeleteAny || canWithdrawOwn
   // Stash the leave row so the detail modal can render rich info without re-fetching.
   if (!window._leavesById) window._leavesById = {}
   window._leavesById[l.id] = l

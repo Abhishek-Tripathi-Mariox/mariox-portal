@@ -932,7 +932,7 @@ function openProjectModal(id = null) {
             <div class="card">
               <div class="card-header"><h3>Attachments</h3><span style="font-size:12px;color:var(--text-muted)">Files and pasted links appear under this project in Documents (25 MB / file)</span></div>
               <div class="card-body">
-                <div style="border:1px dashed rgba(179,136,255,.32);border-radius:10px;padding:12px;background:rgba(0,0,0,.18)">
+                <div class="proj-attachments-dropzone" style="border:1px dashed rgba(179,136,255,.32);border-radius:10px;padding:12px">
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                     <input id="proj-files-input" type="file" multiple style="display:none" onchange="projAddFiles(this.files);this.value=''"/>
                     <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('proj-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware, requireRole, userHasAnyPermission } from '../express-middleware/auth'
+import { createAuthMiddleware, userHasAnyPermission } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
 import {
   validateEnum,
@@ -197,16 +197,25 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
       const role = String(user?.role || '').toLowerCase()
       const leave = await models.leaves.findById(String(req.params.id)) as any
       if (!leave) return res.status(404).json({ error: 'Leave not found' })
-      // Owner can withdraw their own (still-pending) application; admins
-      // can delete any leave record. Nobody else gets to clean up someone
-      // else's history.
+      // Permission gate. Two tiers:
+      //   - `leaves.delete_any` / admin → can delete any leave at any state
+      //   - `leaves.delete_own` (default for everyone with leaves.create_own)
+      //     → can withdraw an own leave only while it's still pending
       const isOwner = String(leave.user_id || '') === String(user?.sub || '')
       const isAdmin = role === 'admin'
-      if (!isOwner && !isAdmin) {
-        return res.status(403).json({ error: 'You do not have permission to delete this leave' })
-      }
-      if (isOwner && !isAdmin && leave.status && leave.status !== 'pending') {
-        return res.status(403).json({ error: 'You can only withdraw a leave that is still pending' })
+      const canDeleteAny = isAdmin
+        || await userHasAnyPermission(models, user, 'leaves.delete_any')
+      if (!canDeleteAny) {
+        if (!isOwner) {
+          return res.status(403).json({ error: 'You do not have permission to delete this leave' })
+        }
+        const canDeleteOwn = await userHasAnyPermission(models, user, 'leaves.delete_own')
+        if (!canDeleteOwn) {
+          return res.status(403).json({ error: 'You do not have permission to withdraw this leave' })
+        }
+        if (leave.status && leave.status !== 'pending') {
+          return res.status(403).json({ error: 'You can only withdraw a leave that is still pending' })
+        }
       }
       await models.leaves.deleteById(String(req.params.id))
       return res.json({ message: 'Leave deleted' })

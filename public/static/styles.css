@@ -5397,6 +5397,22 @@ body.theme-light .hello-banner-greeting,
 body.theme-light .hello-banner-meta .pill { color: #4B5563 !important; }
 body.theme-light .hello-banner-name,
 body.theme-light .hello-banner-meta .pill strong { color: #0F0F12 !important; }
+/* Banner body text + sub-paragraphs — without an explicit override they
+   inherit the dark-theme white and disappear against the new white wash. */
+body.theme-light .page-banner p,
+body.theme-light .page-hero p,
+body.theme-light .page-hero .page-subtitle,
+body.theme-light .page-hero .eyebrow {
+  color: #4B5563 !important;
+  -webkit-text-fill-color: #4B5563 !important;
+  opacity: 1 !important;
+}
+/* Hero pills — translucent-white tint had near-zero contrast on light bg. */
+body.theme-light .hero-pill {
+  background: rgba(169,112,255,0.14) !important;
+  color: #4B3FA0 !important;
+  border: 1px solid rgba(169,112,255,0.28) !important;
+}
 
 /* Tables */
 body.theme-light .data-table thead th {
@@ -5891,12 +5907,25 @@ body.theme-light [style*="color:#0f172a40"],
 body.theme-light [style*="background:#0f172a40"],
 body.theme-light [style*="background:#0f172a"],
 body.theme-light [style*="background: #0f172a"],
+body.theme-light [style*="background:rgba(0,0,0,.15)"],
+body.theme-light [style*="background:rgba(0,0,0,0.15)"],
+body.theme-light [style*="background:rgba(0,0,0,.18)"],
+body.theme-light [style*="background:rgba(0,0,0,0.18)"],
 body.theme-light [style*="background:rgba(0,0,0,.2)"],
 body.theme-light [style*="background:rgba(0,0,0,0.2)"],
 body.theme-light [style*="background:rgba(0,0,0,.25)"],
-body.theme-light [style*="background:rgba(0,0,0,0.25)"] {
+body.theme-light [style*="background:rgba(0,0,0,0.25)"],
+body.theme-light [style*="background:rgba(0,0,0,.3)"],
+body.theme-light [style*="background:rgba(0,0,0,0.3)"] {
   background: #F8F9FB !important;
   border-color: #E5E7EB !important;
+}
+/* Project / lead "attachments dropzone" — soft tinted area that should
+   wash to a near-white in light theme, not stay dark. */
+.proj-attachments-dropzone { background: rgba(0,0,0,.18); }
+body.theme-light .proj-attachments-dropzone {
+  background: #F8F9FB !important;
+  border-color: #D6BFFF !important;
 }
 body.theme-light [style*="border:1px solid #121216"],
 body.theme-light [style*="border: 1px solid #121216"] {

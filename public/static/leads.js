@@ -173,6 +173,16 @@ function leadsCanManage() {
   return false
 }
 
+// Delete is gated separately because leadsCanManage() is also true for users
+// with only `leads.create` or `leads.edit` — those people shouldn't see the
+// trash button. Backend enforces the same check.
+function leadsCanDelete() {
+  const role = String(_user?.role || '').toLowerCase()
+  if (role === 'admin') return true
+  if (['pm', 'pc'].includes(role)) return true
+  return typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.delete'])
+}
+
 function leadsCanCreate() {
   const role = String(_user?.role || '').toLowerCase()
   if (['admin', 'pm', 'pc', 'sales_manager', 'sales_tl'].includes(role)) return true
@@ -758,7 +768,7 @@ function renderLeadRow(l, canManage) {
     <td>
       <div style="display:flex;gap:4px">
         <button class="btn btn-xs btn-outline" title="Open detail page" onclick="goLeadDetail('${l.id}')"><i class="fas fa-up-right-from-square"></i></button>
-        ${canManage ? `<button class="btn btn-xs btn-outline" title="Delete" onclick="confirmDeleteLead('${l.id}','${escapeHtml(l.name).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>` : ''}
+        ${leadsCanDelete() ? `<button class="btn btn-xs btn-outline" title="Delete" onclick="confirmDeleteLead('${l.id}','${escapeHtml(l.name).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>` : ''}
       </div>
     </td>
   </tr>`
