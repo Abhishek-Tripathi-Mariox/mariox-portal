@@ -118,10 +118,16 @@ function _ptaskRow(t, statusPalette, myId) {
   const priorityOptions = PTASK_PRIORITIES
     .map(p => `<option value="${p}" ${t.priority === p ? 'selected' : ''}>${p.charAt(0).toUpperCase() + p.slice(1)}</option>`)
     .join('')
-  const userOpts = _ptaskUsers
-    .filter(u => Number(u.is_active ?? 1) !== 0)
-    .map(u => `<option value="${escapeInbox(u.id)}" ${String(t.assigned_to) === String(u.id) ? 'selected' : ''}>${escapeInbox(u.full_name || u.email || u.id)}</option>`)
-    .join('')
+  // Searchable inline assignee picker — replaces the native <select> with a
+  // button + portaled search panel so long employee lists (50+) are usable.
+  const _currentAssignee = _ptaskUsers.find(u => String(u.id) === String(t.assigned_to))
+  const _assigneeLabel = _currentAssignee
+    ? escapeInbox(_currentAssignee.full_name || _currentAssignee.email || _currentAssignee.id)
+    : '— Unassigned —'
+  const assigneeBtnHtml = `<button type="button" class="ptask-inline-select ptask-assignee-btn" data-no-lock onclick="openPtaskAssigneePicker('${escapeInbox(t.id)}', this)" style="display:flex;align-items:center;gap:6px;justify-content:space-between;text-align:left">
+    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_assigneeLabel}</span>
+    <i class="fas fa-chevron-down" style="font-size:9px;opacity:.6;flex-shrink:0"></i>
+  </button>`
 
   const overdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done'
   const dueColor = overdue ? '#FF5E3A' : '#7E7E8F'
@@ -150,7 +156,7 @@ function _ptaskRow(t, statusPalette, myId) {
       </td>
       <td>
         ${canReassign
-          ? `<select class="ptask-inline-select" onchange="ptaskInlineSave('${escapeInbox(t.id)}','assigned_to',this.value)">${userOpts}</select>`
+          ? assigneeBtnHtml
           : (t.assigned_to_name ? `<div style="display:flex;align-items:center;gap:6px">${avatar(t.assigned_to_name, t.assigned_to_color || t.assigned_to_avatar, 'sm')}<span style="font-size:12px">${escapeInbox(t.assigned_to_name)}</span></div>` : '—')}
       </td>
       <td>${t.created_by_name ? `<div style="display:flex;align-items:center;gap:6px">${avatar(t.created_by_name, t.created_by_color || '#7E7E8F', 'sm')}<span style="font-size:12px">${escapeInbox(t.created_by_name)}</span></div>` : '—'}</td>
@@ -322,7 +328,7 @@ async function openPersonalTaskModal(id) {
       <div class="form-group"><label class="form-label">Title *</label><input id="ptask-title" class="form-input" value="${escapeInbox(task?.title || '')}" placeholder="e.g. Follow up with Acme"/></div>
       <div class="form-group"><label class="form-label">Description</label><textarea id="ptask-desc" class="form-textarea" rows="3" placeholder="Details…">${escapeInbox(task?.description || '')}</textarea></div>
       <div class="grid-2">
-        <div class="form-group"><label class="form-label">Assignee *</label>${hrEmployeePicker('ptask-assignee', _ptaskUsers, task?.assigned_to || '', { placeholder: 'Pick an employee…' })}</div>
+        <div class="form-group"><label class="form-label">Assignee *</label>${hrEmployeePicker('ptask-assignee', _ptaskUsers, task?.assigned_to || '', { placeholder: 'Search or pick employee…' })}</div>
         <div class="form-group"><label class="form-label">Due date</label><input id="ptask-due" class="form-input" type="date" value="${task?.due_date || ''}"/></div>
       </div>
       <div class="grid-2">
@@ -451,4 +457,101 @@ async function deletePersonalTask(id) {
     const el = document.getElementById('page-personal-tasks')
     if (el) { el.dataset.loaded = ''; loadPage('personal-tasks', el) }
   } catch (e) { toast(e.message, 'error') }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Inline searchable assignee picker for the My Tasks table. Native
+// <select> only does single-char jump-to-match, which falls apart on
+// employee lists of 50+. This is a portaled popover with a search
+// input + filtered list, positioned via getBoundingClientRect so it
+// isn't clipped by the table's overflow:hidden parents.
+// ──────────────────────────────────────────────────────────────────
+let _ptaskPickerPanel = null
+let _ptaskPickerBtn = null
+let _ptaskPickerOutsideHandler = null
+let _ptaskPickerReposition = null
+
+function openPtaskAssigneePicker(taskId, btnEl) {
+  if (_ptaskPickerPanel) { closePtaskAssigneePicker(); return }
+  const panel = document.createElement('div')
+  panel.className = 'ptask-assignee-picker'
+  panel.style.cssText = 'position:fixed;z-index:10000;background:var(--surface,#fff);border:1px solid var(--border,#E5E7EB);border-radius:8px;box-shadow:0 16px 40px rgba(0,0,0,.25);padding:6px;min-width:220px'
+  panel.innerHTML = `
+    <input type="text" class="form-input ptask-picker-search" placeholder="Search…" autocomplete="off"
+      style="margin:2px 0 6px 0;padding:6px 10px;font-size:12.5px"
+      oninput="filterPtaskAssigneePicker(this.value, '${taskId}')"
+      onkeydown="if(event.key==='Escape')closePtaskAssigneePicker()"/>
+    <div class="ptask-assignee-picker-list" style="max-height:260px;overflow:auto"></div>`
+  document.body.appendChild(panel)
+  _ptaskPickerPanel = panel
+  _ptaskPickerBtn = btnEl
+  _positionPtaskPicker()
+  filterPtaskAssigneePicker('', taskId)
+  const input = panel.querySelector('input.ptask-picker-search')
+  setTimeout(() => input?.focus(), 0)
+  _ptaskPickerOutsideHandler = (e) => {
+    if (panel.contains(e.target) || btnEl?.contains(e.target)) return
+    closePtaskAssigneePicker()
+  }
+  setTimeout(() => document.addEventListener('mousedown', _ptaskPickerOutsideHandler), 0)
+  _ptaskPickerReposition = () => _positionPtaskPicker()
+  window.addEventListener('scroll', _ptaskPickerReposition, true)
+  window.addEventListener('resize', _ptaskPickerReposition)
+}
+
+function _positionPtaskPicker() {
+  if (!_ptaskPickerPanel || !_ptaskPickerBtn) return
+  const rect = _ptaskPickerBtn.getBoundingClientRect()
+  const w = Math.max(rect.width, 240)
+  const maxRight = window.innerWidth - 8
+  const left = Math.min(rect.left, maxRight - w)
+  _ptaskPickerPanel.style.top = (rect.bottom + 4) + 'px'
+  _ptaskPickerPanel.style.left = Math.max(8, left) + 'px'
+  _ptaskPickerPanel.style.minWidth = w + 'px'
+}
+
+function closePtaskAssigneePicker() {
+  if (!_ptaskPickerPanel) return
+  _ptaskPickerPanel.remove()
+  _ptaskPickerPanel = null
+  _ptaskPickerBtn = null
+  if (_ptaskPickerOutsideHandler) {
+    document.removeEventListener('mousedown', _ptaskPickerOutsideHandler)
+    _ptaskPickerOutsideHandler = null
+  }
+  if (_ptaskPickerReposition) {
+    window.removeEventListener('scroll', _ptaskPickerReposition, true)
+    window.removeEventListener('resize', _ptaskPickerReposition)
+    _ptaskPickerReposition = null
+  }
+}
+
+function filterPtaskAssigneePicker(query, taskId) {
+  if (!_ptaskPickerPanel) return
+  const q = String(query || '').trim().toLowerCase()
+  const eligible = (_ptaskUsers || []).filter(u => Number(u.is_active ?? 1) !== 0)
+  const matches = q
+    ? eligible.filter(u =>
+        String(u.full_name || '').toLowerCase().includes(q)
+        || String(u.email || '').toLowerCase().includes(q)
+        || String(u.designation || '').toLowerCase().includes(q))
+    : eligible
+  const list = _ptaskPickerPanel.querySelector('.ptask-assignee-picker-list')
+  if (!list) return
+  if (!matches.length) {
+    list.innerHTML = `<div style="padding:10px;font-size:12px;color:var(--text-muted)">No matches</div>`
+    return
+  }
+  list.innerHTML = matches.slice(0, 50).map(u => `
+    <div onclick="pickPtaskAssignee('${escapeInbox(taskId)}','${escapeInbox(u.id)}')"
+      style="padding:7px 10px;cursor:pointer;font-size:12.5px;color:var(--text-primary);border-radius:6px"
+      onmouseover="this.style.background='rgba(169,112,255,0.10)'"
+      onmouseout="this.style.background='transparent'">
+      ${escapeInbox(u.full_name || u.email || u.id)}${u.designation ? `<span style="color:var(--text-muted);font-size:11px"> · ${escapeInbox(u.designation)}</span>` : ''}
+    </div>`).join('')
+}
+
+async function pickPtaskAssignee(taskId, userId) {
+  closePtaskAssigneePicker()
+  await ptaskInlineSave(taskId, 'assigned_to', userId)
 }

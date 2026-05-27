@@ -5988,3 +5988,56 @@ body.theme-light #lead-timeline-body .badge.badge-todo {
 button:disabled, .btn:disabled, [disabled].btn {
   cursor: not-allowed;
 }
+
+/* ────────────────────────────────────────────────────────────────
+   Light-theme overrides for assignee / employee pickers.
+   The inline-style chrome on hr-emp-picker-list and the option
+   <option>s on ptask-inline-select were hardcoded dark — invisible
+   against a white surface. These rules force them to white surface
+   + dark text in light mode while keeping dark theme untouched.
+   ──────────────────────────────────────────────────────────────── */
+body.theme-light .ptask-inline-select {
+  background: rgba(15,23,42,0.04) !important;
+  color: #0F0F12 !important;
+  border-color: rgba(15,23,42,0.10) !important;
+}
+body.theme-light .ptask-inline-select:hover {
+  border-color: rgba(123,77,255,0.45) !important;
+}
+body.theme-light .ptask-inline-select:focus {
+  background: rgba(123,77,255,0.08) !important;
+  border-color: #A970FF !important;
+  color: #0F0F12 !important;
+}
+body.theme-light .ptask-inline-select option {
+  background: #FFFFFF !important;
+  color: #0F0F12 !important;
+}
+/* HR employee picker dropdown (portaled to <body> with inline dark
+   styles). Override both the popover and every row. */
+body.theme-light .hr-emp-picker-list {
+  background: #FFFFFF !important;
+  border-color: #E5E7EB !important;
+  box-shadow: 0 12px 32px rgba(15,23,42,0.14) !important;
+}
+body.theme-light .hr-emp-picker-add {
+  border-bottom-color: #E5E7EB !important;
+  color: #7B4DFF !important;
+}
+body.theme-light .hr-emp-picker-add:hover {
+  background: rgba(123,77,255,0.08) !important;
+}
+body.theme-light .hr-emp-picker-item {
+  color: #0F0F12 !important;
+}
+body.theme-light .hr-emp-picker-item span {
+  color: #6B7280 !important;
+}
+body.theme-light .hr-emp-picker-item:hover {
+  background: rgba(123,77,255,0.08) !important;
+}
+/* Selected row gets the brand purple in both themes — make sure the
+   text stays readable against it in light mode. */
+body.theme-light .hr-emp-picker-item[style*="background:#7B4DFF"] {
+  color: #FFFFFF !important;
+}

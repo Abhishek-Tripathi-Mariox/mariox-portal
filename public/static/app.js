@@ -1430,45 +1430,51 @@ function _tryPlayCategorySound(cat) {
 // user is most likely to notice the delay.
 function preloadNotifSounds() {
   for (const cat of Object.keys(NOTIF_SOUND_FILES)) _ensureCategoryAudio(cat)
-  // Prime the AudioContext too so the synth-fallback chime is ready if
-  // the .wav files ever fail. Resume on first user gesture (browsers
-  // require a gesture before audio can play).
-  const wakeCtx = () => {
-    try {
-      if (!_notifState.audioCtx) {
-        const Ctor = window.AudioContext || window.webkitAudioContext
-        if (Ctor) _notifState.audioCtx = new Ctor()
-      }
-      if (_notifState.audioCtx?.state === 'suspended') {
-        _notifState.audioCtx.resume().catch(() => {})
-      }
-      // Also tickle each <Audio> with a silent play() then pause so the
-      // browser marks it as "user-activated" — subsequent play() calls
-      // from SSE callbacks won't be blocked by autoplay policy.
-      for (const el of Object.values(_notifAudioEls)) {
-        if (!el) continue
-        const wasMuted = el.muted
-        el.muted = true
-        const p = el.play()
-        if (p && typeof p.then === 'function') {
-          p.then(() => {
-            el.pause()
-            el.currentTime = 0
-            el.muted = wasMuted
-          }).catch(() => { el.muted = wasMuted })
-        } else {
-          el.pause()
-          el.muted = wasMuted
-        }
-      }
-    } catch {}
-    document.removeEventListener('click', wakeCtx)
-    document.removeEventListener('keydown', wakeCtx)
-  }
-  document.addEventListener('click', wakeCtx, { once: true })
-  document.addEventListener('keydown', wakeCtx, { once: true })
+  // Try to warm up RIGHT NOW. If we were called inside a user-activation
+  // window (e.g. doLogin's onsubmit just fired), the muted play will succeed
+  // and every Audio element gets "user-activated" — subsequent unmuted SSE
+  // plays won't be autoplay-blocked. If we're NOT in activation context the
+  // muted play silently rejects; the click listener below picks up the next
+  // gesture as a fallback.
+  warmupNotifAudio()
+  document.addEventListener('click', warmupNotifAudio, { once: true })
+  document.addEventListener('keydown', warmupNotifAudio, { once: true })
 }
 window.preloadNotifSounds = preloadNotifSounds
+
+// Side-effect: resumes AudioContext + tickles each Audio element with a
+// muted play() + pause(). After this, calling play() from a non-gesture
+// context (SSE notification handler) is allowed by autoplay policy.
+function warmupNotifAudio() {
+  try {
+    if (!_notifState.audioCtx) {
+      const Ctor = window.AudioContext || window.webkitAudioContext
+      if (Ctor) _notifState.audioCtx = new Ctor()
+    }
+    if (_notifState.audioCtx?.state === 'suspended') {
+      _notifState.audioCtx.resume().catch(() => {})
+    }
+    for (const el of Object.values(_notifAudioEls)) {
+      if (!el || el.dataset.warmedUp === '1') continue
+      const wasMuted = el.muted
+      el.muted = true
+      const p = el.play()
+      if (p && typeof p.then === 'function') {
+        p.then(() => {
+          el.pause()
+          el.currentTime = 0
+          el.muted = wasMuted
+          el.dataset.warmedUp = '1'
+        }).catch(() => { el.muted = wasMuted })
+      } else {
+        el.pause()
+        el.muted = wasMuted
+        el.dataset.warmedUp = '1'
+      }
+    }
+  } catch {}
+}
+window.warmupNotifAudio = warmupNotifAudio
 
 function _notifPlaySynthChime() {
   // Light "ding" via Web Audio API — used if the audio file is missing.
@@ -1853,6 +1859,11 @@ async function doLogin() {
   const email = document.getElementById('login-email').value.trim()
   const password = document.getElementById('login-pass').value
   if (!email || !password) return toast('Enter email and password', 'error')
+  // The Sign In submit IS a user gesture — kick off audio preload + warm-up
+  // here while transient activation is still live. After login the user might
+  // sit idle on a page; when someone else assigns them a task, the SSE-
+  // triggered ding needs audio already unlocked or the first play is delayed.
+  try { preloadNotifSounds() } catch {}
   try {
     let data = null
     try {
