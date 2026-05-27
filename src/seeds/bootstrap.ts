@@ -179,6 +179,7 @@ async function ensureLeadSources(models: MongoModels) {
 const VIEW_ONLY_PERMISSION_KEYS = new Set<string>([
   'tasks.view_project',
   'personal_tasks.view',
+  'personal_tasks.manage_statuses',
   'bids.view',
   'leads.view_own',
   'leads.assign_to_others',

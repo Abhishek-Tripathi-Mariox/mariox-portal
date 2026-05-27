@@ -2227,11 +2227,22 @@ async function showCreateTaskModal(projectId='', sprintId='', defaultStatus='bac
     </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group">
+        <div class="form-group" style="position:relative">
           <label class="form-label">Project *</label>
-          <select class="form-select" id="ct-project" onchange="updateSprintsAndStatusForProject(this.value)">
-            ${projects.map(p=>`<option value="${p.id}" ${p.id===projectId?'selected':''}>${tc(p.name)}</option>`).join('')}
-          </select>
+          ${(() => {
+            // Searchable project picker — long project lists (50+) made the
+            // native <select> hard to use. Stash the list on window so the
+            // picker popover can read it lazily.
+            window._ctProjectsCache = projects
+            const sel = projects.find(p => p.id === projectId)
+            const label = sel ? tc(sel.name) : '— Select a project —'
+            return `
+              <button type="button" id="ct-project-btn" class="form-select" data-no-lock onclick="openCtProjectPicker(this)" style="text-align:left;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer">
+                <span id="ct-project-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(label)}</span>
+                <i class="fas fa-chevron-down" style="font-size:10px;opacity:.6;flex-shrink:0"></i>
+              </button>
+              <input type="hidden" id="ct-project" value="${escapeHtml(projectId || '')}"/>`
+          })()}
         </div>
         <div class="form-group">
           <label class="form-label">Sprint</label>
@@ -2305,6 +2316,116 @@ async function updateSprintsAndStatusForProject(projectId) {
     }
   } catch(e) {}
 }
+
+// ──────────────────────────────────────────────────────────────
+// Searchable Project picker for the Create Task modal — replaces
+// the native <select id="ct-project"> with a button + portaled
+// popover. The picked id is stamped onto a hidden #ct-project input
+// so doCreateTask reads `.value` unchanged.
+// ──────────────────────────────────────────────────────────────
+let _ctProjectPickerPanel = null
+let _ctProjectPickerBtn = null
+let _ctProjectPickerOutside = null
+let _ctProjectPickerReposition = null
+
+function openCtProjectPicker(btnEl) {
+  if (_ctProjectPickerPanel) { closeCtProjectPicker(); return }
+  const panel = document.createElement('div')
+  panel.className = 'ct-project-picker'
+  panel.style.cssText = 'position:fixed;z-index:10000;background:var(--surface,#fff);border:1px solid var(--border,#E5E7EB);border-radius:8px;box-shadow:0 16px 40px rgba(0,0,0,.25);padding:6px;min-width:280px'
+  panel.innerHTML = `
+    <input type="text" class="form-input ct-project-search" placeholder="Search by name or code…" autocomplete="off"
+      style="margin:2px 0 6px 0;padding:6px 10px;font-size:12.5px"
+      oninput="filterCtProjectPicker(this.value)"
+      onkeydown="if(event.key==='Escape')closeCtProjectPicker()"/>
+    <div class="ct-project-picker-list" style="max-height:300px;overflow:auto"></div>`
+  document.body.appendChild(panel)
+  _ctProjectPickerPanel = panel
+  _ctProjectPickerBtn = btnEl
+  _positionCtProjectPicker()
+  filterCtProjectPicker('')
+  setTimeout(() => panel.querySelector('input.ct-project-search')?.focus(), 0)
+  _ctProjectPickerOutside = (e) => {
+    if (panel.contains(e.target) || btnEl?.contains(e.target)) return
+    closeCtProjectPicker()
+  }
+  setTimeout(() => document.addEventListener('mousedown', _ctProjectPickerOutside), 0)
+  _ctProjectPickerReposition = () => _positionCtProjectPicker()
+  window.addEventListener('scroll', _ctProjectPickerReposition, true)
+  window.addEventListener('resize', _ctProjectPickerReposition)
+}
+
+function _positionCtProjectPicker() {
+  if (!_ctProjectPickerPanel || !_ctProjectPickerBtn) return
+  const rect = _ctProjectPickerBtn.getBoundingClientRect()
+  const w = Math.max(rect.width, 300)
+  const maxRight = window.innerWidth - 8
+  const left = Math.min(rect.left, maxRight - w)
+  _ctProjectPickerPanel.style.top = (rect.bottom + 4) + 'px'
+  _ctProjectPickerPanel.style.left = Math.max(8, left) + 'px'
+  _ctProjectPickerPanel.style.minWidth = w + 'px'
+}
+
+function closeCtProjectPicker() {
+  if (!_ctProjectPickerPanel) return
+  _ctProjectPickerPanel.remove()
+  _ctProjectPickerPanel = null
+  _ctProjectPickerBtn = null
+  if (_ctProjectPickerOutside) {
+    document.removeEventListener('mousedown', _ctProjectPickerOutside)
+    _ctProjectPickerOutside = null
+  }
+  if (_ctProjectPickerReposition) {
+    window.removeEventListener('scroll', _ctProjectPickerReposition, true)
+    window.removeEventListener('resize', _ctProjectPickerReposition)
+    _ctProjectPickerReposition = null
+  }
+}
+
+function filterCtProjectPicker(query) {
+  if (!_ctProjectPickerPanel) return
+  const list = _ctProjectPickerPanel.querySelector('.ct-project-picker-list')
+  if (!list) return
+  const q = String(query || '').trim().toLowerCase()
+  const projects = window._ctProjectsCache || []
+  const matches = q
+    ? projects.filter(p =>
+        String(p.name || '').toLowerCase().includes(q)
+        || String(p.code || '').toLowerCase().includes(q)
+        || String(p.client_name || '').toLowerCase().includes(q))
+    : projects
+  if (!matches.length) {
+    list.innerHTML = `<div style="padding:10px;font-size:12px;color:var(--text-muted)">No projects match "${escapeHtml(query)}"</div>`
+    return
+  }
+  list.innerHTML = matches.slice(0, 100).map(p => {
+    const label = (typeof tc === 'function' ? tc(p.name) : p.name) || p.id
+    const sub = [p.code, p.client_name].filter(Boolean).join(' · ')
+    return `<div onclick="pickCtProject('${escapeHtml(String(p.id))}','${escapeHtml(String(label)).replace(/'/g, "\\'")}')"
+      style="padding:8px 10px;cursor:pointer;font-size:12.5px;color:var(--text-primary);border-radius:6px"
+      onmouseover="this.style.background='rgba(169,112,255,0.10)'"
+      onmouseout="this.style.background='transparent'">
+      ${escapeHtml(label)}${sub ? `<span style="color:var(--text-muted);font-size:11px"> · ${escapeHtml(sub)}</span>` : ''}
+    </div>`
+  }).join('')
+}
+
+function pickCtProject(id, name) {
+  const hidden = document.getElementById('ct-project')
+  const labelEl = document.getElementById('ct-project-label')
+  if (hidden) hidden.value = id || ''
+  if (labelEl) labelEl.textContent = name || '— Select a project —'
+  closeCtProjectPicker()
+  // Reload dependent dropdowns (sprint + status columns + assignee list).
+  if (typeof updateSprintsAndStatusForProject === 'function') {
+    updateSprintsAndStatusForProject(id || '')
+  }
+}
+
+window.openCtProjectPicker = openCtProjectPicker
+window.closeCtProjectPicker = closeCtProjectPicker
+window.filterCtProjectPicker = filterCtProjectPicker
+window.pickCtProject = pickCtProject
 
 async function doCreateTask() {
   const body = {

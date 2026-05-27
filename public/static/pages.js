@@ -723,6 +723,10 @@ function openProjectModal(id = null) {
     const esc = (value = '') => escapeHtml(value)
     const initialAssignment = (proj?.assignment_type === 'external') ? 'external' : 'in_house'
     window._projAssignmentType = initialAssignment
+    // Stash the clients list so the searchable picker popover (rendered
+    // lazily on button click, well after this template runs) has access to
+    // the same data the dropdown was built from.
+    window._projClientsCache = clients
     window._projExternalTeamId = proj?.external_team_id || ''
     window._projExternalAssigneeType = proj?.external_assignee_type || 'team'
 
@@ -785,11 +789,22 @@ function openProjectModal(id = null) {
                       <button type="button" class="btn btn-outline btn-sm" onclick="autoFillProjectCode()" title="Suggest next code"><i class="fas fa-wand-magic-sparkles"></i></button>
                     </div>
                   </div>
-                  <div class="form-group"><label class="form-label">Client</label>
-                    <select id="proj-client-id" class="form-select">
-                      <option value="">— Internal / None —</option>
-                      ${clients.map(c=>`<option value="${esc(c.id)}" data-name="${esc(c.company_name||c.contact_name||'')}" ${proj?.client_id===c.id?'selected':''}>${esc(c.company_name||c.contact_name||c.email)}</option>`).join('')}
-                    </select></div>
+                  <div class="form-group" style="position:relative"><label class="form-label">Client</label>
+                    <!-- Searchable client picker: button shows the current selection, click
+                         opens a portaled popover with a search field + filtered list.
+                         A hidden input carries the actual id + name so saveProject can
+                         read them unchanged. -->
+                    ${(() => {
+                      const sel = clients.find(c => c.id === proj?.client_id)
+                      const label = sel ? (sel.company_name || sel.contact_name || sel.email) : '— Internal / None —'
+                      return `
+                        <button type="button" id="proj-client-btn" class="form-select" data-no-lock onclick="openProjClientPicker(this)" style="text-align:left;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer">
+                          <span id="proj-client-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</span>
+                          <i class="fas fa-chevron-down" style="font-size:10px;opacity:.6;flex-shrink:0"></i>
+                        </button>
+                        <input type="hidden" id="proj-client-id" value="${esc(proj?.client_id || '')}" data-name="${esc(sel ? (sel.company_name || sel.contact_name || '') : '')}"/>`
+                    })()}
+                  </div>
                   <div class="form-group"><label class="form-label">Project Type</label>
                     <select id="proj-type" class="form-select">${['development','maintenance','support','consulting'].map(t=>`<option value="${t}" ${proj?.project_type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select></div>
                   <div class="form-group"><label class="form-label">Start Date *</label><input id="proj-start" class="form-input" type="date" value="${esc(proj?.start_date||'')}"/></div>
@@ -857,17 +872,35 @@ function openProjectModal(id = null) {
                 </div>
 
                 <div id="proj-assign-external-panel" style="display:${initialAssignment==='external'?'block':'none'}">
-                  <div class="form-group" style="margin-bottom:0">
+                  <div class="form-group" style="margin-bottom:0;position:relative">
                     <label class="form-label"><i class="fas fa-users-cog" style="color:#A970FF;margin-right:6px"></i>Select External Team / Member *</label>
-                    <select id="proj-external-team" class="form-select">
-                      <option value="">— Select —</option>
-                      ${teams.length ? `<optgroup label="Project Teams">
-                        ${teams.map(t=>`<option value="${esc(t.id)}" data-kind="team" ${window._projExternalTeamId===t.id && window._projExternalAssigneeType==='team'?'selected':''}>${esc(t.alias || t.name)}${t.member_count?` · ${t.member_count} members`:''}${t.lead_name?` · Lead: ${esc(t.lead_name)}`:''}</option>`).join('')}
-                      </optgroup>` : ''}
-                      ${teamUsers.length ? `<optgroup label="Team Members (role: team)">
-                        ${teamUsers.map(u=>`<option value="${esc(u.id)}" data-kind="user" ${window._projExternalTeamId===u.id && window._projExternalAssigneeType==='user'?'selected':''}>${esc(u.full_name)}${u.designation?` · ${esc(u.designation)}`:''}</option>`).join('')}
-                      </optgroup>` : ''}
-                    </select>
+                    ${(() => {
+                      // Searchable picker (replaces a long <select> with optgroups). Carries
+                      // the picked id + kind on the hidden #proj-external-team input so the
+                      // existing saveProject reader (.value + .selectedOptions[0].dataset.kind)
+                      // keeps working via a thin compat shim in saveProject.
+                      const initialKind = window._projExternalAssigneeType || 'team'
+                      const initialId = window._projExternalTeamId || ''
+                      let initialLabel = '— Select —'
+                      if (initialId) {
+                        if (initialKind === 'team') {
+                          const t = teams.find(t => t.id === initialId)
+                          if (t) initialLabel = t.alias || t.name
+                        } else {
+                          const u = teamUsers.find(u => u.id === initialId)
+                          if (u) initialLabel = u.full_name
+                        }
+                      }
+                      // Stash both lists for the popover.
+                      window._projExtTeamsCache = teams
+                      window._projExtUsersCache = teamUsers
+                      return `
+                        <button type="button" id="proj-external-team-btn" class="form-select" data-no-lock onclick="openProjExternalPicker(this)" style="text-align:left;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer">
+                          <span id="proj-external-team-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(initialLabel)}</span>
+                          <i class="fas fa-chevron-down" style="font-size:10px;opacity:.6;flex-shrink:0"></i>
+                        </button>
+                        <input type="hidden" id="proj-external-team" value="${esc(initialId)}" data-kind="${esc(initialKind)}"/>`
+                    })()}
                     ${teams.length===0 && teamUsers.length===0 ? '<div style="color:var(--text-muted);font-size:12px;margin-top:6px">No external teams or team members available.</div>' : ''}
                   </div>
                 </div>
@@ -1141,14 +1174,20 @@ function projRenderFilesList() {
 
 async function saveProject(id) {
   try {
+    // proj-client-id is a hidden input now (the visible UI is a search
+    // button + popover). The picker stamps the chosen client's display
+    // name onto dataset.name so the payload below can grab it without
+    // hitting the clients cache again.
     const clientSelect = document.getElementById('proj-client-id')
-    const clientOpt = clientSelect?.selectedOptions?.[0]
+    const clientOpt = clientSelect ? { value: clientSelect.value, dataset: clientSelect.dataset } : null
     const assignmentType = window._projAssignmentType === 'external' ? 'external' : 'in_house'
+    // External-team picker is a hidden input now (was a <select> with
+    // optgroups). The picker stamps `data-kind` (team | user) so the payload
+    // below reads it via dataset.kind instead of selectedOptions[0].
     const externalSelect = document.getElementById('proj-external-team')
-    const externalOpt = externalSelect?.selectedOptions?.[0]
     const externalTeamId = assignmentType === 'external' ? (externalSelect?.value || '') : ''
     const externalAssigneeType = assignmentType === 'external'
-      ? (externalOpt?.dataset?.kind || 'team')
+      ? (externalSelect?.dataset?.kind || 'team')
       : null
     const deliveryKind = document.getElementById('proj-delivery-kind')?.value || null
     // Total Hours / Revenue were removed from the form — preserve existing
@@ -1506,3 +1545,251 @@ async function assignDeveloper(projectId) {
     router.navigate('project-detail', { id: projectId })
   } catch (e) { utils.toast('Failed: ' + e.message, 'error') }
 }
+
+// ──────────────────────────────────────────────────────────────
+// Searchable Client picker on the project create / edit form.
+// The visible UI is a button + portaled popover; the picked id +
+// display name are stamped onto a hidden #proj-client-id input so
+// saveProject can read them the same way the old <select> exposed
+// them via selectedOptions[0].
+// ──────────────────────────────────────────────────────────────
+let _projClientPickerPanel = null
+let _projClientPickerBtn = null
+let _projClientPickerOutside = null
+let _projClientPickerReposition = null
+
+function openProjClientPicker(btnEl) {
+  if (_projClientPickerPanel) { closeProjClientPicker(); return }
+  const panel = document.createElement('div')
+  panel.className = 'proj-client-picker'
+  panel.style.cssText = 'position:fixed;z-index:10000;background:var(--surface,#fff);border:1px solid var(--border,#E5E7EB);border-radius:8px;box-shadow:0 16px 40px rgba(0,0,0,.25);padding:6px;min-width:260px'
+  panel.innerHTML = `
+    <input type="text" class="form-input proj-client-search" placeholder="Search company / contact / email…" autocomplete="off"
+      style="margin:2px 0 6px 0;padding:6px 10px;font-size:12.5px"
+      oninput="filterProjClientPicker(this.value)"
+      onkeydown="if(event.key==='Escape')closeProjClientPicker()"/>
+    <div class="proj-client-picker-list" style="max-height:280px;overflow:auto"></div>`
+  document.body.appendChild(panel)
+  _projClientPickerPanel = panel
+  _projClientPickerBtn = btnEl
+  _positionProjClientPicker()
+  filterProjClientPicker('')
+  setTimeout(() => panel.querySelector('input.proj-client-search')?.focus(), 0)
+  _projClientPickerOutside = (e) => {
+    if (panel.contains(e.target) || btnEl?.contains(e.target)) return
+    closeProjClientPicker()
+  }
+  setTimeout(() => document.addEventListener('mousedown', _projClientPickerOutside), 0)
+  _projClientPickerReposition = () => _positionProjClientPicker()
+  window.addEventListener('scroll', _projClientPickerReposition, true)
+  window.addEventListener('resize', _projClientPickerReposition)
+}
+
+function _positionProjClientPicker() {
+  if (!_projClientPickerPanel || !_projClientPickerBtn) return
+  const rect = _projClientPickerBtn.getBoundingClientRect()
+  const w = Math.max(rect.width, 280)
+  const maxRight = window.innerWidth - 8
+  const left = Math.min(rect.left, maxRight - w)
+  _projClientPickerPanel.style.top = (rect.bottom + 4) + 'px'
+  _projClientPickerPanel.style.left = Math.max(8, left) + 'px'
+  _projClientPickerPanel.style.minWidth = w + 'px'
+}
+
+function closeProjClientPicker() {
+  if (!_projClientPickerPanel) return
+  _projClientPickerPanel.remove()
+  _projClientPickerPanel = null
+  _projClientPickerBtn = null
+  if (_projClientPickerOutside) {
+    document.removeEventListener('mousedown', _projClientPickerOutside)
+    _projClientPickerOutside = null
+  }
+  if (_projClientPickerReposition) {
+    window.removeEventListener('scroll', _projClientPickerReposition, true)
+    window.removeEventListener('resize', _projClientPickerReposition)
+    _projClientPickerReposition = null
+  }
+}
+
+function filterProjClientPicker(query) {
+  if (!_projClientPickerPanel) return
+  const list = _projClientPickerPanel.querySelector('.proj-client-picker-list')
+  if (!list) return
+  const q = String(query || '').trim().toLowerCase()
+  const clients = window._projClientsCache || []
+  const matches = q
+    ? clients.filter(c =>
+        String(c.company_name || '').toLowerCase().includes(q)
+        || String(c.contact_name || '').toLowerCase().includes(q)
+        || String(c.email || '').toLowerCase().includes(q))
+    : clients
+  const internalRow = `<div onclick="pickProjClient('', '')"
+    style="padding:8px 10px;cursor:pointer;font-size:12.5px;color:var(--text-muted);border-radius:6px"
+    onmouseover="this.style.background='rgba(169,112,255,0.10)'"
+    onmouseout="this.style.background='transparent'">— Internal / None —</div>`
+  if (!matches.length) {
+    list.innerHTML = internalRow + `<div style="padding:10px;font-size:12px;color:var(--text-muted)">No clients match "${escapeHtml(query)}"</div>`
+    return
+  }
+  list.innerHTML = internalRow + matches.slice(0, 100).map(c => {
+    const label = c.company_name || c.contact_name || c.email || c.id
+    const sub = c.company_name && c.contact_name && c.company_name !== c.contact_name
+      ? c.contact_name
+      : (c.email && label !== c.email ? c.email : '')
+    return `<div onclick="pickProjClient('${escapeHtml(String(c.id))}', '${escapeHtml(String(c.company_name || c.contact_name || '')).replace(/'/g, "\\'")}')"
+      style="padding:8px 10px;cursor:pointer;font-size:12.5px;color:var(--text-primary);border-radius:6px"
+      onmouseover="this.style.background='rgba(169,112,255,0.10)'"
+      onmouseout="this.style.background='transparent'">
+      ${escapeHtml(label)}${sub ? `<span style="color:var(--text-muted);font-size:11px"> · ${escapeHtml(sub)}</span>` : ''}
+    </div>`
+  }).join('')
+}
+
+function pickProjClient(id, name) {
+  const hidden = document.getElementById('proj-client-id')
+  const labelEl = document.getElementById('proj-client-label')
+  if (hidden) {
+    hidden.value = id || ''
+    hidden.dataset.name = name || ''
+  }
+  if (labelEl) labelEl.textContent = name || '— Internal / None —'
+  closeProjClientPicker()
+}
+
+window.openProjClientPicker = openProjClientPicker
+window.closeProjClientPicker = closeProjClientPicker
+window.filterProjClientPicker = filterProjClientPicker
+window.pickProjClient = pickProjClient
+
+// ──────────────────────────────────────────────────────────────
+// Searchable External Team / Member picker. Same shape as the
+// client picker: button + portaled popover + hidden input.
+// Groups results into "Project Teams" and "Team Members" sections
+// so the kind (team vs user) is obvious before pick.
+// ──────────────────────────────────────────────────────────────
+let _projExtPickerPanel = null
+let _projExtPickerBtn = null
+let _projExtPickerOutside = null
+let _projExtPickerReposition = null
+
+function openProjExternalPicker(btnEl) {
+  if (_projExtPickerPanel) { closeProjExternalPicker(); return }
+  const panel = document.createElement('div')
+  panel.className = 'proj-ext-picker'
+  panel.style.cssText = 'position:fixed;z-index:10000;background:var(--surface,#fff);border:1px solid var(--border,#E5E7EB);border-radius:8px;box-shadow:0 16px 40px rgba(0,0,0,.25);padding:6px;min-width:280px'
+  panel.innerHTML = `
+    <input type="text" class="form-input proj-ext-search" placeholder="Search teams / members…" autocomplete="off"
+      style="margin:2px 0 6px 0;padding:6px 10px;font-size:12.5px"
+      oninput="filterProjExternalPicker(this.value)"
+      onkeydown="if(event.key==='Escape')closeProjExternalPicker()"/>
+    <div class="proj-ext-picker-list" style="max-height:300px;overflow:auto"></div>`
+  document.body.appendChild(panel)
+  _projExtPickerPanel = panel
+  _projExtPickerBtn = btnEl
+  _positionProjExtPicker()
+  filterProjExternalPicker('')
+  setTimeout(() => panel.querySelector('input.proj-ext-search')?.focus(), 0)
+  _projExtPickerOutside = (e) => {
+    if (panel.contains(e.target) || btnEl?.contains(e.target)) return
+    closeProjExternalPicker()
+  }
+  setTimeout(() => document.addEventListener('mousedown', _projExtPickerOutside), 0)
+  _projExtPickerReposition = () => _positionProjExtPicker()
+  window.addEventListener('scroll', _projExtPickerReposition, true)
+  window.addEventListener('resize', _projExtPickerReposition)
+}
+
+function _positionProjExtPicker() {
+  if (!_projExtPickerPanel || !_projExtPickerBtn) return
+  const rect = _projExtPickerBtn.getBoundingClientRect()
+  const w = Math.max(rect.width, 300)
+  const maxRight = window.innerWidth - 8
+  const left = Math.min(rect.left, maxRight - w)
+  _projExtPickerPanel.style.top = (rect.bottom + 4) + 'px'
+  _projExtPickerPanel.style.left = Math.max(8, left) + 'px'
+  _projExtPickerPanel.style.minWidth = w + 'px'
+}
+
+function closeProjExternalPicker() {
+  if (!_projExtPickerPanel) return
+  _projExtPickerPanel.remove()
+  _projExtPickerPanel = null
+  _projExtPickerBtn = null
+  if (_projExtPickerOutside) {
+    document.removeEventListener('mousedown', _projExtPickerOutside)
+    _projExtPickerOutside = null
+  }
+  if (_projExtPickerReposition) {
+    window.removeEventListener('scroll', _projExtPickerReposition, true)
+    window.removeEventListener('resize', _projExtPickerReposition)
+    _projExtPickerReposition = null
+  }
+}
+
+function filterProjExternalPicker(query) {
+  if (!_projExtPickerPanel) return
+  const list = _projExtPickerPanel.querySelector('.proj-ext-picker-list')
+  if (!list) return
+  const q = String(query || '').trim().toLowerCase()
+  const teams = window._projExtTeamsCache || []
+  const users = window._projExtUsersCache || []
+  const filterTeam = (t) => !q
+    || String(t.name || '').toLowerCase().includes(q)
+    || String(t.alias || '').toLowerCase().includes(q)
+    || String(t.lead_name || '').toLowerCase().includes(q)
+  const filterUser = (u) => !q
+    || String(u.full_name || '').toLowerCase().includes(q)
+    || String(u.designation || '').toLowerCase().includes(q)
+    || String(u.email || '').toLowerCase().includes(q)
+  const matchedTeams = teams.filter(filterTeam).slice(0, 50)
+  const matchedUsers = users.filter(filterUser).slice(0, 50)
+  if (!matchedTeams.length && !matchedUsers.length) {
+    list.innerHTML = `<div style="padding:10px;font-size:12px;color:var(--text-muted)">No matches</div>`
+    return
+  }
+  const header = (label) => `<div style="padding:6px 10px;font-size:10.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">${label}</div>`
+  const teamRows = matchedTeams.map((t) => {
+    const label = t.alias || t.name || t.id
+    const sub = [t.member_count ? `${t.member_count} members` : '', t.lead_name ? `Lead: ${t.lead_name}` : ''].filter(Boolean).join(' · ')
+    return `<div onclick="pickProjExternal('${escapeHtml(String(t.id))}','team','${escapeHtml(String(label)).replace(/'/g, "\\'")}')"
+      style="padding:8px 10px;cursor:pointer;font-size:12.5px;color:var(--text-primary);border-radius:6px"
+      onmouseover="this.style.background='rgba(169,112,255,0.10)'"
+      onmouseout="this.style.background='transparent'">
+      <i class="fas fa-users" style="color:#C9A7FF;margin-right:6px"></i>${escapeHtml(label)}${sub ? `<span style="color:var(--text-muted);font-size:11px"> · ${escapeHtml(sub)}</span>` : ''}
+    </div>`
+  }).join('')
+  const userRows = matchedUsers.map((u) => {
+    const label = u.full_name || u.email || u.id
+    return `<div onclick="pickProjExternal('${escapeHtml(String(u.id))}','user','${escapeHtml(String(label)).replace(/'/g, "\\'")}')"
+      style="padding:8px 10px;cursor:pointer;font-size:12.5px;color:var(--text-primary);border-radius:6px"
+      onmouseover="this.style.background='rgba(169,112,255,0.10)'"
+      onmouseout="this.style.background='transparent'">
+      <i class="fas fa-user" style="color:#C9A7FF;margin-right:6px"></i>${escapeHtml(label)}${u.designation ? `<span style="color:var(--text-muted);font-size:11px"> · ${escapeHtml(u.designation)}</span>` : ''}
+    </div>`
+  }).join('')
+  list.innerHTML = [
+    matchedTeams.length ? header('Project Teams') + teamRows : '',
+    matchedUsers.length ? header('Team Members') + userRows : '',
+  ].filter(Boolean).join('')
+}
+
+function pickProjExternal(id, kind, name) {
+  const hidden = document.getElementById('proj-external-team')
+  const labelEl = document.getElementById('proj-external-team-label')
+  if (hidden) {
+    hidden.value = id || ''
+    hidden.dataset.kind = kind || 'team'
+  }
+  if (labelEl) labelEl.textContent = name || '— Select —'
+  // Mirror old <select> semantics so any other code reading these stays
+  // consistent.
+  window._projExternalTeamId = id || ''
+  window._projExternalAssigneeType = kind || 'team'
+  closeProjExternalPicker()
+}
+
+window.openProjExternalPicker = openProjExternalPicker
+window.closeProjExternalPicker = closeProjExternalPicker
+window.filterProjExternalPicker = filterProjExternalPicker
+window.pickProjExternal = pickProjExternal

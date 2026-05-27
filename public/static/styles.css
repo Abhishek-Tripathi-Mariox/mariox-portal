@@ -3287,6 +3287,7 @@ body::before, body::after { display: none !important; }
   margin-top: 2px;
   line-height: 1.45;
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -4217,8 +4218,6 @@ body::before {
 /* Stat cards keep their colored separator on top of the gradient border */
 .stat-card,
 .summary-card { padding-left: 28px !important; }
-.stat-card::after,
-.summary-card::after { /* allow shimmer */ }
 
 /* ── BUTTONS — frosted candy ────────────────────────────── */
 .btn,
@@ -5894,14 +5893,24 @@ body.theme-light .lead-timeline-time    { color: #6B7280 !important; }
 body.theme-light [style*="color:#e2e8f0"],
 body.theme-light [style*="color: #e2e8f0"],
 body.theme-light [style*="color:#f1f5f9"],
-body.theme-light [style*="color: #f1f5f9"] {
+body.theme-light [style*="color: #f1f5f9"],
+body.theme-light [style*="color:#f8fafc"],
+body.theme-light [style*="color: #f8fafc"] {
   color: #0F0F12 !important;
 }
 body.theme-light [style*="color:#cbd5e1"],
 body.theme-light [style*="color: #cbd5e1"],
 body.theme-light [style*="color:#94a3b8"],
-body.theme-light [style*="color: #94a3b8"] {
+body.theme-light [style*="color: #94a3b8"],
+body.theme-light [style*="color:#9F8678"],
+body.theme-light [style*="color: #9F8678"] {
   color: #4B5563 !important;
+}
+/* Very-dark accent text from the AMOLED palette — looks like a near-invisible
+   smudge on the new light backgrounds. Map to the muted-text grey instead. */
+body.theme-light [style*="color:#2B2B35"],
+body.theme-light [style*="color: #2B2B35"] {
+  color: #9CA3AF !important;
 }
 body.theme-light [style*="color:#0f172a40"],
 body.theme-light [style*="background:#0f172a40"],

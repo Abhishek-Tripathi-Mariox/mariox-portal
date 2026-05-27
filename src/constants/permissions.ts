@@ -62,6 +62,8 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
         description: 'Show the "Project Tasks" entry in the sidebar.' },
       { key: 'personal_tasks.view', label: 'View My Task tab',
         description: 'Show the personal "My Task" planner in the sidebar.' },
+      { key: 'personal_tasks.manage_statuses', label: 'Manage My Task statuses',
+        description: 'Add / remove custom statuses for the personal "My Task" planner.' },
       { key: 'bids.view',        label: 'View Bidding tab',
         description: 'Show the Bidding (lead capture) entry in the sidebar.' },
     ],
@@ -353,7 +355,7 @@ export interface SystemRoleSeed {
 const PM_PERMS: PermissionKey[] = [
   'projects.create', 'projects.view_all', 'projects.edit', 'projects.manage_team', 'projects.manage_kanban_perms',
   'tasks.create', 'tasks.edit_any', 'tasks.edit_own', 'tasks.delete', 'tasks.move', 'tasks.comment',
-  'tasks.view_project', 'personal_tasks.view', 'bids.view',
+  'tasks.view_project', 'personal_tasks.view', 'personal_tasks.manage_statuses', 'bids.view',
   'timesheets.log_own', 'timesheets.approve', 'timesheets.view_team', 'timesheets.view_all',
   'users.view_all',
   'team.view_overview', 'team.view_external', 'team.view_project', 'team.view_dev', 'team.view_hr',
@@ -378,7 +380,7 @@ const PM_PERMS: PermissionKey[] = [
 const PC_PERMS: PermissionKey[] = [
   'projects.edit',
   'tasks.create', 'tasks.edit_any', 'tasks.edit_own', 'tasks.move', 'tasks.comment',
-  'tasks.view_project', 'personal_tasks.view',
+  'tasks.view_project', 'personal_tasks.view', 'personal_tasks.manage_statuses',
   'timesheets.log_own', 'timesheets.view_team',
   'users.view_all',
   'team.view_project', 'team.view_dev', 'team.view_hr',

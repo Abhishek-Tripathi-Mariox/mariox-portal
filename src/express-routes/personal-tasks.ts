@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware } from '../express-middleware/auth'
+import { createAuthMiddleware, userHasAnyPermission } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
 import { validateEnum, validateLength, respondWithError } from '../validators'
 import { createUserNotification } from './notifications'
@@ -126,8 +126,11 @@ export function createPersonalTasksRouter(models: MongoModels, jwtSecret: string
     try {
       const user = req.user as any
       const role = String(user?.role || '').toLowerCase()
-      if (!['admin', 'pm', 'pc'].includes(role)) {
-        return res.status(403).json({ error: 'Only admin / PM / PC can add new statuses' })
+      const allowed = role === 'admin'
+        || ['pm', 'pc'].includes(role)
+        || await userHasAnyPermission(models, user, 'personal_tasks.manage_statuses')
+      if (!allowed) {
+        return res.status(403).json({ error: 'Not allowed to manage statuses' })
       }
       const body = req.body || {}
       const label = validateLength(String(body.label || body.name || '').trim(), 2, 40, 'Status name')
@@ -160,8 +163,11 @@ export function createPersonalTasksRouter(models: MongoModels, jwtSecret: string
     try {
       const user = req.user as any
       const role = String(user?.role || '').toLowerCase()
-      if (!['admin', 'pm', 'pc'].includes(role)) {
-        return res.status(403).json({ error: 'Only admin / PM / PC can remove statuses' })
+      const allowed = role === 'admin'
+        || ['pm', 'pc'].includes(role)
+        || await userHasAnyPermission(models, user, 'personal_tasks.manage_statuses')
+      if (!allowed) {
+        return res.status(403).json({ error: 'Not allowed to remove statuses' })
       }
       const id = String(req.params.id)
       const rec = await models.personalTaskStatuses.findById(id) as any

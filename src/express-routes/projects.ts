@@ -131,8 +131,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         projects: enriched,
         data: { projects: enriched, data: enriched },
       })
-    } catch {
-      return res.json({ projects: [], data: { projects: [], data: [] } })
+    } catch (error: any) {
+      // Don't swallow the error as an empty list — the UI then renders a
+      // misleading "no projects" empty state for what is actually a 500.
+      // Surface the real status so the frontend can show a retry / error UI.
+      console.error('[projects] list failed:', error)
+      return respondWithError(res, error, 500)
     }
   })
 
@@ -423,7 +427,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
               file_type: a.file_type ? String(a.file_type).slice(0, 120) : null,
               version: '1.0',
               uploaded_by: (req.user as any)?.sub || null,
-              uploaded_by_role: 'staff',
+              uploaded_by_role: String((req.user as any)?.role || 'staff').toLowerCase(),
               visibility: 'all',
               is_client_visible: 1,
               tags: null,
@@ -638,12 +642,23 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
   router.put('/:id', async (req, res) => {
     try {
       const user = req.user as any
-      if (!(await userHasAnyPermission(models, user, 'projects.edit'))) {
-        return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
-      }
       const id = String(req.params.id)
       const project = await models.projects.findById(id) as any
       if (!project) return res.status(404).json({ error: 'Project not found' })
+      // Permission gate (corrected order): admin always; users with the
+      // explicit `projects.edit` grant; OR anyone directly linked to this
+      // project (PM / PC / TL / external owner / assigned dev). Previously
+      // the global `projects.edit` check ran first and locked out PMs whose
+      // role had the permission revoked but who still owned their own
+      // project.
+      const role = String(user?.role || '').toLowerCase()
+      const assignments = await models.projectAssignments.find({ project_id: id, is_active: 1 }) as any[]
+      const hasGlobalEdit = role === 'admin'
+        || await userHasAnyPermission(models, user, 'projects.edit')
+      const isLinked = isProjectLinkedToUser(project, user, assignments)
+      if (!hasGlobalEdit && !isLinked) {
+        return res.status(403).json({ error: 'You do not have access to edit this project' })
+      }
       const body = req.body || {}
       const name = validateName(body.name, 'Project name', 2, 120)
       const projectType = validateEnum(body.project_type || 'development', PROJECT_TYPES, 'Project type')
@@ -679,10 +694,8 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         ? body.commercial_visible_to.map((r: any) => String(r).trim().toLowerCase()).filter(Boolean)
         : []
 
-      const assignments = await models.projectAssignments.find({ project_id: id, is_active: 1 }) as any[]
-      if (!(await userHasAnyPermission(models, user, 'projects.view_all')) && !isProjectLinkedToUser(project, user, assignments)) {
-        return res.status(403).json({ error: 'You do not have access to this project' })
-      }
+      // (Permission already checked at the top of the handler — `assignments`
+      // + `isLinked` carry the result here so we don't re-query.)
 
       const $set: any = {
         name,
@@ -710,7 +723,13 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         assignment_type: assignmentType,
         external_team_id: assignmentType === 'external' ? (body.external_team_id || null) : null,
         external_assignee_type: assignmentType === 'external' ? externalAssigneeType : null,
-        billable: body.billable ? 1 : 0,
+        // Preserve the existing billable flag when the request omits it. The
+        // old `body.billable ? 1 : 0` defaulted to 0 on every PUT that didn't
+        // explicitly set it — quietly flipping projects out of "billable" the
+        // moment anyone edited any other field.
+        billable: 'billable' in body
+          ? (body.billable ? 1 : 0)
+          : (project.billable ?? 1),
         revenue,
         sold_by: soldBy,
         project_amount: projectAmount,
@@ -719,6 +738,82 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         updated_at: new Date().toISOString(),
       }
       await models.projects.updateById(id, { $set })
+
+      // Audit log + notify project audience whenever something visible changes.
+      // Diff against the pre-edit `project` snapshot so we only log fields
+      // that actually moved — avoids spamming the audit trail on no-op saves.
+      try {
+        const TRACKED_FIELDS: Array<[string, string]> = [
+          ['name', 'Name'],
+          ['client_id', 'Client'],
+          ['status', 'Status'],
+          ['priority', 'Priority'],
+          ['project_type', 'Project type'],
+          ['delivery_kind', 'Delivery kind'],
+          ['start_date', 'Start date'],
+          ['expected_end_date', 'End date'],
+          ['pm_id', 'Project Manager'],
+          ['pc_id', 'Product Coordinator'],
+          ['team_lead_id', 'Team Lead'],
+          ['assignment_type', 'Assignment type'],
+          ['external_team_id', 'External team'],
+          ['billable', 'Billable'],
+          ['project_amount', 'Project amount'],
+          ['sold_by', 'Sold by'],
+          ['revenue', 'Revenue'],
+        ]
+        const changes: Array<{ field: string; label: string; from: any; to: any }> = []
+        for (const [field, label] of TRACKED_FIELDS) {
+          const before = (project as any)[field] ?? null
+          const after = ($set as any)[field] ?? null
+          if (String(before ?? '') !== String(after ?? '')) {
+            changes.push({ field, label, from: before, to: after })
+          }
+        }
+        const nowIso = new Date().toISOString()
+        for (const c of changes) {
+          await models.activityLogs.insertOne({
+            id: generateId('al'),
+            project_id: id,
+            entity_type: 'project',
+            entity_id: id,
+            action: `${c.field}_changed`,
+            actor_user_id: user?.sub || null,
+            actor_name: user?.name || user?.full_name || null,
+            actor_role: user?.role || null,
+            old_value: c.from == null ? null : String(c.from),
+            new_value: c.to == null ? null : String(c.to),
+            created_at: nowIso,
+          })
+        }
+        // Notify the project audience (PM, PC, TL, assigned devs, external
+        // owner) when anything material moved so they don't miss the change.
+        if (changes.length) {
+          const audience = new Set<string>()
+          const projectAssignments = await models.projectAssignments.find({ project_id: id, is_active: 1 }) as any[]
+          for (const a of projectAssignments) if (a.user_id) audience.add(String(a.user_id))
+          for (const k of ['pm_id', 'pc_id', 'team_lead_id', 'external_team_id', 'awarded_to_user_id'] as const) {
+            const v = ($set as any)[k] ?? (project as any)[k]
+            if (v) audience.add(String(v))
+          }
+          audience.delete(String(user?.sub || ''))
+          const summary = changes.length === 1
+            ? `${changes[0].label} updated on "${name}"`
+            : `${changes.length} fields updated on "${name}"`
+          await createUserNotifications(models, Array.from(audience), {
+            type: 'project_updated',
+            title: summary,
+            body: changes.slice(0, 4).map((c) => `${c.label}: ${c.from ?? '—'} → ${c.to ?? '—'}`).join(' • '),
+            link: `project:${id}`,
+            actor_id: user?.sub || null,
+            actor_name: user?.name || user?.full_name || null,
+            meta: { project_id: id, project_code: project.code, changed_fields: changes.map((c) => c.field) },
+          })
+        }
+      } catch (logErr) {
+        console.warn('[projects] failed to log edit activity:', logErr)
+      }
+
       return res.json({ message: 'Project updated successfully' })
     } catch (error: any) {
       return respondWithError(res, error, 500)

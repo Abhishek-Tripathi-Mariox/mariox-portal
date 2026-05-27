@@ -32,7 +32,12 @@ async function renderPersonalTasksPage(el) {
     const statusPalette = window._ptaskStatusPalette
     const myId = String(_user?.sub || _user?.id || '')
     const myRole = String(_user?.role || '').toLowerCase()
-    const canManageStatuses = ['admin', 'pm', 'pc'].includes(myRole)
+    // Manage Statuses now gated on the personal_tasks.manage_statuses
+    // permission so admins can hand it to sales managers / HR / etc. without
+    // promoting the user to PM. Default for admin/PM/PC stays the same.
+    const canManageStatuses = myRole === 'admin'
+      || ['pm', 'pc'].includes(myRole)
+      || (typeof hasAnyPermission === 'function' && hasAnyPermission(['personal_tasks.manage_statuses']))
 
     // Split into the two tabs. Created-by-me and assigned-to-me can overlap
     // (a task you assigned to yourself shows up in both), and that's fine —
