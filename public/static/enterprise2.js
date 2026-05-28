@@ -2138,14 +2138,32 @@ function _permMatrixKey(module, action, keySet) {
   return null
 }
 
-function openRoleEditModal(roleId) {
+async function openRoleEditModal(roleId) {
+  try {
   const isCreate = !roleId
   const role = isCreate ? null : (_rolesState.roles || []).find(r => r.id === roleId)
   if (!isCreate && !role) { toast('Role not found', 'error'); return }
   const isSystem = role?.is_system
 
   const granted = new Set(Array.isArray(role?.permissions) ? role.permissions : [])
+  // If the catalogue cache is empty (page just refreshed, or the roles panel
+  // hasn't been opened in this session), fetch it before rendering — without
+  // this the modal opens with an empty matrix body and looks blank.
+  if (!Array.isArray(_rolesState.catalogue) || _rolesState.catalogue.length === 0) {
+    try {
+      const res = await API.get('/settings/roles')
+      _rolesState.roles = res.roles || res.data || _rolesState.roles || []
+      _rolesState.catalogue = res.catalogue || []
+    } catch (e) {
+      toast('Failed to load permissions catalogue: ' + (e.message || 'unknown error'), 'error')
+      return
+    }
+  }
   const groups = _rolesState.catalogue || []
+  if (!groups.length) {
+    toast('Permissions catalogue is empty — please refresh the page', 'error')
+    return
+  }
 
   // Build the matrix table — one <tr> per module group, one <td> per action,
   // plus a final "Other Actions" cell that contains pill-checkboxes for any
@@ -2267,6 +2285,13 @@ function openRoleEditModal(roleId) {
   setTimeout(() => {
     document.querySelectorAll('input[data-indeterminate="1"]').forEach(cb => { cb.indeterminate = true })
   }, 0)
+  } catch (e) {
+    // Anything thrown while building the matrix (missing field, bad escape,
+    // unexpected catalogue shape) lands here — surface it as a toast instead
+    // of blanking out the modal so the user has something to react to.
+    console.error('[roles] openRoleEditModal failed:', e)
+    toast('Failed to open role editor: ' + (e?.message || 'unknown error'), 'error')
+  }
 }
 
 // Toggle every checkbox in a single matrix row (per-module All / None).
@@ -2309,8 +2334,16 @@ async function saveRoleFromModal(roleId, isCreate) {
       toast('Role updated', 'success')
     }
     closeModal()
-    await renderRolesPanel()
+    // Re-render the roles panel separately so a render error doesn't leak
+    // out of this handler — saveRoleFromModal already toasted success.
+    try {
+      await renderRolesPanel()
+    } catch (rpErr) {
+      console.error('[roles] renderRolesPanel after save failed:', rpErr)
+      toast('Saved, but failed to refresh the roles list: ' + (rpErr?.message || 'unknown error'), 'error')
+    }
   } catch (e) {
+    console.error('[roles] saveRoleFromModal failed:', e)
     toast('Failed: ' + e.message, 'error')
   }
 }

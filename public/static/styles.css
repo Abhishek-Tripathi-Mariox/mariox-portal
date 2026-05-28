@@ -2928,8 +2928,27 @@ select:not(.form-select) option { background: #2A1812; color: var(--text-primary
   justify-content: center;
   cursor: pointer;
   user-select: none;
+  position: relative;
 }
-.perm-mtx-check input { position: absolute; opacity: 0; pointer-events: none; }
+/* Visually-hidden input using the standard sr-only pattern. The previous
+   `position:absolute; opacity:0` recipe made the browser auto-scroll the
+   modal-body to bring the (invisible) input into view on label-click —
+   because the absolutely-positioned input lacked top/left, its computed
+   focus rect landed off-screen and the scroll jump made the modal look
+   blank. Sizing it 1px + clip-path keeps the modal scroll exactly where
+   the user left it. */
+.perm-mtx-check input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .perm-mtx-tick {
   width: 20px;
   height: 20px;
@@ -2983,7 +3002,20 @@ body.theme-light .perm-mtx-check:hover .perm-mtx-tick { background: rgba(169,112
 .perm-mtx-other { text-align: left; padding: 8px 10px; min-width: 260px; max-width: 460px; }
 .perm-pill-group { display: flex; flex-wrap: wrap; gap: 5px; }
 .perm-pill { cursor: pointer; user-select: none; display: inline-flex; }
-.perm-pill input { position: absolute; opacity: 0; pointer-events: none; }
+/* Same sr-only treatment as .perm-mtx-check input — avoids the browser's
+   focus-into-view scroll jump that was blanking the modal on label clicks. */
+.perm-pill input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .perm-pill-body {
   display: inline-flex;
   align-items: center;

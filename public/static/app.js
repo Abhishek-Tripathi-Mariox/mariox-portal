@@ -1458,10 +1458,15 @@ window._broadcastBuzzStop = _broadcastBuzzStop
 // server. On every poll/SSE message we call this with the current `recent`
 // payload so any broadcast that's now marked read elsewhere (another tab,
 // the mobile app, etc.) stops buzzing here too.
+//
+// Idempotency: once we've shown a broadcast's modal in this session (id in
+// `_broadcastModal.shown`), reconciliation must NEVER re-pop it or restart
+// the buzz for it — even if the server still reports it as unread for one
+// more poll cycle (POST /read → next GET race). Otherwise the modal we
+// just closed reappears and looks like the page went blank under it.
 function _broadcastBuzzReconcile(recent) {
   if (!Array.isArray(recent)) return
-  // Anything in our pending set that's now read → drop it.
-  const stillUnread = new Map()  // id → notif doc (so we can re-render modal if needed)
+  const stillUnread = new Map()  // id → notif doc
   for (const n of recent) {
     if (!n || n.type !== 'broadcast') continue
     if (!n.is_read) stillUnread.set(n.id, n)
@@ -1472,8 +1477,8 @@ function _broadcastBuzzReconcile(recent) {
       _broadcastModalDismiss(id)
     }
   }
-  // Anything unread we haven't started buzzing → start now and pop the modal.
   for (const [id, doc] of stillUnread) {
+    if (_broadcastModal.shown.has(id)) continue // already shown → don't revive
     _broadcastBuzzStart(id)
     _broadcastModalShow(doc)
   }
@@ -2788,6 +2793,14 @@ async function onNotifClick(id, link) {
       break
     case 'user':
       Router.navigate('team-overview')
+      break
+    case 'broadcast':
+      // Broadcast notifications carry `broadcast:<id>` — there's no detail
+      // view for a single broadcast (they're one-shot announcements), so we
+      // jump to the history page which lists every broadcast the role can see.
+      if (typeof canSeePage === 'function' && canSeePage('broadcasts-view')) {
+        Router.navigate('broadcasts-view')
+      }
       break
     default:
       // Unknown link type — leave the panel closed; user can navigate manually.
