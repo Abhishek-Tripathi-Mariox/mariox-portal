@@ -4904,7 +4904,6 @@ async function showEditInvoiceModal(id) {
         <div class="form-group"><label class="form-label">Paid Amount</label><input class="form-input" type="number" id="ei-paid-amount" value="${inv.paid_amount ?? 0}"/></div>
         <div class="form-group"><label class="form-label">Paid Date</label><input class="form-input" type="date" id="ei-paid-date" value="${inv.paid_date||''}"/></div>
       </div>
-      <div class="form-group"><label class="form-label">Transaction Reference</label><input class="form-input" id="ei-ref" value="${inv.transaction_ref||''}" placeholder="TXN123456"/></div>
       <div class="form-group"><label class="form-label">Payment Terms</label><input class="form-input" id="ei-terms" value="${inv.payment_terms||''}"/></div>
       <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="ei-notes" style="min-height:50px">${inv.notes||''}</textarea></div>
     </div>
@@ -5008,7 +5007,6 @@ async function doEditInvoice(id) {
     tax_pct: Number.isFinite(taxPct) ? taxPct : 0,
     paid_amount: parseFloat(document.getElementById('ei-paid-amount')?.value || '0'),
     paid_date: document.getElementById('ei-paid-date')?.value || null,
-    transaction_ref: document.getElementById('ei-ref')?.value.trim(),
     payment_terms: document.getElementById('ei-terms')?.value.trim(),
     notes: document.getElementById('ei-notes')?.value.trim(),
   }

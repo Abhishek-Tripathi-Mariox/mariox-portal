@@ -12,6 +12,11 @@ import {
 
 const ATTENDANCE_STATUSES = ['present', 'absent', 'half_day', 'late', 'on_leave', 'holiday'] as const
 const APPROVAL_DECISIONS = ['approved', 'rejected'] as const
+// Break categories the UI surfaces in the Start Break dialog. The list is
+// intentionally small + opinionated — admins who want custom break kinds
+// can extend later via the catalogue. Stored on each break entry so HR can
+// audit time-off-task patterns (e.g. who's taking long lunches).
+const BREAK_KINDS = ['tea', 'lunch', 'personal', 'meeting', 'other'] as const
 
 // Returns YYYY-MM-DD for today in the server's local TZ.
 function todayISO() {
@@ -152,7 +157,9 @@ export function createAttendanceRouter(models: MongoModels, jwtSecret: string) {
 
   // Monthly summary: aggregate counts per employee for a YYYY-MM month. Used
   // by the Attendance "Summary" tab — far cheaper than letting the client
-  // tally a 500-row response client-side.
+  // tally a 500-row response client-side. Also rolls up worked / break
+  // totals so the table can surface a real "productivity" view, not just
+  // status counts.
   router.get('/summary', requireAnyPermission(models, 'hr.attendance.manage'), async (req, res) => {
     try {
       const month = typeof req.query.month === 'string' ? req.query.month : ''
@@ -166,7 +173,7 @@ export function createAttendanceRouter(models: MongoModels, jwtSecret: string) {
         models.users.find({ is_active: 1 }) as Promise<any[]>,
       ])
 
-      // Build per-user counts.
+      // Build per-user counts + productivity rollups.
       const byUser = new Map<string, any>()
       for (const u of users) {
         byUser.set(String(u.id), {
@@ -174,8 +181,14 @@ export function createAttendanceRouter(models: MongoModels, jwtSecret: string) {
           full_name: u.full_name,
           email: u.email,
           designation: u.designation || null,
+          role: u.role || null,
           avatar_color: u.avatar_color || null,
           present: 0, absent: 0, half_day: 0, late: 0, on_leave: 0, holiday: 0, total: 0,
+          worked_minutes: 0,       // sum of working_minutes across the month
+          break_minutes: 0,        // sum of completed break durations
+          break_count: 0,          // number of breaks taken in the month
+          days_worked: 0,          // days with a check_in (regardless of approval)
+          pending_approval: 0,     // attendance rows still awaiting HR decision
         })
       }
       for (const r of rows) {
@@ -184,38 +197,111 @@ export function createAttendanceRouter(models: MongoModels, jwtSecret: string) {
         const k = String(r.status || '')
         if (entry[k] !== undefined) entry[k] += 1
         entry.total += 1
+        entry.worked_minutes += Number(r.working_minutes) || 0
+        if (r.check_in) entry.days_worked += 1
+        if ((r.approval_status || 'pending') === 'pending') entry.pending_approval += 1
+        // Sum break minutes from each completed break entry on this row.
+        if (Array.isArray(r.breaks)) {
+          for (const b of r.breaks) {
+            if (!b?.start || !b?.end) continue
+            const [sh, sm] = String(b.start).split(':').map(Number)
+            const [eh, em] = String(b.end).split(':').map(Number)
+            if ([sh, sm, eh, em].every(Number.isFinite)) {
+              entry.break_minutes += Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
+              entry.break_count += 1
+            }
+          }
+        }
       }
-      const summary = Array.from(byUser.values()).sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
+      const summary = Array.from(byUser.values())
+        .map((e) => ({
+          ...e,
+          avg_daily_minutes: e.days_worked > 0 ? Math.round(e.worked_minutes / e.days_worked) : 0,
+        }))
+        .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
       return res.json({ data: summary, summary, month })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }
   })
 
-  // User-self punch in/out. Writes (or upserts) today's attendance row for
-  // the calling user. `check_in` is set on the first punch of the day; later
-  // punches update `check_out`. Newly created rows land with approval_status
-  // = 'pending' so HR has to confirm them before they count.
+  // User-self punch in/out/break. Writes (or upserts) today's attendance row.
+  //
+  // Schema additions over the legacy row:
+  //   check_in_location  / check_out_location  → { lat, lng, accuracy, captured_at } | null
+  //   breaks             → [{ start, start_location, end, end_location }]
+  //   on_break           → true while a break is open (start without end)
+  //   working_minutes    → (check_out - check_in) - sum(completed-break durations).
+  //                        Computed on every punch-out and on every break_end.
+  //
+  // Actions:
+  //   'in'           → first punch of the day; rejects double check-in
+  //   'out'          → closes the day; auto-ends any open break first
+  //   'break_start'  → opens a new break; requires prior check_in + not on_break
+  //   'break_end'    → closes the active break; requires on_break === true
+  function _coerceLocation(input: any): any | null {
+    if (!input || typeof input !== 'object') return null
+    const lat = Number(input.lat)
+    const lng = Number(input.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+    const accuracy = Number(input.accuracy)
+    return {
+      lat,
+      lng,
+      accuracy: Number.isFinite(accuracy) ? accuracy : null,
+      captured_at: new Date().toISOString(),
+    }
+  }
+  // Returns minutes between two "HH:mm" strings on the same calendar day.
+  // Robust to invalid input — returns 0.
+  function _minutesBetween(start: string | null | undefined, end: string | null | undefined): number {
+    if (!start || !end) return 0
+    const [sh, sm] = String(start).split(':').map(Number)
+    const [eh, em] = String(end).split(':').map(Number)
+    if (![sh, sm, eh, em].every(Number.isFinite)) return 0
+    return Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
+  }
+  function _sumBreakMinutes(breaks: any[]): number {
+    if (!Array.isArray(breaks)) return 0
+    let total = 0
+    for (const b of breaks) {
+      if (b?.start && b?.end) total += _minutesBetween(b.start, b.end)
+    }
+    return total
+  }
+
   router.post('/punch', async (req, res) => {
     try {
       const user = req.user as any
       if (!user?.sub) return res.status(401).json({ error: 'Unauthenticated' })
       const action = String(req.body?.action || '').toLowerCase()
-      if (action !== 'in' && action !== 'out') {
-        return res.status(400).json({ error: 'action must be "in" or "out"' })
+      const VALID = new Set(['in', 'out', 'break_start', 'break_end'])
+      if (!VALID.has(action)) {
+        return res.status(400).json({ error: 'action must be one of: in, out, break_start, break_end' })
       }
+      const location = _coerceLocation(req.body?.location)
       const date = todayISO()
       const time = nowHHMM()
       const now = new Date().toISOString()
       const existing = await models.attendance.findOne({ user_id: user.sub, date }) as any
+
+      // ── PUNCH IN ────────────────────────────────────────────────
       if (action === 'in') {
         if (existing && existing.check_in) {
           return res.status(409).json({ error: 'Already punched in today', data: existing })
         }
+        const baseFields: Record<string, unknown> = {
+          status: 'present',
+          check_in: time,
+          check_in_location: location,
+          approval_status: 'pending',
+          breaks: [],
+          on_break: false,
+          working_minutes: 0,
+          updated_at: now,
+        }
         if (existing) {
-          await models.attendance.updateById(existing.id, {
-            $set: { check_in: time, status: 'present', approval_status: 'pending', updated_at: now },
-          })
+          await models.attendance.updateById(existing.id, { $set: baseFields })
           const updated = await models.attendance.findById(existing.id)
           return res.json({ message: 'Punched in', data: updated })
         }
@@ -224,23 +310,114 @@ export function createAttendanceRouter(models: MongoModels, jwtSecret: string) {
           id,
           user_id: user.sub,
           date,
-          status: 'present',
-          check_in: time,
           check_out: null,
+          check_out_location: null,
           note: null,
-          approval_status: 'pending',
           created_at: now,
-          updated_at: now,
+          ...baseFields,
         }
         await models.attendance.insertOne(doc)
         return res.status(201).json({ message: 'Punched in', data: doc })
       }
-      // action === 'out'
+
+      // ── PUNCH OUT / BREAKS — all require an open check-in ──────
       if (!existing) {
         return res.status(400).json({ error: 'No check-in recorded today — punch in first' })
       }
+      if (!existing.check_in) {
+        return res.status(400).json({ error: 'No check-in recorded today — punch in first' })
+      }
+      const breaks: any[] = Array.isArray(existing.breaks) ? existing.breaks.map((b: any) => ({ ...b })) : []
+      const isOnBreak = !!existing.on_break
+
+      if (action === 'break_start') {
+        if (existing.check_out) {
+          return res.status(409).json({ error: 'Already punched out — cannot start a break' })
+        }
+        if (isOnBreak) {
+          return res.status(409).json({ error: 'A break is already in progress' })
+        }
+        // What kind of break + how long the user expects to be away. Both are
+        // optional in the request — if missing we default to 'other' / null —
+        // but the dialog on the frontend always sends them.
+        const rawKind = String(req.body?.kind || 'other').toLowerCase()
+        const kind = (BREAK_KINDS as readonly string[]).includes(rawKind) ? rawKind : 'other'
+        let plannedMinutes: number | null = null
+        if (req.body?.planned_minutes !== undefined && req.body?.planned_minutes !== null && req.body?.planned_minutes !== '') {
+          const n = Math.round(Number(req.body.planned_minutes))
+          if (!Number.isFinite(n) || n < 1 || n > 240) {
+            return res.status(400).json({ error: 'planned_minutes must be between 1 and 240' })
+          }
+          plannedMinutes = n
+        }
+        const note = validateOptional(req.body?.note, (v) => validateLength(String(v).trim(), 1, 200, 'Note'))
+        breaks.push({
+          start: time,
+          start_location: location,
+          end: null,
+          end_location: null,
+          kind,
+          planned_minutes: plannedMinutes,
+          note: note || null,
+        })
+        await models.attendance.updateById(existing.id, {
+          $set: { breaks, on_break: true, approval_status: 'pending', updated_at: now },
+        })
+        const updated = await models.attendance.findById(existing.id)
+        return res.json({ message: 'Break started', data: updated })
+      }
+
+      if (action === 'break_end') {
+        if (!isOnBreak) {
+          return res.status(409).json({ error: 'No active break to end' })
+        }
+        // Close the latest open break (last entry without an `end`).
+        for (let i = breaks.length - 1; i >= 0; i--) {
+          if (!breaks[i].end) {
+            breaks[i] = { ...breaks[i], end: time, end_location: location }
+            break
+          }
+        }
+        const workingMinutes = _minutesBetween(existing.check_in, existing.check_out)
+          - _sumBreakMinutes(breaks)
+        await models.attendance.updateById(existing.id, {
+          $set: {
+            breaks,
+            on_break: false,
+            working_minutes: existing.check_out ? Math.max(0, workingMinutes) : 0,
+            approval_status: 'pending',
+            updated_at: now,
+          },
+        })
+        const updated = await models.attendance.findById(existing.id)
+        return res.json({ message: 'Break ended', data: updated })
+      }
+
+      // ── PUNCH OUT ───────────────────────────────────────────────
+      if (existing.check_out) {
+        return res.status(409).json({ error: 'Already punched out today', data: existing })
+      }
+      // Auto-close any open break — the user shouldn't end the day still on
+      // break. We end the break at the same instant as the punch-out.
+      if (isOnBreak) {
+        for (let i = breaks.length - 1; i >= 0; i--) {
+          if (!breaks[i].end) {
+            breaks[i] = { ...breaks[i], end: time, end_location: location }
+            break
+          }
+        }
+      }
+      const workingMinutes = Math.max(0, _minutesBetween(existing.check_in, time) - _sumBreakMinutes(breaks))
       await models.attendance.updateById(existing.id, {
-        $set: { check_out: time, approval_status: 'pending', updated_at: now },
+        $set: {
+          check_out: time,
+          check_out_location: location,
+          breaks,
+          on_break: false,
+          working_minutes: workingMinutes,
+          approval_status: 'pending',
+          updated_at: now,
+        },
       })
       const updated = await models.attendance.findById(existing.id)
       return res.json({ message: 'Punched out', data: updated })

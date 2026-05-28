@@ -987,8 +987,22 @@ function defaultPage() {
     sales_manager: 'leads-view',
     sales_tl: 'leads-view',
     sales_agent: 'leads-view',
+    hr: 'hr-attendance',
   }
-  return map[_user?.role] || 'pm-dashboard'
+  // Preferred landing for this role. If the user's permissions block even
+  // that (e.g. role exists but the permission was revoked), fall through to
+  // the first page they CAN see — otherwise Router.navigate bounces forever.
+  const preferred = map[_user?.role] || 'pm-dashboard'
+  if (typeof canSeePage === 'function' && canSeePage(preferred)) return preferred
+  const fallbacks = [
+    'pm-dashboard', 'dev-dashboard', 'team-dashboard',
+    'my-tasks', 'personal-tasks', 'hr-attendance', 'hr-calendar',
+    'leaves-view', 'documents-center', 'settings-view',
+  ]
+  for (const p of fallbacks) {
+    if (canSeePage(p)) return p
+  }
+  return preferred
 }
 
 // ── Shell HTML ────────────────────────────────────────────────
