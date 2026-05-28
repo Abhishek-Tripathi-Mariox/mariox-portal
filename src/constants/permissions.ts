@@ -43,8 +43,10 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     permissions: [
       { key: 'sprints.create',    label: 'Create sprints' },
       { key: 'sprints.edit',      label: 'Edit sprints' },
+      { key: 'sprints.delete',    label: 'Delete sprints' },
       { key: 'milestones.create', label: 'Create milestones' },
       { key: 'milestones.edit',   label: 'Edit milestones' },
+      { key: 'milestones.delete', label: 'Delete milestones' },
     ],
   },
   {
@@ -78,6 +80,8 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
       { key: 'timesheets.edit_any',   label: 'Edit any timesheet' },
       { key: 'timesheets.view_team',  label: 'View team timesheets' },
       { key: 'timesheets.view_all',   label: 'View all timesheets' },
+      { key: 'timesheets.delete',     label: 'Delete timesheets',
+        description: 'Remove timesheet entries (admin / HR clean-up for invalid logs).' },
     ],
   },
   {
@@ -89,6 +93,8 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
       { key: 'users.view_all',       label: 'View all team members' },
       { key: 'users.edit',           label: 'Edit team members' },
       { key: 'users.deactivate',     label: 'Activate / deactivate users' },
+      { key: 'users.delete',         label: 'Delete team members',
+        description: 'Permanently remove a user record. Prefer Deactivate to preserve history; Delete is for cleanup of erroneous entries.' },
       { key: 'users.manage_roles',   label: 'Assign roles to users' },
       { key: 'team.view_overview',   label: 'View Team Overview tab',
         description: 'Show the admin "Team Overview" sidebar entry.' },
@@ -174,6 +180,7 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
       { key: 'allocations.create', label: 'Create allocations' },
       { key: 'allocations.edit',   label: 'Edit allocations' },
       { key: 'allocations.view',   label: 'View allocations' },
+      { key: 'allocations.delete', label: 'Delete allocations' },
     ],
   },
   {
@@ -182,8 +189,15 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     icon: 'fa-umbrella-beach',
     permissions: [
       { key: 'leaves.create_own', label: 'Apply for leave' },
+      { key: 'leaves.view_own',   label: 'View own leaves',
+        description: 'See and track the leaves the user submitted themselves. Every employee with apply-for-leave should also have this.' },
+      { key: 'leaves.view_all',   label: 'View all leaves',
+        description: 'See every leave in the system regardless of submitter — needed by HR / approvers to review pending requests.' },
+      { key: 'leaves.edit_own',   label: 'Edit own leave',
+        description: 'Update a leave the user submitted themselves while it is still pending (fix dates, reason, type).' },
+      { key: 'leaves.edit',       label: 'Edit any leave',
+        description: 'Edit any employee\'s leave record (admin / HR correction).' },
       { key: 'leaves.approve',    label: 'Approve / reject leaves' },
-      { key: 'leaves.view_all',   label: 'View all leaves' },
       { key: 'leaves.delete_own', label: 'Withdraw own leave',
         description: 'Delete / withdraw a leave application the user submitted themselves while it is still pending.' },
       { key: 'leaves.delete_any', label: 'Delete any leave',
@@ -208,7 +222,10 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     icon: 'fa-bullseye',
     permissions: [
       { key: 'leads.create',   label: 'Create leads' },
-      { key: 'leads.edit',     label: 'Edit leads' },
+      { key: 'leads.edit_own', label: 'Edit own leads',
+        description: 'Edit leads directly assigned to the user (or to subordinates for TL / Manager).' },
+      { key: 'leads.edit',     label: 'Edit any lead',
+        description: 'Edit every lead in the system regardless of assignment — admin grants for cross-team override.' },
       { key: 'leads.delete',   label: 'Delete leads' },
       { key: 'leads.view_own', label: 'View own leads',
         description: 'See the Leads tab and access leads assigned to me (sales agents). Sales TLs / managers see their team\'s leads.' },
@@ -321,6 +338,23 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     ],
   },
   {
+    module: 'broadcasts',
+    label: 'Broadcast',
+    icon: 'fa-bullhorn',
+    permissions: [
+      { key: 'broadcasts.create', label: 'Create broadcast',
+        description: 'Compose a new broadcast (saved as a draft until explicitly sent).' },
+      { key: 'broadcasts.edit',   label: 'Edit broadcast',
+        description: 'Edit a draft broadcast before it has been sent.' },
+      { key: 'broadcasts.delete', label: 'Delete broadcast',
+        description: 'Remove a draft or sent broadcast from the history.' },
+      { key: 'broadcasts.send',   label: 'Send broadcast',
+        description: 'Dispatch an existing draft — pushes the notification to every targeted user/client.' },
+      { key: 'broadcasts.view',   label: 'View broadcast history',
+        description: 'See the list of broadcasts with sender, targets and recipient counts.' },
+    ],
+  },
+  {
     module: 'sales_incentive',
     label: 'Sales Incentive',
     icon: 'fa-money-bill-trend-up',
@@ -365,9 +399,10 @@ const PM_PERMS: PermissionKey[] = [
   'tickets.create', 'tickets.view_all', 'tickets.assign', 'tickets.internal_notes',
   'documents.upload', 'documents.view_all',
   'reports.view_pm_dashboard', 'reports.view_resources', 'reports.export',
-  'sprints.create', 'sprints.edit', 'milestones.create', 'milestones.edit',
-  'allocations.create', 'allocations.edit', 'allocations.view',
-  'leaves.create_own', 'leaves.delete_own', 'leaves.approve', 'leaves.view_all', 'leaves.delete_any',
+  'sprints.create', 'sprints.edit', 'sprints.delete',
+  'milestones.create', 'milestones.edit', 'milestones.delete',
+  'allocations.create', 'allocations.edit', 'allocations.view', 'allocations.delete',
+  'leaves.create_own', 'leaves.view_own', 'leaves.edit_own', 'leaves.edit', 'leaves.delete_own', 'leaves.approve', 'leaves.view_all', 'leaves.delete_any',
   'portfolios.create', 'portfolios.view_all', 'portfolios.edit', 'portfolios.delete',
   'scopes.create', 'scopes.view_all', 'scopes.edit', 'scopes.delete',
   'quotations.create', 'quotations.view_all', 'quotations.edit', 'quotations.delete',
@@ -388,9 +423,10 @@ const PC_PERMS: PermissionKey[] = [
   'tickets.create', 'tickets.view_all', 'tickets.assign', 'tickets.internal_notes',
   'documents.upload', 'documents.view_all',
   'reports.view_pm_dashboard',
-  'sprints.create', 'sprints.edit', 'milestones.create', 'milestones.edit',
+  'sprints.create', 'sprints.edit', 'sprints.delete',
+  'milestones.create', 'milestones.edit', 'milestones.delete',
   'allocations.view',
-  'leaves.create_own', 'leaves.delete_own',
+  'leaves.create_own', 'leaves.view_own', 'leaves.edit_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -401,7 +437,7 @@ const DEV_PERMS: PermissionKey[] = [
   'timesheets.log_own',
   'tickets.create',
   'documents.upload',
-  'leaves.create_own', 'leaves.delete_own',
+  'leaves.create_own', 'leaves.view_own', 'leaves.edit_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -413,14 +449,14 @@ const TEAM_PERMS: PermissionKey[] = [
   'timesheets.log_own',
   'tickets.create',
   'documents.upload',
-  'leaves.create_own', 'leaves.delete_own',
+  'leaves.create_own', 'leaves.view_own', 'leaves.edit_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
 const SALES_AGENT_PERMS: PermissionKey[] = [
   'tasks.edit_own', 'tasks.move', 'tasks.comment',
   'tasks.view_project', 'personal_tasks.view',
-  'leads.view_own',
+  'leads.view_own', 'leads.edit_own',
   'sales.tracker.view',
   // Sales artefacts — agents see only what they created themselves. Admin
   // can flip on the *.view_all / *.edit / *.delete keys for an agent if a
@@ -430,7 +466,7 @@ const SALES_AGENT_PERMS: PermissionKey[] = [
   'quotations.view_own', 'quotations.edit_own',
   'meetings.view_own', 'meetings.edit_own',
   'timesheets.log_own',
-  'leaves.create_own', 'leaves.delete_own',
+  'leaves.create_own', 'leaves.view_own', 'leaves.edit_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -443,7 +479,7 @@ const SALES_MANAGER_PERMS: PermissionKey[] = [
   'users.view_all',
   'team.view_sales',
   'clients.view_all',
-  'leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit', 'leads.delete', 'leads.assign_to_others', 'leads.manage_statuses', 'leads.manage_sources',
+  'leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit_own', 'leads.edit', 'leads.delete', 'leads.assign_to_others', 'leads.manage_statuses', 'leads.manage_sources',
   'sales.tracker.view',
   'portfolios.create', 'portfolios.view_all', 'portfolios.edit', 'portfolios.delete',
   'scopes.create', 'scopes.view_all', 'scopes.edit', 'scopes.delete',
@@ -454,7 +490,7 @@ const SALES_MANAGER_PERMS: PermissionKey[] = [
   'tasks.edit_own', 'tasks.move', 'tasks.comment',
   'tasks.view_project', 'personal_tasks.view',
   'timesheets.log_own',
-  'leaves.create_own', 'leaves.delete_own',
+  'leaves.create_own', 'leaves.view_own', 'leaves.edit_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -465,7 +501,7 @@ const SALES_TL_PERMS: PermissionKey[] = [
   'users.view_all',
   'team.view_sales',
   'clients.view_all',
-  'leads.view_own', 'leads.create', 'leads.edit', 'leads.assign_to_others',
+  'leads.view_own', 'leads.create', 'leads.edit_own', 'leads.assign_to_others',
   'sales.tracker.view',
   'portfolios.create', 'portfolios.view_all', 'portfolios.edit_own',
   'scopes.create', 'scopes.view_all', 'scopes.edit_own',
@@ -475,7 +511,7 @@ const SALES_TL_PERMS: PermissionKey[] = [
   'tasks.edit_own', 'tasks.move', 'tasks.comment',
   'tasks.view_project', 'personal_tasks.view',
   'timesheets.log_own',
-  'leaves.create_own', 'leaves.delete_own',
+  'leaves.create_own', 'leaves.view_own', 'leaves.edit_own', 'leaves.delete_own',
   'hr.calendar.view',
 ]
 
@@ -488,7 +524,7 @@ const HR_PERMS: PermissionKey[] = [
   'hr.documents.manage', 'hr.assets.manage',
   'users.view_all',
   'team.view_hr',
-  'leaves.create_own', 'leaves.delete_own', 'leaves.approve', 'leaves.view_all', 'leaves.delete_any',
+  'leaves.create_own', 'leaves.view_own', 'leaves.edit_own', 'leaves.edit', 'leaves.delete_own', 'leaves.approve', 'leaves.view_all', 'leaves.delete_any',
   'tasks.edit_own', 'tasks.move', 'tasks.comment',
   'personal_tasks.view',
   'timesheets.log_own',

@@ -81,6 +81,7 @@ const tc = (v) => toTitleCase(v)
 // listed here are open to every authenticated user.
 const PAGE_PERMISSIONS = {
   'super-dashboard': ['admin'],
+  'broadcasts-view': ['admin'],
   'clients-list':    ['admin'],
   'billing-admin':   ['admin'],
   'team-overview':   ['admin', 'pm'],
@@ -159,6 +160,7 @@ const PAGE_PERMISSIONS = {
 const NAV_PERMISSION_MAP = {
   // Admin areas
   'super-dashboard':   ['reports.view_admin_dashboard'],
+  'broadcasts-view':   ['broadcasts.send', 'broadcasts.view', 'broadcasts.create', 'broadcasts.edit', 'broadcasts.delete'],
   'clients-list':      ['clients.create', 'clients.view_all', 'clients.edit', 'clients.delete'],
   'billing-admin':     ['invoices.create', 'invoices.view_all', 'invoices.send', 'invoices.mark_paid', 'invoices.delete'],
   'team-overview':     ['team.view_overview'],
@@ -366,17 +368,18 @@ const API = {
   // buttons (Save/Submit/Delete) must lock.
   const SKIP_ANCESTOR = '.sidebar, #sidebar, .topbar, .drawer-overlay, .dropdown-menu, .menu-popover, .modal-header'
 
-  // onclick handlers that are *only* a UI toggle/opener (not a mutation).
-  // Compound handlers like `logout();closeModal()` still lock because the
-  // first call (`logout`) doesn't match this prefix.
-  // Generic "this is just a UI toggle, don't show a loader" prefix match.
-  // toggle*Foo / show*Modal / open*Modal / hide*Foo / cancelEdit* are all
-  // pure-client operations that should never be lock-and-spin.
-  const SKIP_ONCLICK = /^\s*(closeModal|closeDrawer|closeSidebar|openSidebar|switchTab|Router\.(back|navigate)|onProfileSetTheme|cpNavigate|cpBack|copyInviteLink|loadPage|toggle[A-Z][a-zA-Z]*|show[A-Z][a-zA-Z]*Modal|open[A-Z][a-zA-Z]*Modal|hide[A-Z][a-zA-Z]*|cancelEdit[A-Z]?[a-zA-Z]*)\s*\(/
+  // onclick handlers that are *only* a UI toggle/opener/navigation — never
+  // even arm the dup-click guard for these (they re-render synchronously or
+  // navigate the router, no backend action). For everything else we use the
+  // lazy-spinner strategy below: arm the guard immediately so rapid double
+  // clicks are absorbed, but only paint the visible spinner if/when a real
+  // fetch is initiated by the handler.
+  const SKIP_ONCLICK = /^\s*(closeModal|closeDrawer|closeSidebar|openSidebar|switchTab|Router\.(back|navigate)|onProfileSetTheme|cpNavigate|cpBack|copyInviteLink|loadPage|toggle[A-Z][a-zA-Z]*|show[A-Z][a-zA-Z]*Modal|open[A-Z][a-zA-Z]*Modal|hide[A-Z][a-zA-Z]*|cancelEdit[A-Z]?[a-zA-Z]*|switch[A-Z][a-zA-Z]*|filter[A-Z][a-zA-Z]*|set[A-Z][a-zA-Z]*(Filter|View|Sort|Tab|Page)|go[A-Z][a-zA-Z]*Page)\s*\(/
 
   let _owner = null         // button currently "owning" the active click
   let _inflight = 0         // fetches in flight initiated under this owner
   let _minTimer = null
+  let _spinnerShown = false // true once we've painted .is-busy on _owner
 
   function shouldSkip(el){
     if (el.matches(SKIP_SELECTOR)) return true
@@ -386,19 +389,32 @@ const API = {
     return false
   }
 
-  function lock(el){
+  // Two-phase locking:
+  //   armBusy(el)   — flag the element so the capture-phase guard eats
+  //                   double-clicks. Pure data flag, no visual change.
+  //   showSpinner(el) — paint the .is-busy class + aria-busy. This is the
+  //                   user-visible loader. Only triggered when a real fetch
+  //                   actually starts (see the fetch wrapper below).
+  // release(el) tears down whichever phase was applied. Splitting these
+  // means a click that doesn't talk to the backend never shows a spinner.
+  function armBusy(el){
     if (!el || el.dataset.busy === '1') return
     el.dataset.busy = '1'
-    el.dataset.prevAriaBusy = el.getAttribute('aria-busy') || ''
-    el.setAttribute('aria-busy', 'true')
-    el.classList.add('is-busy')
     // IMPORTANT: do NOT set el.disabled = true here. Doing so (even via a
     // microtask) causes the click's "activation behavior" — e.g. submitting
     // the parent form on a <button type="submit"> — to be skipped because
     // the browser checks .disabled during activation. The CSS class
-    // pointer-events:none + the dataset.busy capture-phase guard below
-    // already eat subsequent clicks; that's enough to prevent duplicates
-    // without breaking the FIRST click's default action.
+    // pointer-events:none + the dataset.busy capture-phase guard already
+    // eat subsequent clicks; that's enough to prevent duplicates without
+    // breaking the FIRST click's default action.
+  }
+
+  function showSpinner(el){
+    if (!el || el.classList.contains('is-busy')) return
+    el.dataset.prevAriaBusy = el.getAttribute('aria-busy') || ''
+    el.setAttribute('aria-busy', 'true')
+    el.classList.add('is-busy')
+    _spinnerShown = true
   }
 
   function release(el){
@@ -409,6 +425,10 @@ const API = {
     el.classList.remove('is-busy')
     delete el.dataset.prevAriaBusy
   }
+
+  // Backwards-compat for window.withButtonLoader — that helper expects an
+  // imperative "lock everything now" entry-point.
+  function lock(el){ armBusy(el); showSpinner(el) }
 
   document.addEventListener('click', (e) => {
     const el = e.target.closest('button, .btn, [data-click-lock]')
@@ -422,39 +442,51 @@ const API = {
       return
     }
     if (shouldSkip(el)) return
-    // Only lock things that actually do something — having an onclick attr or
-    // being a submit button is a good proxy. Plain layout buttons get skipped.
+    // Only arm for things that actually do something — having an onclick
+    // attr or being a submit button is a good proxy. Plain layout buttons
+    // get skipped.
     const isAction = el.hasAttribute('onclick')
       || el.type === 'submit'
       || el.hasAttribute('data-click-lock')
     if (!isAction) return
 
-    lock(el)
+    // Arm the dup-click guard immediately. The visible spinner is deferred
+    // until a real fetch starts (see the fetch wrapper below) so UI-only
+    // handlers never paint a spinner that would just flash and vanish.
+    armBusy(el)
     _owner = el
     _inflight = 0
+    _spinnerShown = false
     clearTimeout(_minTimer)
-    // After the synchronous dispatch any fetch() calls have already bumped
-    // _inflight via the wrapper. Decide release strategy on the next microtask.
     queueMicrotask(() => {
       if (_inflight > 0) return // fetch wrapper will release when count hits 0
-      // Sync-only handler — release after a short minimum lock so rapid
-      // duplicate clicks are still absorbed.
+      // Sync-only handler — release the dup-guard after a short minimum so
+      // rapid duplicate clicks are still absorbed. No spinner was ever
+      // painted because no fetch happened.
       _minTimer = setTimeout(() => {
         if (_owner === el && _inflight === 0) {
           release(el)
           _owner = null
+          _spinnerShown = false
         }
       }, 350)
     })
   }, true)
 
-  // Wrap fetch so the lock extends for the duration of the network call.
+  // Wrap fetch so the visible spinner is painted only when a real network
+  // call is in flight, and torn down when the last one resolves. The
+  // dup-click guard was armed synchronously on the click; we extend it for
+  // as long as fetches are in flight.
   if (typeof window.fetch === 'function') {
     const _origFetch = window.fetch.bind(window)
     window.fetch = function patchedFetch(){
       const captured = _owner
       if (!captured) return _origFetch.apply(this, arguments)
+      // First fetch initiated by this click → paint the spinner now. Any
+      // further fetches before the count drops to zero stay under the same
+      // spinner (no re-paint).
       _inflight++
+      if (_inflight === 1) showSpinner(captured)
       const p = _origFetch.apply(this, arguments)
       const done = () => {
         _inflight = Math.max(0, _inflight - 1)
@@ -465,6 +497,7 @@ const API = {
             if (_inflight === 0 && _owner === captured) {
               release(captured)
               _owner = null
+              _spinnerShown = false
             }
           })
         }
@@ -1011,6 +1044,7 @@ function buildShell() {
       navItem('super-dashboard', 'fa-chart-pie', 'Overview'),
       navItem('clients-list',    'fa-building',   'Clients'),
       navItem('billing-admin',   'fa-file-invoice-dollar', 'Billing'),
+      navItem('broadcasts-view', 'fa-bullhorn',  'Broadcast'),
       navItemExpandable({
         key: 'admin-team',
         iconClass: 'fa-users',
@@ -1176,10 +1210,10 @@ function buildShell() {
         <i class="fas fa-search"></i>
         <input class="search-bar" placeholder="Search projects, tasks, clients, leads, invoices…" id="global-search" autocomplete="off"
           oninput="globalSearch(this.value)"
-          onfocus="globalSearch(this.value)"
+          onfocus="primeGlobalSearch();globalSearch(this.value)"
           onblur="setTimeout(()=>{const d=document.getElementById('global-search-results');if(d)d.style.display='none'},180)"
           onkeydown="if(event.key==='Escape'){this.blur();this.value='';const d=document.getElementById('global-search-results');if(d)d.style.display='none'}"/>
-        <div id="global-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:6px;max-height:380px;overflow-y:auto;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.45);z-index:120"></div>
+        <div id="global-search-results" class="global-search-dropdown" style="display:none"></div>
       </div>
       <button class="icon-btn notif-btn" onclick="showNotifications()" data-tip="Notifications"><i class="fas fa-bell"></i><span class="notif-dot" id="notif-dot" hidden style="display:none"></span><span class="notif-badge" id="notif-badge" hidden style="display:none"></span></button>
       <button class="icon-btn" onclick="logout()" data-tip="Logout"><i class="fas fa-sign-out-alt"></i></button>
@@ -1187,6 +1221,7 @@ function buildShell() {
   </div>
   <div id="main">
     <div id="page-super-dashboard"  class="page"></div>
+    <div id="page-broadcasts-view"  class="page"></div>
     <div id="page-pm-dashboard"     class="page"></div>
     <div id="page-dev-dashboard"    class="page"></div>
     <div id="page-projects-list"    class="page"></div>
@@ -1259,7 +1294,7 @@ function updateNav(page) {
 }
 
 const breadcrumbMap = {
-  'super-dashboard':'Overview','pm-dashboard':'My Dashboard','dev-dashboard':'My Dashboard','team-dashboard':'Team Dashboard',
+  'super-dashboard':'Overview','broadcasts-view':'Broadcast','pm-dashboard':'My Dashboard','dev-dashboard':'My Dashboard','team-dashboard':'Team Dashboard',
   'projects-list':'Projects','kanban-board':'Kanban Board','sprints-view':'Sprints',
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
@@ -1382,6 +1417,174 @@ function _notifPlayDing(type) {
   if (!_notifAudioFailed[cat] && _tryPlayCategorySound(cat)) return
   _notifPlaySynthChime()
 }
+
+// ── Broadcast buzz ────────────────────────────────────────────
+// Broadcasts are higher-priority than a regular ping — admin posted an
+// announcement that the recipient should actively acknowledge. So instead
+// of a one-shot ding we repeat the chime every BUZZ_PERIOD_MS until the
+// user marks the broadcast read (clicks it in the panel, or hits Mark all
+// read). The set tracks the still-unacknowledged broadcast notification
+// ids; the interval auto-stops when the set empties.
+const _broadcastBuzz = { pending: new Set(), timer: null }
+const BROADCAST_BUZZ_PERIOD_MS = 4000
+
+function _broadcastBuzzStart(notifId) {
+  if (!notifId) return
+  if (_broadcastBuzz.pending.has(notifId)) return
+  _broadcastBuzz.pending.add(notifId)
+  if (_broadcastBuzz.timer) return // already buzzing for an earlier broadcast
+  const tick = () => {
+    if (!_broadcastBuzz.pending.size) { _broadcastBuzzStop(); return }
+    _notifPlayDing('broadcast')
+  }
+  tick() // play once immediately, then keep repeating until acknowledged
+  _broadcastBuzz.timer = setInterval(tick, BROADCAST_BUZZ_PERIOD_MS)
+}
+
+function _broadcastBuzzStop(notifId) {
+  if (notifId === undefined) {
+    _broadcastBuzz.pending.clear()
+  } else {
+    _broadcastBuzz.pending.delete(notifId)
+  }
+  if (!_broadcastBuzz.pending.size && _broadcastBuzz.timer) {
+    clearInterval(_broadcastBuzz.timer)
+    _broadcastBuzz.timer = null
+  }
+}
+window._broadcastBuzzStop = _broadcastBuzzStop
+
+// Reconcile the pending-buzz set against the latest unread list from the
+// server. On every poll/SSE message we call this with the current `recent`
+// payload so any broadcast that's now marked read elsewhere (another tab,
+// the mobile app, etc.) stops buzzing here too.
+function _broadcastBuzzReconcile(recent) {
+  if (!Array.isArray(recent)) return
+  // Anything in our pending set that's now read → drop it.
+  const stillUnread = new Map()  // id → notif doc (so we can re-render modal if needed)
+  for (const n of recent) {
+    if (!n || n.type !== 'broadcast') continue
+    if (!n.is_read) stillUnread.set(n.id, n)
+  }
+  for (const id of Array.from(_broadcastBuzz.pending)) {
+    if (!stillUnread.has(id)) {
+      _broadcastBuzzStop(id)
+      _broadcastModalDismiss(id)
+    }
+  }
+  // Anything unread we haven't started buzzing → start now and pop the modal.
+  for (const [id, doc] of stillUnread) {
+    _broadcastBuzzStart(id)
+    _broadcastModalShow(doc)
+  }
+}
+
+// ── Broadcast modal popup ─────────────────────────────────────
+// Mirror of the lead follow-up alarm. When a broadcast lands, we show a
+// blocking overlay with the title + body so the user can't miss it — same
+// "must explicitly acknowledge to dismiss" UX. Multiple broadcasts queue
+// up; acknowledging one pops the next. Acknowledge calls
+// /notifications/{id}/read which (via the reconcile pass) also stops the
+// buzz and removes any future re-pop on the next poll.
+const _broadcastModal = {
+  queue: [],     // pending notification docs, FIFO
+  active: null,  // currently rendered doc (or null)
+  hostId: 'broadcast-modal-host',
+  shown: new Set(), // ids we've ever rendered this session — prevents re-pop
+}
+
+function _broadcastModalShow(notif) {
+  if (!notif || !notif.id) return
+  if (_broadcastModal.shown.has(notif.id)) return
+  _broadcastModal.shown.add(notif.id)
+  if (_broadcastModal.active) {
+    // Already showing one — queue and render after the user acknowledges.
+    if (!_broadcastModal.queue.some(q => q.id === notif.id)) {
+      _broadcastModal.queue.push(notif)
+    }
+    return
+  }
+  _broadcastModal.active = notif
+  _broadcastModalRender(notif)
+}
+
+function _broadcastModalRender(n) {
+  const safeId = String(n.id || '').replace(/[^\w-]/g, '')
+  const sender = escapeHtml(n.actor_name || 'Admin')
+  const when = n.created_at ? (typeof timeAgo === 'function' ? timeAgo(n.created_at) : n.created_at) : ''
+  const html = `
+    <div id="broadcast-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="broadcast-modal-title" style="position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:9999">
+      <div style="width:min(480px,94vw);background:#16161C;border:1px solid #A970FF;border-radius:14px;box-shadow:0 28px 72px rgba(0,0,0,.7);overflow:hidden">
+        <div style="padding:14px 18px;background:linear-gradient(90deg,#7B4DFF,#A970FF,#C56FE6);color:#fff;display:flex;align-items:center;gap:10px">
+          <i class="fas fa-bullhorn fa-shake" style="font-size:18px"></i>
+          <div style="font-weight:700;letter-spacing:.5px" id="broadcast-modal-title">Broadcast Announcement</div>
+        </div>
+        <div style="padding:20px">
+          <div style="font-size:15px;font-weight:700;color:#e2e8f0;margin-bottom:10px;line-height:1.35">${escapeHtml(n.title || '')}</div>
+          <div style="font-size:13.5px;color:#cbd5e1;line-height:1.55;white-space:pre-wrap">${escapeHtml(n.body || '')}</div>
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);font-size:11.5px;color:#7E7E8F;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <span><i class="fas fa-user" style="margin-right:5px"></i>${sender}</span>
+            ${when ? `<span><i class="fas fa-clock" style="margin-right:5px"></i>${escapeHtml(when)}</span>` : ''}
+          </div>
+        </div>
+        <div style="padding:12px 18px;background:rgba(169,112,255,.06);display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border,rgba(255,255,255,.06))">
+          <button class="btn btn-primary btn-sm" onclick="acknowledgeBroadcastModal('${safeId}')"><i class="fas fa-check"></i> Acknowledge</button>
+        </div>
+      </div>
+    </div>`
+  let host = document.getElementById(_broadcastModal.hostId)
+  if (!host) {
+    host = document.createElement('div')
+    host.id = _broadcastModal.hostId
+    document.body.appendChild(host)
+  }
+  host.innerHTML = html
+}
+
+// Cross-tab dismissal — if another tab marked this broadcast read we tear
+// down the popup here too (called from _broadcastBuzzReconcile).
+function _broadcastModalDismiss(id) {
+  if (_broadcastModal.active?.id === id) {
+    _broadcastModalCloseHost()
+    _broadcastModal.active = null
+    _broadcastModalPopNext()
+    return
+  }
+  // Drop from queue if it was waiting.
+  _broadcastModal.queue = _broadcastModal.queue.filter(q => q.id !== id)
+}
+
+function _broadcastModalCloseHost() {
+  const host = document.getElementById(_broadcastModal.hostId)
+  if (host) host.innerHTML = ''
+}
+
+function _broadcastModalPopNext() {
+  const next = _broadcastModal.queue.shift()
+  if (!next) { _broadcastModal.active = null; return }
+  _broadcastModal.active = next
+  _broadcastModalRender(next)
+}
+
+// "Acknowledge" — the explicit user gesture that:
+//   1. marks the broadcast read server-side (mirrors clicking the notif row),
+//   2. stops the buzz loop for this id,
+//   3. closes the modal and pops the next queued broadcast (if any).
+async function acknowledgeBroadcastModal(id) {
+  if (!id) {
+    id = _broadcastModal.active?.id
+    if (!id) return
+  }
+  _broadcastBuzzStop(id)
+  try { await API.post(`/notifications/${id}/read`, {}) } catch {}
+  if (_notifState.unreadCount > 0) _notifSetBadge(Math.max(0, _notifState.unreadCount - 1))
+  _broadcastModalCloseHost()
+  _broadcastModal.active = null
+  _broadcastModalPopNext()
+  // Refresh badges + recent list silently so the bell stays in sync.
+  pollNotifications()
+}
+window.acknowledgeBroadcastModal = acknowledgeBroadcastModal
 
 // Build the Audio element once + ask the browser to start fetching the
 // bytes immediately. Called from _tryPlayCategorySound on first use AND
@@ -1547,12 +1750,15 @@ async function pollNotifications(initial = false) {
     const previousLastSeen = _notifState.lastSeenId
     _notifState.recent = recent
 
-    // First load: just sync state, don't ding
+    // First load: just sync state, don't ding — BUT do start the
+    // broadcast buzz for any unread broadcast in the recent list, so the
+    // user is still nagged on a fresh page load until they acknowledge.
     if (!_notifState.initialized) {
       _notifState.lastSeenId = latestId
       _notifState.lastSeenAt = res.latest_created_at || null
       _notifState.initialized = true
       _notifSetBadge(count)
+      _broadcastBuzzReconcile(recent)
       return
     }
 
@@ -1561,13 +1767,26 @@ async function pollNotifications(initial = false) {
       const cutoff = _notifState.lastSeenAt
       const fresh = recent.filter((n) => !cutoff || (n.created_at && n.created_at > cutoff))
       if (fresh.length) {
-        // Pick the highest-priority category among fresh items so the
-        // ticket sound wins over a less specific sound when both arrive together.
-        const priority = ['ticket', 'task', 'other']
-        const cats = fresh.map((n) => _notifSoundCategory(n.type))
-        const pickedCat = priority.find((p) => cats.includes(p)) || 'other'
-        const pickedItem = fresh.find((n) => _notifSoundCategory(n.type) === pickedCat) || fresh[0]
-        _notifPlayDing(pickedItem?.type)
+        // Broadcasts get their own buzz loop + modal popup — kick them off
+        // first so the recurring chime + announcement modal surface even if
+        // the same poll also brings a lower-priority ticket/task ding.
+        for (const n of fresh) {
+          if (String(n.type || '').toLowerCase() === 'broadcast' && !n.is_read) {
+            _broadcastBuzzStart(n.id)
+            _broadcastModalShow(n)
+          }
+        }
+        // Pick the highest-priority category among fresh non-broadcast items
+        // so the ticket sound wins over a less specific sound. Skip if a
+        // broadcast is already buzzing — no need to overlay another ding.
+        const nonBroadcast = fresh.filter((n) => String(n.type || '').toLowerCase() !== 'broadcast')
+        if (nonBroadcast.length) {
+          const priority = ['ticket', 'task', 'other']
+          const cats = nonBroadcast.map((n) => _notifSoundCategory(n.type))
+          const pickedCat = priority.find((p) => cats.includes(p)) || 'other'
+          const pickedItem = nonBroadcast.find((n) => _notifSoundCategory(n.type) === pickedCat) || nonBroadcast[0]
+          _notifPlayDing(pickedItem?.type)
+        }
         // Show up to 2 toasts so we don't spam
         fresh.slice(0, 2).forEach(_notifShowToast)
         // Auto-refresh whichever data view the user is currently looking at —
@@ -1578,6 +1797,9 @@ async function pollNotifications(initial = false) {
       _notifState.lastSeenAt = res.latest_created_at || _notifState.lastSeenAt
     }
     _notifSetBadge(count)
+    // Cross-tab acknowledgement: if another tab (or the server) marked the
+    // broadcast read, stop buzzing here too.
+    _broadcastBuzzReconcile(recent)
   } catch {
     // ignore — likely offline / unauthenticated
   }
@@ -1692,8 +1914,16 @@ function _applyPushedNotification(doc) {
   _notifState.lastSeenId = doc.id
   _notifState.lastSeenAt = doc.created_at || new Date().toISOString()
   _notifState.initialized = true
-  _notifPlayDing(doc.type)
-  _notifShowToast(doc)
+  // Broadcasts buzz on a loop AND pop a blocking modal (same UX as the
+  // lead follow-up alarm) until the user explicitly acknowledges them.
+  // Everything else gets the normal one-shot ding + toast.
+  if (String(doc.type || '').toLowerCase() === 'broadcast' && !doc.is_read) {
+    _broadcastBuzzStart(doc.id)
+    _broadcastModalShow(doc)
+  } else {
+    _notifPlayDing(doc.type)
+    _notifShowToast(doc)
+  }
   // Re-render the open notifications panel + active page (e.g. leaves view)
   // so the new item appears without the user reopening the bell or refreshing.
   _notifAutoRefreshActiveView([doc])
@@ -2459,6 +2689,15 @@ async function showNotifications() {
     const hasUnread = items.some((n) => !n.is_read)
     if (hasUnread) {
       API.post('/notifications/read-all', {}).catch(() => {})
+      // Opening the panel + the auto-read-all counts as the user
+      // acknowledging every pending broadcast — silence the buzz loop and
+      // tear down any open announcement modal so we don't double-up UI.
+      _broadcastBuzzStop()
+      _broadcastModal.queue = []
+      if (_broadcastModal.active) {
+        _broadcastModalCloseHost()
+        _broadcastModal.active = null
+      }
       _notifSetBadge(0)
       document.querySelectorAll('.notif-row.is-unread').forEach((row) => {
         row.classList.remove('is-unread')
@@ -2491,6 +2730,11 @@ async function onNotifClick(id, link) {
     row.classList.remove('is-unread')
     row.querySelector('.notif-row-dot')?.remove()
   }
+  // Stop the broadcast buzz + tear down the announcement modal for this
+  // specific notification (no-op if it's not a broadcast or wasn't open).
+  // Acknowledge = the user saw + clicked.
+  _broadcastBuzzStop(id)
+  _broadcastModalDismiss(id)
   try { await API.post(`/notifications/${id}/read`, {}) } catch {}
   // Update badges immediately
   if (_notifState.unreadCount > 0) _notifSetBadge(Math.max(0, _notifState.unreadCount - 1))
@@ -2554,6 +2798,14 @@ async function onNotifClick(id, link) {
 async function markAllNotifsRead() {
   try {
     await API.post('/notifications/read-all', {})
+    // "Mark all read" acknowledges every pending broadcast at once — clear
+    // the buzz loop AND tear down any open announcement modal + queued ones.
+    _broadcastBuzzStop()
+    _broadcastModal.queue = []
+    if (_broadcastModal.active) {
+      _broadcastModalCloseHost()
+      _broadcastModal.active = null
+    }
     // Optimistic: clear all unread visuals in the panel without closing it
     document.querySelectorAll('.notif-row.is-unread').forEach((row) => {
       row.classList.remove('is-unread')
@@ -2574,9 +2826,170 @@ async function markAllNotifsRead() {
 }
 
 // ── Global search ─────────────────────────────────────────────
-let searchTimeout
+// Strategy: fetch each entity list at most once per session (warmed on the
+// first focus/keystroke), cache it for 60s, and filter in-memory on every
+// keystroke so the dropdown re-renders in ~1ms instead of waiting on the
+// network. A stale cache is refreshed silently in the background so the
+// user never sees a "Searching…" spinner after the first warm-up.
+const SEARCH_CACHE_TTL_MS = 60_000
+let _searchCache = null            // { data, fetchedAt }
+let _searchCachePromise = null     // in-flight fetch promise (dedupe)
+let _searchRenderRaf = 0           // RAF id for coalescing renders
+
+function _searchPerms() {
+  const can = (page) => (typeof canSeePage === 'function' ? canSeePage(page) : true)
+  return {
+    canTasks:    can('kanban-board') || can('my-tasks'),
+    canProjects: can('projects-list'),
+    canClients:  can('clients-list'),
+    canLeads:    can('leads-view'),
+    canInvoices: can('billing-admin'),
+    canDocs:     can('documents-center'),
+    canTickets:  can('support-tickets'),
+    canPTasks:   can('personal-tasks'),
+  }
+}
+
+function _searchFetch() {
+  if (_searchCachePromise) return _searchCachePromise
+  const p = _searchPerms()
+  const empty = (k) => Promise.resolve({ [k]: [] })
+  _searchCachePromise = Promise.all([
+    p.canTasks    ? API.get('/tasks').catch(() => ({ tasks: [] }))           : empty('tasks'),
+    p.canProjects ? API.get('/projects').catch(() => ({ projects: [] }))     : empty('projects'),
+    p.canClients  ? API.get('/clients').catch(() => ({ clients: [] }))       : empty('clients'),
+    p.canLeads    ? API.get('/leads').catch(() => ({ leads: [] }))           : empty('leads'),
+    p.canInvoices ? API.get('/invoices').catch(() => ({ invoices: [] }))     : empty('invoices'),
+    p.canDocs     ? API.get('/documents').catch(() => ({ documents: [] }))   : empty('documents'),
+    p.canTickets  ? API.get('/support').catch(() => ({ tickets: [] }))       : empty('tickets'),
+    p.canPTasks   ? API.get('/personal-tasks').catch(() => ({ tasks: [] })) : empty('tasks'),
+  ]).then(([tasks, projects, clients, leads, invoices, documents, tickets, ptasks]) => {
+    const data = {
+      tasks:     tasks.tasks       || tasks.data     || [],
+      projects:  projects.projects || projects.data  || [],
+      clients:   clients.clients   || clients.data   || [],
+      leads:     leads.leads       || leads.data     || [],
+      invoices:  invoices.invoices || invoices.data  || [],
+      documents: documents.documents || documents.data || [],
+      tickets:   tickets.tickets   || tickets.data   || [],
+      ptasks:    ptasks.tasks      || ptasks.data    || [],
+      perms:     p,
+    }
+    _searchCache = { data, fetchedAt: Date.now() }
+    _searchCachePromise = null
+    return data
+  }).catch((e) => {
+    _searchCachePromise = null
+    throw e
+  })
+  return _searchCachePromise
+}
+
+// Kick off a background fetch when the user focuses the search bar so by the
+// time they finish typing the first 2 chars the cache is already warm.
+function primeGlobalSearch() {
+  const fresh = _searchCache && (Date.now() - _searchCache.fetchedAt) < SEARCH_CACHE_TTL_MS
+  if (!fresh && !_searchCachePromise) { _searchFetch().catch(() => {}) }
+}
+window.primeGlobalSearch = primeGlobalSearch
+
+function _renderSearchResults(q) {
+  const dd = document.getElementById('global-search-results')
+  if (!dd || !_searchCache) return
+  const { data } = _searchCache
+  const { perms } = data
+  const ql = q.toLowerCase()
+  const inc = (s) => String(s || '').toLowerCase().includes(ql)
+  const matchT  = data.tasks.filter(t => inc(t.title) || inc(t.id)).slice(0, 6)
+  const matchP  = data.projects.filter(p => inc(p.name) || inc(p.code)).slice(0, 5)
+  const matchC  = data.clients.filter(c => inc(c.company_name) || inc(c.contact_name) || inc(c.email)).slice(0, 5)
+  const matchL  = data.leads.filter(l => inc(l.name) || inc(l.email) || inc(l.phone)).slice(0, 5)
+  const matchI  = data.invoices.filter(i => inc(i.invoice_number) || inc(i.title) || inc(i.company_name)).slice(0, 5)
+  const matchD  = data.documents.filter(d => inc(d.title) || inc(d.file_name)).slice(0, 5)
+  const matchTk = data.tickets.filter(t => inc(t.title) || inc(t.subject) || inc(t.id)).slice(0, 5)
+  const matchPT = data.ptasks.filter(t => inc(t.title)).slice(0, 5)
+
+  const total = matchT.length + matchP.length + matchC.length + matchL.length + matchI.length + matchD.length + matchTk.length + matchPT.length
+  if (!total) {
+    dd.innerHTML = `<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:13px">No matches for "${escapeHtml(q)}"</div>`
+    return
+  }
+
+  const escapeAttr = (s) => String(s || '').replace(/'/g, "\\'")
+  const ttl = (kind, count) => `<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;display:flex;justify-content:space-between"><span>${kind}</span><span style="color:#A970FF">${count}</span></div>`
+  const row = (icon, color, primary, secondary, onClickAttr) => `
+    <div class="search-result-row" onmousedown="event.preventDefault()" onclick="hideGlobalSearch();${onClickAttr}" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.04))">
+      <i class="fas ${icon}" style="color:${color};font-size:13px;width:18px;text-align:center"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${primary}</div>
+        <div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${secondary}</div>
+      </div>
+    </div>`
+
+  const rows = []
+  if (perms.canProjects && matchP.length) {
+    rows.push(ttl('Projects', matchP.length))
+    for (const p of matchP) rows.push(row('fa-folder', '#A970FF',
+      escapeHtml((typeof tc==='function'?tc(p.name):p.name) || ''),
+      `${escapeHtml(p.code || '')} · ${escapeHtml(p.status || '')}`,
+      `openProjectBoard('${escapeAttr(p.id)}','${escapeAttr(p.name)}')`))
+  }
+  if (perms.canTasks && matchT.length) {
+    rows.push(ttl('Project Tasks', matchT.length))
+    for (const t of matchT) rows.push(row('fa-check-square', '#C56FE6',
+      escapeHtml(t.title || ''),
+      `${escapeHtml((typeof tc==='function'?tc(t.project_name||''):t.project_name) || '')} · ${escapeHtml((t.status || '').replace(/_/g,' '))}`,
+      `openTaskDrawer('${escapeAttr(t.id)}')`))
+  }
+  if (perms.canPTasks && matchPT.length) {
+    rows.push(ttl('My Task', matchPT.length))
+    for (const t of matchPT) rows.push(row('fa-clipboard-check', '#a855f7',
+      escapeHtml(t.title || ''),
+      `${escapeHtml(t.assigned_to_name || 'Unassigned')} · ${escapeHtml((t.status || '').replace(/_/g,' '))}`,
+      `Router.navigate('personal-tasks')`))
+  }
+  if (perms.canClients && matchC.length) {
+    rows.push(ttl('Clients', matchC.length))
+    for (const c of matchC) rows.push(row('fa-building', '#58C68A',
+      escapeHtml(c.company_name || c.contact_name || ''),
+      `${escapeHtml(c.email || '')} · ${escapeHtml(c.city || '')}`,
+      `Router.navigate('clients-list')`))
+  }
+  if (perms.canLeads && matchL.length) {
+    rows.push(ttl('Leads', matchL.length))
+    for (const l of matchL) rows.push(row('fa-bullseye', '#C9A7FF',
+      escapeHtml(l.name || ''),
+      `${escapeHtml(l.email || '')} · ${escapeHtml(l.phone || '')} · ${escapeHtml(l.status || '')}`,
+      `Router.navigate('lead-detail', { id: '${escapeAttr(l.id)}' })`))
+  }
+  if (perms.canInvoices && matchI.length) {
+    rows.push(ttl('Invoices', matchI.length))
+    for (const i of matchI) rows.push(row('fa-file-invoice-dollar', '#58C68A',
+      escapeHtml(i.invoice_number || i.title || ''),
+      `${escapeHtml(i.company_name || '')} · ${escapeHtml((i.status || '').replace(/_/g,' '))}`,
+      `Router.navigate('billing-admin')`))
+  }
+  if (perms.canDocs && matchD.length) {
+    rows.push(ttl('Documents', matchD.length))
+    for (const d of matchD) rows.push(row('fa-file-lines', '#A8C8FF',
+      escapeHtml(d.title || d.file_name || ''),
+      `${escapeHtml((typeof tc==='function'?tc(d.project_name||''):d.project_name) || '')} · ${escapeHtml(d.category || '')}`,
+      `Router.navigate('documents-center')`))
+  }
+  if (perms.canTickets && matchTk.length) {
+    rows.push(ttl('Support Tickets', matchTk.length))
+    for (const t of matchTk) {
+      const tid = escapeAttr(t.id)
+      rows.push(row('fa-life-ring', '#FF5E3A',
+        escapeHtml(t.title || t.subject || ''),
+        `${escapeHtml((t.status || '').replace(/_/g,' '))} · #${escapeHtml(String(t.id || '').slice(-6))}`,
+        `(typeof openSupportDetail==='function'?openSupportDetail('${tid}'):Router.navigate('support-tickets'))`))
+    }
+  }
+  dd.innerHTML = rows.join('')
+}
+
 function globalSearch(q) {
-  clearTimeout(searchTimeout)
   const dd = document.getElementById('global-search-results')
   if (!dd) return
   if (!q || q.length < 2) {
@@ -2585,128 +2998,32 @@ function globalSearch(q) {
     return
   }
   dd.style.display = 'block'
-  dd.innerHTML = `<div style="padding:14px;color:var(--text-muted);font-size:13px"><i class="fas fa-spinner fa-spin"></i> Searching…</div>`
-  searchTimeout = setTimeout(async () => {
-    try {
-      // Fan out across every entity type that's worth jumping to. Each call
-      // is tolerant of permission denials (gated endpoints just return empty).
-      const [tasks, projects, clients, leads, invoices, documents, tickets, ptasks] = await Promise.all([
-        API.get('/tasks').catch(() => ({ tasks: [] })),
-        API.get('/projects').catch(() => ({ projects: [] })),
-        API.get('/clients').catch(() => ({ clients: [] })),
-        API.get('/leads').catch(() => ({ leads: [] })),
-        API.get('/invoices').catch(() => ({ invoices: [] })),
-        API.get('/documents').catch(() => ({ documents: [] })),
-        API.get('/support').catch(() => ({ tickets: [] })),
-        API.get('/personal-tasks').catch(() => ({ tasks: [] })),
-      ])
-      const ql = q.toLowerCase()
-      const matchT = (tasks.tasks || tasks.data || []).filter(t => String(t.title || '').toLowerCase().includes(ql) || String(t.id || '').toLowerCase().includes(ql)).slice(0, 6)
-      const matchP = (projects.projects || projects.data || []).filter(p => String(p.name || '').toLowerCase().includes(ql) || String(p.code || '').toLowerCase().includes(ql)).slice(0, 5)
-      const matchC = (clients.clients || clients.data || []).filter(c => String(c.company_name || '').toLowerCase().includes(ql) || String(c.contact_name || '').toLowerCase().includes(ql) || String(c.email || '').toLowerCase().includes(ql)).slice(0, 5)
-      const matchL = (leads.leads || leads.data || []).filter(l => String(l.name || '').toLowerCase().includes(ql) || String(l.email || '').toLowerCase().includes(ql) || String(l.phone || '').toLowerCase().includes(ql)).slice(0, 5)
-      const matchI = (invoices.invoices || invoices.data || []).filter(i => String(i.invoice_number || '').toLowerCase().includes(ql) || String(i.title || '').toLowerCase().includes(ql) || String(i.company_name || '').toLowerCase().includes(ql)).slice(0, 5)
-      const matchD = (documents.documents || documents.data || []).filter(d => String(d.title || '').toLowerCase().includes(ql) || String(d.file_name || '').toLowerCase().includes(ql)).slice(0, 5)
-      const matchTk = (tickets.tickets || tickets.data || []).filter(t => String(t.title || t.subject || '').toLowerCase().includes(ql) || String(t.id || '').toLowerCase().includes(ql)).slice(0, 5)
-      const matchPT = (ptasks.tasks || ptasks.data || []).filter(t => String(t.title || '').toLowerCase().includes(ql)).slice(0, 5)
-
-      const totalMatches = matchT.length + matchP.length + matchC.length + matchL.length + matchI.length + matchD.length + matchTk.length + matchPT.length
-      if (!totalMatches) {
-        dd.innerHTML = `<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:13px">No matches for "${escapeHtml(q)}"</div>`
-        return
-      }
-
-      const escapeAttr = (s) => String(s || '').replace(/'/g, "\\'")
-      const ttl = (kind, count) => `<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;display:flex;justify-content:space-between"><span>${kind}</span><span style="color:#A970FF">${count}</span></div>`
-      const row = (icon, color, primary, secondary, onClickAttr) => `
-        <div class="search-result-row" onmousedown="event.preventDefault()" onclick="hideGlobalSearch();${onClickAttr}" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.04))">
-          <i class="fas ${icon}" style="color:${color};font-size:13px;width:18px;text-align:center"></i>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${primary}</div>
-            <div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${secondary}</div>
-          </div>
-        </div>`
-
-      const rows = []
-      if (matchP.length) {
-        rows.push(ttl('Projects', matchP.length))
-        for (const p of matchP) {
-          rows.push(row('fa-folder', '#A970FF',
-            escapeHtml((typeof tc==='function'?tc(p.name):p.name) || ''),
-            `${escapeHtml(p.code || '')} · ${escapeHtml(p.status || '')}`,
-            `openProjectBoard('${escapeAttr(p.id)}','${escapeAttr(p.name)}')`))
-        }
-      }
-      if (matchT.length) {
-        rows.push(ttl('Project Tasks', matchT.length))
-        for (const t of matchT) {
-          rows.push(row('fa-check-square', '#C56FE6',
-            escapeHtml(t.title || ''),
-            `${escapeHtml((typeof tc==='function'?tc(t.project_name||''):t.project_name) || '')} · ${escapeHtml((t.status || '').replace(/_/g,' '))}`,
-            `openTaskDrawer('${escapeAttr(t.id)}')`))
-        }
-      }
-      if (matchPT.length) {
-        rows.push(ttl('My Task', matchPT.length))
-        for (const t of matchPT) {
-          rows.push(row('fa-clipboard-check', '#a855f7',
-            escapeHtml(t.title || ''),
-            `${escapeHtml(t.assigned_to_name || 'Unassigned')} · ${escapeHtml((t.status || '').replace(/_/g,' '))}`,
-            `Router.navigate('personal-tasks')`))
-        }
-      }
-      if (matchC.length) {
-        rows.push(ttl('Clients', matchC.length))
-        for (const c of matchC) {
-          rows.push(row('fa-building', '#58C68A',
-            escapeHtml(c.company_name || c.contact_name || ''),
-            `${escapeHtml(c.email || '')} · ${escapeHtml(c.city || '')}`,
-            `Router.navigate('clients-list')`))
-        }
-      }
-      if (matchL.length) {
-        rows.push(ttl('Leads', matchL.length))
-        for (const l of matchL) {
-          rows.push(row('fa-bullseye', '#C9A7FF',
-            escapeHtml(l.name || ''),
-            `${escapeHtml(l.email || '')} · ${escapeHtml(l.phone || '')} · ${escapeHtml(l.status || '')}`,
-            `Router.navigate('lead-detail', { id: '${escapeAttr(l.id)}' })`))
-        }
-      }
-      if (matchI.length) {
-        rows.push(ttl('Invoices', matchI.length))
-        for (const i of matchI) {
-          rows.push(row('fa-file-invoice-dollar', '#58C68A',
-            escapeHtml(i.invoice_number || i.title || ''),
-            `${escapeHtml(i.company_name || '')} · ${escapeHtml((i.status || '').replace(/_/g,' '))}`,
-            `Router.navigate('billing-admin')`))
-        }
-      }
-      if (matchD.length) {
-        rows.push(ttl('Documents', matchD.length))
-        for (const d of matchD) {
-          rows.push(row('fa-file-lines', '#A8C8FF',
-            escapeHtml(d.title || d.file_name || ''),
-            `${escapeHtml((typeof tc==='function'?tc(d.project_name||''):d.project_name) || '')} · ${escapeHtml(d.category || '')}`,
-            `Router.navigate('documents-center')`))
-        }
-      }
-      if (matchTk.length) {
-        rows.push(ttl('Support Tickets', matchTk.length))
-        for (const t of matchTk) {
-          const tid = escapeAttr(t.id)
-          rows.push(row('fa-life-ring', '#FF5E3A',
-            escapeHtml(t.title || t.subject || ''),
-            `${escapeHtml((t.status || '').replace(/_/g,' '))} · #${escapeHtml(String(t.id || '').slice(-6))}`,
-            `(typeof openSupportDetail==='function'?openSupportDetail('${tid}'):Router.navigate('support-tickets'))`))
-        }
-      }
-      dd.innerHTML = rows.join('')
-    } catch (e) {
-      dd.innerHTML = `<div style="padding:14px;color:#FF5E3A;font-size:13px">Search failed: ${escapeHtml(e.message || 'error')}</div>`
+  const fresh = _searchCache && (Date.now() - _searchCache.fetchedAt) < SEARCH_CACHE_TTL_MS
+  if (fresh) {
+    // Hot path: cache is warm, just filter and render — runs in well under
+    // a millisecond for typical dataset sizes. Coalesce to one render per
+    // animation frame so rapid typing doesn't queue up redundant work.
+    if (_searchRenderRaf) cancelAnimationFrame(_searchRenderRaf)
+    _searchRenderRaf = requestAnimationFrame(() => { _searchRenderRaf = 0; _renderSearchResults(q) })
+    // Stale check while warm — if cache is in its last 10s, kick off a
+    // background refresh so future keystrokes stay instant.
+    if (Date.now() - _searchCache.fetchedAt > SEARCH_CACHE_TTL_MS - 10_000 && !_searchCachePromise) {
+      _searchFetch().then(() => _renderSearchResults(q)).catch(() => {})
     }
-  }, 300)
+    return
+  }
+  // Cold path: first search of the session (or cache expired). Show the
+  // spinner only this once; subsequent keystrokes hit the warm cache.
+  dd.innerHTML = `<div style="padding:14px;color:var(--text-muted);font-size:13px"><i class="fas fa-spinner fa-spin"></i> Searching…</div>`
+  _searchFetch().then(() => _renderSearchResults(q)).catch((e) => {
+    dd.innerHTML = `<div style="padding:14px;color:#FF5E3A;font-size:13px">Search failed: ${escapeHtml(e.message || 'error')}</div>`
+  })
 }
+function invalidateGlobalSearchCache() {
+  _searchCache = null
+  _searchCachePromise = null
+}
+window.invalidateGlobalSearchCache = invalidateGlobalSearchCache
 function hideGlobalSearch() {
   const dd = document.getElementById('global-search-results')
   const inp = document.getElementById('global-search')
@@ -2719,6 +3036,7 @@ window.hideGlobalSearch = hideGlobalSearch
 function loadPage(page, el) {
   switch(page) {
     case 'super-dashboard':  renderSuperDashboard(el); break
+    case 'broadcasts-view':  renderBroadcastsView(el); break
     case 'pm-dashboard':     renderPMDashboard(el); break
     case 'dev-dashboard':    renderDevDashboard(el); break
     case 'projects-list':    renderProjectsList(el); break

@@ -25,7 +25,13 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
       const userId = typeof req.query.user_id === 'string' ? req.query.user_id : undefined
       const filter: any = {}
       const role = String(user?.role || '').toLowerCase()
-      if (role === 'developer' || role === 'team') filter.user_id = user.sub
+      // Permission-driven scoping: anyone with `leaves.view_all` (or admin who
+      // bypasses) can list everyone's leaves and filter via ?user_id=. Anyone
+      // else is restricted to their own records regardless of role — so an
+      // admin-granted custom role works the same as a PM/HR role.
+      const canSeeAll = role === 'admin'
+        || await userHasAnyPermission(models, user, 'leaves.view_all', 'leaves.approve')
+      if (!canSeeAll) filter.user_id = user.sub
       else if (userId) filter.user_id = userId
       const [leaves, users] = await Promise.all([
         models.leaves.find(filter) as Promise<any[]>,
@@ -131,6 +137,52 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
         })
       }
       return res.status(201).json({ message: 'Leave submitted', data: { id } })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Edit a pending leave. `leaves.edit_own` lets a user fix their own pending
+  // application; `leaves.edit` lets HR / admin correct any record. Approved
+  // and rejected entries are immutable through this endpoint — the approval
+  // flow has its own audit trail.
+  router.patch('/:id', async (req, res) => {
+    try {
+      const user = req.user as any
+      const role = String(user?.role || '').toLowerCase()
+      const leave = await models.leaves.findById(String(req.params.id)) as any
+      if (!leave) return res.status(404).json({ error: 'Leave not found' })
+
+      const isOwner = String(leave.user_id) === String(user?.sub)
+      const canEditAny  = role === 'admin' || await userHasAnyPermission(models, user, 'leaves.edit')
+      const canEditOwn  = await userHasAnyPermission(models, user, 'leaves.edit_own')
+      if (!canEditAny && !(canEditOwn && isOwner)) {
+        return res.status(403).json({ error: 'You do not have permission to edit this leave' })
+      }
+      // Editing only makes sense for pending requests. Once approved or rejected
+      // the decision history is locked — admins can still delete + re-create if
+      // they really need to rewrite history.
+      if (leave.status !== 'pending' && !canEditAny) {
+        return res.status(409).json({ error: 'This leave has already been ' + leave.status + ' and can no longer be edited' })
+      }
+
+      const body = req.body || {}
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+      if ('leave_type' in body) patch.leave_type = validateEnum(body.leave_type, LEAVE_TYPES, 'Leave type')
+      if ('start_date' in body) patch.start_date = validateISODate(body.start_date, 'Start date')
+      if ('end_date' in body)   patch.end_date   = validateISODate(body.end_date, 'End date')
+      const nextStart = String(patch.start_date ?? leave.start_date)
+      const nextEnd   = String(patch.end_date   ?? leave.end_date)
+      if (nextStart && nextEnd && nextStart > nextEnd) {
+        return res.status(400).json({ error: 'End date must be on or after start date' })
+      }
+      if ('days_count' in body) patch.days_count = validateRange(body.days_count, 0.5, 365, 'Days count')
+      if ('reason' in body) {
+        patch.reason = validateOptional(body.reason, (v) => validateLength(String(v).trim(), 1, 1000, 'Reason'))
+      }
+      await models.leaves.updateById(leave.id, { $set: patch })
+      const updated = await models.leaves.findById(leave.id)
+      return res.json({ message: 'Leave updated', data: updated, leave: updated })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }

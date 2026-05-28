@@ -1300,7 +1300,9 @@ body.sidebar-collapsed .sidebar-reopen-fab {
 
 /* ── SEARCH BAR ──────────────────────────────────────────── */
 .search-wrap { position: relative; display: inline-flex; align-items: center; }
-.search-wrap i { position: absolute; left: 12px; color: var(--text-muted); font-size: 13px; pointer-events: none; }
+/* Direct-child selector so this rule ONLY positions the magnifier glyph next
+   to the input, not every <i> that lives in the dropdown rows underneath. */
+.search-wrap > i { position: absolute; left: 12px; color: var(--text-muted); font-size: 13px; pointer-events: none; }
 .search-bar {
   background: var(--surface-2);
   border: 1.5px solid var(--border);
@@ -1317,6 +1319,49 @@ body.sidebar-collapsed .sidebar-reopen-fab {
   width: 280px; background: var(--surface);
 }
 .search-bar::placeholder { color: var(--text-muted); }
+
+/* Global search dropdown — opaque, theme-aware shell. The previous inline
+   `background:#16161C` worked in dark mode but looked like a black block in
+   light mode. Solid surface colour (no transparency, no backdrop blur) so
+   page content behind the panel never bleeds through. */
+.global-search-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  width: max(360px, 100%);
+  max-width: calc(100vw - 32px);
+  max-height: 420px;
+  overflow-y: auto;
+  background: #16161C;
+  border: 1px solid rgba(169,112,255,.28);
+  border-radius: 12px;
+  box-shadow: 0 18px 44px rgba(0,0,0,.55);
+  z-index: 2000;
+}
+body.theme-light .global-search-dropdown {
+  background: #FFFFFF;
+  border-color: #E5E7EB;
+  box-shadow: 0 18px 44px rgba(15,23,42,.18);
+}
+/* Hover lifts the row so users can tell which result they're about to jump to. */
+.search-result-row { background: transparent; }
+.search-result-row:hover { background: rgba(169,112,255,.12); }
+body.theme-light .search-result-row:hover { background: rgba(169,112,255,.10); }
+.search-result-row:last-child { border-bottom: 0 !important; }
+
+/* Clients list-view row hover — gives the table-style alternative to the card
+   grid a clear "I'm a clickable row" affordance. */
+.clients-list-row { border-bottom: 1px solid rgba(255,255,255,.04); transition: background .15s ease; }
+.clients-list-row:hover { background: rgba(169,112,255,.08); }
+.clients-list-row:last-child { border-bottom: 0; }
+
+/* Documents list-view row — same UX as clients-list-row above. Slightly
+   softer hover because the docs table has more dense columns and doesn't
+   need a strong attention pull, just enough to track the row. */
+.doc-list-row { transition: background .15s ease; }
+.doc-list-row:hover { background: rgba(169,112,255,.06); }
+.doc-list-row:last-child { border-bottom: 0 !important; }
 
 /* ── EMPTY STATES ────────────────────────────────────────── */
 /* Empty/zero-data placeholders used to render almost invisibly against the
@@ -2262,7 +2307,9 @@ select:not(.form-select) option { background: #2A1812; color: var(--text-primary
 }
 .search-bar:focus { background-color: rgba(255,255,255,0.07) !important; border-color: var(--primary) !important; box-shadow: 0 0 0 3px rgba(169,112,255,0.20) !important; }
 .search-bar::placeholder { color: var(--text-muted) !important; }
-.search-wrap i { color: var(--text-muted) !important; }
+/* Direct-child only — see note next to the positioning rule above. Without
+   this, dropdown-row icons get force-muted to grey too. */
+.search-wrap > i { color: var(--text-muted) !important; }
 
 /* Buttons */
 .btn-primary {
@@ -2778,6 +2825,197 @@ select:not(.form-select) option { background: #2A1812; color: var(--text-primary
 .perm-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .perm-row-label { color: var(--text-primary); font-weight: 500; }
 .perm-row-key { color: var(--text-muted); font-size: 10.5px; font-family: 'IBM Plex Mono', monospace; }
+
+/* ── Permission MATRIX (Salesforce-style) ─────────────────────────
+   Used by openRoleEditModal. Each row = a module, each column =
+   a CRUD action. Cells render as a custom-styled checkbox; an
+   inapplicable action shows a dash. Sticky module header so the
+   role name stays visible while horizontally scrolling on small
+   screens. */
+.perm-mtx-section {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.02);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.perm-mtx-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.perm-mtx-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: .2px;
+}
+.perm-mtx-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.perm-mtx-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+}
+.perm-mtx {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  min-width: 720px;
+}
+.perm-mtx thead th {
+  position: sticky;
+  top: 0;
+  background: rgba(169,112,255,0.12);
+  color: #C9A7FF;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  padding: 10px 8px;
+  text-align: center;
+  border-bottom: 1px solid rgba(169,112,255,0.22);
+  z-index: 2;
+}
+.perm-mtx thead .perm-mtx-module-head {
+  text-align: left;
+  padding-left: 14px;
+  min-width: 200px;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: rgba(169,112,255,0.16);
+}
+.perm-mtx tbody tr { border-bottom: 1px solid rgba(255,255,255,0.04); }
+.perm-mtx tbody tr:last-child { border-bottom: 0; }
+.perm-mtx tbody tr:hover { background: rgba(169,112,255,0.05); }
+.perm-mtx tbody .perm-mtx-module {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+  position: sticky;
+  left: 0;
+  background: rgba(20,20,26,0.92);
+  z-index: 1;
+}
+.perm-mtx tbody .perm-mtx-module i { color: #C9A7FF; width: 16px; text-align: center; }
+.perm-mtx-cell { text-align: center; padding: 6px 8px; vertical-align: middle; }
+.perm-mtx-na   { color: rgba(255,255,255,0.25); font-weight: 600; }
+.perm-mtx-bulk-head { min-width: 96px; }
+.perm-mtx-bulk { white-space: nowrap; display: flex; gap: 4px; justify-content: center; padding: 6px; }
+.perm-mtx-bulk .btn { padding: 2px 8px; font-size: 10.5px; }
+
+/* Custom checkbox — hides the native control and renders a styled tick
+   that matches the brand palette. Adds a clear indeterminate state for the
+   composite "Modify All" cell when only one of the two underlying keys is
+   granted. */
+.perm-mtx-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+}
+.perm-mtx-check input { position: absolute; opacity: 0; pointer-events: none; }
+.perm-mtx-tick {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1.5px solid rgba(255,255,255,0.20);
+  background: rgba(255,255,255,0.03);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .12s ease;
+  color: transparent;
+}
+.perm-mtx-tick i { font-size: 11px; }
+.perm-mtx-check:hover .perm-mtx-tick { border-color: #A970FF; background: rgba(169,112,255,0.08); }
+.perm-mtx-check input:checked + .perm-mtx-tick {
+  background: linear-gradient(135deg,#7B4DFF,#A970FF);
+  border-color: #A970FF;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(169,112,255,.35);
+}
+.perm-mtx-check input:indeterminate + .perm-mtx-tick {
+  background: rgba(169,112,255,0.22);
+  border-color: #A970FF;
+  color: #C9A7FF;
+}
+.perm-mtx-check input:indeterminate + .perm-mtx-tick::after {
+  content: '';
+  width: 9px;
+  height: 2px;
+  background: #fff;
+  border-radius: 2px;
+}
+.perm-mtx-check input:indeterminate + .perm-mtx-tick i { display: none; }
+
+/* Light-theme overrides — keeps the table readable on white surfaces. */
+body.theme-light .perm-mtx-section { background: #FFFFFF; border-color: #E5E7EB; }
+body.theme-light .perm-mtx-wrap { background: #FFFFFF; border-color: #E5E7EB; }
+body.theme-light .perm-mtx thead th { background: #F1ECFF; color: #5A2EFF; border-bottom-color: #DCD0FF; }
+body.theme-light .perm-mtx thead .perm-mtx-module-head { background: #E7DFFF; }
+body.theme-light .perm-mtx tbody tr { border-bottom-color: #EEF0F4; }
+body.theme-light .perm-mtx tbody tr:hover { background: rgba(169,112,255,0.06); }
+body.theme-light .perm-mtx tbody .perm-mtx-module { background: #FFFFFF; color: #0F0F12; }
+body.theme-light .perm-mtx-na { color: #C8CCD3; }
+body.theme-light .perm-mtx-tick { background: #FFFFFF; border-color: #D1D5DB; }
+body.theme-light .perm-mtx-check:hover .perm-mtx-tick { background: rgba(169,112,255,0.08); border-color: #A970FF; }
+
+/* "Other Actions" column — pill checkboxes for module-specific permissions
+   that don't fit a CRUD slot (approve, send, assign, manage, etc.). Each pill
+   acts as both a label and a control; the check icon appears when active. */
+.perm-mtx-other-head { min-width: 260px; }
+.perm-mtx-other { text-align: left; padding: 8px 10px; min-width: 260px; max-width: 460px; }
+.perm-pill-group { display: flex; flex-wrap: wrap; gap: 5px; }
+.perm-pill { cursor: pointer; user-select: none; display: inline-flex; }
+.perm-pill input { position: absolute; opacity: 0; pointer-events: none; }
+.perm-pill-body {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--text-secondary, #cbd5e1);
+  transition: all .12s ease;
+  line-height: 1.4;
+}
+.perm-pill-body i { font-size: 9px; opacity: 0; transition: opacity .12s ease; }
+.perm-pill:hover .perm-pill-body { border-color: rgba(169,112,255,0.45); background: rgba(169,112,255,0.08); color: var(--text-primary); }
+.perm-pill input:checked + .perm-pill-body {
+  background: linear-gradient(135deg, rgba(123,77,255,0.18), rgba(169,112,255,0.22));
+  border-color: #A970FF;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(169,112,255,.25);
+}
+.perm-pill input:checked + .perm-pill-body i { opacity: 1; color: #C9A7FF; }
+body.theme-light .perm-pill-body { background: #F8F7FC; border-color: #E5E0F5; color: #4B5563; }
+body.theme-light .perm-pill:hover .perm-pill-body { background: rgba(169,112,255,0.08); border-color: #A970FF; color: #0F0F12; }
+body.theme-light .perm-pill input:checked + .perm-pill-body {
+  background: linear-gradient(135deg, #F1ECFF, #E7DFFF);
+  border-color: #A970FF;
+  color: #5A2EFF;
+  box-shadow: 0 2px 8px rgba(169,112,255,.18);
+}
+body.theme-light .perm-pill input:checked + .perm-pill-body i { color: #7B4DFF; }
 
 /* ════════════════════════════════════════════════════════════
    ORANJI – PREMIUM POLISH PASS

@@ -579,14 +579,22 @@ export function createLeadsRouter(
     }
   })
 
-  router.put('/:id', requireRole('admin', 'pm', 'pc', 'sales_manager', 'sales_tl', 'sales_agent'), async (req, res) => {
+  router.put('/:id', async (req, res) => {
     try {
       const id = String(req.params.id)
       const body = req.body || {}
       const lead = await models.leads.findById(id) as any
       if (!lead) return res.status(404).json({ error: 'Lead not found' })
-      if (!(await canUserAccessLead(models, req.user, lead))) {
-        return res.status(403).json({ error: 'Not allowed to edit this lead' })
+      // Permission-driven gating: `leads.edit` is the override key (edit ANY
+      // lead in the system) and bypasses the visibility filter. `leads.edit_own`
+      // is the scoped variant — user must also pass canUserAccessLead which
+      // honours the manager/TL/agent hierarchy. Admins bypass via userHasAny.
+      const canEditAny = await userHasAnyPermission(models, req.user, 'leads.edit')
+      if (!canEditAny) {
+        const canEditOwn = await userHasAnyPermission(models, req.user, 'leads.edit_own')
+        if (!canEditOwn || !(await canUserAccessLead(models, req.user, lead))) {
+          return res.status(403).json({ error: 'Not allowed to edit this lead' })
+        }
       }
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
       if ('name' in body) patch.name = validateLength(String(body.name || '').trim(), 2, 120, 'Name')

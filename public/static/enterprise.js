@@ -21,6 +21,9 @@ let _resourcesPage = 1
 let _approvalQueuePage = 1
 let _clientsListPage = 1
 let _clientsListFilter = 'active'
+// 'grid' = card grid (default); 'list' = compact table-style rows.
+// Persisted to localStorage so the user's preference survives reloads.
+let _clientsListView = (typeof localStorage !== 'undefined' && localStorage.getItem('clientsListView')) || 'grid'
 let _teamOverviewPage = 1
 let _externalTeamPage = 1
 let _billingInvoicePage = 1
@@ -2455,24 +2458,101 @@ async function doCreateTask() {
 }
 
 /* ── SPRINTS VIEW ────────────────────────────────────────── */
+// Mirrors the Kanban gallery flow: page opens with a project picker, clicking
+// a project (or selecting it from the dropdown) deep-links into that
+// project's sprints. The selected project rides on Router params (`?id=…`)
+// so refresh / back / share-link all work consistently.
 async function renderSprintsView(el) {
   el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const [spData, proj] = await Promise.all([API.get('/sprints'), API.get('/projects')])
-    const sprints = spData.sprints||[]
-    const projects = proj.projects||proj||[]
-    const projMap = {}; projects.forEach(p=>projMap[p.id]=p)
+    const allSprints = spData.sprints || []
+    const projects = proj.projects || proj || []
+    const projMap = {}; projects.forEach(p => projMap[p.id] = p)
+    const routedId = window.Router?.current?.params?.id || ''
+    let selProject = routedId
+    // URL points at a project we can't load (deleted / no access) → reset.
+    if (selProject && !projMap[selProject]) {
+      selProject = ''
+      if (window.Router?.current?.page === 'sprints-view') {
+        window.Router.current = { page: 'sprints-view', params: {} }
+        if (typeof window.Router._persist === 'function') window.Router._persist()
+      }
+    }
+
+    // No project → render the picker gallery. Counts are derived from the
+    // sprint list we already fetched so there's no extra round-trip.
+    if (!selProject) {
+      const countByProject = new Map()
+      const activeByProject = new Map()
+      const lastActivityByProject = new Map()
+      for (const s of allSprints) {
+        const pid = String(s.project_id || '')
+        if (!pid) continue
+        countByProject.set(pid, (countByProject.get(pid) || 0) + 1)
+        if (s.status === 'active') activeByProject.set(pid, (activeByProject.get(pid) || 0) + 1)
+        const ts = String(s.updated_at || s.created_at || '')
+        if (ts > (lastActivityByProject.get(pid) || '')) lastActivityByProject.set(pid, ts)
+      }
+      const ordered = [...projects].sort((a, b) => String(lastActivityByProject.get(String(b.id)) || b.updated_at || '').localeCompare(String(lastActivityByProject.get(String(a.id)) || a.updated_at || '')))
+      el.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#A970FF,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="fas fa-bolt" style="color:#fff;font-size:15px"></i>
+            </div>
+            <div>
+              <h1 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0">Sprints</h1>
+              <p style="font-size:12px;color:var(--text-muted);margin:0">${ordered.length} project${ordered.length === 1 ? '' : 's'} · ${allSprints.length} total sprint${allSprints.length === 1 ? '' : 's'}. Pick a project to open its board.</p>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div style="position:relative">
+              <i class="fas fa-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text-muted)"></i>
+              <input id="sprints-gallery-search" class="form-input" placeholder="Search projects…" oninput="filterSprintsGallery(this.value)" style="padding-left:32px;min-width:240px;max-width:320px" autocomplete="off"/>
+            </div>
+            <select class="form-select" id="sprints-gallery-filter" style="min-width:200px;max-width:240px" onchange="filterSprintsByProject(this.value)">
+              <option value="" selected>— Or pick from list —</option>
+              ${ordered.map(p => `<option value="${p.id}">${tc(p.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div id="sprints-gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+          ${ordered.length ? ordered.map(p => _projectPickerCard(p, 'switchSprintsProject', {
+            primaryLabel: `${countByProject.get(String(p.id)) || 0} sprint${(countByProject.get(String(p.id)) || 0) === 1 ? '' : 's'}`,
+            secondaryLabel: (activeByProject.get(String(p.id)) || 0) ? `${activeByProject.get(String(p.id))} active` : '',
+            lastActivity: lastActivityByProject.get(String(p.id)) || p.updated_at || '',
+          })).join('') : ''}
+        </div>
+        ${ordered.length ? '' : '<div class="empty-state"><i class="fas fa-folder-open"></i><p>No projects available</p></div>'}
+      </div>`
+      return
+    }
+
+    // Project chosen — show only that project's sprints, paginated.
+    const sprints = allSprints.filter(s => String(s.project_id) === String(selProject))
+    const projName = tc(projMap[selProject]?.name || selProject)
     const pagination = paginateClient(sprints, _sprintsViewPage, _sprintsPageLimit)
     _sprintsViewPage = pagination.page
-
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Sprints</h1><p class="page-subtitle">${pagination.total} sprints across all projects</p></div>
-      <div class="page-actions">
-        ${hasPermission('sprints.create') ? `<button class="btn btn-primary" onclick="showCreateSprintModal()"><i class="fas fa-plus"></i>New Sprint</button>` : ''}
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="btn btn-outline btn-sm" onclick="switchSprintsProject('')" title="Back to projects"><i class="fas fa-arrow-left"></i></button>
+        <div>
+          <h1 class="page-title">${projName} · Sprints</h1>
+          <p class="page-subtitle">${pagination.total} sprint${pagination.total === 1 ? '' : 's'}</p>
+        </div>
+      </div>
+      <div class="page-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="form-select" style="min-width:180px;max-width:240px" onchange="switchSprintsProject(this.value)">
+          <option value="">— Switch project —</option>
+          ${projects.map(p => `<option value="${p.id}" ${p.id === selProject ? 'selected' : ''}>${tc(p.name)}</option>`).join('')}
+        </select>
+        ${hasPermission('sprints.create') ? `<button class="btn btn-primary" onclick="showCreateSprintModal('${selProject}')"><i class="fas fa-plus"></i>New Sprint</button>` : ''}
       </div>
     </div>
-    ${listSectionHeader(['Sprint', 'Project / Timeline', 'Stats', 'Status / Progress'], '2.1fr 1.2fr 1fr 1.1fr')}
+    ${pagination.items.length ? listSectionHeader(['Sprint', 'Project / Timeline', 'Stats', 'Status / Progress'], '2.1fr 1.2fr 1fr 1.1fr') : ''}
     ${pagination.items.map(s => {
       const totalSP = Number(s.total_story_points)||0
       const doneSP = Number(s.completed_story_points)||0
@@ -2503,11 +2583,88 @@ async function renderSprintsView(el) {
           <div style="font-size:11px;color:#7E7E8F;margin-top:4px">${pct}% complete</div>
         </div>
       </div>`
-    }).join('') || '<div class="empty-state"><i class="fas fa-bolt"></i><p>No sprints created yet</p></div>'}
+    }).join('') || '<div class="empty-state"><i class="fas fa-bolt"></i><p>No sprints for this project yet</p></div>'}
     ${renderPager(pagination, 'goSprintsPage', 'goSprintsPage', 'sprints', 'sprints-view')}
     `
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }
+
+// Generic project-picker card — used by both the Sprints and Milestones
+// galleries. `onClickFn` is the global function name to invoke when the card
+// is clicked (e.g. switchSprintsProject), so each caller can deep-link to
+// its own view without us hard-coding the destination.
+function _projectPickerCard(p, onClickFn, opts) {
+  const statusColors = {
+    active: '#58C68A', on_track: '#58C68A', healthy: '#58C68A',
+    at_risk: '#A970FF', warning: '#C9A7FF', delayed: '#A970FF',
+    critical: '#FF5E3A', blocked: '#FF5E3A',
+    completed: '#3b82f6', done: '#3b82f6',
+    paused: '#7E7E8F', on_hold: '#7E7E8F',
+  }
+  const statusColor = statusColors[String(p.status || '').toLowerCase()] || '#a78bfa'
+  const initials = String(p.name || '?').split(/\s+/).map(s => s[0]).join('').slice(0, 2).toUpperCase()
+  const primaryLabel = opts?.primaryLabel || ''
+  const secondaryLabel = opts?.secondaryLabel || ''
+  const lastActivity = opts?.lastActivity || ''
+  return `
+  <div class="project-picker-card" data-name="${escapeHtml(String(p.name || '').toLowerCase())}" data-code="${escapeHtml(String(p.code || '').toLowerCase())}" data-project-id="${escapeHtml(p.id)}"
+       onclick="${onClickFn}('${escapeHtml(p.id)}')"
+       style="background:var(--bg-card,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;display:flex;flex-direction:column;gap:12px"
+       onmouseover="this.style.borderColor='${statusColor}';this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 22px rgba(0,0,0,.25)'"
+       onmouseout="this.style.borderColor='var(--border)';this.style.transform='translateY(0)';this.style.boxShadow='none'">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,${statusColor}33,${statusColor}11);border:1px solid ${statusColor}44;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:${statusColor};flex-shrink:0">${escapeHtml(initials)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;color:var(--text-primary);line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${escapeHtml(tc(p.name))}</div>
+        <div style="font-size:11px;color:var(--text-muted);font-family:monospace;margin-top:2px">${escapeHtml(p.code || '—')}</div>
+      </div>
+      <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;background:${statusColor}22;color:${statusColor};text-transform:uppercase;letter-spacing:.4px;white-space:nowrap">${escapeHtml(String(p.status || 'active').replace(/_/g, ' '))}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-secondary,#cbd5e1)">
+      <span style="font-weight:600">${escapeHtml(primaryLabel)}</span>
+      ${secondaryLabel ? `<span style="color:#58C68A;font-weight:600">· ${escapeHtml(secondaryLabel)}</span>` : ''}
+    </div>
+    ${lastActivity ? `<div style="font-size:10px;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px"><i class="fas fa-clock-rotate-left" style="font-size:9px"></i>Updated ${typeof timeAgo === 'function' ? timeAgo(lastActivity) : fmtDate(lastActivity)}</div>` : ''}
+  </div>`
+}
+
+// Sprint gallery helpers — same UX as filterKanbanGallery / switchBoardProject.
+function filterSprintsGallery(query) {
+  const q = String(query || '').trim().toLowerCase()
+  const dropdown = document.getElementById('sprints-gallery-filter')
+  if (dropdown && q) dropdown.value = ''
+  document.querySelectorAll('#sprints-gallery-grid .project-picker-card').forEach(card => {
+    const name = card.dataset.name || ''
+    const code = card.dataset.code || ''
+    card.style.display = (!q || name.includes(q) || code.includes(q)) ? '' : 'none'
+  })
+}
+// Dropdown-based filter: narrow the gallery to a single project card
+// WITHOUT leaving the gallery page. User still has to click the card to
+// drill in — matches the Kanban picker behaviour the user expects.
+function filterSprintsByProject(projectId) {
+  const target = String(projectId || '').trim()
+  const search = document.getElementById('sprints-gallery-search')
+  if (search && target) search.value = ''
+  const cards = document.querySelectorAll('#sprints-gallery-grid .project-picker-card')
+  cards.forEach(card => {
+    const match = !target || card.dataset.projectId === target
+    card.style.display = match ? '' : 'none'
+  })
+}
+function switchSprintsProject(id) {
+  _sprintsViewPage = 1
+  if (window.Router?.current?.page === 'sprints-view') {
+    const nextParams = id ? { id } : {}
+    window.Router.current = { page: 'sprints-view', params: nextParams }
+    if (typeof window.Router._persist === 'function') window.Router._persist()
+  }
+  const el = document.getElementById('page-sprints-view')
+  if (el) { el.dataset.loaded = ''; loadPage('sprints-view', el) }
+}
+window.filterSprintsGallery = filterSprintsGallery
+window.filterSprintsByProject = filterSprintsByProject
+window.switchSprintsProject = switchSprintsProject
 
 async function showCreateSprintModal() {
   const proj = await API.get('/projects')
@@ -2599,6 +2756,8 @@ async function doUpdateSprint(id) {
 }
 
 /* ── MILESTONES VIEW ────────────────────────────────────── */
+// Same picker-first flow as Sprints + Kanban: the page opens with a project
+// gallery; clicking a project deep-links into its milestone column.
 async function renderMilestonesView(el) {
   el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
@@ -2622,9 +2781,8 @@ async function renderMilestonesView(el) {
     window._projectsCache = projMap
     const canEdit = hasPermission('milestones.edit') || hasPermission('sprints.edit')
 
-    // Group milestones by project. Project columns are sorted by latest
-    // activity so the busiest projects bubble up first; empty projects still
-    // appear so the user can drop a fresh milestone in.
+    // Group milestones by project (used both for the picker counts and for
+    // rendering the selected project's column).
     const byProject = new Map()
     for (const p of projects) byProject.set(String(p.id), [])
     for (const m of milestones) {
@@ -2632,24 +2790,90 @@ async function renderMilestonesView(el) {
       if (!byProject.has(k)) byProject.set(k, [])
       byProject.get(k).push(m)
     }
-    const projectColumns = projects.map(p => ({
-      project: p,
-      milestones: (byProject.get(String(p.id)) || []).slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))),
-    })).sort((a, b) => {
-      const aLast = a.milestones[0]?.created_at || a.project.created_at || ''
-      const bLast = b.milestones[0]?.created_at || b.project.created_at || ''
-      return String(bLast).localeCompare(String(aLast))
-    })
+
+    const routedId = window.Router?.current?.params?.id || ''
+    let selProject = routedId
+    if (selProject && !projMap[selProject]) {
+      selProject = ''
+      if (window.Router?.current?.page === 'milestones-view') {
+        window.Router.current = { page: 'milestones-view', params: {} }
+        if (typeof window.Router._persist === 'function') window.Router._persist()
+      }
+    }
+
+    // No project chosen → render the picker gallery.
+    if (!selProject) {
+      const ordered = projects.map(p => ({
+        p,
+        ms: (byProject.get(String(p.id)) || []).slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))),
+      })).sort((a, b) => {
+        const aLast = a.ms[0]?.created_at || a.p.created_at || ''
+        const bLast = b.ms[0]?.created_at || b.p.created_at || ''
+        return String(bLast).localeCompare(String(aLast))
+      })
+      el.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#A970FF,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="fas fa-flag" style="color:#fff;font-size:15px"></i>
+            </div>
+            <div>
+              <h1 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0">Milestones</h1>
+              <p style="font-size:12px;color:var(--text-muted);margin:0">${projects.length} project${projects.length === 1 ? '' : 's'} · ${milestones.length} total milestone${milestones.length === 1 ? '' : 's'}. Pick a project to manage its deliverables.</p>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div style="position:relative">
+              <i class="fas fa-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text-muted)"></i>
+              <input id="ms-gallery-search" class="form-input" placeholder="Search projects…" oninput="filterMilestonesGallery(this.value)" style="padding-left:32px;min-width:240px;max-width:320px" autocomplete="off"/>
+            </div>
+            <select class="form-select" id="ms-gallery-filter" style="min-width:200px;max-width:240px" onchange="filterMilestonesByProject(this.value)">
+              <option value="" selected>— Or pick from list —</option>
+              ${ordered.map(({ p }) => `<option value="${p.id}">${tc(p.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div id="ms-gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+          ${ordered.length ? ordered.map(({ p, ms }) => {
+            const completed = ms.filter(m => m.status === 'completed' || Number(m.completion_pct) >= 100).length
+            return _projectPickerCard(p, 'switchMilestonesProject', {
+              primaryLabel: `${ms.length} milestone${ms.length === 1 ? '' : 's'}`,
+              secondaryLabel: completed ? `${completed} done` : '',
+              lastActivity: ms[0]?.created_at || p.updated_at || '',
+            })
+          }).join('') : ''}
+        </div>
+        ${ordered.length ? '' : '<div class="empty-state"><i class="fas fa-flag"></i><p>No projects available</p></div>'}
+      </div>`
+      return
+    }
+
+    // Project chosen — show just that project's column.
+    const ms = (byProject.get(String(selProject)) || []).slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    const projName = tc(projMap[selProject]?.name || selProject)
 
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">Milestones</h1><p class="page-subtitle">${milestones.length} deliverables across ${projects.length} project${projects.length === 1 ? '' : 's'}</p></div>
-      <div class="page-actions">
-        ${canEdit ? `<button class="btn btn-primary" onclick="showCreateMilestoneModal()"><i class="fas fa-plus"></i>New Milestone</button>` : ''}
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="btn btn-outline btn-sm" onclick="switchMilestonesProject('')" title="Back to projects"><i class="fas fa-arrow-left"></i></button>
+        <div>
+          <h1 class="page-title">${projName} · Milestones</h1>
+          <p class="page-subtitle">${ms.length} milestone${ms.length === 1 ? '' : 's'} for this project</p>
+        </div>
+      </div>
+      <div class="page-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="form-select" style="min-width:180px;max-width:240px" onchange="switchMilestonesProject(this.value)">
+          <option value="">— Switch project —</option>
+          ${projects.map(p => `<option value="${p.id}" ${p.id === selProject ? 'selected' : ''}>${tc(p.name)}</option>`).join('')}
+        </select>
+        ${canEdit ? `<button class="btn btn-primary" onclick="showCreateMilestoneModal('${selProject}')"><i class="fas fa-plus"></i>New Milestone</button>` : ''}
       </div>
     </div>
 
-    ${projectColumns.length === 0 ? '<div class="empty-state"><i class="fas fa-flag"></i><p>No projects available</p></div>' : `
+    ${(() => {
+      const projectColumns = [{ project: projMap[selProject], milestones: ms }]
+      return `
     <div style="overflow-x:auto;padding-bottom:16px;-webkit-overflow-scrolling:touch">
       <div style="display:flex;gap:14px;min-width:max-content;align-items:flex-start">
         ${projectColumns.map(col => {
@@ -2714,10 +2938,46 @@ async function renderMilestonesView(el) {
           </div>`
         }).join('')}
       </div>
-    </div>`}
+    </div>`
+    })()}
     `
   } catch (e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }
+
+// Milestone gallery helpers — same pattern as filterSprintsGallery / switchSprintsProject.
+function filterMilestonesGallery(query) {
+  const q = String(query || '').trim().toLowerCase()
+  const dropdown = document.getElementById('ms-gallery-filter')
+  if (dropdown && q) dropdown.value = ''
+  document.querySelectorAll('#ms-gallery-grid .project-picker-card').forEach(card => {
+    const name = card.dataset.name || ''
+    const code = card.dataset.code || ''
+    card.style.display = (!q || name.includes(q) || code.includes(q)) ? '' : 'none'
+  })
+}
+// Dropdown-based filter: narrow the gallery to one project card on the same
+// page; user still clicks the card (or the button inside it) to drill in.
+function filterMilestonesByProject(projectId) {
+  const target = String(projectId || '').trim()
+  const search = document.getElementById('ms-gallery-search')
+  if (search && target) search.value = ''
+  document.querySelectorAll('#ms-gallery-grid .project-picker-card').forEach(card => {
+    const match = !target || card.dataset.projectId === target
+    card.style.display = match ? '' : 'none'
+  })
+}
+function switchMilestonesProject(id) {
+  if (window.Router?.current?.page === 'milestones-view') {
+    const nextParams = id ? { id } : {}
+    window.Router.current = { page: 'milestones-view', params: nextParams }
+    if (typeof window.Router._persist === 'function') window.Router._persist()
+  }
+  const el = document.getElementById('page-milestones-view')
+  if (el) { el.dataset.loaded = ''; loadPage('milestones-view', el) }
+}
+window.filterMilestonesGallery = filterMilestonesGallery
+window.filterMilestonesByProject = filterMilestonesByProject
+window.switchMilestonesProject = switchMilestonesProject
 
 function projects0(resp) {
   return resp.projects || resp.data || resp || []
@@ -3763,6 +4023,12 @@ function setClientsFilter(filter) {
   _clientsListPage = 1
   rerenderEnterprisePage('clients-list', () => {})
 }
+function setClientsView(view) {
+  if (view !== 'grid' && view !== 'list') return
+  _clientsListView = view
+  try { localStorage.setItem('clientsListView', view) } catch {}
+  rerenderEnterprisePage('clients-list', () => {})
+}
 async function deleteClient(id, name) {
   if (!window.confirm(`Delete client "${name}"? This action cannot be undone.`)) return
   try {
@@ -3786,19 +4052,12 @@ async function renderClientsList(el) {
       : allClients.filter(c => c.is_active)
     const pagination = paginateClient(filtered, _clientsListPage, _clientsPageLimit)
     _clientsListPage = pagination.page
+    const view = _clientsListView === 'list' ? 'list' : 'grid'
     const tabBtn = (key, label, count) => `<button class="btn btn-xs ${filter === key ? 'btn-primary' : 'btn-outline'}" onclick="setClientsFilter('${key}')">${label} <span style="opacity:.7">(${count})</span></button>`
-    el.innerHTML = `
-    <div class="page-header">
-      <div><h1 class="page-title">Clients</h1><p class="page-subtitle">${pagination.total} ${filter === 'inactive' ? 'inactive' : filter === 'active' ? 'active' : ''} client companies</p></div>
-      ${hasPermission('clients.create') ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="openImportClientsModal()"><i class="fas fa-file-csv"></i>Import CSV</button><button class="btn btn-primary" onclick="openCreateClientModal()"><i class="fas fa-user-plus"></i>Add Client</button></div>` : ''}
-    </div>
-    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
-      ${tabBtn('active', 'Active', activeCount)}
-      ${tabBtn('inactive', 'Inactive', inactiveCount)}
-      ${tabBtn('all', 'All', allClients.length)}
-    </div>
-    <div class="grid-2">
-      ${pagination.items.map(cl=>`
+    const viewBtn = (key, icon, label) => `<button class="btn btn-xs ${view === key ? 'btn-primary' : 'btn-outline'}" onclick="setClientsView('${key}')" title="${label} view" aria-label="${label} view"><i class="fas ${icon}"></i> ${label}</button>`
+    const canDel = hasPermission('clients.delete')
+    const isAdmin = String(_user?.role||'').toLowerCase() === 'admin'
+    const gridBody = pagination.items.map(cl=>`
         <div class="client-project-card" onclick="showClientDetail('${cl.id}')">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">
             <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0">
@@ -3809,9 +4068,9 @@ async function renderClientsList(el) {
                 <div style="font-size:12px;color:#7E7E8F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cl.email}</div>
               </div>
             </div>
-            ${hasPermission('clients.delete') ? `<div style="display:flex;flex-direction:column;gap:4px">
+            ${canDel ? `<div style="display:flex;flex-direction:column;gap:4px">
               <button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i> Login</button>
-              ${String(_user?.role||'').toLowerCase() === 'admin' ? `<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();openResetCredsModal('client','${cl.id}','${escapeHtml(cl.company_name||cl.contact_name||'').replace(/'/g,"\\'")}')" title="Reset client password"><i class="fas fa-key"></i> Password</button>` : ''}
+              ${isAdmin ? `<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();openResetCredsModal('client','${cl.id}','${escapeHtml(cl.company_name||cl.contact_name||'').replace(/'/g,"\\'")}')" title="Reset client password"><i class="fas fa-key"></i> Password</button>` : ''}
               <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Delete client"><i class="fas fa-trash"></i> Delete</button>
             </div>` : ''}
           </div>
@@ -3825,8 +4084,71 @@ async function renderClientsList(el) {
             <span class="status-chip status-${cl.is_active?'active':'cancelled'}">${cl.is_active?'Active':'Inactive'}</span>
             <span style="font-size:12px;color:#5A5A66">${cl.industry||'—'}</span>
           </div>
-        </div>`).join('') || '<div class="empty-state"><i class="fas fa-building"></i><p>No clients in this view</p></div>'}
+        </div>`).join('')
+    const listRows = pagination.items.map(cl => `
+        <tr class="clients-list-row" onclick="showClientDetail('${cl.id}')" style="cursor:pointer">
+          <td style="padding:10px 12px">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0">
+              ${avatar(cl.company_name, cl.avatar_color, 'sm')}
+              <div style="min-width:0">
+                <div style="font-size:13px;font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(cl.company_name||'')}</div>
+                <div style="font-size:11px;color:#7E7E8F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(cl.contact_name||'')}</div>
+              </div>
+            </div>
+          </td>
+          <td style="padding:10px 12px;font-size:12px;color:#cbd5e1">${escapeHtml(cl.email||'—')}</td>
+          <td style="padding:10px 12px;font-size:12px;color:#cbd5e1">${escapeHtml(cl.city||'—')}</td>
+          <td style="padding:10px 12px;font-size:12px;color:#cbd5e1">${escapeHtml(cl.industry||'—')}</td>
+          <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:700;color:#e2e8f0">${cl.project_count||0}</td>
+          <td style="padding:10px 12px;text-align:right;font-size:12px;color:#58C68A">₹${cl.total_paid?fmtNum(cl.total_paid):'0'}</td>
+          <td style="padding:10px 12px;text-align:right;font-size:12px;color:#C9A7FF">₹${cl.total_billed?fmtNum(cl.total_billed-cl.total_paid):'0'}</td>
+          <td style="padding:10px 12px"><span class="status-chip status-${cl.is_active?'active':'cancelled'}">${cl.is_active?'Active':'Inactive'}</span></td>
+          ${canDel ? `<td style="padding:10px 12px;text-align:right;white-space:nowrap">
+            <button class="btn btn-xs btn-primary" onclick="event.stopPropagation();loginAsClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Login as this client"><i class="fas fa-user-secret"></i></button>
+            ${isAdmin ? `<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();openResetCredsModal('client','${cl.id}','${escapeHtml(cl.company_name||cl.contact_name||'').replace(/'/g,"\\'")}')" title="Reset password"><i class="fas fa-key"></i></button>` : ''}
+            <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteClient('${cl.id}','${escapeHtml(cl.company_name||'')}')" title="Delete client"><i class="fas fa-trash"></i></button>
+          </td>` : ''}
+        </tr>`).join('')
+    const listBody = `
+      <div style="overflow-x:auto;background:var(--surface,rgba(255,255,255,.03));border:1px solid var(--border,rgba(255,255,255,.08));border-radius:12px">
+        <table style="width:100%;border-collapse:collapse;min-width:880px">
+          <thead>
+            <tr style="background:rgba(169,112,255,.08);border-bottom:1px solid rgba(169,112,255,.18);text-align:left">
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Company</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Email</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">City</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Industry</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:center">Projects</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:right">Paid</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:right">Pending</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Status</th>
+              ${canDel ? `<th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:right">Actions</th>` : ''}
+            </tr>
+          </thead>
+          <tbody>${listRows}</tbody>
+        </table>
+      </div>`
+    const emptyBody = '<div class="empty-state"><i class="fas fa-building"></i><p>No clients in this view</p></div>'
+    const body = !pagination.items.length
+      ? emptyBody
+      : (view === 'list' ? listBody : `<div class="grid-2">${gridBody}</div>`)
+    el.innerHTML = `
+    <div class="page-header">
+      <div><h1 class="page-title">Clients</h1><p class="page-subtitle">${pagination.total} ${filter === 'inactive' ? 'inactive' : filter === 'active' ? 'active' : ''} client companies</p></div>
+      ${hasPermission('clients.create') ? `<div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="openImportClientsModal()"><i class="fas fa-file-csv"></i>Import CSV</button><button class="btn btn-primary" onclick="openCreateClientModal()"><i class="fas fa-user-plus"></i>Add Client</button></div>` : ''}
     </div>
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${tabBtn('active', 'Active', activeCount)}
+        ${tabBtn('inactive', 'Inactive', inactiveCount)}
+        ${tabBtn('all', 'All', allClients.length)}
+      </div>
+      <div style="display:flex;gap:6px">
+        ${viewBtn('grid', 'fa-th-large', 'Grid')}
+        ${viewBtn('list', 'fa-list', 'List')}
+      </div>
+    </div>
+    ${body}
     ${renderPager(pagination, 'goClientsPage', 'goClientsPage', 'clients', 'clients-list')}
     `
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }

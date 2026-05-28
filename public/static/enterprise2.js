@@ -7,6 +7,28 @@ let _timesheetsViewPage = 1
 let _alertsViewPage = 1
 let _holidaysPage = 1
 let _alertsSeverityFilter = ''
+// Documents view mode — 'grid' = category-grouped cards (default), 'list' =
+// flat table. Persisted to localStorage so the user's choice survives refresh.
+let _documentsView = (typeof localStorage !== 'undefined' && localStorage.getItem('documentsView')) || 'grid'
+
+function setDocumentsView(view) {
+  if (view !== 'grid' && view !== 'list') return
+  _documentsView = view
+  try { localStorage.setItem('documentsView', view) } catch {}
+  // Re-run the active filter with the new view — no need to re-fetch /documents.
+  if (typeof window.applyDocFilter === 'function') {
+    window.applyDocFilter()
+    // Also re-render the toggle buttons so the active state flips.
+    const wrap = document.getElementById('doc-view-toggle')
+    if (wrap) {
+      wrap.querySelectorAll('button[data-view]').forEach(btn => {
+        btn.classList.toggle('btn-primary', btn.dataset.view === view)
+        btn.classList.toggle('btn-outline', btn.dataset.view !== view)
+      })
+    }
+  }
+}
+window.setDocumentsView = setDocumentsView
 
 /* ── DOCUMENTS CENTER ──────────────────────────────────── */
 async function renderDocumentsCenter(el) {
@@ -37,6 +59,9 @@ async function renderDocumentsCenter(el) {
 
     function buildDocGrid(filteredDocs) {
       if (filteredDocs.length === 0) return '<div class="empty-state"><i class="fas fa-folder-open"></i><p>No documents found</p></div>'
+      // Dispatch to the active view. List view bypasses the per-category
+      // grouping and renders a flat table for compact scanning.
+      if (_documentsView === 'list') return buildDocList(filteredDocs)
       const byCat = {}
       filteredDocs.forEach(d => { const c = d.category||'other'; if(!byCat[c]) byCat[c]=[]; byCat[c].push(d) })
       return Object.entries(byCat).map(([cat, catDocs]) => `
@@ -78,8 +103,68 @@ async function renderDocumentsCenter(el) {
         </div>`).join('')
     }
 
+    // Flat table — same docs, no category grouping. Designed for scanning
+    // a lot of documents at once; the category is shown as a pill in its
+    // own column instead of as a section header.
+    function buildDocList(filteredDocs) {
+      const canDelete = ['admin','pm'].includes(_user.role)
+      const rows = filteredDocs.map(doc => {
+        const titleSafe = String(doc.title || doc.file_name || 'Untitled').replace(/'/g, "\\'")
+        return `
+        <tr class="doc-list-row" style="border-bottom:1px solid rgba(255,255,255,.04)">
+          <td style="padding:10px 12px;vertical-align:middle">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0">
+              <div style="width:32px;height:32px;border-radius:7px;background:${docCategoryColor(doc.category)};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fas ${docFTypeIcon(doc.file_type)}" style="color:#fff;font-size:13px"></i>
+              </div>
+              <div style="min-width:0">
+                <div style="font-size:13px;font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px">${escapeHtml(doc.title || doc.file_name || 'Untitled')}</div>
+                ${doc.description ? `<div style="font-size:11px;color:#7E7E8F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px">${escapeHtml(doc.description)}</div>` : ''}
+              </div>
+            </div>
+          </td>
+          <td style="padding:10px 12px;font-size:12px;vertical-align:middle">
+            <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;background:${docCategoryColor(doc.category)}22;color:${docCategoryColor(doc.category)};font-size:11px;font-weight:600">${docCategoryIcon(doc.category)} ${escapeHtml(categoryLabels[doc.category] || doc.category || 'other')}</span>
+          </td>
+          <td style="padding:10px 12px;font-size:12px;color:#cbd5e1;vertical-align:middle">${escapeHtml(doc.project_name || '—')}</td>
+          <td style="padding:10px 12px;font-size:12px;color:#cbd5e1;vertical-align:middle;text-align:center">v${escapeHtml(doc.version || '1.0')}</td>
+          <td style="padding:10px 12px;font-size:12px;color:#cbd5e1;vertical-align:middle">${escapeHtml(doc.uploaded_by_name || '—')}</td>
+          <td style="padding:10px 12px;font-size:12px;color:#7E7E8F;vertical-align:middle;white-space:nowrap">${fmtDate(doc.created_at)}</td>
+          <td style="padding:10px 12px;vertical-align:middle">
+            <span class="badge ${doc.visibility === 'all' ? 'badge-done' : doc.visibility === 'client' ? 'badge-inprogress' : 'badge-review'}" style="font-size:10px">${escapeHtml(doc.visibility || 'all')}</span>
+          </td>
+          <td style="padding:10px 12px;text-align:right;vertical-align:middle;white-space:nowrap">
+            <button type="button" class="btn btn-xs btn-outline" onclick="viewDocPreview('${doc.id}','${encodeURIComponent(doc.file_url||'')}','${encodeURIComponent(doc.file_type||'')}','${encodeURIComponent(doc.title||doc.file_name||'Document')}')" title="Preview"><i class="fas fa-eye"></i></button>
+            <a href="${doc.file_url || '#'}" download class="btn btn-xs btn-primary" style="text-decoration:none" title="Download"><i class="fas fa-download"></i></a>
+            ${canDelete && !doc.read_only ? `<button class="btn btn-xs btn-outline" onclick="deleteDoc('${doc.id}')" style="color:#FF5E3A;border-color:#FF5E3A" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
+          </td>
+        </tr>`
+      }).join('')
+      return `
+        <div style="overflow-x:auto;background:var(--surface,rgba(255,255,255,.03));border:1px solid var(--border,rgba(255,255,255,.08));border-radius:12px">
+          <table style="width:100%;border-collapse:collapse;min-width:900px">
+            <thead>
+              <tr style="background:rgba(169,112,255,.08);border-bottom:1px solid rgba(169,112,255,.18);text-align:left">
+                <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Document</th>
+                <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Category</th>
+                <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Project</th>
+                <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:center">Ver</th>
+                <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Uploaded by</th>
+                <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Date</th>
+                <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Visibility</th>
+                <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`
+    }
+
     function renderFilteredDocs(filteredDocs) {
-      const pagination = paginateClient(filteredDocs, _documentsCenterPage, 8)
+      // Table rows are much more compact than cards — show more per page in
+      // list view so users don't paginate constantly when scanning.
+      const perPage = _documentsView === 'list' ? 25 : 8
+      const pagination = paginateClient(filteredDocs, _documentsCenterPage, perPage)
       _documentsCenterPage = pagination.page
       const grid = document.getElementById('doc-grid')
       const pager = document.getElementById('doc-pager')
@@ -104,25 +189,48 @@ async function renderDocumentsCenter(el) {
       </div>
     </div>
 
-    <!-- Filters -->
-    <div class="card" style="padding:14px;margin-bottom:16px">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-          <input class="form-input" placeholder="Search documents…" oninput="window._docFilter=this.value.toLowerCase();applyDocFilter()" style="width:100%"/>
-        </div>
-        <select class="form-select" style="min-width:180px" onchange="window._docProject=this.value;applyDocFilter()">
-          <option value="">All Projects</option>
-          ${projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
-        </select>
-        <select class="form-select" style="min-width:160px" onchange="window._docCategory=this.value;applyDocFilter()">
-          <option value="">All Categories</option>
-          ${categories.map(c=>`<option value="${c}">${categoryLabels[c]||c}</option>`).join('')}
-        </select>
+    <!-- Filter toolbar — compact inline row. The previous design wrapped the
+         inputs in a padded card which doubled the row's vertical footprint;
+         the standalone form-input / form-select are full-height by default
+         too. We override both with compact inline sizing here. -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <div style="position:relative;flex:0 1 260px;min-width:180px">
+        <i class="fas fa-search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text-muted);pointer-events:none"></i>
+        <input class="form-input" placeholder="Search documents…" oninput="window._docFilter=this.value.toLowerCase();applyDocFilter()" style="width:100%;height:32px;padding:0 12px 0 30px;font-size:12.5px"/>
+      </div>
+      <div style="flex:0 1 200px;min-width:160px">
+        ${searchableSelect('doc-project-filter',
+          [{ value: '', label: 'All Projects' }].concat(projects.map(p => ({ value: p.id, label: p.name }))),
+          '',
+          { placeholder: 'All Projects', onChange: (id) => { window._docProject = id || ''; if (window.applyDocFilter) window.applyDocFilter() } }
+        )}
+      </div>
+      <div style="flex:0 1 200px;min-width:160px">
+        ${searchableSelect('doc-category-filter',
+          [{ value: '', label: 'All Categories' }].concat(categories.map(c => ({ value: c, label: categoryLabels[c] || c }))),
+          '',
+          { placeholder: 'All Categories', onChange: (id) => { window._docCategory = id || ''; if (window.applyDocFilter) window.applyDocFilter() } }
+        )}
+      </div>
+      <div id="doc-view-toggle" style="display:flex;gap:4px;margin-left:auto">
+        <button type="button" class="btn btn-xs ${_documentsView === 'grid' ? 'btn-primary' : 'btn-outline'}" data-view="grid" onclick="setDocumentsView('grid')" title="Grid view" aria-label="Grid view"><i class="fas fa-th-large"></i> Grid</button>
+        <button type="button" class="btn btn-xs ${_documentsView === 'list' ? 'btn-primary' : 'btn-outline'}" data-view="list" onclick="setDocumentsView('list')" title="List view" aria-label="List view"><i class="fas fa-list"></i> List</button>
       </div>
     </div>
 
     <div id="doc-grid"></div>
     <div id="doc-pager"></div>`
+
+    // Trim the picker inputs to match the 32px toolbar — the searchableSelect
+    // helper renders a stock form-input which is taller than our compact row.
+    for (const pid of ['doc-project-filter', 'doc-category-filter']) {
+      const inp = document.getElementById(pid + '-search')
+      if (inp) {
+        inp.style.height = '32px'
+        inp.style.padding = '0 28px 0 10px'
+        inp.style.fontSize = '12.5px'
+      }
+    }
 
     // Store filter state globally
     window._allDocs = docs
@@ -1971,6 +2079,65 @@ function renderRoleCard(role) {
   `
 }
 
+// ── Salesforce-style permission matrix ───────────────────────
+// One unified table: every row is a module, the first six columns are the
+// standard CRUD actions (Create / Read / Edit / Delete / View All / Modify
+// All), and the final "Other Actions" column carries pill-checkboxes for any
+// remaining module-specific permission (tasks.move, invoices.send,
+// leaves.approve, hr.*.manage, etc.). Every permission key in the catalogue
+// is represented somewhere in this single table — no separate "extras" pane.
+const PERM_MATRIX_ACTIONS = [
+  { key: 'create',    label: 'Create' },
+  { key: 'read',      label: 'Read' },
+  { key: 'edit',      label: 'Edit' },
+  { key: 'delete',    label: 'Delete' },
+  { key: 'viewAll',   label: 'View All' },
+  { key: 'modifyAll', label: 'Modify All' },
+]
+
+// Map a (module, action) pair to the underlying permission key(s) for the
+// catalogue group. Returns either a single key, a "key1|key2" composite
+// (Modify All grants edit-any + delete-any in one click), or null when the
+// module doesn't support that action — in which case the cell renders as a dash.
+function _permMatrixKey(module, action, keySet) {
+  const has = (k) => keySet.has(k) ? k : null
+  // Modules use slightly different verbs for "create" (leaves.create_own,
+  // timesheets.log_own, documents.upload). Treat them all as Create so the
+  // column is populated instead of pushing them into Other Actions.
+  const CREATE_ALIASES   = ['create', 'create_own', 'log_own', 'upload']
+  // Leaves uses `delete_any` (not `delete`) for the "delete anyone's record"
+  // variant. Treat both as synonyms so Modify All works for leaves too.
+  const DELETE_ANY_ALIAS = ['delete', 'delete_any']
+  switch (action) {
+    case 'create': {
+      for (const a of CREATE_ALIASES) { const k = has(`${module}.${a}`); if (k) return k }
+      return null
+    }
+    case 'read':   return has(`${module}.view_own`) || has(`${module}.view_all`) || has(`${module}.view`)
+    case 'edit':   return has(`${module}.edit_own`) || has(`${module}.edit`)
+    case 'delete': return has(`${module}.delete_own`) || has(`${module}.delete`)
+    case 'viewAll': {
+      // Only meaningful when the module exposes a scoped "own" view AND a
+      // separate "all" view. Otherwise the "Read" column already represents
+      // view_all and rendering it twice would mislead.
+      const hasScoped = keySet.has(`${module}.view_own`) || keySet.has(`${module}.view`)
+      return (hasScoped && keySet.has(`${module}.view_all`)) ? `${module}.view_all` : null
+    }
+    case 'modifyAll': {
+      // Salesforce semantics: "Modify All" = grant the "any" edit + "any"
+      // delete (full override). Only show when the module distinguishes an
+      // _own scope from a full one, otherwise the Edit/Delete columns
+      // already grant full power.
+      const fullEdit = keySet.has(`${module}.edit`) && keySet.has(`${module}.edit_own`)
+      const delAnyKey = DELETE_ANY_ALIAS.map(a => `${module}.${a}`).find(k => keySet.has(k))
+      const fullDel  = !!delAnyKey && keySet.has(`${module}.delete_own`)
+      if (!fullEdit && !fullDel) return null
+      return [fullEdit ? `${module}.edit` : '', fullDel ? delAnyKey : ''].filter(Boolean).join('|')
+    }
+  }
+  return null
+}
+
 function openRoleEditModal(roleId) {
   const isCreate = !roleId
   const role = isCreate ? null : (_rolesState.roles || []).find(r => r.id === roleId)
@@ -1980,27 +2147,68 @@ function openRoleEditModal(roleId) {
   const granted = new Set(Array.isArray(role?.permissions) ? role.permissions : [])
   const groups = _rolesState.catalogue || []
 
-  const groupHtml = groups.map(g => {
-    const checks = (g.permissions || []).map(p => `
-      <label class="perm-row">
-        <input type="checkbox" data-perm="${escapeHtml(p.key)}" ${granted.has(p.key)?'checked':''}/>
-        <span class="perm-row-text">
-          <span class="perm-row-label">${escapeHtml(p.label)}</span>
-          <span class="perm-row-key">${escapeHtml(p.key)}</span>
-        </span>
-      </label>
-    `).join('')
+  // Build the matrix table — one <tr> per module group, one <td> per action,
+  // plus a final "Other Actions" cell that contains pill-checkboxes for any
+  // permission in the group that didn't fit a standard CRUD slot.
+  const matrixHeader = `
+    <tr>
+      <th class="perm-mtx-module-head">Module</th>
+      ${PERM_MATRIX_ACTIONS.map(a => `<th class="perm-mtx-action-head">${escapeHtml(a.label)}</th>`).join('')}
+      <th class="perm-mtx-action-head perm-mtx-other-head">Other Actions</th>
+      <th class="perm-mtx-action-head perm-mtx-bulk-head">All&nbsp;/&nbsp;None</th>
+    </tr>`
+
+  const matrixRows = groups.map(g => {
+    const keySet = new Set((g.permissions || []).map(p => p.key))
+    // First the six CRUD cells. Each cell records which raw keys it consumes
+    // so the "Other Actions" cell at the end can show everything that's left.
+    const consumed = new Set()
+    const cells = PERM_MATRIX_ACTIONS.map(a => {
+      const k = _permMatrixKey(g.module, a.key, keySet)
+      if (!k) return `<td class="perm-mtx-cell perm-mtx-na" aria-label="not applicable">—</td>`
+      const parts = k.split('|')
+      parts.forEach(p => consumed.add(p))
+      const allChecked = parts.every(p => granted.has(p))
+      const someChecked = parts.some(p => granted.has(p))
+      const indet = !allChecked && someChecked
+      return `<td class="perm-mtx-cell">
+        <label class="perm-mtx-check" title="${escapeHtml(parts.join(' + '))}">
+          <input type="checkbox" data-perm="${escapeHtml(k)}" ${allChecked ? 'checked' : ''} ${indet ? 'data-indeterminate="1"' : ''}/>
+          <span class="perm-mtx-tick"><i class="fas fa-check"></i></span>
+        </label>
+      </td>`
+    }).join('')
+
+    // Pill-checkboxes for the leftovers (approve, send, mark_paid, move,
+    // comment, assign, manage, *.view_overview, hr.*.manage, etc.). Each
+    // pill is a normal checkbox styled to read as both a chip and a control,
+    // so the entire row of pills wraps inside the same cell.
+    const extras = (g.permissions || []).filter(p => !consumed.has(p.key))
+    const otherCell = extras.length
+      ? `<td class="perm-mtx-cell perm-mtx-other">
+          <div class="perm-pill-group">
+            ${extras.map(p => `
+              <label class="perm-pill" title="${escapeHtml(p.key)}">
+                <input type="checkbox" data-perm="${escapeHtml(p.key)}" ${granted.has(p.key)?'checked':''}/>
+                <span class="perm-pill-body"><i class="fas fa-check"></i> ${escapeHtml(p.label)}</span>
+              </label>`).join('')}
+          </div>
+        </td>`
+      : `<td class="perm-mtx-cell perm-mtx-na" aria-label="no extra actions">—</td>`
+
     return `
-      <div class="perm-group">
-        <div class="perm-group-head">
+      <tr data-perm-row="${escapeHtml(g.module)}">
+        <th class="perm-mtx-module">
           <i class="fas ${escapeHtml(g.icon || 'fa-circle')}"></i>
-          <strong>${escapeHtml(g.label)}</strong>
-          <button class="btn btn-xs btn-outline" onclick="togglePermGroup('${escapeHtml(g.module)}', true)">All</button>
-          <button class="btn btn-xs btn-outline" onclick="togglePermGroup('${escapeHtml(g.module)}', false)">None</button>
-        </div>
-        <div class="perm-group-body" data-perm-group="${escapeHtml(g.module)}">${checks}</div>
-      </div>
-    `
+          <span>${escapeHtml(g.label)}</span>
+        </th>
+        ${cells}
+        ${otherCell}
+        <td class="perm-mtx-cell perm-mtx-bulk">
+          <button type="button" class="btn btn-xs btn-outline" onclick="togglePermGroup('${escapeHtml(g.module)}', true)">All</button>
+          <button type="button" class="btn btn-xs btn-outline" onclick="togglePermGroup('${escapeHtml(g.module)}', false)">None</button>
+        </td>
+      </tr>`
   }).join('')
 
   showModal(`
@@ -2027,7 +2235,24 @@ function openRoleEditModal(roleId) {
         <input id="role-desc" class="form-input" value="${escapeHtml(role?.description || '')}" placeholder="Short summary of what this role does"/>
       </div>
 
-      <div class="perm-grid">${groupHtml}</div>
+      <div class="perm-mtx-section">
+        <div class="perm-mtx-section-head">
+          <div>
+            <div class="perm-mtx-title">Permissions</div>
+            <div class="perm-mtx-sub">Every permission in one place — CRUD actions in the standard columns, anything module-specific (approve, send, assign, manage, etc.) inline under "Other Actions". Dashes mean the module doesn't expose that action.</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="btn btn-xs btn-outline" onclick="togglePermMatrix(true)"><i class="fas fa-check-double"></i> Grant all</button>
+            <button type="button" class="btn btn-xs btn-outline" onclick="togglePermMatrix(false)"><i class="fas fa-eraser"></i> Clear all</button>
+          </div>
+        </div>
+        <div class="perm-mtx-wrap">
+          <table class="perm-mtx">
+            <thead>${matrixHeader}</thead>
+            <tbody>${matrixRows}</tbody>
+          </table>
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -2036,12 +2261,26 @@ function openRoleEditModal(roleId) {
       </button>
     </div>
   `, 'modal-xl')
+
+  // Reflect composite "some-but-not-all" state visually. The HTML `checked`
+  // attribute can't express it, so we paint it after mount.
+  setTimeout(() => {
+    document.querySelectorAll('input[data-indeterminate="1"]').forEach(cb => { cb.indeterminate = true })
+  }, 0)
 }
 
+// Toggle every checkbox in a single matrix row (per-module All / None).
+// All permissions for a module — including the "Other Actions" pills — live
+// inside one <tr data-perm-row>, so a single query covers both surfaces.
 function togglePermGroup(moduleKey, on) {
-  const wrap = document.querySelector(`[data-perm-group="${moduleKey}"]`)
-  if (!wrap) return
-  wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = !!on })
+  const row = document.querySelector(`[data-perm-row="${moduleKey}"]`)
+  if (!row) return
+  row.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = !!on; cb.indeterminate = false })
+}
+
+// Bulk toggle for every checkbox in the modal (matrix + extras).
+function togglePermMatrix(on) {
+  document.querySelectorAll('input[data-perm]').forEach(cb => { cb.checked = !!on; cb.indeterminate = false })
 }
 
 async function saveRoleFromModal(roleId, isCreate) {
@@ -2049,8 +2288,15 @@ async function saveRoleFromModal(roleId, isCreate) {
   const desc = document.getElementById('role-desc')?.value.trim() || ''
   const key  = document.getElementById('role-key')?.value.trim() || ''
   const checks = document.querySelectorAll('input[data-perm]')
-  const permissions = []
-  checks.forEach(cb => { if (cb.checked) permissions.push(cb.dataset.perm) })
+  // Matrix cells can carry a composite "key1|key2" (Modify All grants
+  // edit-any + delete-any in one click). De-dup via Set because a key can
+  // also exist in the Additional panel.
+  const permSet = new Set()
+  checks.forEach(cb => {
+    if (!cb.checked) return
+    String(cb.dataset.perm || '').split('|').filter(Boolean).forEach(k => permSet.add(k))
+  })
+  const permissions = Array.from(permSet)
 
   if (!name || name.length < 2) return toast('Role name must be at least 2 characters', 'error')
 
@@ -3246,3 +3492,300 @@ async function renderTeamDashboard(el) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
   }
 }
+
+// ── BROADCAST ────────────────────────────────────────────────
+// Two-step flow: Create a broadcast (saved as draft) → review in the list →
+// Send it. Drafts can be edited or deleted; sent broadcasts are immutable
+// but still deletable (history cleanup). The "Send to" target list includes
+// every staff role from the catalogue plus a dedicated "Clients" option
+// that fans out via the client-portal notification collection.
+async function renderBroadcastsView(el) {
+  el.innerHTML = `<div style="padding:24px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Loading broadcasts…</div>`
+  try {
+    const data = await API.get('/broadcasts')
+    const rows = data.broadcasts || data.data || []
+    const canCreate = hasPermission('broadcasts.create')
+    const canEdit   = hasPermission('broadcasts.edit')
+    const canDelete = hasPermission('broadcasts.delete')
+    const canSend   = hasPermission('broadcasts.send')
+    const sentRows  = rows.filter(b => b.status === 'sent')
+    const draftRows = rows.filter(b => b.status !== 'sent')
+    const totalRecipients = sentRows.reduce((s, b) => s + (Number(b.recipient_count) || 0), 0)
+    const lastSent = sentRows[0]?.sent_at || sentRows[0]?.created_at || ''
+
+    el.innerHTML = `
+    <div class="page-header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#A970FF,#C56FE6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fas fa-bullhorn" style="color:#fff;font-size:15px"></i>
+        </div>
+        <div>
+          <h1 class="page-title">Broadcast</h1>
+          <p class="page-subtitle">${draftRows.length} draft${draftRows.length === 1 ? '' : 's'} · ${sentRows.length} sent · ${fmtNum(totalRecipients)} notification${totalRecipients === 1 ? '' : 's'} delivered</p>
+        </div>
+      </div>
+      <div class="page-actions">
+        ${canCreate ? `<button class="btn btn-primary" onclick="showBroadcastModal()"><i class="fas fa-plus"></i> New Broadcast</button>` : ''}
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px">
+      ${_broadcastStatCard('fa-file-pen',         '#C9A7FF', 'Drafts',                draftRows.length)}
+      ${_broadcastStatCard('fa-paper-plane',      '#58C68A', 'Sent broadcasts',       sentRows.length)}
+      ${_broadcastStatCard('fa-users',            '#A970FF', 'Notifications delivered', fmtNum(totalRecipients))}
+      ${_broadcastStatCard('fa-clock-rotate-left','#FF9F40', 'Last sent',             lastSent ? (typeof timeAgo === 'function' ? timeAgo(lastSent) : fmtDate(lastSent)) : '—')}
+    </div>
+
+    ${rows.length ? `
+    <div style="overflow-x:auto;background:var(--surface,rgba(255,255,255,.03));border:1px solid var(--border,rgba(255,255,255,.08));border-radius:12px">
+      <table style="width:100%;border-collapse:collapse;min-width:860px">
+        <thead>
+          <tr style="background:rgba(169,112,255,.08);border-bottom:1px solid rgba(169,112,255,.18);text-align:left">
+            <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Broadcast</th>
+            <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Status</th>
+            <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Targets</th>
+            <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:right">Recipients</th>
+            <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">Sender</th>
+            <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px">When</th>
+            <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(b => {
+            const isSent = b.status === 'sent'
+            const ts = b.sent_at || b.created_at
+            const statusChip = isSent
+              ? '<span class="badge" style="background:rgba(88,198,138,.15);color:#58C68A;font-size:10px;padding:2px 8px;border-radius:999px;font-weight:700">SENT</span>'
+              : '<span class="badge" style="background:rgba(201,167,255,.15);color:#C9A7FF;font-size:10px;padding:2px 8px;border-radius:999px;font-weight:700">DRAFT</span>'
+            return `
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+              <td style="padding:12px;vertical-align:top">
+                <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px">${escapeHtml(b.title || '')}</div>
+                <div style="font-size:12px;color:var(--text-muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHtml(b.body || '')}</div>
+              </td>
+              <td style="padding:12px;vertical-align:top">${statusChip}</td>
+              <td style="padding:12px;vertical-align:top">
+                <div style="display:flex;gap:4px;flex-wrap:wrap;max-width:220px">
+                  ${(Array.isArray(b.target_roles) ? b.target_roles : []).map(r => `<span class="badge" style="background:rgba(169,112,255,.14);color:#C9A7FF;font-size:10px;padding:2px 8px;border-radius:999px">${escapeHtml(r === 'all' ? 'Everyone' : r === 'client' ? 'Clients' : r.replace(/_/g, ' '))}</span>`).join('')}
+                </div>
+              </td>
+              <td style="padding:12px;text-align:right;font-size:13px;font-weight:700;color:${isSent ? '#58C68A' : '#7E7E8F'};vertical-align:top">${isSent ? fmtNum(b.recipient_count || 0) : '—'}</td>
+              <td style="padding:12px;font-size:12px;color:var(--text-primary);vertical-align:top">${escapeHtml(b.sender_name || '—')}<div style="font-size:10px;color:var(--text-muted);text-transform:capitalize">${escapeHtml((b.sender_role || '').replace(/_/g, ' '))}</div></td>
+              <td style="padding:12px;font-size:12px;color:var(--text-muted);vertical-align:top">${ts ? (typeof timeAgo === 'function' ? timeAgo(ts) : fmtDate(ts)) : '—'}</td>
+              <td style="padding:12px;text-align:right;vertical-align:top;white-space:nowrap">
+                ${!isSent && canSend   ? `<button class="btn btn-xs btn-primary" onclick="dispatchBroadcast('${escapeHtml(b.id)}')" title="Send this draft now"><i class="fas fa-paper-plane"></i> Send</button>` : ''}
+                ${!isSent && canEdit   ? `<button class="btn btn-xs btn-outline" onclick="editBroadcast('${escapeHtml(b.id)}')" title="Edit draft"><i class="fas fa-pen"></i></button>` : ''}
+                ${canDelete            ? `<button class="btn btn-xs btn-danger"  onclick="deleteBroadcast('${escapeHtml(b.id)}','${escapeHtml((b.title || '').replace(/'/g,"\\'"))}')" title="Delete broadcast"><i class="fas fa-trash"></i></button>` : ''}
+              </td>
+            </tr>`
+          }).join('')}
+        </tbody>
+      </table>
+    </div>` : `
+    <div class="empty-state">
+      <i class="fas fa-bullhorn"></i>
+      <p>No broadcasts yet</p>
+      ${canCreate ? '<small>Click <strong>New Broadcast</strong> above to draft an announcement.</small>' : '<small>You need <code>broadcasts.create</code> to compose announcements.</small>'}
+    </div>`}
+    `
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message || 'Failed to load broadcasts')}</p></div>`
+  }
+}
+
+function _broadcastStatCard(icon, color, label, value) {
+  return `
+  <div style="background:var(--surface,rgba(255,255,255,.03));border:1px solid var(--border,rgba(255,255,255,.08));border-radius:12px;padding:14px;display:flex;align-items:center;gap:12px">
+    <div style="width:38px;height:38px;border-radius:10px;background:${color}22;border:1px solid ${color}44;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas ${icon}" style="color:${color};font-size:14px"></i></div>
+    <div style="min-width:0">
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">${escapeHtml(label)}</div>
+      <div style="font-size:17px;font-weight:700;color:var(--text-primary);margin-top:2px">${value}</div>
+    </div>
+  </div>`
+}
+
+// Role list pulled from the same catalogue the roles modal uses so a fresh
+// custom role admin just created shows up automatically. We hide `client`
+// (those are external contacts, not staff) and de-dup just in case.
+async function _broadcastTargetRoles() {
+  try {
+    if (!Array.isArray(_rolesState?.roles) || !_rolesState.roles.length) {
+      const res = await API.get('/settings/roles')
+      _rolesState.roles = res.roles || res.data || []
+      _rolesState.catalogue = res.catalogue || _rolesState.catalogue || []
+    }
+    const seen = new Set()
+    return (_rolesState.roles || [])
+      .filter(r => r.key && r.key !== 'client')
+      .filter(r => { if (seen.has(r.key)) return false; seen.add(r.key); return true })
+  } catch { return [] }
+}
+
+// Modal works for both Create (no draft) and Edit (existing draft id).
+// When `draft` is passed the title/body are prefilled, target chips reflect
+// the saved selection, and Save calls PATCH instead of POST.
+async function showBroadcastModal(draft) {
+  const isEdit = !!(draft && draft.id)
+  const roles = await _broadcastTargetRoles()
+  const savedTargets = new Set(Array.isArray(draft?.target_roles) ? draft.target_roles : [])
+  const wantsAll = savedTargets.has('all')
+  const wantsClients = savedTargets.has('client') || wantsAll
+  const roleChips = roles.map(r => {
+    const checked = wantsAll || savedTargets.has(r.key)
+    const disabled = wantsAll ? 'disabled' : ''
+    return `
+    <label class="perm-pill" title="${escapeHtml(r.key)}" style="${wantsAll ? 'opacity:.5' : ''}">
+      <input type="checkbox" data-bcast-role="${escapeHtml(r.key)}" ${checked ? 'checked' : ''} ${disabled}/>
+      <span class="perm-pill-body"><i class="fas fa-check"></i> ${escapeHtml(r.name || r.key)}</span>
+    </label>`
+  }).join('')
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-bullhorn" style="color:#A970FF;margin-right:6px"></i> ${isEdit ? 'Edit Draft' : 'New Broadcast'}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <div class="form-group">
+        <label class="form-label">Title *</label>
+        <input id="bcast-title" class="form-input" maxlength="160" value="${escapeHtml(draft?.title || '')}" placeholder="e.g., Office closed on Friday for Diwali"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Message *</label>
+        <textarea id="bcast-body" class="form-textarea" maxlength="2000" placeholder="What do you want every recipient to read in their notification?" style="min-height:110px">${escapeHtml(draft?.body || '')}</textarea>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Up to 2000 characters · this is just a draft — nothing is sent until you hit <strong>Send</strong> from the list.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Send to *</label>
+        <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+          <label class="perm-pill"><input type="checkbox" id="bcast-target-all" ${wantsAll ? 'checked' : ''} onchange="toggleBroadcastAll(this.checked)"/><span class="perm-pill-body"><i class="fas fa-check"></i> Everyone (staff + clients)</span></label>
+          <label class="perm-pill" style="${wantsAll ? 'opacity:.5' : ''}"><input type="checkbox" id="bcast-target-client" ${wantsClients && !wantsAll ? 'checked' : ''} ${wantsAll ? 'disabled' : ''}/><span class="perm-pill-body"><i class="fas fa-check"></i> Clients</span></label>
+          <button type="button" class="btn btn-xs btn-outline" onclick="toggleBroadcastRoles(true)">Select all staff roles</button>
+          <button type="button" class="btn btn-xs btn-outline" onclick="toggleBroadcastRoles(false)">Clear</button>
+        </div>
+        <div id="bcast-roles" class="perm-pill-group" style="display:flex;flex-wrap:wrap;gap:5px">${roleChips || '<div class="empty-inline"><i class="fas fa-circle-info"></i><span>No staff roles available</span></div>'}</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBroadcastDraft(${isEdit ? `'${escapeHtml(draft.id)}'` : 'null'})">
+        <i class="fas fa-save"></i> ${isEdit ? 'Save Changes' : 'Save Draft'}
+      </button>
+    </div>
+  `, 'modal-lg')
+}
+
+// "Everyone" toggle — ticks the `all` sentinel and disables every other
+// target pill (clients + per-role) so the user can't second-guess what's
+// being sent. Toggling off restores them.
+function toggleBroadcastAll(on) {
+  const clientCb = document.getElementById('bcast-target-client')
+  if (clientCb) {
+    clientCb.checked = false
+    clientCb.disabled = !!on
+    clientCb.parentElement?.style.setProperty('opacity', on ? '.5' : '1')
+  }
+  document.querySelectorAll('#bcast-roles input[data-bcast-role]').forEach(cb => {
+    cb.checked = false
+    cb.disabled = !!on
+    cb.parentElement?.style.setProperty('opacity', on ? '.5' : '1')
+  })
+}
+function toggleBroadcastRoles(on) {
+  const all = document.getElementById('bcast-target-all')
+  if (all) { all.checked = false }
+  const clientCb = document.getElementById('bcast-target-client')
+  if (clientCb) clientCb.disabled = false
+  document.querySelectorAll('#bcast-roles input[data-bcast-role]').forEach(cb => {
+    cb.disabled = false
+    cb.checked = !!on
+    cb.parentElement?.style.setProperty('opacity', '1')
+  })
+}
+
+// Collect the target list the modal currently represents — handles the
+// "Everyone" / "Clients" sentinels + per-role pills consistently for both
+// the create + edit flows.
+function _collectBroadcastTargets() {
+  if (document.getElementById('bcast-target-all')?.checked) return ['all']
+  const targets = []
+  if (document.getElementById('bcast-target-client')?.checked) targets.push('client')
+  document.querySelectorAll('#bcast-roles input[data-bcast-role]:checked').forEach(cb => {
+    targets.push(cb.dataset.bcastRole)
+  })
+  return targets
+}
+
+// Persist the draft. Brand-new → POST /broadcasts, edit → PATCH /broadcasts/:id.
+// Neither dispatches notifications — that's deliberately a separate click
+// (dispatchBroadcast) so the user can review before pushing.
+async function saveBroadcastDraft(existingId) {
+  const title = document.getElementById('bcast-title')?.value.trim() || ''
+  const body  = document.getElementById('bcast-body')?.value.trim() || ''
+  if (title.length < 2)  return toast('Title is required (at least 2 characters)', 'error')
+  if (body.length < 1)   return toast('Message is required', 'error')
+  const target_roles = _collectBroadcastTargets()
+  if (!target_roles.length) return toast('Pick at least one target (role, Clients, or Everyone)', 'error')
+  try {
+    if (existingId) {
+      await API.patch(`/broadcasts/${existingId}`, { title, body, target_roles })
+      toast('Draft saved', 'success')
+    } else {
+      await API.post('/broadcasts', { title, body, target_roles })
+      toast('Draft created. Click Send when ready.', 'success')
+    }
+    closeModal()
+    const el = document.getElementById('page-broadcasts-view')
+    if (el) { el.dataset.loaded = ''; loadPage('broadcasts-view', el) }
+  } catch (e) {
+    toast('Failed to save: ' + (e.message || 'unknown error'), 'error')
+  }
+}
+
+// Open the edit modal pre-filled with the draft's current state.
+async function editBroadcast(id) {
+  try {
+    const data = await API.get('/broadcasts')
+    const draft = (data.broadcasts || data.data || []).find(b => String(b.id) === String(id))
+    if (!draft) { toast('Broadcast not found', 'error'); return }
+    if (draft.status === 'sent') { toast('Sent broadcasts cannot be edited', 'error'); return }
+    showBroadcastModal(draft)
+  } catch (e) {
+    toast('Failed to load draft: ' + (e.message || 'unknown error'), 'error')
+  }
+}
+
+// Dispatch a saved draft. Server flips status='sent' and fans out
+// notifications to staff + clients in one shot. We re-render so the row
+// flips from DRAFT → SENT and the stat cards update.
+async function dispatchBroadcast(id) {
+  if (!window.confirm('Send this broadcast now? Recipients will be notified immediately.')) return
+  try {
+    const res = await API.post(`/broadcasts/${id}/send`, {})
+    const count = res?.broadcast?.recipient_count ?? res?.data?.recipient_count ?? 0
+    toast(`Broadcast sent to ${count} recipient${count === 1 ? '' : 's'}`, 'success')
+    const el = document.getElementById('page-broadcasts-view')
+    if (el) { el.dataset.loaded = ''; loadPage('broadcasts-view', el) }
+  } catch (e) {
+    toast('Failed to send: ' + (e.message || 'unknown error'), 'error')
+  }
+}
+
+async function deleteBroadcast(id, title) {
+  if (!window.confirm(`Delete broadcast "${title || ''}"? This cannot be undone.`)) return
+  try {
+    await API.delete(`/broadcasts/${id}`)
+    toast('Broadcast deleted', 'success')
+    const el = document.getElementById('page-broadcasts-view')
+    if (el) { el.dataset.loaded = ''; loadPage('broadcasts-view', el) }
+  } catch (e) {
+    toast('Failed to delete: ' + (e.message || 'unknown error'), 'error')
+  }
+}
+
+window.showBroadcastModal = showBroadcastModal
+window.toggleBroadcastAll = toggleBroadcastAll
+window.toggleBroadcastRoles = toggleBroadcastRoles
+window.saveBroadcastDraft = saveBroadcastDraft
+window.dispatchBroadcast = dispatchBroadcast
+window.editBroadcast = editBroadcast
+window.deleteBroadcast = deleteBroadcast
