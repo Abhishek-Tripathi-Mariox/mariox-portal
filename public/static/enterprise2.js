@@ -2596,6 +2596,12 @@ function renderLeaveRow(l, currentRole, isManager) {
   const canWithdrawOwn = isOwner && l.status === 'pending'
     && (_hasPerm('leaves.delete_own') || _hasPerm('leaves.create_own'))
   const canDelete = canDeleteAny || canWithdrawOwn
+  // Edit gate — backend rules:
+  //   leaves.edit_own → can edit own pending leave
+  //   leaves.edit     → can edit any leave (admin / HR correction)
+  const canEditAny = role === 'admin' || _hasPerm('leaves.edit')
+  const canEditOwn = isOwner && l.status === 'pending' && _hasPerm('leaves.edit_own')
+  const canEdit = canEditAny || canEditOwn
   // Stash the leave row so the detail modal can render rich info without re-fetching.
   if (!window._leavesById) window._leavesById = {}
   window._leavesById[l.id] = l
@@ -2612,6 +2618,7 @@ function renderLeaveRow(l, currentRole, isManager) {
     <td>
       <div style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="btn btn-icon btn-xs" onclick="openLeaveDetailModal('${l.id}')" title="View / decide"><i class="fas fa-eye"></i></button>
+        ${canEdit ? `<button class="btn btn-icon btn-xs" onclick="openEditLeaveModal('${l.id}')" title="Edit"><i class="fas fa-pen"></i></button>` : ''}
         ${canDelete ? `<button class="btn btn-icon btn-xs" onclick="deleteLeaveAction('${l.id}')" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
       </div>
     </td>
@@ -2859,6 +2866,77 @@ async function deleteLeaveAction(id) {
     if (el) { el.dataset.loaded = ''; renderLeavesView(el) }
   } catch (e) { toast('Failed: ' + e.message, 'error') }
 }
+
+// Edit a pending leave. Backend gates by leaves.edit_own (owner) or
+// leaves.edit (HR/admin) and refuses non-pending rows unless the caller has
+// the full edit-any permission. We pre-fill the modal from the row cached in
+// _leavesById, then PATCH /leaves/:id with the diff.
+function openEditLeaveModal(id) {
+  const leave = window._leavesById?.[id]
+  if (!leave) { toast('Leave not found — refresh and try again', 'error'); return }
+  const typeOptions = Object.entries(LEAVE_TYPE_LABEL)
+    .map(([v, label]) => `<option value="${v}" ${leave.leave_type === v ? 'selected' : ''}>${label}</option>`)
+    .join('')
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-pen" style="color:#A970FF;margin-right:6px"></i>Edit Leave</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Leave type</label>
+        <select id="edit-leave-type" class="form-select">${typeOptions}</select>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Start date *</label>
+          <input id="edit-leave-start" type="date" class="form-input" value="${escapeInbox(leave.start_date || '')}"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">End date *</label>
+          <input id="edit-leave-end" type="date" class="form-input" value="${escapeInbox(leave.end_date || '')}"/>
+        </div>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Days <span style="font-size:11px;color:#9F8678">(half-day = 0.5)</span></label>
+        <input id="edit-leave-days" type="number" min="0.5" max="365" step="0.5" class="form-input" value="${Number(leave.days_count) || ''}"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Reason</label>
+        <textarea id="edit-leave-reason" class="form-textarea" rows="3" maxlength="1000">${escapeInbox(leave.reason || '')}</textarea>
+      </div>
+      ${leave.status !== 'pending' ? '<div style="font-size:11px;color:#FFB874"><i class="fas fa-triangle-exclamation"></i> This leave was already ' + leave.status + '. Only admins/HR can edit it.</div>' : ''}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditLeave('${escapeInbox(id)}')"><i class="fas fa-save"></i> Save Changes</button>
+    </div>
+  `, 'modal-lg')
+  setTimeout(() => document.getElementById('edit-leave-reason')?.focus(), 50)
+}
+
+async function submitEditLeave(id) {
+  const payload = {
+    leave_type: document.getElementById('edit-leave-type')?.value,
+    start_date: document.getElementById('edit-leave-start')?.value,
+    end_date:   document.getElementById('edit-leave-end')?.value,
+    days_count: Number(document.getElementById('edit-leave-days')?.value || 0),
+    reason:     (document.getElementById('edit-leave-reason')?.value || '').trim() || null,
+  }
+  if (!payload.start_date || !payload.end_date) { toast('Start and end date are required', 'error'); return }
+  if (payload.start_date > payload.end_date)   { toast('End date must be on or after start date', 'error'); return }
+  if (!(payload.days_count > 0))               { toast('Days must be greater than zero', 'error'); return }
+  try {
+    await API.patch(`/leaves/${id}`, payload)
+    toast('Leave updated', 'success')
+    closeModal()
+    const el = document.getElementById('page-leaves-view')
+    if (el) { el.dataset.loaded = ''; renderLeavesView(el) }
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
+}
+
+window.openEditLeaveModal = openEditLeaveModal
+window.submitEditLeave = submitEditLeave
 
 // ── Bidding ──────────────────────────────────────────────────
 // Standalone module — talks to /api/bids (not /api/projects). The bid module

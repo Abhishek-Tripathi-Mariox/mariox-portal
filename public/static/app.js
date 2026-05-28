@@ -2,8 +2,34 @@
 // Mariox DevPortal – Core App (auth + layout + API + routing)
 // ═══════════════════════════════════════════════════════════
 
-// Compatibility stub for legacy router.register() calls in pages2.js
-const router = { register: () => {}, navigate: () => {}, routes: {} }
+// Compatibility shim for legacy router.register() / router.navigate() calls
+// in pages.js + pages2.js. Those files were written against an old standalone
+// router and use short page names ('timesheet', 'projects', 'leaves', etc.)
+// that don't match the current page dispatcher. We forward to the real Router
+// after translating the name. `register` is a no-op — page render functions
+// are now wired through the main loadPage() switch, not through this shim.
+const _LEGACY_PAGE_ALIAS = {
+  'timesheet':         'timesheets-view',
+  'timesheets':        'timesheets-view',
+  'developers':        'team-overview',
+  'developer-detail':  'team-overview',
+  'project-detail':    'kanban-board',
+  'projects':          'projects-list',
+  'approvals':         'approval-queue',
+  'alerts':            'alerts-view',
+  'settings':          'settings-view',
+  'leaves':            'leaves-view',
+  'tasks':             'my-tasks',
+  'reports':           'reports-view',
+}
+const router = {
+  register: () => {},
+  navigate: (page, params) => {
+    const target = _LEGACY_PAGE_ALIAS[page] || page
+    if (typeof Router !== 'undefined' && Router?.navigate) Router.navigate(target, params || {})
+  },
+  routes: {},
+}
 // Compatibility stub for legacy state object
 const state = {
   get user() { return _user ? { ..._user, id: _user.sub || _user.id, full_name: _user.name || _user.full_name } : null }
@@ -124,17 +150,17 @@ const PAGE_PERMISSIONS = {
   // these visible to anyone with the relevant hr.*.manage permission, so
   // admin can hand HR access to any role (incl. a custom `hr` role) without
   // editing this list.
-  'hr-attendance':   ['admin'],
+  'hr-attendance':   ['admin', 'hr'],
   // Calendar is visible to every authenticated user — they can at least add
   // personal events (client meetings, follow-ups). HR/admin still own the
   // "Company" visibility toggle inside the Add Event modal.
   'hr-calendar':     ['admin', 'pm', 'pc', 'developer', 'team', 'sales_manager', 'sales_tl', 'sales_agent', 'hr'],
-  'hr-warnings':     ['admin'],
-  'hr-pips':         ['admin'],
-  'hr-salary-slips': ['admin'],
-  'hr-terminations': ['admin'],
-  'hr-documents':    ['admin'],
-  'hr-assets':       ['admin'],
+  'hr-warnings':     ['admin', 'hr'],
+  'hr-pips':         ['admin', 'hr'],
+  'hr-salary-slips': ['admin', 'hr'],
+  'hr-terminations': ['admin', 'hr'],
+  'hr-documents':    ['admin', 'hr'],
+  'hr-assets':       ['admin', 'hr'],
   'bidding-view':    ['admin', 'pm', 'team'],
   'support-tickets': ['admin', 'pm', 'pc', 'developer', 'team'],
   'approval-queue':  ['admin', 'pm', 'pc'],
@@ -380,6 +406,13 @@ const API = {
   let _inflight = 0         // fetches in flight initiated under this owner
   let _minTimer = null
   let _spinnerShown = false // true once we've painted .is-busy on _owner
+  // Safety net — every armed button registers a max-lock deadline. The
+  // sweeper below force-releases anything still busy 30s later. Catches
+  // hung servers, dropped fetch promises, and the edge case where the user
+  // clicked a second button before the first one's fetch resolved (which
+  // used to leave the original button stuck because _owner had moved on).
+  const _stuckGuard = new Map() // el → setTimeout id
+  const MAX_LOCK_MS = 30_000
 
   function shouldSkip(el){
     if (el.matches(SKIP_SELECTOR)) return true
@@ -400,6 +433,24 @@ const API = {
   function armBusy(el){
     if (!el || el.dataset.busy === '1') return
     el.dataset.busy = '1'
+    // Safety-net deadline: if anything goes wrong (server hangs, fetch
+    // promise never resolves, another button takes over _owner before we
+    // release this one) the sweeper force-releases the button at 30s so
+    // the user is never stuck staring at a dead spinner.
+    const prev = _stuckGuard.get(el)
+    if (prev) clearTimeout(prev)
+    _stuckGuard.set(el, setTimeout(() => {
+      _stuckGuard.delete(el)
+      if (el.dataset.busy === '1') {
+        // Force-release — bypasses the same _owner check release() does.
+        el.dataset.busy = ''
+        if (el.dataset.prevAriaBusy) el.setAttribute('aria-busy', el.dataset.prevAriaBusy)
+        else el.removeAttribute('aria-busy')
+        el.classList.remove('is-busy')
+        delete el.dataset.prevAriaBusy
+        if (_owner === el) { _owner = null; _inflight = 0; _spinnerShown = false }
+      }
+    }, MAX_LOCK_MS))
     // IMPORTANT: do NOT set el.disabled = true here. Doing so (even via a
     // microtask) causes the click's "activation behavior" — e.g. submitting
     // the parent form on a <button type="submit"> — to be skipped because
@@ -424,6 +475,8 @@ const API = {
     else el.removeAttribute('aria-busy')
     el.classList.remove('is-busy')
     delete el.dataset.prevAriaBusy
+    const t = _stuckGuard.get(el)
+    if (t) { clearTimeout(t); _stuckGuard.delete(el) }
   }
 
   // Backwards-compat for window.withButtonLoader — that helper expects an
@@ -464,8 +517,12 @@ const API = {
       // rapid duplicate clicks are still absorbed. No spinner was ever
       // painted because no fetch happened.
       _minTimer = setTimeout(() => {
+        // Release the originating element regardless of the current _owner —
+        // a second click that armed another button must not strand this
+        // first one in a busy state. Only clear _owner if it still points
+        // at us (otherwise we'd kick the legitimate current owner).
+        release(el)
         if (_owner === el && _inflight === 0) {
-          release(el)
           _owner = null
           _spinnerShown = false
         }
@@ -492,10 +549,13 @@ const API = {
         _inflight = Math.max(0, _inflight - 1)
         if (_inflight === 0) {
           // One paint frame after the last fetch so post-action re-render runs
-          // before we re-enable the button.
+          // before we re-enable the button. We release the *captured* element
+          // unconditionally — even if the user clicked another button in the
+          // meantime — because that's the one we locked. Skipping the release
+          // when _owner has moved on was the bug that left buttons stuck.
           requestAnimationFrame(() => {
+            release(captured)
             if (_inflight === 0 && _owner === captured) {
-              release(captured)
               _owner = null
               _spinnerShown = false
             }
@@ -988,6 +1048,11 @@ function defaultPage() {
     sales_tl: 'leads-view',
     sales_agent: 'leads-view',
     hr: 'hr-attendance',
+    // Clients land on Support — the only main-app surface they can reach. The
+    // dedicated client portal is rendered separately via renderClientPortal()
+    // before this map is consulted, but if a client somehow ends up in the
+    // main shell we still need a non-blank landing.
+    client: 'support-tickets',
   }
   // Preferred landing for this role. If the user's permissions block even
   // that (e.g. role exists but the permission was revoked), fall through to

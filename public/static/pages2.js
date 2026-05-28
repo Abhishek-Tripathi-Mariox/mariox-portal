@@ -316,7 +316,11 @@ router.register('approvals', async () => {
   } catch (e) { document.getElementById('page-content').innerHTML = `<div style="color:var(--danger);padding:20px">Error: ${e.message}</div>` }
 })
 
-function toggleSelectAll(cb) {
+// Legacy — superseded by enterprise.js:toggleSelectAll which targets the
+// current .log-check selector (this one's .log-checkbox is from an older
+// approvals page that's no longer rendered). Renamed so it can't shadow the
+// live definition via load order; the function stays for reference.
+function _toggleSelectAllLegacy(cb) {
   document.querySelectorAll('.log-checkbox').forEach(c => c.checked = cb.checked)
 }
 

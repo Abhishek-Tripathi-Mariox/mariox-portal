@@ -524,11 +524,9 @@ router.register('developer-detail', async ({ id }) => {
 })
 
 // ============ PROJECTS PAGE ============
-function hasProjectPermission(key) {
-  const role = String(state.user?.role || '').toLowerCase()
-  if (role === 'admin') return true
-  return typeof hasAnyPermission === 'function' ? hasAnyPermission([key]) : false
-}
+// hasProjectPermission is defined in enterprise.js (loaded after this file)
+// — that definition wins via script load order. Removed the duplicate here
+// so we have one source of truth instead of two near-identical copies.
 
 router.register('projects', async () => {
   try {

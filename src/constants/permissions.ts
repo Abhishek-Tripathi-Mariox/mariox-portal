@@ -259,6 +259,8 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
         description: 'Delete only portfolios the user created.' },
       { key: 'portfolios.delete',     label: 'Delete any portfolio',
         description: 'Delete any portfolio (full access).' },
+      { key: 'portfolios.manage',     label: 'Manage portfolio access',
+        description: 'Grant or revoke other users\' access to the Portfolio library. NAV gate for the sidebar entry.' },
     ],
   },
   {
@@ -279,6 +281,8 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
         description: 'Delete only SOWs the user created.' },
       { key: 'scopes.delete',     label: 'Delete any SOW',
         description: 'Delete any SOW (full access).' },
+      { key: 'scopes.manage',     label: 'Manage SOW access',
+        description: 'Grant or revoke other users\' access to the SOW library. NAV gate for the sidebar entry.' },
     ],
   },
   {
@@ -299,6 +303,8 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
         description: 'Delete only quotations the user created.' },
       { key: 'quotations.delete',     label: 'Delete any quotation',
         description: 'Delete any quotation (full access).' },
+      { key: 'quotations.manage',     label: 'Manage quotation access',
+        description: 'Grant or revoke other users\' access to the Quotation library. NAV gate for the sidebar entry.' },
     ],
   },
   {

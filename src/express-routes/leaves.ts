@@ -63,6 +63,15 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
       if (role === 'team') {
         return res.status(403).json({ error: 'Team accounts cannot apply for leave through this portal' })
       }
+      // Permission gate — admins bypass; everyone else needs leaves.create_own
+      // (or leaves.edit / leaves.approve since those imply leave-management).
+      // Without this gate a custom role with no leave permissions can still
+      // file leaves just by hitting the endpoint directly.
+      const canCreate = role === 'admin'
+        || await userHasAnyPermission(models, user, 'leaves.create_own', 'leaves.edit', 'leaves.approve')
+      if (!canCreate) {
+        return res.status(403).json({ error: 'You do not have permission to apply for leave' })
+      }
       const leaveType = validateEnum(body.leave_type, LEAVE_TYPES, 'Leave type')
       const startDate = validateISODate(body.start_date, 'Start date')
       const endDate = validateISODate(body.end_date, 'End date')
@@ -107,34 +116,45 @@ export function createLeavesRouter(models: MongoModels, jwtSecret: string) {
 
       // Leave requests go ONLY to admins — PMs/PCs were getting noise on every leave.
       // The helper auto-excludes the actor so an admin filing their own leave doesn't self-ping.
+      // Notification failures are non-fatal (the leave is already persisted) but we
+      // log them loudly so an admin who never got pinged can be traced back to a real
+      // error rather than a silent .catch(()=>{}) we forgot about.
       const applicantName = targetUser?.full_name || targetUser?.email || 'Someone'
-      const admins = await models.users.find({ role: 'admin', is_active: 1 }) as any[]
-      await createUserNotifications(
-        models,
-        admins.map((u) => u.id),
-        {
-          type: 'leave_request',
-          title: `Leave request from ${applicantName}`,
-          body: `${leaveType} · ${startDate} → ${endDate} (${daysCount} day${daysCount === 1 ? '' : 's'})${reason ? ' — ' + reason : ''}`,
-          link: `leave:${id}`,
-          actor_id: user.sub,
-          actor_name: applicantName,
-          meta: { leave_id: id, user_id: targetUserId },
-        },
-      )
+      try {
+        const admins = await models.users.find({ role: 'admin', is_active: 1 }) as any[]
+        await createUserNotifications(
+          models,
+          admins.map((u) => u.id),
+          {
+            type: 'leave_request',
+            title: `Leave request from ${applicantName}`,
+            body: `${leaveType} · ${startDate} → ${endDate} (${daysCount} day${daysCount === 1 ? '' : 's'})${reason ? ' — ' + reason : ''}`,
+            link: `leave:${id}`,
+            actor_id: user.sub,
+            actor_name: applicantName,
+            meta: { leave_id: id, user_id: targetUserId },
+          },
+        )
+      } catch (notifErr) {
+        console.error('[leaves] failed to notify admins about new leave', { leave_id: id, err: notifErr })
+      }
       // If a manager applied on behalf of someone else, also ping that employee
       if (targetUserId !== user.sub) {
-        const actor = await models.users.findById(user.sub) as any
-        await createUserNotification(models, {
-          user_id: targetUserId,
-          type: 'leave_request',
-          title: `${actor?.full_name || 'A manager'} filed a leave for you`,
-          body: `${leaveType} · ${startDate} → ${endDate} (${daysCount} day${daysCount === 1 ? '' : 's'})`,
-          link: `leave:${id}`,
-          actor_id: user.sub,
-          actor_name: actor?.full_name || 'Manager',
-          meta: { leave_id: id, user_id: targetUserId },
-        })
+        try {
+          const actor = await models.users.findById(user.sub) as any
+          await createUserNotification(models, {
+            user_id: targetUserId,
+            type: 'leave_request',
+            title: `${actor?.full_name || 'A manager'} filed a leave for you`,
+            body: `${leaveType} · ${startDate} → ${endDate} (${daysCount} day${daysCount === 1 ? '' : 's'})`,
+            link: `leave:${id}`,
+            actor_id: user.sub,
+            actor_name: actor?.full_name || 'Manager',
+            meta: { leave_id: id, user_id: targetUserId },
+          })
+        } catch (notifErr) {
+          console.error('[leaves] failed to notify employee about manager-filed leave', { leave_id: id, target: targetUserId, err: notifErr })
+        }
       }
       return res.status(201).json({ message: 'Leave submitted', data: { id } })
     } catch (error: any) {

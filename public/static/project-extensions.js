@@ -726,11 +726,9 @@ async function submitAcceptInvite(token) {
 }
 
 // ─── UTILITIES (reused from app.js) ──────────────────────────
-
-function escapeHtml(s) {
-  if (s == null) return ''
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;')
-}
+// escapeHtml is defined in enterprise.js (loaded before this file) — reusing
+// the shared definition avoids the duplicate-script collision that used to
+// shadow it with a slightly different escape set.
 
 // Generic object-style modal helper (our own, avoids clashing with app.js's showModal(html, size))
 function pxModal({ title, body, confirmText = 'Confirm', cancelText = 'Cancel', onConfirm, large = false }) {

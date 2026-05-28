@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
+import { createAuthMiddleware, requireRole, userHasAnyPermission } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
 import {
   validateRequired,
@@ -40,6 +40,15 @@ export function createInvoicesRouter(models: MongoModels, jwtSecret: string, run
 
   router.get('/', async (req, res) => {
     try {
+      // Permission-gated: only admins (auto), or users with any invoice
+      // permission (create/view_all/send/mark_paid/delete) can list invoices.
+      // Without this gate any authenticated employee — including external
+      // team members — could pull every client's billing data.
+      const user = req.user as any
+      const canView = await userHasAnyPermission(models, user,
+        'invoices.view_all', 'invoices.create', 'invoices.send',
+        'invoices.mark_paid', 'invoices.delete')
+      if (!canView) return res.status(403).json({ error: 'You do not have permission to view invoices' })
       const invoices = await models.invoices.find({}) as any[]
       const projects = await models.projects.find({}) as any[]
       const clients = await models.clients.find({}) as any[]
