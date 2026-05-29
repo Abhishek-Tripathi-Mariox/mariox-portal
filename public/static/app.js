@@ -1429,7 +1429,21 @@ function _setNavBadge(id, count) {
   nb.style.display = n ? '' : 'none'
 }
 
+let _loadBadgesLastRun = 0
+let _loadBadgesPending = null
+const LOAD_BADGES_MIN_GAP_MS = 3000
 async function loadBadges() {
+  // Coalesce rapid back-to-back calls (SSE bursts, multiple mutations in a
+  // tight loop, hidden-tab wakeup firing alongside an event). Without this
+  // the sidebar would fire /alerts + /unread-count + /timesheets + /leaves
+  // on every tick. One run per 3s is plenty fresh for badge counters.
+  const now = Date.now()
+  if (now - _loadBadgesLastRun < LOAD_BADGES_MIN_GAP_MS) {
+    if (_loadBadgesPending) return _loadBadgesPending
+    return
+  }
+  _loadBadgesLastRun = now
+  _loadBadgesPending = (async () => {
   try {
     const [alertsData, notifData] = await Promise.all([
       API.get('/alerts').catch(() => ({ alerts: [] })),
@@ -1457,6 +1471,8 @@ async function loadBadges() {
   }
   // Notifications badge + initial sync
   pollNotifications(true)
+  })()
+  try { await _loadBadgesPending } finally { _loadBadgesPending = null }
 }
 window.loadBadges = loadBadges
 
@@ -1933,10 +1949,16 @@ function startNotificationPoller() {
   // instantly — without this the browser blocks the play() while it
   // streams the audio over the network (200-500ms delay users notice).
   preloadNotifSounds()
-  // Fallback polling. SSE handles the real-time path; this catches anything
-  // missed while the stream was disconnected or in flight. 4s keeps it tight
-  // without thrashing the API — most users hit SSE first anyway.
-  _notifState.timer = setInterval(() => { pollNotifications() }, 4000)
+  // Fallback polling. SSE is the primary real-time path; this only catches
+  // the case where the stream is broken. Skip the network round-trip when:
+  //   (a) tab is hidden — nobody is looking, badge can wait for visibility,
+  //   (b) SSE is connected — server will push, polling is redundant.
+  // Cuts ~95% of /notifications/unread-count traffic at scale.
+  _notifState.timer = setInterval(() => {
+    if (document.hidden) return
+    if (_notifState.stream) return
+    pollNotifications()
+  }, 30000)
   // Refresh immediately when the tab becomes visible again, so the badge
   // catches up without waiting for the next interval tick.
   document.addEventListener('visibilitychange', () => {
