@@ -47,6 +47,23 @@ function normalizeTargets(input: unknown): string[] {
   return Array.from(new Set(out))
 }
 
+// Attachment is optional. Upload happens separately via /api/uploads; the
+// broadcast just stores the resulting {url, name, mime, size} blob. Returning
+// null here means "no attachment" — explicitly removes one on PATCH too.
+type BroadcastAttachment = { url: string; name: string; mime: string; size: number }
+function normalizeAttachment(input: unknown): BroadcastAttachment | null {
+  if (!input || typeof input !== 'object') return null
+  const a = input as Record<string, unknown>
+  const url = String(a.url || '').trim()
+  if (!url) return null
+  return {
+    url,
+    name: String(a.name || '').trim() || 'attachment',
+    mime: String(a.mime || a.mime_type || '').trim(),
+    size: Number(a.size || 0) || 0,
+  }
+}
+
 export function createBroadcastsRouter(models: MongoModels, jwtSecret: string) {
   const router = Router()
   router.use(createAuthMiddleware(jwtSecret))
@@ -78,6 +95,7 @@ export function createBroadcastsRouter(models: MongoModels, jwtSecret: string) {
       const message = validateLength(String(body.body || body.message || '').trim(), 1, MAX_BODY, 'Message')
       const targets = normalizeTargets(body.target_roles ?? body.targets)
       if (!targets.length) return res.status(400).json({ error: 'Pick at least one role to broadcast to' })
+      const attachment = normalizeAttachment(body.attachment)
 
       const id = generateId('bcast')
       const now = new Date().toISOString()
@@ -87,6 +105,7 @@ export function createBroadcastsRouter(models: MongoModels, jwtSecret: string) {
         title,
         body: message,
         target_roles: targets,
+        attachment,
         recipient_count: 0,
         recipient_ids: [] as string[],
         status: 'draft',
@@ -123,6 +142,8 @@ export function createBroadcastsRouter(models: MongoModels, jwtSecret: string) {
         if (!next.length) return res.status(400).json({ error: 'Pick at least one role' })
         patch.target_roles = next
       }
+      // `attachment: null` removes a previously attached file; an object replaces it.
+      if ('attachment' in body) patch.attachment = normalizeAttachment(body.attachment)
       await models.broadcasts.updateById(id, { $set: patch })
       const updated = await models.broadcasts.findById(id)
       return res.json({ message: 'Draft updated', data: updated, broadcast: updated })
@@ -191,7 +212,7 @@ export function createBroadcastsRouter(models: MongoModels, jwtSecret: string) {
         link: `broadcast:${id}`,
         actor_id: draft.sender_id || user?.sub || null,
         actor_name: senderName,
-        meta: { broadcast_id: id, target_roles: targets },
+        meta: { broadcast_id: id, target_roles: targets, attachment: draft.attachment || null },
       })
       if (clientIds.length) {
         // models.notifications is the client_notifications collection. Its
@@ -208,7 +229,7 @@ export function createBroadcastsRouter(models: MongoModels, jwtSecret: string) {
               message: draft.body,
               is_read: 0,
               created_at: now,
-              meta: { broadcast_id: id },
+              meta: { broadcast_id: id, attachment: draft.attachment || null },
             })
           } catch {}
         }))

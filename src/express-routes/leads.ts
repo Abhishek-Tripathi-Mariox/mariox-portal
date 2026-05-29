@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware, requireRole, userHasAnyPermission } from '../express-middleware/auth'
+import { createAuthMiddleware, requireRole, requireAnyPermission, userHasAnyPermission } from '../express-middleware/auth'
 import { generateId } from '../utils/helpers'
 import {
   validateLength,
@@ -55,6 +55,11 @@ async function buildLeadVisibilityFilter(
 
 export async function canUserAccessLead(models: MongoModels, user: any, lead: any): Promise<boolean> {
   if (!lead) return false
+  // Soft-deleted leads are off-limits to normal endpoints. The Trash module
+  // has its own dedicated routes (/trash/list, /:id/restore, /:id/permanent)
+  // that fetch deleted leads directly with their own permission gates, so
+  // they don't go through this check.
+  if (lead.deleted_at) return false
   const filter = await buildLeadVisibilityFilter(models, user)
   if (!filter) return true
   // Re-evaluate the filter against this lead in memory so we don't have to
@@ -65,6 +70,17 @@ export async function canUserAccessLead(models: MongoModels, user: any, lead: an
   return false
 }
 
+// Render an ISO timestamp as "DD MMM YYYY, HH:mm" in UTC so the timeline
+// summary line reads naturally instead of "2026-05-29T10:32:00.000Z".
+// UTC keeps server log output stable regardless of host timezone.
+function formatHumanDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getUTCDate())} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+}
+
 async function logLeadActivity(
   models: MongoModels,
   leadId: string,
@@ -72,8 +88,12 @@ async function logLeadActivity(
   kind: string,
   summary: string,
   meta: Record<string, unknown> = {},
+  // Optional explicit timestamp — the import flow uses this to stagger
+  // entries by a few ms each so the timeline renders in a stable, logical
+  // order instead of an arbitrary insertion order for same-millisecond writes.
+  createdAt?: string,
 ) {
-  const now = new Date().toISOString()
+  const now = createdAt || new Date().toISOString()
   await models.leadActivities.insertOne({
     id: generateId('lact'),
     lead_id: leadId,
@@ -153,6 +173,17 @@ function buildClientWelcomeEmail(opts: {
 const ALLOWED_BADGES = new Set([
   'todo', 'inprogress', 'review', 'done', 'critical', 'medium',
 ])
+
+// Whitelist of activity classifications surfaced in the Schedule / Edit
+// follow-up modals AND on the list view chip. Anything outside this set is
+// rejected so the chip can't end up showing garbage from a bad import.
+const ACTIVITY_TYPES = ['Call', 'Email', 'Meeting', 'Other'] as const
+function normalizeActivityType(input: any): string | null {
+  const raw = String(input || '').trim()
+  if (!raw) return null
+  const matched = ACTIVITY_TYPES.find((t) => t.toLowerCase() === raw.toLowerCase())
+  return matched || null
+}
 
 function sanitizeStatusKey(input: any): string {
   return String(input || '')
@@ -413,7 +444,7 @@ export function createLeadsRouter(
   router.get('/', async (req, res) => {
     try {
       const user = req.user as any
-      const filter = (await buildLeadVisibilityFilter(models, user)) || {}
+      const filter = { ...((await buildLeadVisibilityFilter(models, user)) || {}), deleted_at: null }
       const leads = await models.leads.find(filter) as any[]
       leads.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
       const enriched = await enrichLeads(models, leads)
@@ -431,8 +462,8 @@ export function createLeadsRouter(
     try {
       const user = req.user as any
       const kind = String(req.query.kind || '').toLowerCase()
-      const visFilter = await buildLeadVisibilityFilter(models, user)
-      const leads = await models.leads.find(visFilter || {}) as any[]
+      const visFilter = { ...((await buildLeadVisibilityFilter(models, user)) || {}), deleted_at: null }
+      const leads = await models.leads.find(visFilter) as any[]
       if (!leads.length) return res.json({ data: [], tasks: [] })
       const leadById = new Map(leads.map((l) => [String(l.id), l]))
       const tasks = await models.leadTasks.find({ lead_id: { $in: leads.map((l) => l.id) } }) as any[]
@@ -1141,23 +1172,102 @@ export function createLeadsRouter(
     }
   })
 
+  // Soft delete. Sets deleted_at + reason + actor on the lead so the Trash
+  // module can surface "who killed this and why". Related rows (tasks, notes,
+  // comments, activities) stay in their collections — every list read joins
+  // through leads and the deleted_at filter naturally hides them. Restoring
+  // unhides everything in one move; permanent purge hard-deletes everything.
   router.delete('/:id', async (req, res) => {
     try {
       const user = req.user as any
       const role = lower(user?.role)
-      // Permission-based gate: admin always; anyone with `leads.delete` granted
-      // in Settings → Roles & Permissions; plus pm/pc as legacy defaults so the
-      // existing system roles keep working without a re-seed.
       const allowed = role === 'admin'
         || ['pm', 'pc'].includes(role)
         || await userHasAnyPermission(models, user, 'leads.delete')
       if (!allowed) return res.status(403).json({ error: 'Not allowed to delete leads' })
       const id = String(req.params.id)
-      await models.leadTasks.deleteMany({ lead_id: id })
-      await models.leads.deleteById(id)
-      return res.json({ message: 'Lead deleted' })
+      const lead = await models.leads.findById(id) as any
+      if (!lead) return res.status(404).json({ error: 'Lead not found' })
+      if (lead.deleted_at) return res.status(409).json({ error: 'Lead is already in Trash' })
+
+      const body = req.body || {}
+      const reason = validateLength(String(body.reason || '').trim(), 3, 500, 'Reason')
+      const now = new Date().toISOString()
+      await models.leads.updateById(id, {
+        $set: {
+          deleted_at: now,
+          deleted_by: user?.sub || null,
+          deleted_by_name: user?.name || user?.full_name || null,
+          deleted_reason: reason,
+          updated_at: now,
+        },
+      })
+      await logLeadActivity(models, id, user, 'lead_deleted',
+        `Lead moved to Trash · Reason: ${reason.length > 200 ? reason.slice(0, 197) + '…' : reason}`,
+        { reason })
+      return res.json({ message: 'Lead moved to Trash', id })
     } catch (error: any) {
-      return res.status(500).json({ error: error?.message || 'Failed to delete lead' })
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Trash listing. Permission-gated separately so admins can grant
+  // visibility without granting delete/restore power.
+  router.get('/trash/list', requireAnyPermission(models, 'leads.trash.view'), async (_req, res) => {
+    try {
+      const rows = (await models.leads.find({ deleted_at: { $ne: null } }) as any[])
+        .filter((l) => !!l.deleted_at)
+        .sort((a, b) => String(b.deleted_at || '').localeCompare(String(a.deleted_at || '')))
+      return res.json({ data: rows, leads: rows, total: rows.length })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  router.post('/:id/restore', requireAnyPermission(models, 'leads.trash.restore'), async (req, res) => {
+    try {
+      const user = req.user as any
+      const id = String(req.params.id)
+      const lead = await models.leads.findById(id) as any
+      if (!lead) return res.status(404).json({ error: 'Lead not found' })
+      if (!lead.deleted_at) return res.status(409).json({ error: 'Lead is not in Trash' })
+      const now = new Date().toISOString()
+      await models.leads.updateById(id, {
+        $set: {
+          deleted_at: null,
+          deleted_by: null,
+          deleted_by_name: null,
+          deleted_reason: null,
+          updated_at: now,
+        },
+      })
+      await logLeadActivity(models, id, user, 'lead_restored', 'Lead restored from Trash')
+      return res.json({ message: 'Lead restored', id })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Permanent purge — hard-deletes the lead AND its dependent rows
+  // (tasks, notes, comments, activities). Irreversible.
+  router.delete('/:id/permanent', requireAnyPermission(models, 'leads.trash.purge'), async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const lead = await models.leads.findById(id) as any
+      if (!lead) return res.status(404).json({ error: 'Lead not found' })
+      if (!lead.deleted_at) {
+        return res.status(409).json({ error: 'Only soft-deleted leads can be permanently purged. Move it to Trash first.' })
+      }
+      await Promise.all([
+        models.leadTasks.deleteMany({ lead_id: id }),
+        models.leadNotes.deleteMany({ lead_id: id }),
+        models.leadComments.deleteMany({ lead_id: id }),
+        models.leadActivities.deleteMany({ lead_id: id }),
+      ])
+      await models.leads.deleteById(id)
+      return res.json({ message: 'Lead and all related data permanently deleted', id })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
     }
   })
 
@@ -1211,11 +1321,25 @@ export function createLeadsRouter(
         patch.acknowledged_at = null
         patch.acknowledged_by = null
       }
+      // Activity type change (Call/Email/Meeting/Other) — lets users
+      // reclassify a row when an import or quick-create tagged it wrong.
+      // Matches the enum on the Schedule + Edit modals exactly so the chip
+      // on the list view stays consistent with what users picked.
+      if ('activity_type' in body) {
+        const t = normalizeActivityType(body.activity_type)
+        if (!t) return res.status(400).json({ error: 'Invalid activity type — must be Call, Email, Meeting, or Other' })
+        patch.activity_type = t
+      }
       await models.leadTasks.updateById(taskId, { $set: patch })
 
       const summaryParts: string[] = []
       if (patch.status) summaryParts.push(`status → ${patch.status}`)
-      if (patch.due_date !== undefined) summaryParts.push(`due → ${patch.due_date || 'cleared'}`)
+      if (patch.due_date !== undefined) {
+        // Render the date in a readable "DD MMM YYYY, HH:mm" form instead of
+        // the raw ISO timestamp — the timeline shows this string directly.
+        const dueLabel = patch.due_date ? formatHumanDateTime(String(patch.due_date)) : 'cleared'
+        summaryParts.push(`due → ${dueLabel}`)
+      }
       if ('snooze_minutes' in patch) summaryParts.push(`snooze → ${patch.snooze_minutes}min`)
       if (summaryParts.length) {
         await logLeadActivity(models, String(task.lead_id), user, 'followup_updated',
@@ -1278,12 +1402,17 @@ export function createLeadsRouter(
       const snoozeMinutes = Math.max(0, Math.min(24 * 60, Math.round(Number(body.snooze_minutes) || DEFAULT_FOLLOWUP_SNOOZE_MINUTES)))
       const notes = body.notes ? String(body.notes).trim().slice(0, 2000) : ''
       const assignedTo = String(body.assigned_to || lead.assigned_to || '').trim()
+      const activityType = normalizeActivityType(body.activity_type) || 'Other'
       const now = new Date().toISOString()
       const taskId = generateId('ltask')
       await models.leadTasks.insertOne({
         id: taskId,
         lead_id: leadId,
         title,
+        // User-facing activity classification (Call/Email/Meeting/Other). The
+        // same enum is shown in the Schedule + Edit modals and on the list
+        // view chip, so what users pick is what they see everywhere.
+        activity_type: activityType,
         description: notes,
         notes,
         assigned_to: assignedTo,
@@ -1353,7 +1482,9 @@ export function createLeadsRouter(
       }) as any[]
       if (!tasks.length) return res.json({ data: [], alarms: [] })
       const leadIds = [...new Set(tasks.map((t) => String(t.lead_id)))]
-      const leads = await models.leads.find({ id: { $in: leadIds } }) as any[]
+      // Skip alarms whose lead has been soft-deleted — the follow-up rows
+      // still exist but their parent is in Trash, so they shouldn't ring.
+      const leads = await models.leads.find({ id: { $in: leadIds }, deleted_at: null }) as any[]
       const leadById = new Map(leads.map((l) => [String(l.id), l]))
       const now = Date.now()
       const due: any[] = []
@@ -1365,12 +1496,15 @@ export function createLeadsRouter(
         const alarmAt = dueMs - snoozeMin * 60 * 1000
         if (alarmAt <= now) {
           const lead = leadById.get(String(t.lead_id))
+          // Skip tasks whose parent lead was filtered out (soft-deleted) —
+          // ringing an alarm pointing at a Trash lead is just noise.
+          if (!lead) continue
           due.push({
             id: t.id,
             lead_id: t.lead_id,
-            lead_name: lead?.name || '',
-            lead_phone: lead?.phone || '',
-            lead_email: lead?.email || '',
+            lead_name: lead.name || '',
+            lead_phone: lead.phone || '',
+            lead_email: lead.email || '',
             title: t.title,
             due_date: t.due_date,
             snooze_minutes: snoozeMin,
@@ -1694,6 +1828,18 @@ export function createLeadsRouter(
     return res.send(sample)
   })
 
+  // Plain-text CSV template for bulk lead import. Matches the column shape the
+  // import endpoint accepts — admins download this, fill it in Excel/Sheets,
+  // and upload it back. We expose 12 Follow Up Remark columns so a single
+  // lead can carry up to a year of history in one row.
+  router.get('/import/sample', (_req, res) => {
+    const header = 'Date,Name,Phone No,Email,Status,Source,RFD Shared,SOW Sent,Office visit,Requirement,Remarks,Follow Up Remark,Last Follow up Date,Next Follow Up date'
+    const sample = '25/05/2026,Swarn Singh,91-7589000918,doctorswarnsingh@gmail.com,Under Process,PPC,No,PPC Call,No,Would like to have App portal like Shadi.com,Not answering portfolio shared / Not answering,Had a word with him he\'ll ask his son to consider us,26/05/2026,29/05/2026'
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', 'attachment; filename="leads-import-sample.csv"')
+    return res.send(header + '\n' + sample + '\n')
+  })
+
   router.post(
     '/import',
     requireRole('admin', 'pm', 'pc', 'sales_manager', 'sales_tl'),
@@ -1709,17 +1855,39 @@ export function createLeadsRouter(
           return res.status(400).json({ error: 'CSV must contain a header row and at least one data row' })
         }
 
-        const headers = rows[0].map((h) => String(h || '').trim().toLowerCase())
-        const required = ['name', 'email', 'phone', 'source', 'requirement', 'assigned_to_name']
+        // Header normalization. The user-facing template uses readable labels
+        // ("Phone No", "Follow Up Remark"); we map them to internal keys here
+        // so the rest of the loop can speak in slugs. Duplicate "follow up
+        // remark" columns are tracked by their column index so we don't lose
+        // them to map-key collisions.
+        const rawHeaders = rows[0].map((h) => String(h || '').trim())
+        const headerKey = (raw: string) => {
+          const s = raw.toLowerCase().replace(/\s+/g, ' ').trim()
+          if (s === 'phone no' || s === 'phone number' || s === 'mobile') return 'phone'
+          if (s === 'follow up remark' || s === 'followup remark' || s === 'follow-up remark') return 'follow_up_remark'
+          if (s === 'rfd shared')   return 'rfd_shared'
+          if (s === 'sow sent')     return 'sow_sent'
+          if (s === 'office visit') return 'office_visit'
+          if (s === 'last follow up date' || s === 'last followup date' || s === 'last follow-up date') return 'last_followup_date'
+          if (s === 'next follow up date' || s === 'next followup date' || s === 'next follow-up date') return 'next_followup_date'
+          if (s === 'assigned to name' || s === 'assigned_to_name') return 'assigned_to_name'
+          return s.replace(/\s+/g, '_')
+        }
+        const headers = rawHeaders.map(headerKey)
+        const followupColIdxs: number[] = headers
+          .map((h, idx) => (h === 'follow_up_remark' ? idx : -1))
+          .filter((idx) => idx >= 0)
+
+        const required = ['name', 'email', 'phone', 'source', 'requirement']
         for (const r of required) {
           if (!headers.includes(r)) {
             return res.status(400).json({ error: `Missing required column: ${r}` })
           }
         }
 
-        // Build a lookup of full_name → user once, so each row doesn't pay a query.
-        // Matching is case-insensitive and ignores extra whitespace; first match wins
-        // if multiple users share the same name.
+        // Build a lookup of full_name → user once, so per-row assignee
+        // overrides via assigned_to_name don't pay a query each. When the
+        // column is absent, every row defaults to the importer.
         const allUsers = (await models.users.find({})) as any[]
         const usersByName = new Map<string, any>()
         for (const u of allUsers) {
@@ -1728,22 +1896,53 @@ export function createLeadsRouter(
             if (!usersByName.has(key)) usersByName.set(key, u)
           }
         }
+        const hasAssignedToColumn = headers.includes('assigned_to_name')
+        const importerId = String(user?.sub || user?.id || '')
+        const importer = importerId ? await models.users.findById(importerId) as any : null
 
-        // Allowed statuses from the catalog — anything else falls back to 'new'.
+        // Build a status matcher that accepts whatever the CSV happens to
+        // contain — keys ("under_process"), labels ("Under Process"), or
+        // free-form text ("under-process"). Every variant maps back to the
+        // canonical catalog key. Anything not found falls back to 'new'.
         const statusDocs = (await models.leadStatuses.find({})) as any[]
-        const validStatuses = new Set(statusDocs.map((s) => String(s.key || '').toLowerCase()))
-        if (!validStatuses.size) validStatuses.add('new')
+        const statusByAlias = new Map<string, string>()
+        for (const s of statusDocs) {
+          const key = String(s.key || '').toLowerCase().trim()
+          if (!key) continue
+          const label = String(s.label || '').toLowerCase().trim()
+          // Register every reasonable lookup form so the CSV cell doesn't
+          // need to match the exact storage form.
+          statusByAlias.set(key, key)
+          statusByAlias.set(sanitizeStatusKey(key), key)
+          if (label) {
+            statusByAlias.set(label, key)
+            statusByAlias.set(sanitizeStatusKey(label), key)
+          }
+        }
+        if (!statusByAlias.size) statusByAlias.set('new', 'new')
+        const resolveStatus = (raw: string): string => {
+          const v = String(raw || '').toLowerCase().trim()
+          if (!v) return 'new'
+          return statusByAlias.get(v) || statusByAlias.get(sanitizeStatusKey(v)) || 'new'
+        }
 
         const created: any[] = []
         const errors: { row: number; email?: string; error: string }[] = []
+        let followupsCreated = 0
 
         for (let i = 1; i < rows.length; i++) {
           const cells = rows[i]
           if (!cells || cells.every((c) => !c?.trim())) continue
+          // Map all non-followup columns by key. Follow-ups are gathered
+          // separately because the same key repeats.
           const record: Record<string, string> = {}
           headers.forEach((h, idx) => {
+            if (h === 'follow_up_remark') return
             record[h] = String(cells[idx] || '').trim()
           })
+          const followups: string[] = followupColIdxs
+            .map((idx) => String(cells[idx] || '').trim())
+            .filter((t) => t.length > 0)
 
           try {
             const name = validateLength(record.name, 2, 120, 'Name')
@@ -1752,23 +1951,52 @@ export function createLeadsRouter(
             const requirement = validateLength(record.requirement, 1, 5000, 'Requirement')
             const source = validateLength(record.source, 1, 80, 'Source')
 
-            const assigneeName = String(record.assigned_to_name || '').toLowerCase().replace(/\s+/g, ' ').trim()
-            const assignee = assigneeName ? usersByName.get(assigneeName) : null
-            if (!assignee) {
-              errors.push({
-                row: i + 1,
-                email: record.email,
-                error: `Assignee name not found: ${record.assigned_to_name}`,
-              })
+            // Per-row assignee override (legacy column). When the column is
+            // missing OR the cell is empty, the importer owns the lead.
+            let assignee: any = importer
+            let assignedTo = importerId
+            if (hasAssignedToColumn && record.assigned_to_name) {
+              const k = record.assigned_to_name.toLowerCase().replace(/\s+/g, ' ').trim()
+              const matched = usersByName.get(k)
+              if (matched) {
+                assignee = matched
+                assignedTo = String(matched.id)
+              } else {
+                errors.push({
+                  row: i + 1,
+                  email: record.email,
+                  error: `Assignee name not found: ${record.assigned_to_name}`,
+                })
+                continue
+              }
+            }
+            if (!assignedTo) {
+              errors.push({ row: i + 1, email: record.email, error: 'No assignee resolved' })
               continue
             }
-            const assignedTo = String(assignee.id)
 
-            const requestedStatus = String(record.status || 'new').toLowerCase().trim() || 'new'
-            const status = validStatuses.has(requestedStatus) ? requestedStatus : 'new'
+            const status = resolveStatus(record.status)
 
-            const now = new Date()
-            const nowIso = now.toISOString()
+            // created_at sourcing, in priority order:
+            //   1. "Last Follow up Date" — when present, the importer wants
+            //      the lead's timeline to start where the last sales touch was
+            //   2. "Date" column — generic created_at fallback
+            //   3. importer's clock — last resort so unparseable rows still slot in
+            const createdAt = parseCsvDate(record.last_followup_date)
+              || parseCsvDate(record.date)
+              || new Date()
+            const createdAtIso = createdAt.toISOString()
+            const nowIso = new Date().toISOString()
+            // Single shared due-date pulled from "Next Follow Up date" if the
+            // column exists. Applied to every follow-up task on the row so the
+            // row's "next action" alarm fires once on the right day.
+            const nextFollowupDue = parseCsvDate(record.next_followup_date)
+            // "Last Follow up Date" → represents a past contact attempt. We
+            // materialize it as a completed (status=done) follow-up so the
+            // lead's history shows "last contact was on X" without ringing
+            // an alarm (the date is in the past) and the list view can
+            // surface the date in a "Last contacted" cell.
+            const lastFollowupDue = parseCsvDate(record.last_followup_date)
             const leadId = generateId('lead')
             await models.leads.insertOne({
               id: leadId,
@@ -1781,20 +2009,151 @@ export function createLeadsRouter(
               status,
               assigned_to: assignedTo,
               created_by: user?.sub || null,
-              created_at: nowIso,
+              created_at: createdAtIso,
               updated_at: nowIso,
             })
+
+            // Stagger activity timestamps so the timeline renders in the
+            // logical order the importer actually performed them, instead of
+            // an arbitrary same-instant insertion order. Each call advances
+            // the step by ~10 ms — well below human perception but enough
+            // for created_at-based sorting to produce a stable sequence.
+            const importNow = Date.now()
+            let importStep = 0
+            const importTs = () => new Date(importNow + (importStep++) * 10).toISOString()
 
             await logLeadActivity(
               models,
               leadId,
               user,
               'lead_created',
-              `Lead imported and assigned to ${assignee.full_name || assignee.email}`,
+              `Lead imported and assigned to ${assignee?.full_name || assignee?.email || 'self'}`,
               { assigned_to: assignedTo, source_import: true },
+              importTs(),
             )
 
-            created.push({ id: leadId, email, name, assigned_to: assignedTo })
+            // Optional "Remarks" + "RFD Shared" / "SOW Sent" / "Office visit"
+            // columns are surfaced as a single combined note so the importer's
+            // sales context survives the import. Empty cells are skipped.
+            // The text lands in BOTH leadNotes (so it shows under Notes and
+            // as the lead's latest_note preview in the list) and the timeline
+            // activity log (so users see the import event itself).
+            const noteFragments: string[] = []
+            if (record.remarks)      noteFragments.push(`Remarks: ${record.remarks}`)
+            if (record.rfd_shared)   noteFragments.push(`RFD Shared: ${record.rfd_shared}`)
+            if (record.sow_sent)     noteFragments.push(`SOW Sent: ${record.sow_sent}`)
+            if (record.office_visit) noteFragments.push(`Office Visit: ${record.office_visit}`)
+            if (noteFragments.length) {
+              const noteText = noteFragments.join(' | ').slice(0, 5000)
+              const noteId = generateId('lnote')
+              await models.leadNotes.insertOne({
+                id: noteId,
+                lead_id: leadId,
+                text: noteText,
+                author_id: user?.sub || null,
+                author_name: user?.name || user?.full_name || null,
+                author_role: lower(user?.role) || null,
+                created_at: nowIso,
+              })
+              await logLeadActivity(
+                models,
+                leadId,
+                user,
+                'note_added',
+                noteText.slice(0, 600),
+                { source_import: true, note_id: noteId },
+                importTs(),
+              )
+            }
+
+            // Materialize "Last Follow up Date" as a completed task so the
+            // lead's history reflects the past contact and the list view's
+            // "Last contacted" cell has something to surface.
+            if (lastFollowupDue) {
+              const lastTaskId = generateId('ltask')
+              await models.leadTasks.insertOne({
+                id: lastTaskId,
+                lead_id: leadId,
+                title: 'Other: Last contact (imported)',
+                activity_type: 'Other',
+                description: 'Imported from CSV — Last Follow up Date column.',
+                notes: 'Imported from CSV — Last Follow up Date column.',
+                assigned_to: assignedTo,
+                assigned_by: user?.sub || null,
+                status: 'done',
+                due_date: lastFollowupDue.toISOString(),
+                snooze_minutes: 0,
+                acknowledged_at: lastFollowupDue.toISOString(),
+                acknowledged_by: user?.sub || null,
+                completed_at: lastFollowupDue.toISOString(),
+                created_at: lastFollowupDue.toISOString(),
+                updated_at: nowIso,
+              })
+              await logLeadActivity(
+                models,
+                leadId,
+                user,
+                'followup_updated',
+                `Imported last contact recorded on ${lastFollowupDue.toISOString().slice(0, 10)}`,
+                { task_id: lastTaskId, source_import: true, status: 'done' },
+                importTs(),
+              )
+              followupsCreated++
+            }
+
+            // Each non-empty Follow Up Remark cell becomes a lead task.
+            // Due date priority:
+            //   1. "Next Follow Up date" column (when provided, applies to every
+            //      follow-up on the row — this is the most explicit signal)
+            //   2. trailing date inside the remark itself (e.g. "...soon / 26 May 2026")
+            //   3. staggered fallback (row + 3 days, +6, +9 …) so identical
+            //      blank-due remarks don't all alarm together
+            for (let fIdx = 0; fIdx < followups.length; fIdx++) {
+              const raw = followups[fIdx]
+              const { text, due } = splitFollowupRemark(raw)
+              const dueDate = nextFollowupDue
+                || due
+                || new Date(Date.now() + (fIdx + 1) * 3 * 24 * 60 * 60 * 1000)
+              const taskId = generateId('ltask')
+              // Title shape matches what the Schedule Follow-up modal writes —
+              // "<ActivityType>: <note>" — so the list and detail views
+              // render imported rows the same way as manually-scheduled ones.
+              const titleText = text.slice(0, 80) || `Follow up with ${name}`
+              const title = `Other: ${titleText}`
+              // Imported follow-ups are tagged activity_type='Other' so they
+              // show up with the right chip on the list view and can be
+              // reclassified later via the Edit modal if the agent picks up
+              // the call/email context after the fact.
+              await models.leadTasks.insertOne({
+                id: taskId,
+                lead_id: leadId,
+                title,
+                activity_type: 'Other',
+                description: text,
+                notes: text,
+                assigned_to: assignedTo,
+                assigned_by: user?.sub || null,
+                status: 'pending',
+                due_date: dueDate.toISOString(),
+                snooze_minutes: DEFAULT_FOLLOWUP_SNOOZE_MINUTES,
+                acknowledged_at: null,
+                acknowledged_by: null,
+                created_at: nowIso,
+                updated_at: nowIso,
+              })
+              await logLeadActivity(
+                models,
+                leadId,
+                user,
+                'other',
+                `Imported follow-up: "${title}" due ${dueDate.toISOString().slice(0, 10)}`,
+                { task_id: taskId, source_import: true },
+                importTs(),
+              )
+              followupsCreated++
+            }
+
+            created.push({ id: leadId, email, name, assigned_to: assignedTo, followups: followups.length })
           } catch (e: any) {
             errors.push({ row: i + 1, email: record.email, error: e?.message || 'Failed' })
           }
@@ -1802,6 +2161,7 @@ export function createLeadsRouter(
 
         return res.json({
           created_count: created.length,
+          followups_created: followupsCreated,
           error_count: errors.length,
           created,
           errors,
@@ -1816,7 +2176,69 @@ export function createLeadsRouter(
 }
 
 // Tiny CSV parser — handles quoted fields with commas and escaped quotes ("").
+// Best-effort date parser for free-form CSV cells. Accepts dd/mm/yyyy and
+// dd-mm-yyyy (Indian convention — what Excel exports there), ISO yyyy-mm-dd,
+// and verbose forms like "26 May 2026" or "26 May" (year defaults to current).
+// Returns null if no recognised pattern matches so callers can fall back.
+function parseCsvDate(input: string | undefined | null): Date | null {
+  const s = String(input || '').trim()
+  if (!s) return null
+  // dd/mm/yyyy or dd-mm-yyyy
+  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)
+  if (m) {
+    const d = Number(m[1])
+    const mo = Number(m[2]) - 1
+    let y = Number(m[3])
+    if (y < 100) y += 2000
+    const dt = new Date(Date.UTC(y, mo, d))
+    if (!Number.isNaN(dt.getTime())) return dt
+  }
+  // ISO yyyy-mm-dd
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (m) {
+    const dt = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+    if (!Number.isNaN(dt.getTime())) return dt
+  }
+  // "26 May 2026" or "26 May"
+  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+  m = s.match(/^(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{2,4}))?$/)
+  if (m) {
+    const d = Number(m[1])
+    const moIdx = months.indexOf(m[2].toLowerCase().slice(0, 3))
+    if (moIdx >= 0) {
+      let y = m[3] ? Number(m[3]) : new Date().getUTCFullYear()
+      if (y < 100) y += 2000
+      const dt = new Date(Date.UTC(y, moIdx, d))
+      if (!Number.isNaN(dt.getTime())) return dt
+    }
+  }
+  // Last-ditch: let JS try. Reliable for ISO with time, sketchy elsewhere.
+  const fallback = new Date(s)
+  return Number.isNaN(fallback.getTime()) ? null : fallback
+}
+
+// Pulls a trailing date off the end of a follow-up cell so importers can
+// jot quick context like "called back / 26 May 2026" and have the system
+// schedule the alarm. Supported separators: "/", "-", "|", "•" — the last
+// token after one of these is parsed as a date if it matches a known shape.
+function splitFollowupRemark(raw: string): { text: string; due: Date | null } {
+  const s = String(raw || '').trim()
+  if (!s) return { text: '', due: null }
+  // Try the segment after the last `/` or `|` or `•` separator.
+  const sepIdx = Math.max(s.lastIndexOf('/'), s.lastIndexOf('|'), s.lastIndexOf('•'))
+  if (sepIdx > 0 && sepIdx < s.length - 1) {
+    const tail = s.slice(sepIdx + 1).trim()
+    const dt = parseCsvDate(tail)
+    if (dt) return { text: s.slice(0, sepIdx).trim() || s, due: dt }
+  }
+  return { text: s, due: null }
+}
+
 function parseCsv(text: string): string[][] {
+  // Strip UTF-8 BOM. Excel "Save As CSV (UTF-8)" prepends ﻿, which would
+  // otherwise turn the first header from "Date" into "﻿Date" and make
+  // required-column checks fail.
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1)
   const rows: string[][] = []
   let cur: string[] = []
   let field = ''

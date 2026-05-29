@@ -34,6 +34,9 @@ const LEAD_ACTIVITY_FILTER_OPTIONS = [
   ['reassigned',       'Reassigned'],
   ['handover_credit',  'Revenue handover'],
   ['lead_closed',      'Lead closed'],
+  // Imported follow-ups log their activity under this catch-all so a manager
+  // can filter the leads list to "everything that came in via bulk import".
+  ['other',            'Other (imported)'],
 ]
 
 // Statuses are seeded on the server (5 defaults each) and editable via
@@ -185,6 +188,25 @@ function leadsCanDelete() {
 
 // Manage Statuses / Sources buttons each have their own permission key now —
 // admin/pm/pc remain default, anyone else needs the explicit grant.
+// Trash permissions. View is required to see the page at all; restore + purge
+// are checked separately to show/hide the corresponding row buttons. Admin
+// always has all three; everyone else needs the explicit grant.
+function leadsCanViewTrash() {
+  const role = String(_user?.role || '').toLowerCase()
+  if (role === 'admin') return true
+  return typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.trash.view'])
+}
+function leadsCanRestore() {
+  const role = String(_user?.role || '').toLowerCase()
+  if (role === 'admin') return true
+  return typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.trash.restore'])
+}
+function leadsCanPurge() {
+  const role = String(_user?.role || '').toLowerCase()
+  if (role === 'admin') return true
+  return typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.trash.purge'])
+}
+
 function leadsCanManageStatuses() {
   const role = String(_user?.role || '').toLowerCase()
   if (role === 'admin' || ['pm', 'pc'].includes(role)) return true
@@ -221,6 +243,130 @@ async function fetchSalesAssignees() {
 // avoids the brief "Loading leads…" flash that flickered every time the user
 // toggled a checkbox in the Activity dropdown.
 let _leadsViewCache = { leads: [], assignees: [], el: null }
+
+// ── Lead Trash module ──────────────────────────────────────────
+// Soft-deleted leads land here with their deletion reason, deleter, and
+// timestamp. Restore puts them back in the active list; purge removes them
+// from the database permanently along with every related task/note/comment.
+async function renderLeadsTrashPage(el) {
+  if (!leadsCanViewTrash()) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-lock"></i><p>You don't have permission to view the Lead Trash.</p><small>Ask an admin to grant <code>leads.trash.view</code>.</small></div>`
+    return
+  }
+  el.innerHTML = `<div style="padding:24px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Loading trash…</div>`
+  try {
+    const res = await API.get('/leads/trash/list')
+    const rows = res.leads || res.data || []
+    const canRestore = leadsCanRestore()
+    const canPurge = leadsCanPurge()
+    el.innerHTML = `
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding-bottom:8px">
+        <div>
+          <h2 style="margin:0"><i class="fas fa-trash-restore" style="color:#FF9F40;margin-right:8px"></i>Lead Trash</h2>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Soft-deleted leads. Restore brings them back; permanent delete removes them and every related task, note, comment, and activity.</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="(function(){ const e=document.getElementById('page-leads-trash'); if(e){e.dataset.loaded='';loadPage('leads-trash',e)} })()"><i class="fas fa-rotate"></i> Refresh</button>
+      </div>
+      ${rows.length ? `
+      <div class="card" style="margin-top:12px;overflow:hidden">
+        <table class="data-table" style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:left">Lead</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:left">Status</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:left">Deleted by</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:left">When</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:left">Reason</th>
+              <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#C9A7FF;text-transform:uppercase;letter-spacing:.5px;text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((l) => `
+              <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+                <td style="padding:12px;vertical-align:top">
+                  <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${escapeHtml(l.name || '—')}</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${escapeHtml(l.email || '')} ${l.phone ? '· ' + escapeHtml(l.phone) : ''}</div>
+                  <div style="font-size:10px;color:#7E7E8F;margin-top:2px">${escapeHtml(l.id || '')}</div>
+                </td>
+                <td style="padding:12px;vertical-align:top;font-size:12px;color:var(--text-secondary)">${escapeHtml(l.status || '—')}</td>
+                <td style="padding:12px;vertical-align:top;font-size:12px;color:var(--text-secondary)">${escapeHtml(l.deleted_by_name || '—')}</td>
+                <td style="padding:12px;vertical-align:top;font-size:12px;color:var(--text-muted)">${l.deleted_at ? (typeof timeAgo === 'function' ? timeAgo(l.deleted_at) : fmtDate(l.deleted_at)) : '—'}</td>
+                <td style="padding:12px;vertical-align:top;font-size:12px;color:var(--text-secondary);max-width:340px;white-space:pre-wrap;word-break:break-word">${escapeHtml(l.deleted_reason || '—')}</td>
+                <td style="padding:12px;text-align:right;vertical-align:top;white-space:nowrap">
+                  ${canRestore ? `<button class="btn btn-xs btn-primary" onclick="restoreLead('${escapeHtml(l.id)}','${escapeHtml((l.name || '').replace(/'/g, "\\'"))}')"><i class="fas fa-rotate-left"></i> Restore</button>` : ''}
+                  ${canPurge ? `<button class="btn btn-xs btn-danger" style="margin-left:4px" onclick="confirmPurgeLead('${escapeHtml(l.id)}','${escapeHtml((l.name || '').replace(/'/g, "\\'"))}')"><i class="fas fa-trash"></i> Delete forever</button>` : ''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>` : `
+      <div class="empty-state" style="margin-top:24px">
+        <i class="fas fa-trash-restore" style="color:#7E7E8F"></i>
+        <p>Trash is empty</p>
+        <small>Leads moved to Trash will appear here. Sales managers can restore them or purge them permanently.</small>
+      </div>`}
+    `
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message || 'Failed to load trash')}</p></div>`
+  }
+}
+window.renderLeadsTrashPage = renderLeadsTrashPage
+
+async function restoreLead(id, name) {
+  if (!confirm(`Restore "${name || 'this lead'}" from Trash?`)) return
+  try {
+    await API.post(`/leads/${id}/restore`, {})
+    toast('Lead restored', 'success')
+    const el = document.getElementById('page-leads-trash')
+    if (el) { el.dataset.loaded = ''; loadPage('leads-trash', el) }
+  } catch (e) {
+    toast('Restore failed: ' + (e?.message || ''), 'error')
+  }
+}
+window.restoreLead = restoreLead
+
+function confirmPurgeLead(id, name) {
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-triangle-exclamation" style="color:#FF5E3A;margin-right:6px"></i> Permanently delete lead</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div style="padding:12px 14px;border-radius:10px;background:rgba(255,94,58,0.10);border:1px solid rgba(255,94,58,0.30);color:#FFB59E;font-size:13px;line-height:1.5">
+        <strong>This cannot be undone.</strong> The lead <strong>${escapeHtml(name || '')}</strong> and every related follow-up, note, comment, and timeline event will be removed permanently.
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Type <code>DELETE</code> to confirm</label>
+        <input id="lead-purge-confirm-input" class="form-input" placeholder="DELETE" autocomplete="off"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="lead-purge-btn" onclick="submitPurgeLead('${id}')"><i class="fas fa-trash"></i> Delete permanently</button>
+    </div>
+  `)
+  setTimeout(() => document.getElementById('lead-purge-confirm-input')?.focus(), 50)
+}
+window.confirmPurgeLead = confirmPurgeLead
+
+async function submitPurgeLead(id) {
+  const v = String(document.getElementById('lead-purge-confirm-input')?.value || '').trim()
+  if (v !== 'DELETE') { toast('Type DELETE in capitals to confirm', 'error'); return }
+  const btn = document.getElementById('lead-purge-btn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting…' }
+  try {
+    await API.delete(`/leads/${id}/permanent`)
+    toast('Lead permanently deleted', 'success')
+    closeModal()
+    const el = document.getElementById('page-leads-trash')
+    if (el) { el.dataset.loaded = ''; loadPage('leads-trash', el) }
+  } catch (e) {
+    toast('Delete failed: ' + (e?.message || ''), 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash"></i> Delete permanently' }
+  }
+}
+window.submitPurgeLead = submitPurgeLead
 
 async function renderLeadsView(el) {
   el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div>`
@@ -588,18 +734,27 @@ async function exportLeadsCsv() {
 
 // ── CSV Import ──────────────────────────────────────────────
 function downloadLeadsImportTemplate() {
-  const headers = 'name,email,phone,source,requirement,assigned_to_name,status'
-  // Pre-fill the sample with a real assignee from the current sales team so the
-  // template is import-ready out of the box. Falls back to a placeholder name
-  // if the cache hasn't been populated yet.
-  const sampleAssignee = (_leadsAssigneeOptionsCache && _leadsAssigneeOptionsCache[0]?.full_name) || 'Sales Agent Name'
-  const csvEscape = (v) => /[",\n\r]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v)
-  const rows = [
-    ['Rahul Sharma', 'rahul@acme.com', '+91-9876543210', 'PPC', 'Looking for a website rebuild', sampleAssignee, 'new'].map(csvEscape).join(','),
-    ['Priya Verma', 'priya@globex.com', '+91-9876500001', 'SEO', 'Needs an iOS + Android app', sampleAssignee, 'contacted'].map(csvEscape).join(','),
-    ['Aman Singh', 'aman@initech.com', '+91-9876500002', 'Referral', 'Custom CRM dashboard', sampleAssignee, 'qualified'].map(csvEscape).join(','),
+  // Template matches the format sales teams already use in Excel: contact
+  // basics, status + source, the qualification checkboxes (RFD / SOW /
+  // Office visit), Requirement, Remarks, a Follow Up Remark cell for the
+  // open action, and dedicated Last/Next Follow Up date columns that drive
+  // the lead's created_at and the follow-up task's due_date respectively.
+  const headerCells = [
+    'Date', 'Name', 'Phone No', 'Email', 'Status', 'Source',
+    'RFD Shared', 'SOW Sent', 'Office visit', 'Requirement', 'Remarks',
+    'Follow Up Remark', 'Last Follow up Date', 'Next Follow Up date',
   ]
-  const csv = [headers, ...rows].join('\n') + '\n'
+  const csvEscape = (v) => /[",\n\r]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v)
+  const headers = headerCells.map(csvEscape).join(',')
+  const sample = [
+    '25/05/2026', 'Swarn Singh', '91-7589000918', 'doctorswarnsingh@gmail.com',
+    'Under Process', 'PPC', 'No', 'PPC Call', 'No',
+    'Would like to have App portal like Shadi.com',
+    'Not answering portfolio shared / Not answering',
+    "Had a word with him he'll ask his son to consider us",
+    '26/05/2026', '29/05/2026',
+  ].map(csvEscape).join(',')
+  const csv = headers + '\n' + sample + '\n'
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -621,9 +776,12 @@ function openImportLeadsModal() {
       <div style="padding:12px 14px;border-radius:10px;background:rgba(179,136,255,0.10);border:1px solid rgba(179,136,255,0.25);font-size:12.5px;line-height:1.55;color:var(--text-secondary)">
         <i class="fas fa-circle-info" style="color:var(--accent);margin-right:6px"></i>
         Upload a <strong>CSV file</strong> with a header row. Excel users: <em>File → Save As → CSV (UTF-8)</em>.<br/>
-        <strong>Required columns:</strong> name, email, phone, source, requirement, assigned_to_name<br/>
-        <strong>Optional:</strong> status (defaults to <code>new</code>)<br/>
-        <strong>assigned_to_name</strong> must match the full name of an existing sales user (case-insensitive) — unmatched rows are skipped.
+        <strong>Required columns:</strong> Name, Phone No, Email, Source, Requirement<br/>
+        <strong>Optional:</strong> Date, Status, RFD Shared, SOW Sent, Office visit, Remarks, Follow Up Remark, Last Follow up Date, Next Follow Up date<br/>
+        Every imported lead is <strong>assigned to you</strong> automatically.<br/>
+        <strong>Last Follow up Date</strong> → sets the lead's creation date.<br/>
+        <strong>Next Follow Up date</strong> → sets the follow-up task's due date (alarm trigger).<br/>
+        <strong>Remarks</strong> → captured as a note in the lead's timeline.
       </div>
 
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -661,19 +819,21 @@ async function submitImportLeads() {
   try {
     const res = await API.post('/leads/import', { csv })
     const created = res.created_count || 0
+    const followups = res.followups_created || 0
     const errCount = res.error_count || 0
     const errors = res.errors || []
 
     const el = document.getElementById('page-leads-view')
     if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
 
+    const followupLine = followups > 0 ? ` · <strong>${followups}</strong> follow-up${followups === 1 ? '' : 's'} scheduled.` : ''
     if (errCount > 0) {
       const result = document.getElementById('leads-import-result')
       if (result) {
         result.style.display = ''
         result.innerHTML = `
           <div style="padding:12px 14px;border-radius:10px;background:rgba(88,198,138,0.10);border:1px solid rgba(88,198,138,0.30);color:#86E0A8;font-size:13px;margin-bottom:8px">
-            <i class="fas fa-check-circle"></i> <strong>${created}</strong> leads imported successfully.
+            <i class="fas fa-check-circle"></i> <strong>${created}</strong> leads imported successfully.${followupLine}
           </div>
           <div style="padding:12px 14px;border-radius:10px;background:rgba(255,94,58,0.10);border:1px solid rgba(255,94,58,0.30);color:#A970FF;font-size:12.5px;line-height:1.5">
             <i class="fas fa-triangle-exclamation"></i> <strong>${errCount}</strong> rows skipped:
@@ -686,7 +846,10 @@ async function submitImportLeads() {
       }
       toast(`${created} imported, ${errCount} skipped`, 'warning')
     } else {
-      toast(`${created} lead${created === 1 ? '' : 's'} imported successfully`, 'success')
+      const msg = followups > 0
+        ? `${created} lead${created === 1 ? '' : 's'} + ${followups} follow-up${followups === 1 ? '' : 's'} imported`
+        : `${created} lead${created === 1 ? '' : 's'} imported successfully`
+      toast(msg, 'success')
       closeModal()
     }
   } catch (e) {
@@ -730,12 +893,47 @@ function openLeadNoteModal(leadId) {
 }
 window.openLeadNoteModal = openLeadNoteModal
 
+// Small chip showing the next-due row's Activity Type — labels match the
+// dropdown in the Schedule + Edit Follow-up modals so what a user sees on
+// the list is exactly what they pick when reclassifying.
+// Schedule Follow-up writes titles as "<ActivityType>: <text>", and the
+// import flow follows the same convention. When the Edit modal opens we
+// want to show just the editable <text> portion so users don't end up
+// typing inside their own prefix; the saver below re-adds the current
+// type. Case-insensitive match guards against legacy lowercased prefixes.
+function stripActivityTypePrefix(title) {
+  const s = String(title || '')
+  const m = s.match(/^\s*(Call|Email|Meeting|Other)\s*:\s*(.*)$/i)
+  return m ? m[2] : s
+}
+
+const ACTIVITY_TYPE_META = {
+  Call:    { label: 'Call',    color: '#3b82f6', bg: 'rgba(59,130,246,.14)' },
+  Email:   { label: 'Email',   color: '#22c55e', bg: 'rgba(34,197,94,.14)'  },
+  Meeting: { label: 'Meeting', color: '#FF9F40', bg: 'rgba(255,159,64,.16)' },
+  Other:   { label: 'Other',   color: '#C9A7FF', bg: 'rgba(201,167,255,.16)' },
+}
+
 function renderLeadRow(l, canManage) {
   const key = String(l.status || 'new').toLowerCase()
   const meta = LEAD_STATUS_META[key] || { label: key, badge: 'todo' }
   const openTask = (l.tasks || []).find((t) => t.status !== 'done' && t.status !== 'skipped')
   const due = openTask?.due_date ? fmtDateTime(openTask.due_date) : '—'
   const overdue = openTask?.due_date && new Date(openTask.due_date).getTime() < Date.now()
+  const taskActivityType = String(openTask?.activity_type || 'Other')
+  const activityMeta = ACTIVITY_TYPE_META[taskActivityType] || { label: taskActivityType, color: '#7E7E8F', bg: 'rgba(126,126,143,.16)' }
+  const kindChip = openTask
+    ? `<span style="display:inline-block;font-size:10px;font-weight:600;padding:1px 7px;border-radius:999px;background:${activityMeta.bg};color:${activityMeta.color};margin-top:3px">${escapeHtml(activityMeta.label)}</span>`
+    : ''
+  // Latest "done" follow-up tells the user when the lead was last actually
+  // contacted. Imports stamp this from the CSV's "Last Follow up Date" column;
+  // manually-completed follow-ups update it implicitly as agents work the lead.
+  const lastDoneTask = (l.tasks || [])
+    .filter((t) => String(t.status).toLowerCase() === 'done' && t.due_date)
+    .sort((a, b) => String(b.due_date || '').localeCompare(String(a.due_date || '')))[0]
+  const lastContactedLine = lastDoneTask
+    ? `<div style="font-size:10.5px;color:#7E7E8F;margin-top:3px"><i class="fas fa-check" style="color:#22c55e;margin-right:3px"></i>Last contacted: ${escapeHtml(fmtDateOnly(lastDoneTask.due_date))}</div>`
+    : ''
   // Last note preview: prefer the history entry from leadNotes (set by
   // enrichLeads); fall back to the inline lead.notes blob if the lead is old
   // and has never had a history entry created.
@@ -777,7 +975,11 @@ function renderLeadRow(l, canManage) {
       ${isLong ? `<button type="button" onclick="openLeadNoteModal('${l.id}')" style="background:none;border:none;color:#A970FF;font-size:11px;padding:2px 0;cursor:pointer;font-weight:600">See more</button>` : ''}
       ${lastNoteMeta ? `<div style="font-size:10.5px;color:#7E7E8F;margin-top:2px">${lastNoteMeta}</div>` : ''}
     </td>
-    <td><span style="font-size:12px;${overdue ? 'color:#FF5E3A;font-weight:600' : 'color:#7E7E8F'}">${due}${overdue ? ' (overdue)' : ''}</span></td>
+    <td>
+      <span style="font-size:12px;${overdue ? 'color:#FF5E3A;font-weight:600' : 'color:#7E7E8F'}">${due}${overdue ? ' (overdue)' : ''}</span>
+      ${kindChip ? `<div>${kindChip}</div>` : ''}
+      ${lastContactedLine}
+    </td>
     <td>
       <div style="display:flex;gap:4px">
         <button class="btn btn-xs btn-outline" title="Open detail page" onclick="goLeadDetail('${l.id}')"><i class="fas fa-up-right-from-square"></i></button>
@@ -968,6 +1170,16 @@ async function openEditLeadModal(id) {
           </div>
           <div class="form-group"><label class="form-label">Assign To *</label>
             <select id="lead-assigned-to" class="form-select">
+              ${(() => {
+                // Same guard as the inline edit form: if the current assignee
+                // isn't in the sales-only list (e.g. admin importer), prepend
+                // them so the dropdown reflects reality and Save doesn't
+                // silently reassign to the first sales user.
+                const currentInList = assignees.some((u) => String(u.id) === String(lead.assigned_to))
+                return (!currentInList && lead.assigned_to && lead.assigned_to_name)
+                  ? `<option value="${lead.assigned_to}" selected>${escapeHtml(lead.assigned_to_name)} (current assignee)</option>`
+                  : ''
+              })()}
               ${assignees.map((u) => `<option value="${u.id}" ${String(lead.assigned_to) === String(u.id) ? 'selected' : ''}>${escapeHtml(u.full_name)} — ${escapeHtml(u.role)}</option>`).join('')}
             </select>
           </div>
@@ -2121,17 +2333,56 @@ function reloadLeadsView() {
   if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
 }
 
-async function confirmDeleteLead(id, name) {
-  if (!confirm(`Delete lead "${name}"? This also removes all follow-up tasks.`)) return
+// Soft-delete now requires a reason so an audit trail exists in the Trash
+// module. The lead moves to Trash where users with the trash.* permissions
+// can restore it or purge it permanently.
+function confirmDeleteLead(id, name) {
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-trash" style="color:#FF5E3A;margin-right:6px"></i> Move lead to Trash</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;padding:18px">
+      <div style="font-size:13px;color:var(--text-secondary)">
+        You're about to move <strong>${escapeHtml(name || 'this lead')}</strong> to Trash. It can be restored from the Lead Trash module.
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Reason for deletion <span style="color:#FF5E3A">*</span></label>
+        <textarea id="lead-delete-reason" class="form-textarea" rows="3" maxlength="500" placeholder="e.g. Duplicate of lead-xxx, junk lead, requested by client…" style="min-height:80px"></textarea>
+        <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">3–500 characters. Shown in the Trash module to anyone who looks up the history.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="lead-delete-confirm" onclick="submitDeleteLead('${id}')"><i class="fas fa-trash"></i> Move to Trash</button>
+    </div>
+  `)
+  setTimeout(() => document.getElementById('lead-delete-reason')?.focus(), 50)
+}
+
+async function submitDeleteLead(id) {
+  const reason = String(document.getElementById('lead-delete-reason')?.value || '').trim()
+  if (reason.length < 3) {
+    toast('Please give a reason (at least 3 characters)', 'error')
+    return
+  }
+  const btn = document.getElementById('lead-delete-confirm')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Moving…' }
   try {
-    await API.delete(`/leads/${id}`)
-    toast('Lead deleted', 'success')
+    await API.delete(`/leads/${id}`, { reason })
+    toast('Lead moved to Trash', 'success')
+    closeModal()
     const el = document.getElementById('page-leads-view')
     if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+    // If the user is currently on the lead detail page, send them back to
+    // the list — the lead is no longer accessible to non-trash routes.
+    if (typeof goLeadsList === 'function' && location.hash.includes('lead-detail')) goLeadsList()
   } catch (e) {
-    toast('Failed: ' + e.message, 'error')
+    toast('Delete failed: ' + (e?.message || ''), 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash"></i> Move to Trash' }
   }
 }
+window.submitDeleteLead = submitDeleteLead
 
 // ════════════════════════════════════════════════════════════
 // Follow-up alarms — polls /leads/followups/upcoming and pops a
@@ -2398,7 +2649,10 @@ async function renderLeadDetailPage(el, id) {
       return
     }
     const tasks = lead.tasks || []
-    const followups = tasks.filter((t) => (t.kind || 'followup') === 'followup')
+    // Anything that's not a manually-created sales "task" (kind='task') is a
+    // follow-up for display purposes — covers the default 'followup' kind,
+    // legacy untagged tasks, and 'other'-tagged imports from bulk CSV uploads.
+    const followups = tasks.filter((t) => String(t.kind || 'followup') !== 'task')
     const generalTasks = tasks.filter((t) => t.kind === 'task')
     const notes = notesRes.data || notesRes.notes || []
     const timeline = timelineRes.data || timelineRes.timeline || []
@@ -2500,14 +2754,27 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
           </select>
           ${lead.status !== 'closed' && !lead.client_id ? '<div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Picking "Closed" opens the Close &amp; Convert form (client + project).</div>' : ''}
         </div>
-        ${canManage ? `
+        ${canManage ? (() => {
+          // fetchSalesAssignees() only returns sales-role users. If a lead is
+          // currently assigned to an admin/PM/PC (e.g. via the import flow,
+          // where the importer is often admin), that user wouldn't be in the
+          // dropdown — the <select> would silently fall through to the first
+          // option, and a Save Changes click would reassign the lead away.
+          // Prepend the current assignee as a synthetic option to keep the
+          // dropdown honest and prevent accidental reassignment.
+          const currentInList = assignees.some((u) => String(u.id) === String(lead.assigned_to))
+          const fallbackOption = (!currentInList && lead.assigned_to && lead.assigned_to_name)
+            ? `<option value="${escape(lead.assigned_to)}" selected>${escape(lead.assigned_to_name)} (current assignee)</option>`
+            : ''
+          return `
         <div class="form-group" style="margin:0;grid-column:1/-1">
           <label class="form-label" style="font-size:11px">Assigned to *</label>
           <select id="lead-inline-assigned-to" class="form-select">
+            ${fallbackOption}
             ${assignees.map((u) => `<option value="${escape(u.id)}" ${String(lead.assigned_to) === String(u.id) ? 'selected' : ''}>${escape(u.full_name)} — ${escape(u.role)}</option>`).join('')}
           </select>
-        </div>
-        ` : `
+        </div>`
+        })() : `
         <div style="grid-column:1/-1;font-size:12px;color:#7E7E8F;padding:6px 0">
           <i class="fas fa-user" style="width:16px"></i> Assigned to: ${escape(lead.assigned_to_name || '—')}
         </div>
@@ -2933,6 +3200,16 @@ async function openEditLeadTaskModal(leadId, taskId) {
   } catch {}
   if (!t) { toast('Task not found', 'error'); return }
   const kind = String(t.kind || 'followup') === 'task' ? 'task' : 'followup'
+  // currentActivityType is the user-facing classification (Call/Email/
+  // Meeting/Other) — same enum as the Schedule Follow-up modal. Falls back
+  // to 'Other' so legacy rows without the field still render a valid choice.
+  const currentActivityType = String(t.activity_type || 'Other')
+  // Strip the leading "<ActivityType>: " from the stored title before
+  // showing it in the input — Schedule Follow-up writes titles in that
+  // form, so without this the user sees redundant prefix text. The prefix
+  // is re-added by submitEditLeadTask based on whichever activity type
+  // they leave selected, keeping the stored title in sync with the chip.
+  const titleDisplay = stripActivityTypePrefix(String(t.title || ''))
   const due = t.due_date ? new Date(t.due_date) : new Date()
   const pad = (n) => String(n).padStart(2, '0')
   const dateStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`
@@ -2948,11 +3225,17 @@ async function openEditLeadTaskModal(leadId, taskId) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="form-group"><label class="form-label">Title *</label>
-        <input id="edt-title" class="form-input" value="${escapeHtml(t.title || '')}"/>
+      <div class="form-group">
+        <label class="form-label">Activity Type</label>
+        <select id="edt-activity-type" class="form-select">
+          <option value="Call"    ${currentActivityType === 'Call'    ? 'selected' : ''}>Call</option>
+          <option value="Email"   ${currentActivityType === 'Email'   ? 'selected' : ''}>Email</option>
+          <option value="Meeting" ${currentActivityType === 'Meeting' ? 'selected' : ''}>Meeting</option>
+          <option value="Other"   ${currentActivityType === 'Other'   ? 'selected' : ''}>Other</option>
+        </select>
       </div>
-      <div class="form-group"><label class="form-label">Description</label>
-        <textarea id="edt-desc" class="form-input" rows="3">${escapeHtml(t.description || t.notes || '')}</textarea>
+      <div class="form-group"><label class="form-label">Activity Note *</label>
+        <textarea id="edt-desc" class="form-input" rows="3" placeholder="Discuss pricing options…">${escapeHtml(t.description || t.notes || titleDisplay)}</textarea>
       </div>
       <div class="grid-2">
         <div class="form-group"><label class="form-label">Date *</label>
@@ -3001,9 +3284,13 @@ async function openEditLeadTaskModal(leadId, taskId) {
 }
 
 async function submitEditLeadTask(leadId, taskId, kind) {
-  const title = (document.getElementById('edt-title')?.value || '').trim()
-  if (!title) { toast('Title is required', 'error'); return }
+  // Title field is gone — the Activity Note doubles as both the editable
+  // description AND the source for the generated title ("<Type>: <note>"),
+  // mirroring how Schedule Follow-up works. Defensive prefix-strip guards
+  // against rows whose note is itself prefixed (e.g. legacy imports).
   const desc = (document.getElementById('edt-desc')?.value || '').trim()
+  if (!desc) { toast('Activity note is required', 'error'); return }
+  const titleBody = stripActivityTypePrefix(desc).trim()
   const dateStr = (document.getElementById('edt-date')?.value || '').trim()
   if (!dateStr) { toast('Date is required', 'error'); return }
   const priority = (document.getElementById('edt-priority')?.value || 'medium').trim().toLowerCase()
@@ -3018,8 +3305,13 @@ async function submitEditLeadTask(leadId, taskId, kind) {
     due = new Date(`${dateStr}T17:00:00`)
   }
   if (Number.isNaN(due.getTime())) { toast('Invalid date/time', 'error'); return }
+  // Generate the title from "<ActivityType>: <note-prefix>" so it matches
+  // exactly what Schedule Follow-up writes for new rows — same shape on the
+  // list view, detail view, and timeline. 60-char clip prevents a long note
+  // from blowing up the row layout.
+  const selectedActivity = String(document.getElementById('edt-activity-type')?.value || 'Other').trim()
   const payload = {
-    title,
+    title: `${selectedActivity}: ${titleBody.slice(0, 60)}`,
     description: desc,
     due_date: due.toISOString(),
     priority,
@@ -3029,6 +3321,10 @@ async function submitEditLeadTask(leadId, taskId, kind) {
     const snoozeRaw = Number(document.getElementById('edt-snooze')?.value)
     if (Number.isFinite(snoozeRaw)) payload.snooze_minutes = Math.max(0, Math.min(1440, Math.round(snoozeRaw)))
   }
+  // Activity type change — backend whitelists the value, so an unexpected
+  // string here just errors out cleanly instead of corrupting the row.
+  const newActivityType = String(document.getElementById('edt-activity-type')?.value || '').trim()
+  if (['Call', 'Email', 'Meeting', 'Other'].includes(newActivityType)) payload.activity_type = newActivityType
   try {
     await API.patch(`/leads/tasks/${taskId}`, payload)
     toast(kind === 'task' ? 'Task updated' : 'Follow-up updated', 'success')
@@ -3226,6 +3522,7 @@ async function submitScheduleFollowup2(leadId) {
     await API.post(`/leads/${leadId}/followups`, {
       title: `${type}: ${note.slice(0, 60)}`,
       notes: note,
+      activity_type: type,
       due_date: due.toISOString(),
       snooze_minutes: snooze,
       priority,

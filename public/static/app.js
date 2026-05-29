@@ -117,6 +117,7 @@ const PAGE_PERMISSIONS = {
   // permission keys (leads.*, portfolios.*, scopes.*, quotations.*,
   // meetings.*, sales_incentive.*) which canSeePage honours via NAV_PERMISSION_MAP.
   'leads-view':      ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
+  'leads-trash':     ['admin', 'sales_manager', 'sales_tl'],
   'lead-detail':     ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
   'lead-followups':  ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
   'lead-tasks':      ['admin', 'sales_manager', 'sales_tl', 'sales_agent'],
@@ -236,6 +237,7 @@ const NAV_PERMISSION_MAP = {
   'settings-view':     ['settings.manage_company', 'settings.manage_holidays', 'settings.manage_tech_stacks', 'settings.manage_invites', 'settings.manage_roles'],
   // Leads / sales tracker
   'leads-view':     ['leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit', 'leads.delete'],
+  'leads-trash':    ['leads.trash.view'],
   'lead-detail':    ['leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit', 'leads.delete'],
   'lead-followups': ['leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit', 'leads.delete'],
   'lead-tasks':     ['leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit', 'leads.delete'],
@@ -281,6 +283,7 @@ const SIDEBAR_PAGE_GROUPS = {
   'team-overview': 'admin',
   'external-team': 'admin',
   'leads-view': 'sales',
+  'leads-trash': 'sales',
   'lead-followups': 'sales',
   'lead-tasks': 'sales',
   'lead-detail': 'sales',
@@ -354,7 +357,7 @@ const API = {
   post:   (u, b) => API.req('POST', u, b),
   put:    (u, b) => API.req('PUT', u, b),
   patch:  (u, b) => API.req('PATCH', u, b),
-  delete: (u) => API.req('DELETE', u),
+  delete: (u, b) => API.req('DELETE', u, b),
 }
 
 // ── Global click-loader ──────────────────────────────────────
@@ -1162,6 +1165,7 @@ function buildShell() {
       navItem('quotation-library','fa-file-invoice-dollar', 'Quotation'),
       navItem('meet-setup',      'fa-video',       'Meet Setup'),
       navItem('sales-incentive', 'fa-money-bill-trend-up', 'Sale Incentive'),
+      navItem('leads-trash',     'fa-trash-restore',  'Lead Trash'),
     ],
   })
 
@@ -1322,6 +1326,7 @@ function buildShell() {
     <div id="page-team-overview"    class="page"></div>
     <div id="page-external-team"    class="page"></div>
     <div id="page-leads-view"       class="page"></div>
+    <div id="page-leads-trash"      class="page"></div>
     <div id="page-lead-detail"      class="page"></div>
     <div id="page-lead-followups"   class="page"></div>
     <div id="page-lead-tasks"       class="page"></div>
@@ -1378,7 +1383,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','external-team':'External Team','leads-view':'Leads','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','hr-team':'HR Team','personal-tasks':'My Task','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','external-team':'External Team','leads-view':'Leads','leads-trash':'Lead Trash','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','hr-team':'HR Team','personal-tasks':'My Task','settings-view':'Settings'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -1608,10 +1613,75 @@ function _broadcastModalShow(notif) {
   _broadcastModalRender(notif)
 }
 
+// Inspect filename + mime to pick the right inline preview. Mime is the
+// primary signal (browsers report it from the upload), filename extension
+// is the fallback for cases where the server stripped/normalized mime.
+function _attachmentKind(att) {
+  const mime = String(att?.mime || '').toLowerCase()
+  const name = String(att?.name || '').toLowerCase()
+  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : ''
+  if (mime.startsWith('image/')   || ['png','jpg','jpeg','gif','webp','bmp','svg'].includes(ext)) return 'image'
+  if (mime.startsWith('video/')   || ['mp4','webm','mov','m4v','ogv'].includes(ext))              return 'video'
+  if (mime.startsWith('audio/')   || ['mp3','wav','ogg','m4a','aac','flac'].includes(ext))        return 'audio'
+  if (mime === 'application/pdf'  || ext === 'pdf')                                               return 'pdf'
+  return 'file'
+}
+
+function _attachmentIcon(kind) {
+  switch (kind) {
+    case 'image': return 'fa-image'
+    case 'video': return 'fa-film'
+    case 'audio': return 'fa-music'
+    case 'pdf':   return 'fa-file-pdf'
+    default:      return 'fa-file'
+  }
+}
+
+// Render an attachment block with a format-appropriate preview. Used by both
+// the recipient popup and the edit-draft modal so previews stay consistent.
+// `compact: true` shrinks heights for the smaller list/edit contexts.
+function renderAttachmentPreview(att, opts = {}) {
+  if (!att || !att.url) return ''
+  const compact = !!opts.compact
+  const kind = _attachmentKind(att)
+  const url = escapeHtml(att.url)
+  const name = escapeHtml(att.name || 'attachment')
+  const sizeLine = att.size ? `<span style="display:block;font-size:11px;color:#7E7E8F;margin-top:2px">${(att.size / 1024).toFixed(1)} KB</span>` : ''
+  const maxH = compact ? 180 : 320
+  // Header strip with the file name + open-in-new-tab affordance. Always
+  // present; the preview itself sits below for media/PDF kinds.
+  const header = `
+    <a href="${url}" target="_blank" rel="noopener" download="${name}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;text-decoration:none;color:#e2e8f0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <i class="fas ${_attachmentIcon(kind)}" style="color:#C9A7FF;font-size:16px"></i>
+      <span style="flex:1;font-size:13px;word-break:break-all">${name}${sizeLine}</span>
+      <i class="fas fa-arrow-up-right-from-square" style="color:#7E7E8F;font-size:11px"></i>
+    </a>`
+  let body = ''
+  if (kind === 'image') {
+    body = `<a href="${url}" target="_blank" rel="noopener" style="display:block;background:#0B0B10"><img src="${url}" alt="${name}" loading="lazy" style="display:block;width:100%;max-height:${maxH}px;object-fit:contain"/></a>`
+  } else if (kind === 'video') {
+    body = `<video src="${url}" controls preload="metadata" style="display:block;width:100%;max-height:${maxH}px;background:#000"></video>`
+  } else if (kind === 'audio') {
+    body = `<div style="padding:10px 12px;background:#0B0B10"><audio src="${url}" controls preload="metadata" style="width:100%"></audio></div>`
+  } else if (kind === 'pdf') {
+    body = `<embed src="${url}#toolbar=0&navpanes=0" type="application/pdf" style="display:block;width:100%;height:${maxH}px;background:#0B0B10"/>`
+  }
+  return `
+    <div style="margin-top:14px;border:1px solid rgba(169,112,255,.4);border-radius:8px;background:rgba(169,112,255,.06);overflow:hidden">
+      ${header}
+      ${body}
+    </div>`
+}
+window.renderAttachmentPreview = renderAttachmentPreview
+
 function _broadcastModalRender(n) {
   const safeId = String(n.id || '').replace(/[^\w-]/g, '')
   const sender = escapeHtml(n.actor_name || 'Admin')
   const when = n.created_at ? (typeof timeAgo === 'function' ? timeAgo(n.created_at) : n.created_at) : ''
+  // Attachment arrives on the fanned-out notification under meta.attachment.
+  // Older broadcasts without one render the same as before.
+  const att = n.meta?.attachment || null
+  const attHtml = renderAttachmentPreview(att)
   const html = `
     <div id="broadcast-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="broadcast-modal-title" style="position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:9999">
       <div style="width:min(480px,94vw);background:#16161C;border:1px solid #A970FF;border-radius:14px;box-shadow:0 28px 72px rgba(0,0,0,.7);overflow:hidden">
@@ -1622,6 +1692,7 @@ function _broadcastModalRender(n) {
         <div style="padding:20px">
           <div style="font-size:15px;font-weight:700;color:#e2e8f0;margin-bottom:10px;line-height:1.35">${escapeHtml(n.title || '')}</div>
           <div style="font-size:13.5px;color:#cbd5e1;line-height:1.55;white-space:pre-wrap">${escapeHtml(n.body || '')}</div>
+          ${attHtml}
           <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);font-size:11.5px;color:#7E7E8F;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
             <span><i class="fas fa-user" style="margin-right:5px"></i>${sender}</span>
             ${when ? `<span><i class="fas fa-clock" style="margin-right:5px"></i>${escapeHtml(when)}</span>` : ''}
@@ -1686,6 +1757,13 @@ async function acknowledgeBroadcastModal(id) {
 }
 window.acknowledgeBroadcastModal = acknowledgeBroadcastModal
 
+// Pre-decoded AudioBuffer cache. The Web Audio API path plays from these
+// instantly (sub-ms) once the file is fetched + decoded once. The legacy
+// HTMLAudioElement path stays as a fallback for browsers / contexts where
+// AudioContext is unavailable or decode failed.
+const _notifAudioBuffers = {}      // { cat: AudioBuffer }
+const _notifAudioBufferFetching = {}  // { cat: Promise } — guards against duplicate fetches
+
 // Build the Audio element once + ask the browser to start fetching the
 // bytes immediately. Called from _tryPlayCategorySound on first use AND
 // eagerly via preloadNotifSounds() so the first real notification doesn't
@@ -1711,7 +1789,63 @@ function _ensureCategoryAudio(cat) {
   }
 }
 
+// Fetch + decode the .wav into an AudioBuffer ONCE. The first notification
+// then plays via AudioBufferSourceNode which has effectively zero startup
+// latency — that's what fixes the "first ding is slow after refresh" lag.
+function _ensureCategoryBuffer(cat) {
+  if (_notifAudioBuffers[cat]) return Promise.resolve(_notifAudioBuffers[cat])
+  if (_notifAudioBufferFetching[cat]) return _notifAudioBufferFetching[cat]
+  const url = NOTIF_SOUND_FILES[cat] || NOTIF_SOUND_FILES.other
+  if (!url) return Promise.resolve(null)
+  const p = (async () => {
+    try {
+      // Make sure we have a context to decode into. We do NOT need it to be
+      // running yet — decodeAudioData works on a suspended context. Resume
+      // happens later via warmupNotifAudio on first user gesture.
+      if (!_notifState.audioCtx) {
+        const Ctor = window.AudioContext || window.webkitAudioContext
+        if (!Ctor) return null
+        _notifState.audioCtx = new Ctor()
+      }
+      const res = await fetch(url, { credentials: 'same-origin' })
+      if (!res.ok) return null
+      const arr = await res.arrayBuffer()
+      // Safari needs the callback form; Chrome/FF accept promise form too.
+      const buf = await new Promise((resolve, reject) => {
+        try {
+          const ret = _notifState.audioCtx.decodeAudioData(arr, resolve, reject)
+          if (ret && typeof ret.then === 'function') ret.then(resolve, reject)
+        } catch (e) { reject(e) }
+      })
+      _notifAudioBuffers[cat] = buf
+      return buf
+    } catch {
+      return null
+    } finally {
+      delete _notifAudioBufferFetching[cat]
+    }
+  })()
+  _notifAudioBufferFetching[cat] = p
+  return p
+}
+
 function _tryPlayCategorySound(cat) {
+  // Fast path: Web Audio API with pre-decoded buffer. Instant once ctx is
+  // running. Falls through to HTMLAudioElement if buffer not ready yet.
+  try {
+    const ctx = _notifState.audioCtx
+    const buf = _notifAudioBuffers[cat]
+    if (ctx && buf && ctx.state === 'running') {
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      const gain = ctx.createGain()
+      gain.gain.value = 0.7
+      src.connect(gain).connect(ctx.destination)
+      src.start(0)
+      return true
+    }
+  } catch {}
+  // Fallback: HTMLAudioElement (subject to autoplay + decode-on-play latency).
   try {
     const el = _ensureCategoryAudio(cat)
     if (!el) return false
@@ -1732,16 +1866,27 @@ function _tryPlayCategorySound(cat) {
 // fetch + decode the .wav on the FIRST ding — which is exactly when the
 // user is most likely to notice the delay.
 function preloadNotifSounds() {
-  for (const cat of Object.keys(NOTIF_SOUND_FILES)) _ensureCategoryAudio(cat)
+  // Kick off both paths in parallel: HTMLAudioElement (for fallback) AND
+  // the Web Audio buffer fetch+decode (for the fast path).
+  for (const cat of Object.keys(NOTIF_SOUND_FILES)) {
+    _ensureCategoryAudio(cat)
+    _ensureCategoryBuffer(cat) // fire-and-forget; resolves into _notifAudioBuffers
+  }
   // Try to warm up RIGHT NOW. If we were called inside a user-activation
   // window (e.g. doLogin's onsubmit just fired), the muted play will succeed
   // and every Audio element gets "user-activated" — subsequent unmuted SSE
   // plays won't be autoplay-blocked. If we're NOT in activation context the
-  // muted play silently rejects; the click listener below picks up the next
-  // gesture as a fallback.
+  // muted play silently rejects; the gesture listeners below pick up the
+  // next interaction.
   warmupNotifAudio()
-  document.addEventListener('click', warmupNotifAudio, { once: true })
-  document.addEventListener('keydown', warmupNotifAudio, { once: true })
+  // Cover every common gesture type so the FIRST interaction after refresh
+  // — whether it's a click, key, tap, scroll, or wheel — unlocks audio.
+  // Without touchstart/pointerdown, mobile users could go a long time
+  // without "clicking" anything by the desktop definition.
+  const opts = { once: true, passive: true, capture: true }
+  for (const ev of ['pointerdown', 'click', 'keydown', 'touchstart']) {
+    document.addEventListener(ev, warmupNotifAudio, opts)
+  }
 }
 window.preloadNotifSounds = preloadNotifSounds
 
@@ -1756,6 +1901,12 @@ function warmupNotifAudio() {
     }
     if (_notifState.audioCtx?.state === 'suspended') {
       _notifState.audioCtx.resume().catch(() => {})
+    }
+    // Retry buffer fetch in case it failed before (e.g. AudioContext was
+    // unavailable at preload time). Fire-and-forget — playback uses whichever
+    // path is ready first.
+    for (const cat of Object.keys(NOTIF_SOUND_FILES)) {
+      if (!_notifAudioBuffers[cat]) _ensureCategoryBuffer(cat)
     }
     for (const el of Object.values(_notifAudioEls)) {
       if (!el || el.dataset.warmedUp === '1') continue
@@ -3172,6 +3323,7 @@ function loadPage(page, el) {
     case 'team-overview':    renderTeamOverview(el); break
     case 'external-team':    renderExternalTeam(el); break
     case 'leads-view':       renderLeadsView(el); break
+    case 'leads-trash':      renderLeadsTrashPage(el); break
     case 'lead-detail':      renderLeadDetailPage(el, Router.current?.params?.id); break
     case 'lead-followups':   renderLeadFollowupsPage(el); break
     case 'lead-tasks':       renderLeadTasksPage(el); break

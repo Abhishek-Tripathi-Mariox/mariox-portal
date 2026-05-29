@@ -2190,10 +2190,10 @@ async function openRoleEditModal(roleId) {
       const someChecked = parts.some(p => granted.has(p))
       const indet = !allChecked && someChecked
       return `<td class="perm-mtx-cell">
-        <label class="perm-mtx-check" title="${escapeHtml(parts.join(' + '))}">
-          <input type="checkbox" data-perm="${escapeHtml(k)}" ${allChecked ? 'checked' : ''} ${indet ? 'data-indeterminate="1"' : ''}/>
+        <span class="perm-mtx-check" title="${escapeHtml(parts.join(' + '))}" onclick="_togglePermCheckbox(this, event)">
+          <input type="checkbox" tabindex="-1" data-perm="${escapeHtml(k)}" ${allChecked ? 'checked' : ''} ${indet ? 'data-indeterminate="1"' : ''}/>
           <span class="perm-mtx-tick"><i class="fas fa-check"></i></span>
-        </label>
+        </span>
       </td>`
     }).join('')
 
@@ -2206,10 +2206,10 @@ async function openRoleEditModal(roleId) {
       ? `<td class="perm-mtx-cell perm-mtx-other">
           <div class="perm-pill-group">
             ${extras.map(p => `
-              <label class="perm-pill" title="${escapeHtml(p.key)}">
-                <input type="checkbox" data-perm="${escapeHtml(p.key)}" ${granted.has(p.key)?'checked':''}/>
+              <span class="perm-pill" title="${escapeHtml(p.key)}" onclick="_togglePermCheckbox(this, event)">
+                <input type="checkbox" tabindex="-1" data-perm="${escapeHtml(p.key)}" ${granted.has(p.key)?'checked':''}/>
                 <span class="perm-pill-body"><i class="fas fa-check"></i> ${escapeHtml(p.label)}</span>
-              </label>`).join('')}
+              </span>`).join('')}
           </div>
         </td>`
       : `<td class="perm-mtx-cell perm-mtx-na" aria-label="no extra actions">—</td>`
@@ -2293,6 +2293,23 @@ async function openRoleEditModal(roleId) {
     toast('Failed to open role editor: ' + (e?.message || 'unknown error'), 'error')
   }
 }
+
+// Explicit checkbox toggle bound to the <span class="perm-pill">/<span class="perm-mtx-check">
+// wrapper. Bypasses the browser's native label-input behavior — that path
+// was triggering a focus-into-view scroll on the hidden <input>, which in
+// turn yanked the modal off-screen on click and made it look "blank". Now
+// we just flip .checked, stop the event, and never focus anything.
+function _togglePermCheckbox(wrapper, event) {
+  if (event) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  const input = wrapper?.querySelector('input[type="checkbox"]')
+  if (!input || input.disabled) return
+  input.checked = !input.checked
+  input.indeterminate = false
+}
+window._togglePermCheckbox = _togglePermCheckbox
 
 // Toggle every checkbox in a single matrix row (per-module All / None).
 // All permissions for a module — including the "Other Actions" pills — live
@@ -3671,7 +3688,7 @@ async function renderBroadcastsView(el) {
             return `
             <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
               <td style="padding:12px;vertical-align:top">
-                <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px">${escapeHtml(b.title || '')}</div>
+                <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px">${escapeHtml(b.title || '')}${b.attachment?.url ? ` <i class="fas fa-paperclip" style="color:#A970FF;font-size:11px;margin-left:4px" title="${escapeHtml(b.attachment.name || 'attachment')}"></i>` : ''}</div>
                 <div style="font-size:12px;color:var(--text-muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHtml(b.body || '')}</div>
               </td>
               <td style="padding:12px;vertical-align:top">${statusChip}</td>
@@ -3766,6 +3783,14 @@ async function showBroadcastModal(draft) {
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Up to 2000 characters · this is just a draft — nothing is sent until you hit <strong>Send</strong> from the list.</div>
       </div>
       <div class="form-group">
+        <label class="form-label">Attachment <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+        <input type="file" id="bcast-attachment-input" style="display:none" onchange="onBroadcastAttachmentPick(this)"/>
+        <div id="bcast-attachment-row" data-attachment='${escapeHtml(JSON.stringify(draft?.attachment || null))}'>
+          ${_renderBroadcastAttachmentRow(draft?.attachment || null)}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">PDF, image, or any document up to your server's upload limit.</div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Send to *</label>
         <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
           <label class="perm-pill"><input type="checkbox" id="bcast-target-all" ${wantsAll ? 'checked' : ''} onchange="toggleBroadcastAll(this.checked)"/><span class="perm-pill-body"><i class="fas fa-check"></i> Everyone (staff + clients)</span></label>
@@ -3826,6 +3851,94 @@ function _collectBroadcastTargets() {
   return targets
 }
 
+// Render the attachment row inside the broadcast modal. Two states:
+//   - no file: an "Attach file" button that triggers the hidden <input type=file>
+//   - file present (already uploaded OR pre-existing on the draft): file name,
+//     a download link, and a Remove button that clears the stored blob
+function _renderBroadcastAttachmentRow(att) {
+  if (!att || !att.url) {
+    return `<button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('bcast-attachment-input').click()"><i class="fas fa-paperclip"></i> Attach file</button>`
+  }
+  // Format-aware preview (image/video/audio/PDF inline; other files = card).
+  // The Replace / Remove controls live in a separate strip above so the
+  // preview surface stays clean.
+  const preview = (typeof renderAttachmentPreview === 'function')
+    ? renderAttachmentPreview(att, { compact: true })
+    : ''
+  return `
+    <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:6px">
+      <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('bcast-attachment-input').click()" title="Replace"><i class="fas fa-arrows-rotate"></i> Replace</button>
+      <button type="button" class="btn btn-xs btn-danger" onclick="clearBroadcastAttachment()" title="Remove"><i class="fas fa-xmark"></i> Remove</button>
+    </div>
+    ${preview}`
+}
+
+function _setBroadcastAttachmentRow(att) {
+  const row = document.getElementById('bcast-attachment-row')
+  if (!row) return
+  row.dataset.attachment = JSON.stringify(att || null)
+  row.innerHTML = _renderBroadcastAttachmentRow(att)
+}
+
+function clearBroadcastAttachment() {
+  _setBroadcastAttachmentRow(null)
+  const input = document.getElementById('bcast-attachment-input')
+  if (input) input.value = ''
+}
+window.clearBroadcastAttachment = clearBroadcastAttachment
+
+// File picker handler. Uploads to /api/uploads (same endpoint profile media
+// uses) and stores the returned blob inline so saveBroadcastDraft can pick it
+// up from the row's data-attachment attribute.
+async function onBroadcastAttachmentPick(input) {
+  const file = input.files && input.files[0]
+  if (!file) return
+  const row = document.getElementById('bcast-attachment-row')
+  if (row) row.innerHTML = `<div style="font-size:12px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Uploading ${escapeHtml(file.name)}…</div>`
+  try {
+    const att = await _uploadBroadcastFile(file)
+    _setBroadcastAttachmentRow(att)
+  } catch (e) {
+    toast('Upload failed: ' + (e?.message || ''), 'error')
+    _setBroadcastAttachmentRow(null)
+  } finally {
+    input.value = ''
+  }
+}
+window.onBroadcastAttachmentPick = onBroadcastAttachmentPick
+
+function _uploadBroadcastFile(file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/uploads', true)
+    if (typeof _token !== 'undefined' && _token) xhr.setRequestHeader('Authorization', 'Bearer ' + _token)
+    xhr.onload = () => {
+      let data = {}
+      try { data = JSON.parse(xhr.responseText) } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve({
+          url:  data.url || data.file_url || '',
+          name: data.original_name || data.name || file.name,
+          mime: data.mime_type || data.mime || file.type,
+          size: Number(data.size || file.size || 0),
+        })
+      } else {
+        reject(new Error(data?.error || `HTTP ${xhr.status}`))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Network error'))
+    const fd = new FormData()
+    fd.append('file', file)
+    xhr.send(fd)
+  })
+}
+
+function _readBroadcastAttachment() {
+  const row = document.getElementById('bcast-attachment-row')
+  if (!row) return null
+  try { return JSON.parse(row.dataset.attachment || 'null') } catch { return null }
+}
+
 // Persist the draft. Brand-new → POST /broadcasts, edit → PATCH /broadcasts/:id.
 // Neither dispatches notifications — that's deliberately a separate click
 // (dispatchBroadcast) so the user can review before pushing.
@@ -3836,12 +3949,13 @@ async function saveBroadcastDraft(existingId) {
   if (body.length < 1)   return toast('Message is required', 'error')
   const target_roles = _collectBroadcastTargets()
   if (!target_roles.length) return toast('Pick at least one target (role, Clients, or Everyone)', 'error')
+  const attachment = _readBroadcastAttachment()
   try {
     if (existingId) {
-      await API.patch(`/broadcasts/${existingId}`, { title, body, target_roles })
+      await API.patch(`/broadcasts/${existingId}`, { title, body, target_roles, attachment })
       toast('Draft saved', 'success')
     } else {
-      await API.post('/broadcasts', { title, body, target_roles })
+      await API.post('/broadcasts', { title, body, target_roles, attachment })
       toast('Draft created. Click Send when ready.', 'success')
     }
     closeModal()
