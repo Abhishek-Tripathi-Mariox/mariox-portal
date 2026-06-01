@@ -6,7 +6,8 @@
     "tw:build": "tailwindcss -i ./public/static/tailwind-input.css -o ./public/static/tailwind.css --minify",
     "tw:watch": "tailwindcss -i ./public/static/tailwind-input.css -o ./public/static/tailwind.css --watch",
     "build": "npm run tw:build",
-    "start": "tsx src/server.ts"
+    "start": "tsx src/server.ts",
+    "es:backfill": "tsx scripts/es-backfill.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1037.0",

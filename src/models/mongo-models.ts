@@ -8,6 +8,15 @@ import type {
   UpdateOptions,
 } from 'mongodb'
 import { generateId } from '../utils/helpers'
+import {
+  isElasticEnabled,
+  isElasticReadFirst,
+  getDoc as esGetDoc,
+  indexDoc as esIndexDoc,
+  deleteDoc as esDeleteDoc,
+  bulkIndex as esBulkIndex,
+  bulkDelete as esBulkDelete,
+} from '../utils/elastic'
 
 type AnyObject = Record<string, any>
 
@@ -102,12 +111,26 @@ class MongoRepository<T extends Document = Document> {
     return this.collection
   }
 
+  // NOTE: list reads (find / findOne) intentionally go straight to Mongo, the
+  // source of truth, so a just-created/edited/deleted record shows up
+  // immediately. Elasticsearch has a ~1s search-refresh delay and the write
+  // mirror is async, so an ES-first list would miss the newest row until a
+  // later refresh ("data only appears after refresh"). ES still powers
+  // get-by-id (realtime, never stale) and the dedicated /api/search.
   async findOne(filter: AnyObject = {}, options: AnyObject = {}) {
     return this.collection.findOne(filter as Filter<T>, options)
   }
 
   async findById(id: string, options: AnyObject = {}) {
-    return this.findOne({ id }, options)
+    // ES-first read: get the doc straight from Elasticsearch (realtime
+    // get-by-id — NOT subject to the search-refresh delay), falling back to
+    // Mongo on a miss. Skipped when a projection is requested, since the ES
+    // _source is the full document.
+    if (isElasticReadFirst() && id && !options?.projection) {
+      const hit = await esGetDoc(this.name, id)
+      if (hit) return hit
+    }
+    return this.collection.findOne({ id } as any, options)
   }
 
   async find(filter: AnyObject = {}, options: AnyObject = {}) {
@@ -118,16 +141,55 @@ class MongoRepository<T extends Document = Document> {
     return this.collection.countDocuments(filter as Filter<T>)
   }
 
+  // ── Elasticsearch mirroring ──────────────────────────────────────
+  // Every write below also keeps the matching ES index (named after this
+  // collection) in sync. All ES work is fire-and-forget and fully guarded by
+  // isElasticEnabled(), so when ES isn't configured there is zero overhead and
+  // nothing on the request path changes.
+  private async captureIds(filter: AnyObject): Promise<string[]> {
+    try {
+      const docs = await this.collection
+        .find(filter as Filter<T>, { projection: { id: 1 } as any })
+        .toArray()
+      return docs.map((d: any) => String(d.id)).filter(Boolean)
+    } catch {
+      return []
+    }
+  }
+
+  private async reindexByIds(ids: string[]) {
+    if (!ids.length) return
+    try {
+      const docs = await this.collection.find({ id: { $in: ids } } as any).toArray()
+      if (docs.length) await esBulkIndex(this.name, docs as any)
+    } catch {
+      /* mirroring must never break the primary write */
+    }
+  }
+
   async insertOne(document: AnyObject) {
-    return this.collection.insertOne(document as any)
+    const res = await this.collection.insertOne(document as any)
+    if (isElasticEnabled() && document?.id) void esIndexDoc(this.name, document).catch(() => {})
+    return res
   }
 
   async insertMany(documents: AnyObject[]) {
-    return this.collection.insertMany(documents as any)
+    const res = await this.collection.insertMany(documents as any)
+    if (isElasticEnabled() && documents?.length) void esBulkIndex(this.name, documents).catch(() => {})
+    return res
   }
 
   async updateOne(filter: AnyObject, update: AnyObject, options: UpdateOptions = {}) {
-    return this.collection.updateOne(filter as Filter<T>, update as UpdateFilter<T>, options)
+    // Capture ids BEFORE the update so we still re-index the right docs even if
+    // the update changes a field used in the filter.
+    const ids = isElasticEnabled() ? await this.captureIds(filter) : []
+    const res = await this.collection.updateOne(filter as Filter<T>, update as UpdateFilter<T>, options)
+    // Upserts create a doc the pre-capture missed — fall back to the filter.
+    if (isElasticEnabled()) {
+      if (ids.length) void this.reindexByIds(ids)
+      else if ((res as any)?.upsertedCount) void this.reindexByIds(await this.captureIds(filter))
+    }
+    return res
   }
 
   async updateById(id: string, update: AnyObject, options: UpdateOptions = {}) {
@@ -135,23 +197,39 @@ class MongoRepository<T extends Document = Document> {
   }
 
   async replaceOne(filter: AnyObject, document: AnyObject, options: ReplaceOptions = {}) {
-    return this.collection.replaceOne(filter as Filter<T>, document as T, options)
+    const res = await this.collection.replaceOne(filter as Filter<T>, document as T, options)
+    if (isElasticEnabled() && document?.id) void esIndexDoc(this.name, document).catch(() => {})
+    return res
   }
 
   async deleteOne(filter: AnyObject) {
-    return this.collection.deleteOne(filter as Filter<T>)
+    const ids = isElasticEnabled() ? await this.captureIds(filter) : []
+    const res = await this.collection.deleteOne(filter as Filter<T>)
+    if (ids.length) void esBulkDelete(this.name, ids).catch(() => {})
+    return res
   }
 
   async deleteById(id: string) {
-    return this.deleteOne({ id })
+    const res = await this.collection.deleteOne({ id } as any)
+    if (isElasticEnabled() && id) void esDeleteDoc(this.name, id).catch(() => {})
+    return res
   }
 
   async deleteMany(filter: AnyObject) {
-    return this.collection.deleteMany(filter as Filter<T>)
+    const ids = isElasticEnabled() ? await this.captureIds(filter) : []
+    const res = await this.collection.deleteMany(filter as Filter<T>)
+    if (ids.length) void esBulkDelete(this.name, ids).catch(() => {})
+    return res
   }
 
   async updateMany(filter: AnyObject, update: AnyObject, options: UpdateOptions = {}) {
-    return this.collection.updateMany(filter as Filter<T>, update as UpdateFilter<T>, options)
+    const ids = isElasticEnabled() ? await this.captureIds(filter) : []
+    const res = await this.collection.updateMany(filter as Filter<T>, update as UpdateFilter<T>, options)
+    if (isElasticEnabled()) {
+      if (ids.length) void this.reindexByIds(ids)
+      else if ((res as any)?.upsertedCount) void this.reindexByIds(await this.captureIds(filter))
+    }
+    return res
   }
 
   async aggregate<R extends Document = Document>(pipeline: Document[]) {
@@ -346,6 +424,10 @@ export class MongoModels {
   readonly hrAssets: MongoRepository
   readonly personalTasks: MongoRepository
   readonly broadcasts: MongoRepository
+  readonly taskColumns: MongoRepository
+  readonly leadTaskColumns: MongoRepository
+  readonly attendanceColumns: MongoRepository
+  readonly trash: MongoRepository
 
   constructor(private readonly db: Db) {
     this.users = new UserModel(db.collection<UserRecord>('users'))
@@ -410,6 +492,10 @@ export class MongoModels {
     this.hrAssets = new MongoRepository(db.collection('hr_assets'))
     this.personalTasks = new MongoRepository(db.collection('personal_tasks'))
     this.broadcasts = new MongoRepository(db.collection('broadcasts'))
+    this.taskColumns = new MongoRepository(db.collection('task_columns'))
+    this.leadTaskColumns = new MongoRepository(db.collection('lead_task_columns'))
+    this.attendanceColumns = new MongoRepository(db.collection('attendance_columns'))
+    this.trash = new MongoRepository(db.collection('trash'))
   }
 
   get rawDb() {
@@ -449,4 +535,32 @@ export async function ensureIndexes(models: MongoModels): Promise<void> {
   for (const r of results) {
     if (r.status === 'rejected') console.warn('[indexes] failed:', (r.reason as any)?.message || r.reason)
   }
+}
+
+// One-time backfill of every Mongo collection into its Elasticsearch index so
+// pre-existing data is searchable too. Runs in the background at boot; a
+// failure on any single collection is logged and skipped. No-op when ES is off.
+export async function backfillElastic(models: MongoModels): Promise<void> {
+  if (!isElasticEnabled()) return
+  const db = models.rawDb
+  let collections: { name: string }[] = []
+  try {
+    collections = await db.listCollections().toArray() as any
+  } catch (e: any) {
+    console.warn('[elastic] backfill: could not list collections:', e?.message || e)
+    return
+  }
+  let total = 0
+  for (const c of collections) {
+    const name = c.name
+    if (!name || name.startsWith('system.')) continue
+    try {
+      const docs = await db.collection(name).find({}).toArray()
+      await esBulkIndex(name, docs)
+      total += docs.length
+    } catch (e: any) {
+      console.warn(`[elastic] backfill failed for "${name}":`, e?.message || e)
+    }
+  }
+  console.log(`[elastic] backfill complete — ${total} docs across ${collections.length} collections`)
 }

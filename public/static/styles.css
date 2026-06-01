@@ -6320,3 +6320,263 @@ body.theme-light .hr-emp-picker-item:hover {
 body.theme-light .hr-emp-picker-item[style*="background:#7B4DFF"] {
   color: #FFFFFF !important;
 }
+
+/* ── Custom task columns: read-only display in the table ──────
+   Editing happens in the task drawer (eye icon). The table just shows the
+   formatted value — clean plain text, no input chrome, no native browser
+   widgets that were drawing gray boxes in light mode. */
+.tc-cell {
+  padding: 6px 10px !important;
+  vertical-align: middle !important;
+  font-size: 12px;
+  color: var(--text-primary, #cbd5e1);
+}
+.tc-cell-empty { color: var(--text-muted, #7E7E8F); }
+.tc-cell-text {
+  min-width: 80px;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tc-cell-date {
+  min-width: 90px;
+  max-width: 130px;
+  white-space: nowrap;
+}
+.tc-cell-textarea {
+  min-width: 120px;
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary, #cbd5e1);
+}
+/* Multi-select cell — chips wrap onto multiple lines if many are selected.
+   Flex layout overrides the inherited vertical-align:middle, so we add
+   align-items:center explicitly to keep the chip row centred in tall rows
+   (e.g. when the assignee column carries an avatar + two-line name). */
+.tc-cell-multi {
+  min-width: 120px;
+  max-width: 260px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.tc-cell-check {
+  width: 36px;
+  text-align: center;
+}
+.tc-cell-check-yes { color: #22c55e; font-size: 14px; }
+.tc-cell-check-no  { color: var(--text-muted, #7E7E8F); font-size: 13px; }
+/* Subtle pill for dropdown/radio values — distinguishes them at a glance
+   from free-text fields without being too loud. */
+.tc-cell-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(169,112,255,0.12);
+  color: #C9A7FF;
+  white-space: nowrap;
+}
+body.theme-light .tc-cell-chip {
+  background: rgba(169,112,255,0.10);
+  color: #6F3BD8;
+}
+
+/* ── Task drawer: theme-aware header + meta layout ──────────── */
+/* Goal: title stays readable in both dark + light themes (was hardcoded
+   white before — invisible on the light background), and the meta grid
+   gets consistent spacing/typography without inline color noise. */
+.task-drawer-header {
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
+}
+.task-drawer-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.task-drawer-id {
+  font-size: 11px;
+  color: var(--text-muted, #7E7E8F);
+  font-family: ui-monospace, monospace;
+}
+.task-drawer-meta-row .close-btn { margin-left: auto; }
+.task-drawer-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-primary, #e2e8f0);
+}
+.task-drawer-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 18px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
+}
+.task-drawer-meta-item { min-width: 0; }
+.task-drawer-meta-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #7E7E8F);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 4px;
+}
+.task-drawer-meta-value {
+  font-size: 13px;
+  color: var(--text-primary, #e2e8f0);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.task-drawer-meta-muted { color: var(--text-muted, #7E7E8F); }
+.task-drawer-overdue { color: #FF5E3A; font-weight: 600; }
+.task-drawer-date {
+  font-size: 12.5px;
+  padding: 4px 6px;
+  max-width: 170px;
+}
+.task-drawer-date.is-overdue { color: #FF5E3A; }
+
+.task-drawer-section {
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
+}
+.task-drawer-section-head {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #7E7E8F);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin: 0 0 8px;
+}
+.task-drawer-hint {
+  font-size: 11px;
+  color: var(--text-muted, #7E7E8F);
+  margin-top: 6px;
+}
+
+/* Custom fields block — 2-column grid that stacks on narrow drawers. */
+.task-drawer-custom-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 16px;
+}
+.task-drawer-custom-field { min-width: 0; }
+/* Notion-style: field reads like a value at rest, reveals an editor on
+   hover/focus. Saves vertical space (no thick borders stacked) and stops
+   the drawer from looking like a giant form. */
+.task-drawer-custom-input {
+  width: 100%;
+  font-size: 13px;
+  padding: 6px 8px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px !important;
+  color: var(--text-primary, #e2e8f0) !important;
+  transition: background .12s ease, border-color .12s ease !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none !important;
+  font-family: inherit;
+}
+.task-drawer-custom-input::placeholder { color: var(--text-muted, #7E7E8F); }
+.task-drawer-custom-input:hover {
+  background: rgba(169,112,255,0.05) !important;
+  border-color: rgba(169,112,255,0.20) !important;
+}
+.task-drawer-custom-input:focus {
+  background: rgba(169,112,255,0.08) !important;
+  border-color: #A970FF !important;
+}
+/* Native chevron is gone with appearance:none — paint a custom one so the
+   field still reads as a dropdown. */
+select.task-drawer-custom-input {
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3e%3cpath d='M1 1l4 4 4-4' stroke='%237E7E8F' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3e%3c/svg%3e") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 8px center !important;
+  padding-right: 26px !important;
+  cursor: pointer;
+}
+/* Multi-select keeps its option list visible — no chevron, taller box. */
+select.task-drawer-multi-select {
+  background-image: none !important;
+  padding-right: 8px !important;
+  cursor: default;
+}
+/* Date picker icon stays visible + tinted. */
+.task-drawer-custom-input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.55;
+}
+.task-drawer-custom-input[type="date"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
+/* Textarea: borderless single-line preview, expands cleanly on focus. */
+textarea.task-drawer-custom-input { resize: vertical; min-height: 36px; }
+
+body.theme-light .task-drawer-custom-input:hover {
+  background: rgba(169,112,255,0.07) !important;
+  border-color: rgba(169,112,255,0.30) !important;
+}
+body.theme-light .task-drawer-custom-input:focus {
+  background: rgba(169,112,255,0.12) !important;
+  border-color: #A970FF !important;
+}
+.task-drawer-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary, #e2e8f0);
+  cursor: pointer;
+  user-select: none;
+}
+.task-drawer-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #A970FF;
+  cursor: pointer;
+}
+/* Multi-checkbox group — looser, no outer card; each option reveals its
+   own subtle highlight on hover so the editor feels light, not boxy. */
+.task-drawer-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 2px 0;
+}
+.task-drawer-checkbox-group .task-drawer-checkbox {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: background .12s ease, border-color .12s ease;
+}
+.task-drawer-checkbox-group .task-drawer-checkbox:hover {
+  background: rgba(169,112,255,0.06);
+  border-color: rgba(169,112,255,0.18);
+}
+.task-drawer-checkbox-group .task-drawer-checkbox:has(input:checked) {
+  background: rgba(169,112,255,0.15);
+  border-color: rgba(169,112,255,0.35);
+}
+/* <select multiple> styling — looks like a real list, not the browser default. */
+.task-drawer-multi-select {
+  background-image: none !important;
+  padding-right: 8px !important;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.task-drawer-multi-select option { padding: 4px 8px; }
+.task-drawer-multi-select option:checked {
+  background: rgba(169,112,255,0.20) linear-gradient(0deg, rgba(169,112,255,0.20), rgba(169,112,255,0.20));
+  color: var(--text-primary, #e2e8f0);
+}

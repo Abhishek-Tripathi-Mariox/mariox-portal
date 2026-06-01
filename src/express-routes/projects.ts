@@ -4,6 +4,8 @@ import { createAuthMiddleware, userHasAnyPermission } from '../express-middlewar
 import { DEFAULT_KANBAN_COLUMNS } from '../constants'
 import { generateId } from '../utils/helpers'
 import { createUserNotifications } from './notifications'
+import { isElasticEnabled, deleteDoc as esDeleteDoc } from '../utils/elastic'
+import { moveToTrash } from './trash'
 import {
   validateName,
   validateLength,
@@ -29,6 +31,26 @@ function sum(items: any[], pick: (item: any) => number) {
 function daysBetween(from: string, to: string) {
   if (!from || !to) return 0
   return (new Date(to).getTime() - new Date(from).getTime()) / (1000 * 60 * 60 * 24)
+}
+
+// Auto-calculated delivery progress: share of top-level tasks that are done.
+// Subtasks are excluded so a parent with many subtasks doesn't skew the bar.
+async function computeTaskProgressByProject(models: MongoModels): Promise<Map<string, number>> {
+  const rows = await models.tasks.aggregate<{ _id: string; total: number; done: number }>([
+    { $match: { $or: [{ parent_task_id: null }, { parent_task_id: { $exists: false } }] } },
+    {
+      $group: {
+        _id: '$project_id',
+        total: { $sum: 1 },
+        done: { $sum: { $cond: [{ $eq: ['$status', 'done'] }, 1, 0] } },
+      },
+    },
+  ])
+  const map = new Map<string, number>()
+  for (const r of rows) {
+    map.set(String(r._id), r.total > 0 ? Math.round((r.done / r.total) * 100) : 0)
+  }
+  return map
 }
 
 function computeProjectMetrics(project: any) {
@@ -75,13 +97,17 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
       const status = typeof req.query.status === 'string' ? req.query.status : undefined
       const pmId = typeof req.query.pm_id === 'string' ? req.query.pm_id : undefined
       const filter: any = {}
+      // Hide archived projects from the default list (legacy soft-deletes);
+      // still reachable explicitly via ?status=archived.
       if (status) filter.status = status
+      else filter.status = { $ne: 'archived' }
       if (pmId) filter.pm_id = pmId
 
-      const [projects, users, assignments] = await Promise.all([
+      const [projects, users, assignments, taskProgressByProject] = await Promise.all([
         models.projects.find(filter) as Promise<any[]>,
         models.users.find({}) as Promise<any[]>,
         models.projectAssignments.find({ is_active: 1 }) as Promise<any[]>,
+        computeTaskProgressByProject(models),
       ])
 
       const usersById = new Map(users.map((u) => [String(u.id), u]))
@@ -123,6 +149,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
           pm_name: pm?.full_name || null,
           pc_name: pc?.full_name || null,
           developer_count: devs.length,
+          task_progress: taskProgressByProject.get(String(p.id)) || 0,
           ...computeProjectMetrics(p),
         }
       }).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
@@ -140,11 +167,12 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
     }
   })
 
-  // Suggest the next sequential project code for a given delivery kind so
-  // the frontend can prefill the code field. Examples:
-  //   app  → APP001 (or APP004 if APP001/2/3 already exist)
-  //   web  → WB001
-  //   both → BTH001
+  // Suggest the next sequential project code for a given delivery kind. Format:
+  //   {PREFIX}{YYYY}{MM}-{seq}, sequence starting at 1101 and incrementing per
+  //   prefix + month. Examples (June 2026):
+  //   app  → APP202606-1101  (then -1102, -1103, …)
+  //   web  → WB202606-1101
+  //   both → BTH202606-1101
   // IMPORTANT: must be registered BEFORE `/:id` so Express doesn't match
   // "next-code" as a project id and 404 with "Project not found".
   router.get('/next-code', async (req, res) => {
@@ -152,9 +180,14 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
       const kind = String(req.query.kind || '').toLowerCase()
       const prefix = kind === 'app' ? 'APP' : kind === 'web' ? 'WB' : kind === 'both' ? 'BTH' : null
       if (!prefix) return res.status(400).json({ error: 'kind must be one of: app, web, both' })
+      const now = new Date()
+      const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+      const base = `${prefix}${ym}-`
       const projects = await models.projects.find({}) as any[]
-      let max = 0
-      const re = new RegExp('^' + prefix + '(\\d{1,6})$', 'i')
+      // Sequence starts at 1101; find the highest used this month for this
+      // prefix and add one.
+      let max = 1100
+      const re = new RegExp('^' + prefix + ym + '-(\\d+)$', 'i')
       for (const p of projects) {
         const m = re.exec(String(p.code || ''))
         if (m) {
@@ -162,8 +195,8 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
           if (Number.isFinite(n) && n > max) max = n
         }
       }
-      const next = String(max + 1).padStart(3, '0')
-      return res.json({ code: prefix + next, prefix })
+      const next = max + 1
+      return res.json({ code: `${base}${next}`, prefix })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }
@@ -178,11 +211,16 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
       const project = await models.projects.findById(id) as any
       if (!project) return res.status(404).json({ error: 'Project not found' })
 
-      const [users, assignments, timesheets] = await Promise.all([
+      const [users, assignments, timesheets, projectTasks] = await Promise.all([
         models.users.find({}) as Promise<any[]>,
         models.projectAssignments.find({ project_id: id, is_active: 1 }) as Promise<any[]>,
         models.timesheets.find({ project_id: id }) as Promise<any[]>,
+        models.tasks.find({ project_id: id }) as Promise<any[]>,
       ])
+      // Auto delivery progress = done / total of top-level tasks.
+      const topTasks = projectTasks.filter((t: any) => !t.parent_task_id)
+      const doneTasks = topTasks.filter((t: any) => t.status === 'done').length
+      const taskProgress = topTasks.length ? Math.round((doneTasks / topTasks.length) * 100) : 0
 
       // Same scope as the list endpoint: users without projects.view_all can
       // only open projects they are linked to.
@@ -239,6 +277,7 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
         team_lead_name: (tl as any)?.full_name || null,
         pm_name: (pm as any)?.full_name || null,
         pc_name: (pc as any)?.full_name || null,
+        task_progress: taskProgress,
         ...computeProjectMetrics(project),
         assignments: enrichedAssignments,
         recent_logs: recentLogs,
@@ -826,12 +865,55 @@ export function createProjectsRouter(models: MongoModels, jwtSecret: string) {
       if (!(await userHasAnyPermission(models, user, 'projects.delete'))) {
         return res.status(403).json({ error: 'Forbidden: Insufficient permissions' })
       }
-      await models.projects.updateById(String(req.params.id), {
-        $set: { status: 'archived', updated_at: new Date().toISOString() },
+      const id = String(req.params.id)
+      const project = await models.projects.raw().findOne({ id } as any)
+      if (!project) return res.status(404).json({ error: 'Project not found' })
+
+      // Snapshot the project + its operational children into Trash (recoverable),
+      // then remove them from their collections. Financial/audit records
+      // (invoices, documents, activity logs) are left in place.
+      const [tasks, milestones, sprints, assignments, kcols, kperms] = await Promise.all([
+        models.tasks.raw().find({ project_id: id } as any).toArray(),
+        models.milestones.raw().find({ project_id: id } as any).toArray(),
+        models.sprints.raw().find({ project_id: id } as any).toArray(),
+        models.projectAssignments.raw().find({ project_id: id } as any).toArray(),
+        models.kanbanColumns.raw().find({ project_id: id } as any).toArray(),
+        models.kanbanPermissions.raw().find({ project_id: id } as any).toArray(),
+      ])
+      await moveToTrash(models, {
+        entityType: 'projects',
+        id,
+        title: project.name || project.code || id,
+        snapshot: project,
+        related: {
+          tasks, milestones, sprints,
+          project_assignments: assignments,
+          kanban_columns: kcols,
+          kanban_permissions: kperms,
+        },
+        user,
+        reason: typeof req.body?.reason === 'string' ? req.body.reason : undefined,
       })
-      return res.json({ message: 'Project archived successfully' })
+
+      await Promise.all([
+        models.tasks.deleteMany({ project_id: id }),
+        models.milestones.deleteMany({ project_id: id }),
+        models.sprints.deleteMany({ project_id: id }),
+        models.projectAssignments.deleteMany({ project_id: id }),
+        models.kanbanColumns.deleteMany({ project_id: id }),
+        models.kanbanPermissions.deleteMany({ project_id: id }),
+      ])
+      await models.projects.deleteById(id)
+
+      // Await the project's ES removal so the immediately-following list reload
+      // (ES-first) doesn't read the stale, still-present copy.
+      if (isElasticEnabled()) {
+        try { await esDeleteDoc('projects', id) } catch { /* non-fatal */ }
+      }
+
+      return res.json({ message: 'Project moved to Trash' })
     } catch (error: any) {
-      return res.status(500).json({ error: error?.message || 'Failed to archive project' })
+      return res.status(500).json({ error: error?.message || 'Failed to delete project' })
     }
   })
 

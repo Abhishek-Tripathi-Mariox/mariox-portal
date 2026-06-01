@@ -168,6 +168,7 @@ const PAGE_PERMISSIONS = {
   'reports-view':    ['admin', 'pm'],
   'alerts-view':     ['admin', 'pm'],
   'settings-view':   ['admin', 'pm', 'pc', 'developer', 'team'],
+  'trash':           ['admin'],
 }
 
 // Every page admin can grant cross-role access to is mapped here to one
@@ -235,6 +236,7 @@ const NAV_PERMISSION_MAP = {
   'sales-incentive':   ['sales_incentive.view_all', 'sales_incentive.set_target', 'sales_incentive.override', 'sales_incentive.mark_paid'],
   // Settings page — visible if user has ANY settings.* permission.
   'settings-view':     ['settings.manage_company', 'settings.manage_holidays', 'settings.manage_tech_stacks', 'settings.manage_invites', 'settings.manage_roles'],
+  'trash':             ['trash.view'],
   // Leads / sales tracker
   'leads-view':     ['leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit', 'leads.delete'],
   'leads-trash':    ['leads.trash.view'],
@@ -314,6 +316,7 @@ const SIDEBAR_PAGE_GROUPS = {
   'reports-view': 'analytics',
   'alerts-view': 'analytics',
   'settings-view': 'settings',
+  'trash': 'settings',
   'hr-attendance': 'hr',
   'hr-calendar': 'hr',
   'hr-warnings': 'hr',
@@ -403,7 +406,7 @@ const API = {
   // lazy-spinner strategy below: arm the guard immediately so rapid double
   // clicks are absorbed, but only paint the visible spinner if/when a real
   // fetch is initiated by the handler.
-  const SKIP_ONCLICK = /^\s*(closeModal|closeDrawer|closeSidebar|openSidebar|switchTab|Router\.(back|navigate)|onProfileSetTheme|cpNavigate|cpBack|copyInviteLink|loadPage|toggle[A-Z][a-zA-Z]*|show[A-Z][a-zA-Z]*Modal|open[A-Z][a-zA-Z]*Modal|hide[A-Z][a-zA-Z]*|cancelEdit[A-Z]?[a-zA-Z]*|switch[A-Z][a-zA-Z]*|filter[A-Z][a-zA-Z]*|set[A-Z][a-zA-Z]*(Filter|View|Sort|Tab|Page)|go[A-Z][a-zA-Z]*Page)\s*\(/
+  const SKIP_ONCLICK = /^\s*(closeModal|closeDrawer|closeSidebar|openSidebar|switchTab|Router\.(back|navigate)|onProfileSetTheme|cpNavigate|cpBack|copyInviteLink|loadPage|toggle[A-Z][a-zA-Z]*|show[A-Z][a-zA-Z]*Modal|open[A-Z][a-zA-Z]*(Modal|Drawer)|hide[A-Z][a-zA-Z]*|cancelEdit[A-Z]?[a-zA-Z]*|switch[A-Z][a-zA-Z]*|filter[A-Z][a-zA-Z]*|set[A-Z][a-zA-Z]*(Filter|View|Sort|Tab|Page)|go[A-Z][a-zA-Z]*Page)\s*\(/
 
   let _owner = null         // button currently "owning" the active click
   let _inflight = 0         // fetches in flight initiated under this owner
@@ -746,15 +749,18 @@ function ensureSidebarGroupOpen(page) {
 }
 
 // ── Toast ────────────────────────────────────────────────────
-function toast(msg, type='info', dur=3500) {
+function toast(msg, type='info', dur=30000) {
   let ct = document.getElementById('toast-container')
   if (!ct) { ct = document.createElement('div'); ct.id = 'toast-container'; document.body.appendChild(ct) }
   const icons = { success:'fa-check-circle', error:'fa-exclamation-circle', info:'fa-info-circle' }
   const t = document.createElement('div')
   t.className = `toast ${type}`
-  t.innerHTML = `<i class="fas ${icons[type]||'fa-info-circle'}" style="color:${type==='success'?'#58C68A':type==='error'?'#FF5E3A':'#A970FF'}"></i><span>${msg}</span>`
+  // Each toast carries a manual close (×) so the user can dismiss it
+  // immediately; otherwise it auto-dismisses after `dur` (default 30s).
+  t.innerHTML = `<i class="fas ${icons[type]||'fa-info-circle'}" style="color:${type==='success'?'#58C68A':type==='error'?'#FF5E3A':'#A970FF'}"></i><span style="flex:1">${msg}</span><button type="button" class="toast-close" aria-label="Dismiss" style="background:none;border:none;color:inherit;opacity:.55;cursor:pointer;font-size:15px;line-height:1;padding:0 2px;margin-left:4px">&times;</button>`
+  const timer = setTimeout(() => t.remove(), dur)
+  t.querySelector('.toast-close').addEventListener('click', () => { clearTimeout(timer); t.remove() })
   ct.appendChild(t)
-  setTimeout(() => t.remove(), dur)
 }
 
 // ── Auth ─────────────────────────────────────────────────────
@@ -1258,6 +1264,7 @@ function buildShell() {
     key: 'settings', heading: 'Settings', chip: 'App', expanded: true, icon: 'fa-sliders',
     items: [
       navItem('settings-view', 'fa-gear', 'Settings'),
+      navItem('trash', 'fa-trash-restore', 'Trash'),
     ],
   })
 
@@ -1351,6 +1358,7 @@ function buildShell() {
     <div id="page-hr-team"          class="page"></div>
     <div id="page-personal-tasks"   class="page"></div>
     <div id="page-settings-view"    class="page"></div>
+    <div id="page-trash"            class="page"></div>
   </div>
   <div id="drawer-overlay" class="drawer-overlay" onclick="closeDrawer()"></div>
   <div id="task-drawer" class="drawer task-detail"></div>
@@ -1383,7 +1391,7 @@ const breadcrumbMap = {
   'milestones-view':'Milestones','documents-center':'Documents','resources-view':'Resources',
   'my-tasks':'My Tasks','timesheets-view':'Timesheets','approval-queue':'Approvals','leaves-view':'Leaves','bidding-view':'Bidding',
   'reports-view':'Reports & Analytics','alerts-view':'Alerts','clients-list':'Clients',
-  'billing-admin':'Billing & Invoices','team-overview':'Team','external-team':'External Team','leads-view':'Leads','leads-trash':'Lead Trash','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','hr-team':'HR Team','personal-tasks':'My Task','settings-view':'Settings'
+  'billing-admin':'Billing & Invoices','team-overview':'Team','external-team':'External Team','leads-view':'Leads','leads-trash':'Lead Trash','lead-detail':'Lead Details','lead-followups':'Lead Follow-ups','lead-tasks':'Lead Tasks','sales-tracker':'Sale Tracker','sales-team':'Sales Team','project-team':'Project Team','dev-team':'Dev Team','portfolio-library':'Portfolio','scope-library':'Scope of Work','quotation-library':'Quotation','sales-incentive':'Sale Incentive','meet-setup':'Meet Setup','support-tickets':'Support Tickets','hr-attendance':'Attendance','hr-calendar':'Calendar','hr-warnings':'Warnings','hr-pips':'Performance Improvement Plans','hr-salary-slips':'Salary Slips','hr-terminations':'Terminations','hr-documents':'HR Documents','hr-assets':'Asset Register','hr-team':'HR Team','personal-tasks':'My Task','settings-view':'Settings','trash':'Trash'
 }
 function updateTopbar(page) {
   const el = document.getElementById('bc-current')
@@ -3152,27 +3160,26 @@ function _searchFetch() {
 
 // Kick off a background fetch when the user focuses the search bar so by the
 // time they finish typing the first 2 chars the cache is already warm.
-function primeGlobalSearch() {
-  const fresh = _searchCache && (Date.now() - _searchCache.fetchedAt) < SEARCH_CACHE_TTL_MS
-  if (!fresh && !_searchCachePromise) { _searchFetch().catch(() => {}) }
-}
+// Search now runs server-side per keystroke (ES-backed), so there's no client
+// cache to warm — kept as a no-op so the existing onfocus handler still works.
+function primeGlobalSearch() {}
 window.primeGlobalSearch = primeGlobalSearch
 
-function _renderSearchResults(q) {
+function _renderSearchResults(q, data) {
   const dd = document.getElementById('global-search-results')
-  if (!dd || !_searchCache) return
-  const { data } = _searchCache
+  if (!dd || !data) return
+  // Results come pre-matched (ES cls_search) and pre-scoped from /api/search —
+  // render them directly, no client-side filtering (which would drop valid
+  // matches that hit a field we don't display, e.g. description).
   const { perms } = data
-  const ql = q.toLowerCase()
-  const inc = (s) => String(s || '').toLowerCase().includes(ql)
-  const matchT  = data.tasks.filter(t => inc(t.title) || inc(t.id)).slice(0, 6)
-  const matchP  = data.projects.filter(p => inc(p.name) || inc(p.code)).slice(0, 5)
-  const matchC  = data.clients.filter(c => inc(c.company_name) || inc(c.contact_name) || inc(c.email)).slice(0, 5)
-  const matchL  = data.leads.filter(l => inc(l.name) || inc(l.email) || inc(l.phone)).slice(0, 5)
-  const matchI  = data.invoices.filter(i => inc(i.invoice_number) || inc(i.title) || inc(i.company_name)).slice(0, 5)
-  const matchD  = data.documents.filter(d => inc(d.title) || inc(d.file_name)).slice(0, 5)
-  const matchTk = data.tickets.filter(t => inc(t.title) || inc(t.subject) || inc(t.id)).slice(0, 5)
-  const matchPT = data.ptasks.filter(t => inc(t.title)).slice(0, 5)
+  const matchT  = data.tasks || []
+  const matchP  = data.projects || []
+  const matchC  = data.clients || []
+  const matchL  = data.leads || []
+  const matchI  = data.invoices || []
+  const matchD  = data.documents || []
+  const matchTk = data.tickets || []
+  const matchPT = data.ptasks || []
 
   const total = matchT.length + matchP.length + matchC.length + matchL.length + matchI.length + matchD.length + matchTk.length + matchPT.length
   if (!total) {
@@ -3191,98 +3198,81 @@ function _renderSearchResults(q) {
       </div>
     </div>`
 
-  const rows = []
-  if (perms.canProjects && matchP.length) {
-    rows.push(ttl('Projects', matchP.length))
-    for (const p of matchP) rows.push(row('fa-folder', '#A970FF',
+  // Each group renders its own header + relevance-ordered rows. The GROUPS
+  // themselves are then ordered by their best (top) _score, so whichever type
+  // holds the strongest match for the query leads — relevance drives the whole
+  // dropdown, not a hardcoded type order.
+  const topScore = (items) => items.reduce((m, x) => Math.max(m, Number(x._score) || 0), 0)
+  const groups = [
+    { show: perms.canProjects, items: matchP, title: 'Projects', build: (p) => row('fa-folder', '#A970FF',
       escapeHtml((typeof tc==='function'?tc(p.name):p.name) || ''),
       `${escapeHtml(p.code || '')} · ${escapeHtml(p.status || '')}`,
-      `openProjectBoard('${escapeAttr(p.id)}','${escapeAttr(p.name)}')`))
-  }
-  if (perms.canTasks && matchT.length) {
-    rows.push(ttl('Project Tasks', matchT.length))
-    for (const t of matchT) rows.push(row('fa-check-square', '#C56FE6',
+      `openProjectBoard('${escapeAttr(p.id)}','${escapeAttr(p.name)}')`) },
+    { show: perms.canTasks, items: matchT, title: 'Project Tasks', build: (t) => row('fa-check-square', '#C56FE6',
       escapeHtml(t.title || ''),
       `${escapeHtml((typeof tc==='function'?tc(t.project_name||''):t.project_name) || '')} · ${escapeHtml((t.status || '').replace(/_/g,' '))}`,
-      `openTaskDrawer('${escapeAttr(t.id)}')`))
-  }
-  if (perms.canPTasks && matchPT.length) {
-    rows.push(ttl('My Task', matchPT.length))
-    for (const t of matchPT) rows.push(row('fa-clipboard-check', '#a855f7',
+      `openTaskDrawer('${escapeAttr(t.id)}')`) },
+    { show: perms.canPTasks, items: matchPT, title: 'My Tasks', build: (t) => row('fa-clipboard-check', '#a855f7',
       escapeHtml(t.title || ''),
       `${escapeHtml(t.assigned_to_name || 'Unassigned')} · ${escapeHtml((t.status || '').replace(/_/g,' '))}`,
-      `Router.navigate('personal-tasks')`))
-  }
-  if (perms.canClients && matchC.length) {
-    rows.push(ttl('Clients', matchC.length))
-    for (const c of matchC) rows.push(row('fa-building', '#58C68A',
+      `Router.navigate('personal-tasks')`) },
+    { show: perms.canClients, items: matchC, title: 'Clients', build: (c) => row('fa-building', '#58C68A',
       escapeHtml(c.company_name || c.contact_name || ''),
       `${escapeHtml(c.email || '')} · ${escapeHtml(c.city || '')}`,
-      `Router.navigate('clients-list')`))
-  }
-  if (perms.canLeads && matchL.length) {
-    rows.push(ttl('Leads', matchL.length))
-    for (const l of matchL) rows.push(row('fa-bullseye', '#C9A7FF',
+      `Router.navigate('clients-list')`) },
+    { show: perms.canLeads, items: matchL, title: 'Leads', build: (l) => row('fa-bullseye', '#C9A7FF',
       escapeHtml(l.name || ''),
       `${escapeHtml(l.email || '')} · ${escapeHtml(l.phone || '')} · ${escapeHtml(l.status || '')}`,
-      `Router.navigate('lead-detail', { id: '${escapeAttr(l.id)}' })`))
-  }
-  if (perms.canInvoices && matchI.length) {
-    rows.push(ttl('Invoices', matchI.length))
-    for (const i of matchI) rows.push(row('fa-file-invoice-dollar', '#58C68A',
+      `Router.navigate('lead-detail', { id: '${escapeAttr(l.id)}' })`) },
+    { show: perms.canInvoices, items: matchI, title: 'Invoices', build: (i) => row('fa-file-invoice-dollar', '#58C68A',
       escapeHtml(i.invoice_number || i.title || ''),
       `${escapeHtml(i.company_name || '')} · ${escapeHtml((i.status || '').replace(/_/g,' '))}`,
-      `Router.navigate('billing-admin')`))
-  }
-  if (perms.canDocs && matchD.length) {
-    rows.push(ttl('Documents', matchD.length))
-    for (const d of matchD) rows.push(row('fa-file-lines', '#A8C8FF',
+      `Router.navigate('billing-admin')`) },
+    { show: perms.canDocs, items: matchD, title: 'Documents', build: (d) => row('fa-file-lines', '#A8C8FF',
       escapeHtml(d.title || d.file_name || ''),
       `${escapeHtml((typeof tc==='function'?tc(d.project_name||''):d.project_name) || '')} · ${escapeHtml(d.category || '')}`,
-      `Router.navigate('documents-center')`))
-  }
-  if (perms.canTickets && matchTk.length) {
-    rows.push(ttl('Support Tickets', matchTk.length))
-    for (const t of matchTk) {
-      const tid = escapeAttr(t.id)
-      rows.push(row('fa-life-ring', '#FF5E3A',
-        escapeHtml(t.title || t.subject || ''),
-        `${escapeHtml((t.status || '').replace(/_/g,' '))} · #${escapeHtml(String(t.id || '').slice(-6))}`,
-        `(typeof openSupportDetail==='function'?openSupportDetail('${tid}'):Router.navigate('support-tickets'))`))
-    }
-  }
+      `Router.navigate('documents-center')`) },
+    { show: perms.canTickets, items: matchTk, title: 'Support Tickets', build: (t) => row('fa-life-ring', '#FF5E3A',
+      escapeHtml(t.title || t.subject || ''),
+      `${escapeHtml((t.status || '').replace(/_/g,' '))} · #${escapeHtml(String(t.id || '').slice(-6))}`,
+      `(typeof openSupportDetail==='function'?openSupportDetail('${escapeAttr(t.id)}'):Router.navigate('support-tickets'))`) },
+  ]
+  const rows = groups
+    .filter((g) => g.show && g.items.length)
+    .sort((a, b) => topScore(b.items) - topScore(a.items))
+    .flatMap((g) => [ttl(g.title, g.items.length), ...g.items.map(g.build)])
   dd.innerHTML = rows.join('')
 }
 
+// Debounced, Elasticsearch-backed global search. Each query hits
+// /api/search?q= which runs ES cls_search (partial match across every column)
+// and returns already-scoped, already-matched results to render directly.
+let _searchTimer = 0
+let _searchSeq = 0
 function globalSearch(q) {
   const dd = document.getElementById('global-search-results')
   if (!dd) return
   if (!q || q.length < 2) {
     dd.style.display = 'none'
     dd.innerHTML = ''
+    if (_searchTimer) { clearTimeout(_searchTimer); _searchTimer = 0 }
     return
   }
   dd.style.display = 'block'
-  const fresh = _searchCache && (Date.now() - _searchCache.fetchedAt) < SEARCH_CACHE_TTL_MS
-  if (fresh) {
-    // Hot path: cache is warm, just filter and render — runs in well under
-    // a millisecond for typical dataset sizes. Coalesce to one render per
-    // animation frame so rapid typing doesn't queue up redundant work.
-    if (_searchRenderRaf) cancelAnimationFrame(_searchRenderRaf)
-    _searchRenderRaf = requestAnimationFrame(() => { _searchRenderRaf = 0; _renderSearchResults(q) })
-    // Stale check while warm — if cache is in its last 10s, kick off a
-    // background refresh so future keystrokes stay instant.
-    if (Date.now() - _searchCache.fetchedAt > SEARCH_CACHE_TTL_MS - 10_000 && !_searchCachePromise) {
-      _searchFetch().then(() => _renderSearchResults(q)).catch(() => {})
-    }
-    return
-  }
-  // Cold path: first search of the session (or cache expired). Show the
-  // spinner only this once; subsequent keystrokes hit the warm cache.
   dd.innerHTML = `<div style="padding:14px;color:var(--text-muted);font-size:13px"><i class="fas fa-spinner fa-spin"></i> Searching…</div>`
-  _searchFetch().then(() => _renderSearchResults(q)).catch((e) => {
-    dd.innerHTML = `<div style="padding:14px;color:#FF5E3A;font-size:13px">Search failed: ${escapeHtml(e.message || 'error')}</div>`
-  })
+  if (_searchTimer) clearTimeout(_searchTimer)
+  const seq = ++_searchSeq
+  _searchTimer = setTimeout(async () => {
+    try {
+      const data = await API.get('/search?q=' + encodeURIComponent(q))
+      // Ignore out-of-order responses from earlier keystrokes.
+      if (seq !== _searchSeq) return
+      _renderSearchResults(q, data)
+    } catch (e) {
+      if (seq !== _searchSeq) return
+      dd.innerHTML = `<div style="padding:14px;color:#FF5E3A;font-size:13px">Search failed: ${escapeHtml(e.message || 'error')}</div>`
+    }
+  }, 200)
 }
 function invalidateGlobalSearchCache() {
   _searchCache = null
@@ -3296,6 +3286,75 @@ function hideGlobalSearch() {
   if (inp) inp.value = ''
 }
 window.hideGlobalSearch = hideGlobalSearch
+
+// ── Trash (centralized recycle bin) ───────────────────────────
+const TRASH_TYPE_META = {
+  projects:      { icon: 'fa-folder',     color: '#A970FF', label: 'Project' },
+  clients:       { icon: 'fa-building',    color: '#58C68A', label: 'Client' },
+  tasks:         { icon: 'fa-check-square', color: '#C56FE6', label: 'Task' },
+  leads:         { icon: 'fa-bullseye',    color: '#C9A7FF', label: 'Lead' },
+  invoices:      { icon: 'fa-file-invoice-dollar', color: '#58C68A', label: 'Invoice' },
+  users:         { icon: 'fa-user',        color: '#A8C8FF', label: 'User' },
+}
+function trashMeta(t) { return TRASH_TYPE_META[t] || { icon: 'fa-cube', color: '#9F8678', label: t } }
+
+async function renderTrashPage(el) {
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)"><i class="fas fa-spinner fa-spin" style="font-size:22px"></i></div>`
+  // Admin bypasses every gate (matches canSeePage + the backend). New trash.*
+  // keys may not be in a non-admin's loaded session yet until their role is
+  // updated and they re-verify.
+  const isAdmin = String(_user?.role || '').toLowerCase() === 'admin'
+  const canRestore = isAdmin || hasAnyPermission(['trash.restore'])
+  const canPurge = isAdmin || hasAnyPermission(['trash.purge'])
+  try {
+    const res = await API.get('/trash')
+    const items = res.trash || res.data || []
+    const rows = items.map(it => {
+      const m = trashMeta(it.entity_type)
+      const related = Object.entries(it.related_counts || {}).filter(([, n]) => n > 0)
+        .map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(' · ')
+      return `
+      <div class="glass-card" style="padding:14px 16px;display:flex;align-items:center;gap:14px;margin-bottom:10px">
+        <div style="width:38px;height:38px;border-radius:9px;background:${m.color}1f;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas ${m.icon}" style="color:${m.color}"></i></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(it.title || it.entity_id)}</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">${m.label}${related ? ' · ' + escapeHtml(related) : ''}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Deleted ${utils.timeAgo ? utils.timeAgo(it.deleted_at) : escapeHtml(String(it.deleted_at||'').slice(0,10))}${it.deleted_by_name ? ' by ' + escapeHtml(it.deleted_by_name) : ''}${it.reason ? ' · ' + escapeHtml(it.reason) : ''}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          ${canRestore ? `<button class="btn btn-sm btn-outline" onclick="restoreTrashItem('${it.id}')"><i class="fas fa-trash-restore"></i> Restore</button>` : ''}
+          ${canPurge ? `<button class="btn btn-sm btn-outline" style="color:#FF5E3A;border-color:rgba(255,94,58,.4)" onclick="purgeTrashItem('${it.id}','${escapeHtml((it.title||'').replace(/'/g,"\\'"))}')"><i class="fas fa-times"></i> Delete forever</button>` : ''}
+        </div>
+      </div>`
+    }).join('')
+    el.innerHTML = `
+      <div class="page-header"><div><h1 class="page-title">Trash</h1><p class="page-subtitle">${items.length} deleted item${items.length === 1 ? '' : 's'} · restore or permanently remove</p></div></div>
+      ${items.length ? rows : '<div class="empty-state"><i class="fas fa-trash-restore"></i><p>Trash is empty</p></div>'}`
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(e.message || 'Failed to load Trash')}</p></div>`
+  }
+}
+window.renderTrashPage = renderTrashPage
+
+async function restoreTrashItem(id) {
+  try {
+    await API.post(`/trash/${id}/restore`)
+    toast('Restored', 'success')
+    invalidateGlobalSearchCache && invalidateGlobalSearchCache()
+    const el = document.getElementById('page-trash'); if (el) renderTrashPage(el)
+  } catch (e) { toast('Restore failed: ' + e.message, 'error') }
+}
+window.restoreTrashItem = restoreTrashItem
+
+async function purgeTrashItem(id, title) {
+  if (!window.confirm(`Permanently delete "${title || 'this item'}"? This cannot be undone.`)) return
+  try {
+    await API.delete(`/trash/${id}`)
+    toast('Permanently deleted', 'success')
+    const el = document.getElementById('page-trash'); if (el) renderTrashPage(el)
+  } catch (e) { toast('Delete failed: ' + e.message, 'error') }
+}
+window.purgeTrashItem = purgeTrashItem
 
 // ── Page loader dispatcher ────────────────────────────────────
 function loadPage(page, el) {
@@ -3348,6 +3407,7 @@ function loadPage(page, el) {
     case 'hr-team':          renderHRTeamPage(el); break
     case 'personal-tasks':   renderPersonalTasksPage(el); break
     case 'settings-view':    renderSettingsView(el); break
+    case 'trash':            renderTrashPage(el); break
     default: el.innerHTML = `<div class="page-header"><h1 class="page-title">${breadcrumbMap[page]||page}</h1></div><div class="empty-state"><i class="fas fa-hammer"></i><p>Module coming soon…</p></div>`
   }
 }

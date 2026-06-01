@@ -128,6 +128,7 @@ app.get('*', (c) => {
   <script src="/static/client-portal.js?v=mentionfix2"></script>
   <script src="/static/project-extensions.js?v=mentionfix2"></script>
   <script src="/static/support.js?v=mentionfix2"></script>
+  <script src="/static/custom-columns.js?v=mentionfix2"></script>
   <script src="/static/leads.js?v=mentionfix2"></script>
   <!-- HR module: _shared.js must load first so each per-component file can use its helpers -->
   <script src="/static/hr/_shared.js?v=mentionfix2"></script>

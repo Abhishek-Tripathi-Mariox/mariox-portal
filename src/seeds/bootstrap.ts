@@ -200,6 +200,15 @@ const VIEW_ONLY_PERMISSION_KEYS = new Set<string>([
   'scopes.view_own', 'scopes.view_all', 'scopes.edit_own',
   'quotations.view_own', 'quotations.view_all', 'quotations.edit_own',
   'meetings.view_own', 'meetings.view_all', 'meetings.edit_own',
+  // Client-portal tab gates — backfilled so existing client roles keep all
+  // their tabs visible after the upgrade (admin can hide any of them later).
+  'client_portal.dashboard', 'client_portal.projects', 'client_portal.kanban',
+  'client_portal.milestones', 'client_portal.documents', 'client_portal.invoices',
+  'client_portal.support',
+  // Custom-column management for sales tasks + attendance (new feature).
+  'leads.manage_task_columns', 'hr.attendance.manage_columns',
+  // Centralized Trash module.
+  'trash.view', 'trash.restore', 'trash.purge',
 ])
 
 async function ensureSystemRoles(models: MongoModels) {
@@ -222,11 +231,13 @@ async function ensureSystemRoles(models: MongoModels) {
         const current = new Set<string>(
           existing.permissions
             .map((p: unknown) => String(p))
-            .filter((p: string) => p && !(existing.key === 'pc' && p === 'projects.view_all')),
+            .filter((p: string) => p
+              // Legacy grants we now revoke from specific system roles.
+              && !(existing.key === 'pc' && p === 'projects.view_all')
+              && !(existing.key === 'pm' && p === 'hr.attendance.manage')),
         )
-        let mutated = existing.key === 'pc' && !current.has('projects.view_all')
-          ? current.size !== existing.permissions.length
-          : false
+        // If the filter dropped any key (a revoked grant), the doc changed.
+        let mutated = current.size !== existing.permissions.length
         for (const key of seed.permissions) {
           if (VIEW_ONLY_PERMISSION_KEYS.has(key) && !current.has(key)) {
             current.add(key)

@@ -384,9 +384,12 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
       const projectsById = new Map(projects.map((p: any) => [String(p.id), p]))
       const sprintsById = new Map(sprints.map((s: any) => [String(s.id), s]))
       const subtaskCounts = new Map<string, number>()
+      const subtaskDoneCounts = new Map<string, number>()
       for (const t of subtasksAll) {
         if (!t.parent_task_id) continue
-        subtaskCounts.set(String(t.parent_task_id), (subtaskCounts.get(String(t.parent_task_id)) || 0) + 1)
+        const key = String(t.parent_task_id)
+        subtaskCounts.set(key, (subtaskCounts.get(key) || 0) + 1)
+        if (t.status === 'done') subtaskDoneCounts.set(key, (subtaskDoneCounts.get(key) || 0) + 1)
       }
       const commentCounts = new Map<string, number>()
       for (const c of comments) {
@@ -410,6 +413,7 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
             project_code: p?.code || null,
             sprint_name: s?.name || null,
             subtask_count: subtaskCounts.get(String(t.id)) || 0,
+            subtask_done_count: subtaskDoneCounts.get(String(t.id)) || 0,
             comment_count: commentCounts.get(String(t.id)) || 0,
           }
         })
@@ -524,6 +528,8 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
         id,
         project_id,
         sprint_id: body.sprint_id || null,
+        // 1-based week within the sprint timeline (Excel-style planning grid).
+        sprint_week: body.sprint_week != null ? Math.max(1, Math.round(Number(body.sprint_week))) || null : null,
         milestone_id: body.milestone_id || null,
         parent_task_id: body.parent_task_id || null,
         title,
@@ -595,9 +601,34 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
 
       const body = req.body || {}
       const patch: any = { updated_at: new Date().toISOString() }
-      const allowed = ['title', 'description', 'task_type', 'status', 'priority', 'assignee_id', 'client_assignee_id', 'sprint_id', 'milestone_id', 'story_points', 'estimated_hours', 'logged_hours', 'due_date', 'pct_of_milestone', 'labels', 'is_client_visible', 'is_billable', 'position']
+      const allowed = ['title', 'description', 'task_type', 'status', 'priority', 'assignee_id', 'client_assignee_id', 'sprint_id', 'sprint_week', 'milestone_id', 'story_points', 'estimated_hours', 'logged_hours', 'due_date', 'pct_of_milestone', 'labels', 'is_client_visible', 'is_billable', 'position']
       for (const k of allowed) {
         if (k in body) patch[k] = k === 'labels' && Array.isArray(body[k]) ? JSON.stringify(body[k]) : body[k]
+      }
+      // Normalise sprint_week to a positive integer or null.
+      if ('sprint_week' in patch) {
+        const w = Math.round(Number(patch.sprint_week))
+        patch.sprint_week = Number.isFinite(w) && w >= 1 ? w : null
+      }
+      // Moving a task out of a sprint clears its week so it can't linger on a
+      // week that no longer applies.
+      if ('sprint_id' in body && !body.sprint_id) patch.sprint_week = null
+      // Custom column values. Stored as a flat { column_key: value } map so
+      // adding/removing columns is cheap (no per-task migration). PATCH-merges
+      // into the existing map — a single column update doesn't wipe the rest.
+      if (body.custom_values && typeof body.custom_values === 'object' && !Array.isArray(body.custom_values)) {
+        const existingValues = (oldTask.custom_values && typeof oldTask.custom_values === 'object')
+          ? oldTask.custom_values
+          : {}
+        const merged: Record<string, unknown> = { ...existingValues }
+        for (const [k, v] of Object.entries(body.custom_values)) {
+          // Sanity: keys are slugs (alnum + underscore) capped at 40 chars.
+          const key = String(k).replace(/[^a-z0-9_]+/gi, '').slice(0, 40).toLowerCase()
+          if (!key) continue
+          if (v === null) delete merged[key]
+          else merged[key] = v
+        }
+        patch.custom_values = merged
       }
       if (body.status === 'done' && oldTask.status !== 'done') {
         patch.completed_at = new Date().toISOString()
@@ -733,6 +764,54 @@ export function createTasksRouter(models: MongoModels, jwtSecret: string) {
           })
         } catch (e) {
           console.warn('[tasks] failed to recompute milestone progress:', e)
+        }
+      }
+
+      // Auto-complete the PARENT when all of its subtasks are done (and reopen
+      // it if a subtask is moved back out of done). Manual parent completion
+      // still works — this only fires when a SUBTASK's status changes.
+      if (oldTask.parent_task_id && statusChanged) {
+        try {
+          const siblings = await models.tasks.find({ parent_task_id: oldTask.parent_task_id }) as any[]
+          const parent = await models.tasks.findById(String(oldTask.parent_task_id)) as any
+          if (parent && siblings.length) {
+            const allDone = siblings.every((s) => {
+              const st = s.id === id ? body.status : s.status
+              return st === 'done'
+            })
+            let parentChanged = false
+            if (allDone && parent.status !== 'done') {
+              await models.tasks.updateById(parent.id, {
+                $set: { status: 'done', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+              })
+              parentChanged = true
+            } else if (!allDone && parent.status === 'done') {
+              await models.tasks.updateById(parent.id, {
+                $set: { status: 'in_progress', completed_at: null, updated_at: new Date().toISOString() },
+              })
+              parentChanged = true
+            }
+            // Cascade the parent's status change up to its milestone — the
+            // milestone recalc above only ran for the updated SUBTASK (whose
+            // milestone_id is usually null), so without this a milestone whose
+            // task auto-completes via subtasks wouldn't advance.
+            if (parentChanged && parent.milestone_id) {
+              try {
+                const mTasks = await models.tasks.find({ milestone_id: parent.milestone_id }) as any[]
+                let pct = 0
+                for (const t of mTasks) if (t.status === 'done') pct += Number(t.pct_of_milestone) || 0
+                pct = Math.max(0, Math.min(100, Math.round(pct)))
+                const mStatus = pct >= 100 ? 'completed' : (pct > 0 ? 'in_progress' : 'pending')
+                await models.milestones.updateById(String(parent.milestone_id), {
+                  $set: { completion_pct: pct, status: mStatus, updated_at: new Date().toISOString() },
+                })
+              } catch (e) {
+                console.warn('[tasks] failed to recompute milestone after parent auto-complete:', e)
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[tasks] failed to auto-complete parent task:', e)
         }
       }
 

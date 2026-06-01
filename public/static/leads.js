@@ -217,6 +217,24 @@ function leadsCanManageSources() {
   if (role === 'admin' || ['pm', 'pc'].includes(role)) return true
   return typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.manage_sources'])
 }
+function leadsCanManageTaskColumns() {
+  const role = String(_user?.role || '').toLowerCase()
+  if (role === 'admin') return true
+  return typeof hasAnyPermission === 'function' && hasAnyPermission(['leads.manage_task_columns'])
+}
+// Lazily-created custom-columns registry for sales (lead) tasks.
+function salesTaskColumns() {
+  if (!window._salesTaskCols && typeof CustomColumns !== 'undefined') {
+    window._salesTaskCols = CustomColumns.register('sales', {
+      apiBase: '/lead-task-columns',
+      idField: 'id',
+      canManage: leadsCanManageTaskColumns,
+      save: (task, customValues) => API.patch('/leads/tasks/' + task.id, { custom_values: customValues }),
+      onChange: () => { const id = _leadDetailState?.id; if (id) openLeadDetailModal(id, { tab: 'followups' }) },
+    })
+  }
+  return window._salesTaskCols
+}
 
 function leadsCanCreate() {
   const role = String(_user?.role || '').toLowerCase()
@@ -518,8 +536,7 @@ function onLeadsFilterChange() {
   _leadsSourceFilter = document.getElementById('leads-filter-source')?.value || ''
   // Activity filter is managed by the custom panel — don't read from DOM here.
   _leadsPage = 1
-  const el = document.getElementById('page-leads-view')
-  if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+  reloadLeadsView()
 }
 
 function clearLeadsFilters() {
@@ -529,8 +546,7 @@ function clearLeadsFilters() {
   _leadsSourceFilter = ''
   _leadsActivityFilter = []
   _leadsPage = 1
-  const el = document.getElementById('page-leads-view')
-  if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+  reloadLeadsView()
 }
 
 // Build the label shown on the activity filter button. Compact "N selected"
@@ -657,8 +673,7 @@ function refreshLeadsViewIncremental() {
   if (!Array.isArray(leads) || !el) {
     // Fallback to a full reload if we don't have a cache (first paint, or
     // user landed here from a deep link before initial render finished).
-    const page = document.getElementById('page-leads-view')
-    if (page) { page.dataset.loaded = ''; loadPage('leads-view', page) }
+    reloadLeadsView()
     return
   }
   const filtered = applyLeadsFilters(leads)
@@ -823,8 +838,7 @@ async function submitImportLeads() {
     const errCount = res.error_count || 0
     const errors = res.errors || []
 
-    const el = document.getElementById('page-leads-view')
-    if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+    reloadLeadsView()
 
     const followupLine = followups > 0 ? ` · <strong>${followups}</strong> follow-up${followups === 1 ? '' : 's'} scheduled.` : ''
     if (errCount > 0) {
@@ -1004,8 +1018,7 @@ function fmtDateTime(value) {
 function filterLeadsByStatus(status) {
   _leadsStatusFilter = status || ''
   _leadsPage = 1
-  const el = document.getElementById('page-leads-view')
-  if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+  reloadLeadsView()
 }
 
 function goLeadsPage(page) {
@@ -1075,6 +1088,35 @@ async function openCreateLeadModal() {
               <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:6px">Schedule follow-ups manually from the lead detail page.</div>
             </div>`
           : `<input type="hidden" id="lead-assigned-to" value="${escapeHtml(selfId)}"/>`}
+
+        <div style="grid-column:1/-1;margin-top:4px;padding-top:12px;border-top:1px solid var(--border)">
+          <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Initial activity (optional)</div>
+          <div class="form-group"><label class="form-label">Note</label>
+            <textarea id="lead-init-note" class="form-input" rows="2" placeholder="First note about this lead…"></textarea></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Task</label>
+              <input id="lead-init-task-title" class="form-input" placeholder="Task title"/>
+              <div style="display:flex;gap:6px;margin-top:6px">
+                <input id="lead-init-task-due" type="date" class="form-input" style="flex:1" title="Task due date"/>
+                <select id="lead-init-task-priority" class="form-select" style="width:110px">
+                  <option value="medium">Medium</option><option value="low">Low</option><option value="high">High</option><option value="critical">Critical</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Follow-up</label>
+              <input id="lead-init-fu-title" class="form-input" placeholder="Follow-up title"/>
+              <div style="display:flex;gap:6px;margin-top:6px">
+                <input id="lead-init-fu-due" type="datetime-local" class="form-input" style="flex:1" title="Follow-up date & time"/>
+                <select id="lead-init-fu-type" class="form-select" style="width:110px">
+                  <option value="Call">Call</option><option value="Email">Email</option><option value="Meeting">Meeting</option><option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:6px">A task or follow-up needs a due date to be created. Everything here is optional.</div>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -1111,15 +1153,38 @@ async function submitNewLead() {
     return
   }
   if (!payload.requirement) payload.requirement = hasFile ? '(see attached file)' : ''
+
+  // Optional initial activity — gathered now, created against the new lead id
+  // right after it's saved. Task/follow-up need a due date (backend requires it).
+  const initNote = (document.getElementById('lead-init-note')?.value || '').trim()
+  const taskTitle = (document.getElementById('lead-init-task-title')?.value || '').trim()
+  const taskDue = document.getElementById('lead-init-task-due')?.value || ''
+  const taskPriority = document.getElementById('lead-init-task-priority')?.value || 'medium'
+  const fuTitle = (document.getElementById('lead-init-fu-title')?.value || '').trim()
+  const fuDue = document.getElementById('lead-init-fu-due')?.value || ''
+  const fuType = document.getElementById('lead-init-fu-type')?.value || 'Other'
+  if (taskTitle && !taskDue) { toast('Set a due date for the initial task (or clear its title)', 'error'); return }
+  if (fuTitle && !fuDue) { toast('Set a date for the initial follow-up (or clear its title)', 'error'); return }
+
   try {
     let file = null
     try { file = await resolveLeadRequirementFile(null) } catch { return }
     if (file) payload.requirement_file = file
-    await API.post('/leads', payload)
+    const res = await API.post('/leads', payload)
+    const newId = res?.data?.id || res?.id || res?.lead?.id
+    // Attach the optional note / task / follow-up to the freshly created lead.
+    if (newId) {
+      const jobs = []
+      if (initNote) jobs.push(API.post(`/leads/${newId}/notes`, { text: initNote }))
+      if (taskTitle && taskDue) jobs.push(API.post(`/leads/${newId}/tasks`, { title: taskTitle, due_date: taskDue, priority: taskPriority }))
+      if (fuTitle && fuDue) jobs.push(API.post(`/leads/${newId}/followups`, { title: fuTitle, due_date: new Date(fuDue).toISOString(), activity_type: fuType }))
+      if (jobs.length) {
+        try { await Promise.all(jobs) } catch (e) { toast('Lead created, but some activity failed: ' + e.message, 'warning', 6000) }
+      }
+    }
     toast('Lead created', 'success')
     closeModal()
-    const el = document.getElementById('page-leads-view')
-    if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+    reloadLeadsView()
   } catch (e) {
     toast('Failed: ' + e.message, 'error')
   }
@@ -1246,8 +1311,7 @@ async function submitEditLead(id) {
     await API.put(`/leads/${id}`, payload)
     toast('Lead updated', 'success')
     closeModal()
-    const el = document.getElementById('page-leads-view')
-    if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+    reloadLeadsView()
   } catch (e) {
     toast('Failed: ' + e.message, 'error')
   }
@@ -1270,7 +1334,9 @@ function closeLeadDetailModal() {
 
 function renderLeadDetailFollowups(lead) {
   const id = lead.id
+  const reg = (typeof salesTaskColumns === 'function') ? salesTaskColumns() : null
   const isTerminal = (k) => k === 'done' || k === 'skipped' || k === 'cancelled'
+  const colsHeader = reg ? `<div style="display:flex;justify-content:flex-end;margin-bottom:8px">${reg.manageButton()}</div>` : ''
   const tasksHtml = (lead.tasks || []).map((t) => {
     const tkey = String(t.status || 'pending').toLowerCase()
     const tmeta = LEAD_TASK_STATUS_META[tkey] || { label: tkey, badge: 'todo' }
@@ -1290,6 +1356,7 @@ function renderLeadDetailFollowups(lead) {
         <input type="number" min="0" max="1440" value="${snooze}" id="snooze-${t.id}" style="width:70px;padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:rgba(0,0,0,.25);color:#e2e8f0;font-size:12px"/>
         <button class="btn btn-xs btn-outline" onclick="updateFollowupSnooze('${t.id}','${id}')"><i class="fas fa-bell"></i> Save</button>
       </div>` : ''}
+      ${reg && canUpdate ? reg.fields(t) : ''}
     </div>`
   }).join('') || '<div style="font-size:12px;color:#7E7E8F;padding:8px">No follow-up tasks yet.</div>'
 
@@ -1312,7 +1379,7 @@ function renderLeadDetailFollowups(lead) {
       </div>
     </div>` : ''
 
-  return tasksHtml + addForm
+  return colsHeader + tasksHtml + addForm
 }
 
 async function switchLeadDetailTab(id, tab) {
@@ -1322,7 +1389,8 @@ async function switchLeadDetailTab(id, tab) {
   if (!body) return
   if (tab === 'followups') {
     try {
-      const res = await API.get(`/leads/${id}`)
+      const reg = salesTaskColumns()
+      const [res] = await Promise.all([API.get(`/leads/${id}`), reg ? reg.load() : Promise.resolve()])
       const lead = res.data || res.lead
       body.innerHTML = renderLeadDetailFollowups(lead)
     } catch (e) { body.innerHTML = `<div style="color:#FF5E3A">${e.message}</div>` }
@@ -1542,118 +1610,6 @@ async function openCloseLeadModal(id) {
           <div class="form-group"></div>
         </div>
 
-        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px;display:flex;align-items:center;gap:10px">
-          <span>Project (optional)</span>
-          <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;text-transform:none;color:#cbd5e1;font-weight:500;letter-spacing:0">
-            <input type="checkbox" id="close-create-project" onchange="onToggleCloseProject(this.checked)" checked/>
-            Create a project for this client
-          </label>
-        </div>
-        <div id="close-project-fields">
-          <div class="form-row">
-            <div class="form-group"><label class="form-label">Project Name *</label><input class="form-input" id="close-proj-name" placeholder="e.g. ${escapeHtml(lead.name)} — Website Revamp" value="${escapeHtml(lead.requirement ? `${lead.name} — ${String(lead.requirement).slice(0, 60)}` : lead.name)}"/></div>
-            <div class="form-group"><label class="form-label">Delivery Kind *</label>
-              <select class="form-select" id="close-proj-delivery" onchange="onCloseProjDeliveryChange(this.value)">
-                <option value="">— Select —</option>
-                <option value="app">App (APP-prefixed code)</option>
-                <option value="web">Web (WB-prefixed code)</option>
-                <option value="both">Both (BTH-prefixed code)</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label">Project Code *</label>
-              <div style="display:flex;gap:6px">
-                <input class="form-input" id="close-proj-code" placeholder="Pick a delivery kind to auto-fill" style="flex:1;text-transform:uppercase" maxlength="40"/>
-                <button type="button" class="btn btn-outline btn-sm" onclick="autoFillCloseProjCode()" title="Suggest next code"><i class="fas fa-wand-magic-sparkles"></i></button>
-              </div>
-            </div>
-            <div class="form-group"><label class="form-label">Status</label>
-              <select class="form-select" id="close-proj-status">
-                <option value="active" selected>Active</option>
-                <option value="on_hold">On Hold</option>
-                <option value="completed">Completed</option>
-                <option value="archived">Archived</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label">Project Type</label>
-              <select class="form-select" id="close-proj-type">
-                <option value="development" selected>Development</option>
-                <option value="maintenance">Maintenance</option>
-                <option value="support">Support</option>
-                <option value="consulting">Consulting</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label">Start Date *</label><input class="form-input" id="close-proj-start" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
-            <div class="form-group"><label class="form-label">Expected End Date</label><input class="form-input" id="close-proj-end" type="date"/></div>
-          </div>
-          ${isAdmin ? `
-          <div class="form-row">
-            <div class="form-group"><label class="form-label">Project Manager</label>
-              <select class="form-select" id="close-proj-pm">
-                <option value="">— None —</option>
-                ${pms.map(p => `<option value="${p.id}">${escapeHtml(p.full_name)} (${escapeHtml(String(p.role || '').toUpperCase())})</option>`).join('')}
-              </select>
-            </div>
-            <div class="form-group"><label class="form-label">Product Coordinator</label>
-              <select class="form-select" id="close-proj-pc">
-                <option value="">— None —</option>
-                ${pcs.map(c => `<option value="${c.id}">${escapeHtml(c.full_name)}</option>`).join('')}
-              </select>
-            </div>
-          </div>` : `
-          <div class="form-row">
-            <div class="form-group" style="grid-column:span 2">
-              <div style="padding:10px 12px;background:rgba(169,112,255,0.10);border:1px solid rgba(169,112,255,0.25);border-radius:6px;font-size:12.5px;color:var(--text-secondary);display:flex;align-items:center;gap:8px">
-                <i class="fas fa-info-circle" style="color:#C9A7FF"></i>
-                <span>Project Manager and Product Coordinator will be assigned by the admin after this lead is closed. They'll be notified automatically.</span>
-              </div>
-            </div>
-          </div>`}
-          <div class="form-row">
-            <div class="form-group"><label class="form-label">Project Amount (₹) *</label><input class="form-input" id="close-proj-amount" type="number" min="0" step="0.01" placeholder="e.g. 120000" required/></div>
-            <div class="form-group"><label class="form-label">Billable</label>
-              <select class="form-select" id="close-proj-billable">
-                <option value="1" selected>Yes</option>
-                <option value="0">No</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group"><label class="form-label">Sold By</label>
-            <select class="form-select" id="close-proj-sold-by" onchange="onCloseSoldByChange(this.value)">
-              <option value="">— Select sales person —</option>
-              ${salesPersons.map(p => `<option value="${escapeHtml(p.full_name)}" ${p.full_name === defaultSoldBy ? 'selected' : ''}>${escapeHtml(p.full_name)} · ${escapeHtml(String(p.role || '').replace('sales_','').toUpperCase())}</option>`).join('')}
-              ${defaultSoldBy && !salesPersons.some(p => p.full_name === defaultSoldBy) ? `<option value="${escapeHtml(defaultSoldBy)}" selected>${escapeHtml(defaultSoldBy)} (lead assignee)</option>` : ''}
-              <option value="__custom__">Other / custom name…</option>
-            </select>
-            <input class="form-input" id="close-proj-sold-by-custom" placeholder="Type a custom name" style="margin-top:6px;display:none"/>
-          </div>
-          <div class="form-group"><label class="form-label">Project Description</label>
-            <textarea class="form-textarea" id="close-proj-desc" placeholder="Scope, deliverables, notes…" style="min-height:60px">${escapeHtml(lead.requirement || '')}</textarea>
-          </div>
-          <div class="form-group"><label class="form-label">Remarks</label>
-            <textarea class="form-textarea" id="close-proj-remarks" placeholder="Internal remarks (optional)" style="min-height:50px"></textarea>
-          </div>
-
-          <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.02)">
-            <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Attachments <span style="color:#7E7E8F;text-transform:none;letter-spacing:0">(25 MB / file)</span></div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <input id="close-proj-files-input" type="file" multiple style="display:none" onchange="closeProjAddFiles(this.files);this.value=''"/>
-              <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('close-proj-files-input').click()"><i class="fas fa-upload"></i> Choose files</button>
-              <span style="color:#5A5A66;font-size:11px">— or —</span>
-              <input id="close-proj-link-url" class="form-input" type="url" placeholder="Paste a document URL" style="flex:1;min-width:200px;padding:6px 10px;font-size:12.5px"/>
-              <input id="close-proj-link-name" class="form-input" type="text" placeholder="Label" style="width:140px;padding:6px 10px;font-size:12.5px"/>
-              <button type="button" class="btn btn-outline btn-sm" onclick="closeProjAddLink()"><i class="fas fa-link"></i> Add link</button>
-            </div>
-            <div id="close-proj-files-list" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
-          </div>
-          ${lead.requirement_file?.url ? `<div style="margin-top:8px;font-size:12px;color:#cbd5e1;padding:8px;background:rgba(169,112,255,.08);border-radius:6px"><i class="fas fa-paperclip"></i> The lead's attached file (<a href="${escapeHtml(lead.requirement_file.url)}" target="_blank" rel="noopener" style="color:#A970FF">${escapeHtml(lead.requirement_file.name || 'attachment')}</a>) is auto-added to the project's documents.</div>` : ''}
-        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -1842,97 +1798,21 @@ async function submitCloseLead(id) {
     toast('PIN code must be numeric (4–8 digits)', 'error'); return
   }
 
-  const wantsProject = document.getElementById('close-create-project')?.checked
-  if (wantsProject) {
-    const pname = (document.getElementById('close-proj-name')?.value || '').trim()
-    const pcode = (document.getElementById('close-proj-code')?.value || '').trim().toUpperCase()
-    const pstart = (document.getElementById('close-proj-start')?.value || '').trim()
-    const pdelivery = (document.getElementById('close-proj-delivery')?.value || '').trim()
-    if (!pname) { toast('Project name is required', 'error'); return }
-    if (!pdelivery) { toast('Delivery kind is required', 'error'); return }
-    if (!pcode) { toast('Project code is required', 'error'); return }
-    if (!/^[A-Z0-9_-]{2,40}$/.test(pcode)) {
-      toast('Project code may only contain letters, numbers, underscore or hyphen', 'error'); return
-    }
-    if (!pstart) { toast('Project start date is required', 'error'); return }
-    const pend = (document.getElementById('close-proj-end')?.value || '').trim()
-    if (pend && pend < pstart) { toast('Project end date must be after start date', 'error'); return }
-    const amt = (document.getElementById('close-proj-amount')?.value || '').trim()
-    // Project Amount is mandatory — it feeds the sales-incentive achieved
-    // calculation, so closing a lead without it would leave the agent's
-    // attainment at zero for that deal.
-    if (!amt) { toast('Project Amount is required', 'error'); return }
-    const amtNum = Number(amt)
-    if (!Number.isFinite(amtNum) || amtNum <= 0) {
-      toast('Project Amount must be a positive number', 'error'); return
-    }
-    // Validate file sizes early so we don't half-create the project before
-    // hitting the upload limit.
-    for (const f of _closeProjFiles) {
-      if (f.size > 25 * 1024 * 1024) { toast(`"${f.name}" exceeds the 25 MB limit`, 'error'); return }
-    }
-    payload.project = {
-      name: pname,
-      code: pcode,
-      delivery_kind: pdelivery,
-      status: document.getElementById('close-proj-status')?.value || 'active',
-      project_type: document.getElementById('close-proj-type')?.value || 'development',
-      priority: document.getElementById('close-proj-priority')?.value || 'medium',
-      start_date: pstart,
-      expected_end_date: pend || null,
-      pm_id: document.getElementById('close-proj-pm')?.value || null,
-      pc_id: document.getElementById('close-proj-pc')?.value || null,
-      project_amount: amtNum,
-      billable: (document.getElementById('close-proj-billable')?.value || '1') === '1',
-      sold_by: readCloseProjSoldBy(),
-      // Commercial visibility picker removed from the close-lead UI.
-      // Backend defaults `commercial_visible_to` to [] when the field is
-      // absent — i.e. only admin sees Project Amount / Sold By on the new
-      // project, matching the old "admin always sees" guarantee.
-      description: (document.getElementById('close-proj-desc')?.value || '').trim() || null,
-      remarks: (document.getElementById('close-proj-remarks')?.value || '').trim() || null,
-    }
-
-    // Upload any user-picked files first; pasted links ride along as
-    // link-only attachments. Backend wires these onto the new project as
-    // documents alongside the lead's auto-attached requirement file.
-    const attachments = []
-    for (const f of _closeProjFiles) {
-      try {
-        const uploaded = await uploadLeadFile(f)
-        attachments.push({
-          file_name: uploaded.original_name || uploaded.name || f.name,
-          file_url: uploaded.url || uploaded.file_url,
-          file_type: uploaded.mime_type || uploaded.mime || f.type || null,
-          file_size: Number(uploaded.size) || f.size || 0,
-        })
-      } catch (e) {
-        toast(`"${f.name}" upload failed: ${e.message}`, 'error')
-        return
-      }
-    }
-    for (const l of _closeProjLinks) {
-      attachments.push({ file_name: l.name, file_url: l.url, file_type: 'link', file_size: 0 })
-    }
-    if (attachments.length) payload.project.attachments = attachments
-  }
 
   try {
     const res = await API.post(`/leads/${id}/close`, payload)
     const sent = res?.mail?.sent
-    const projInfo = res?.project ? ` + project ${res.project.code}` : ''
     if (sent) {
-      toast(`Client created${projInfo} — credentials emailed`, 'success', 6000)
+      toast('Client created — credentials emailed', 'success', 6000)
     } else {
       const err = res?.mail?.error || 'unknown error'
       console.error('[leads] Email send failed:', err)
-      alert(`Client was created${projInfo} but the credentials email failed to send:\n\n` + err + '\n\nCheck the server SMTP settings and re-send the credentials manually.')
+      alert(`Client was created but the credentials email failed to send:\n\n` + err + '\n\nCheck the server SMTP settings and re-send the credentials manually.')
     }
     closeModal()
     _closeProjFiles = []
     _closeProjLinks = []
-    const el = document.getElementById('page-leads-view')
-    if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+    reloadLeadsView()
   } catch (e) {
     toast('Failed: ' + e.message, 'error')
   }
@@ -2211,12 +2091,45 @@ function renderStatusList(kind) {
     const m = meta[k]
     const id = m?.id || ''
     const isSystem = Number(m?.is_system || 0) === 1
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,.02)">
+    return `<div id="lstatus-row-${id}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,.02)">
       <span class="badge badge-${m?.badge || 'todo'}">${escapeHtml(m?.label || k)}</span>
       <span style="font-size:11px;color:#7E7E8F;font-family:monospace">${escapeHtml(k)}</span>
-      ${isSystem ? '<span style="font-size:10px;color:#A970FF;margin-left:auto">SYSTEM</span>' : `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="deleteLeadStatus('${kind}','${id}','${escapeHtml(m?.label || k).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        ${isSystem ? '<span style="font-size:10px;color:#A970FF">SYSTEM</span>' : `
+          <button class="btn btn-xs btn-outline" title="Edit" onclick="editLeadStatusInline('${kind}','${id}')"><i class="fas fa-pen"></i></button>
+          <button class="btn btn-xs btn-outline" title="Delete" onclick="deleteLeadStatus('${kind}','${id}','${escapeHtml(m?.label || k).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
+      </span>
     </div>`
   }).join('')
+}
+
+function rerenderStatusList(kind) {
+  const listEl = document.getElementById(`${kind === 'lead' ? 'lead' : 'task'}-status-list`)
+  if (listEl) listEl.innerHTML = renderStatusList(kind)
+}
+function editLeadStatusInline(kind, id) {
+  const meta = kind === 'lead' ? LEAD_STATUS_META : LEAD_TASK_STATUS_META
+  const entry = Object.entries(meta).find(([, m]) => String(m?.id) === String(id))
+  if (!entry) return
+  const [k, m] = entry
+  const row = document.getElementById('lstatus-row-' + id)
+  if (!row) return
+  row.innerHTML = `
+    <input id="el-label-${id}" class="form-input" style="flex:1;font-size:12px;padding:4px 8px" value="${escapeHtml(m?.label || k)}"/>
+    <select id="el-badge-${id}" class="form-select" style="font-size:12px;width:120px;padding:4px" title="Colour">${LEAD_BADGE_OPTIONS.map(b => `<option value="${b}" ${(m?.badge || 'todo') === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
+    <button class="btn btn-xs btn-primary" title="Save" onclick="saveLeadStatusEdit('${kind}','${id}')"><i class="fas fa-check"></i></button>
+    <button class="btn btn-xs btn-outline" title="Cancel" onclick="rerenderStatusList('${kind}')"><i class="fas fa-times"></i></button>`
+}
+async function saveLeadStatusEdit(kind, id) {
+  const label = (document.getElementById('el-label-' + id)?.value || '').trim()
+  const badge = document.getElementById('el-badge-' + id)?.value
+  if (!label) { toast('Label required', 'error'); return }
+  try {
+    await API.put(`/leads/statuses/${kind}/${id}`, { label, badge })
+    toast('Status updated', 'success')
+    await loadLeadStatuses(true)
+    rerenderStatusList(kind)
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
 }
 
 function renderStatusForm(kind) {
@@ -2290,12 +2203,41 @@ function renderSourceList() {
   if (!_leadSources.length) return '<div style="font-size:12px;color:#7E7E8F;padding:8px">No sources defined.</div>'
   return _leadSources.map((s) => {
     const isSystem = Number(s.is_system || 0) === 1
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,.02)">
+    return `<div id="lsource-row-${s.id}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,.02)">
       <span style="font-weight:600;color:var(--text-primary)">${escapeHtml(s.label)}</span>
       <span style="font-size:11px;color:#7E7E8F;font-family:monospace">${escapeHtml(s.key)}</span>
-      ${isSystem ? '<span style="font-size:10px;color:#A970FF;margin-left:auto">SYSTEM</span>' : `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="deleteLeadSource('${s.id}','${escapeHtml(s.label).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        ${isSystem ? '<span style="font-size:10px;color:#A970FF">SYSTEM</span>' : `
+          <button class="btn btn-xs btn-outline" title="Edit" onclick="editLeadSourceInline('${s.id}')"><i class="fas fa-pen"></i></button>
+          <button class="btn btn-xs btn-outline" title="Delete" onclick="deleteLeadSource('${s.id}','${escapeHtml(s.label).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
+      </span>
     </div>`
   }).join('')
+}
+
+function rerenderSourceList() {
+  const el = document.getElementById('lead-source-list')
+  if (el) el.innerHTML = renderSourceList()
+}
+function editLeadSourceInline(id) {
+  const s = _leadSources.find((x) => String(x.id) === String(id))
+  if (!s) return
+  const row = document.getElementById('lsource-row-' + id)
+  if (!row) return
+  row.innerHTML = `
+    <input id="es-label-${id}" class="form-input" style="flex:1;font-size:12px;padding:4px 8px" value="${escapeHtml(s.label)}"/>
+    <button class="btn btn-xs btn-primary" title="Save" onclick="saveLeadSourceEdit('${id}')"><i class="fas fa-check"></i></button>
+    <button class="btn btn-xs btn-outline" title="Cancel" onclick="rerenderSourceList()"><i class="fas fa-times"></i></button>`
+}
+async function saveLeadSourceEdit(id) {
+  const label = (document.getElementById('es-label-' + id)?.value || '').trim()
+  if (!label) { toast('Label required', 'error'); return }
+  try {
+    await API.put('/leads/sources/' + id, { label })
+    toast('Source updated', 'success')
+    await loadLeadSources(true)
+    rerenderSourceList()
+  } catch (e) { toast('Failed: ' + e.message, 'error') }
 }
 
 async function addLeadSource() {
@@ -2329,8 +2271,17 @@ async function deleteLeadSource(id, label) {
 }
 
 function reloadLeadsView() {
+  // After any lead change, land on the leads LIST. If we're on the lead detail
+  // page (or anywhere that isn't the list), navigate there; otherwise just
+  // refresh the list in place.
   const el = document.getElementById('page-leads-view')
-  if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+  if (el) el.dataset.loaded = ''
+  const onList = typeof Router !== 'undefined' && Router?.current?.page === 'leads-view'
+  if (!onList && typeof Router !== 'undefined' && Router?.navigate) {
+    Router.navigate('leads-view')
+  } else if (el) {
+    loadPage('leads-view', el)
+  }
 }
 
 // Soft-delete now requires a reason so an audit trail exists in the Trash
@@ -2372,8 +2323,7 @@ async function submitDeleteLead(id) {
     await API.delete(`/leads/${id}`, { reason })
     toast('Lead moved to Trash', 'success')
     closeModal()
-    const el = document.getElementById('page-leads-view')
-    if (el) { el.dataset.loaded = ''; loadPage('leads-view', el) }
+    reloadLeadsView()
     // If the user is currently on the lead detail page, send them back to
     // the list — the lead is no longer accessible to non-trash routes.
     if (typeof goLeadsList === 'function' && location.hash.includes('lead-detail')) goLeadsList()

@@ -117,9 +117,153 @@ export function createSprintsRouter(models: MongoModels, jwtSecret: string) {
   return router
 }
 
+// Wraps the editable inner content in the email document shell so the outer
+// styling (background, container) stays consistent whether the body was
+// auto-generated or hand-edited by the sender.
+function wrapMilestoneEmail(innerHtml: string) {
+  return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#0B0B0D;background:#f8fafc;margin:0;padding:24px">${innerHtml}</body></html>`
+}
+
+// Effective completion %: the stored value can lag the live task statuses
+// (it's only recalculated when a task's status changes), so we also derive it
+// from the live tasks and honour an explicit 'completed' status. Used by the
+// email gate so a visibly-100% milestone is never rejected as incomplete.
+async function milestoneEffectivePct(models: MongoModels, milestone: any) {
+  if (milestone?.status === 'completed') return 100
+  let pct = Number(milestone?.completion_pct) || 0
+  const live = await models.tasks.find({ milestone_id: String(milestone.id) }) as any[]
+  if (live.length) {
+    const sum = live
+      .filter((t) => t.status === 'done')
+      .reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
+    pct = Math.max(pct, Math.min(100, Math.round(sum)))
+  }
+  return pct
+}
+
+// Recompute and PERSIST a milestone's completion_pct + status from its live
+// tasks. Call after adding/removing tasks so the stored value never drifts.
+async function recomputeMilestoneProgress(models: MongoModels, milestoneId: string) {
+  try {
+    const tasks = await models.tasks.find({ milestone_id: String(milestoneId) }) as any[]
+    let pct = 0
+    for (const t of tasks) if (t.status === 'done') pct += Number(t.pct_of_milestone) || 0
+    pct = Math.max(0, Math.min(100, Math.round(pct)))
+    const status = pct >= 100 ? 'completed' : (pct > 0 ? 'in_progress' : 'pending')
+    await models.milestones.updateById(String(milestoneId), {
+      $set: { completion_pct: pct, status, updated_at: new Date().toISOString() },
+    })
+  } catch (e) {
+    console.warn('[milestones] recompute progress failed:', e)
+  }
+}
+
+// Builds the default (auto-generated) inner body for a milestone-completion
+// email using LIVE task statuses. Returned separately from the shell so the
+// compose modal can show it as an editable preview.
+async function buildMilestoneEmailInner(models: MongoModels, milestone: any, project: any, client: any, companyName: string) {
+  const liveTasks = await models.tasks.find({ milestone_id: String(milestone.id) }) as any[]
+  const usersForEmail = await models.users.find({}) as any[]
+  const usersByIdEmail = new Map(usersForEmail.map((u) => [String(u.id), u]))
+  const refsByIdEmail = new Map<string, any>()
+  if (Array.isArray(milestone.tasks)) {
+    for (const ref of milestone.tasks) refsByIdEmail.set(String(ref.id), ref)
+  }
+  const tasksForEmail = liveTasks.length ? liveTasks : (Array.isArray(milestone.tasks) ? milestone.tasks : [])
+  const taskRows = tasksForEmail
+    .map((t: any) => {
+      const ref = refsByIdEmail.get(String(t.id)) || {}
+      const assigneeName = t.assignee_name
+        || usersByIdEmail.get(String(t.assignee_id))?.full_name
+        || ref.assignee_name
+        || '—'
+      return `<tr>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee">${esc(t.title)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;text-transform:capitalize">${esc(String(t.status || '').replace('_', ' '))}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee">${esc(assigneeName)}</td>
+      </tr>`
+    }).join('')
+  const tasksTable = taskRows
+    ? `<table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:13px"><thead><tr><th align="left" style="padding:6px 10px;background:#f1f5f9">Task</th><th align="left" style="padding:6px 10px;background:#f1f5f9">Status</th><th align="left" style="padding:6px 10px;background:#f1f5f9">Assignee</th></tr></thead><tbody>${taskRows}</tbody></table>`
+    : ''
+  return `<div style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:24px">
+          <h2 style="margin:0 0 8px;color:#0B0B0D">Milestone Completed</h2>
+          <p style="color:#5A5A66;margin:0 0 16px">Hi ${esc(client?.name || client?.full_name || client?.contact_name || 'Client')}, we are pleased to inform you that the following milestone has been completed.</p>
+          <div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;background:#f8fafc">
+            <div style="font-size:16px;font-weight:600;margin-bottom:6px">${esc(milestone.title)}</div>
+            <div style="font-size:13px;color:#7E7E8F">Project: ${esc(project?.name || '—')}</div>
+            <div style="font-size:13px;color:#7E7E8F">Due Date: ${esc(milestone.due_date || '—')}</div>
+            ${milestone.description ? `<div style="margin-top:8px;font-size:13px;color:#2B2B35">${esc(milestone.description)}</div>` : ''}
+            ${milestone.is_billable ? `<div style="margin-top:8px;font-size:13px;color:#0f766e"><strong>Billable Amount:</strong> ₹${Number(milestone.invoice_amount || 0).toLocaleString('en-IN')}</div>` : ''}
+          </div>
+          ${tasksTable}
+          <p style="margin-top:20px;color:#5A5A66;font-size:13px">We would love to hear your feedback. Please log in to the client portal to share your rating.</p>
+          <p style="margin-top:20px;color:#0B0B0D;font-size:13px">Regards,<br/>${esc(companyName)}</p>
+        </div>`
+}
+
+// Inner body for the change-request quotation email — a table of the
+// milestone's change requests (description, hours, rate, total) with a grand
+// total. CRs live on the milestone doc, so no DB lookup is needed.
+function buildChangeRequestEmailInner(milestone: any, project: any, client: any, companyName: string) {
+  const inr = (n: any) => `₹${Number(n || 0).toLocaleString('en-IN')}`
+  const crs = Array.isArray(milestone.change_requests) ? milestone.change_requests : []
+  const grand = crs.reduce((s: number, c: any) => s + (Number(c.total) || 0), 0)
+  const rows = crs.map((c: any) => `<tr>
+      <td style="padding:8px 10px;border-bottom:1px solid #eee">
+        ${c.title ? `<strong>${esc(c.title)}</strong><br/>` : ''}
+        <span style="color:#5A5A66">${esc(c.description || '')}</span>
+      </td>
+      <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right">${Number(c.hours) || 0}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right">${inr(c.price_per_hour)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right">${inr(c.total)}</td>
+    </tr>`).join('')
+  return `<div style="max-width:660px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:24px">
+          <h2 style="margin:0 0 8px;color:#0B0B0D">Change Request Quotation</h2>
+          <p style="color:#5A5A66;margin:0 0 16px">Hi ${esc(client?.name || client?.full_name || client?.contact_name || 'Client')}, please find the proposed change(s) for the milestone <strong>${esc(milestone.title)}</strong>${project?.name ? ` (project: ${esc(project.name)})` : ''}.</p>
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr>
+              <th align="left" style="padding:8px 10px;background:#f1f5f9">Change</th>
+              <th align="right" style="padding:8px 10px;background:#f1f5f9">Hours</th>
+              <th align="right" style="padding:8px 10px;background:#f1f5f9">Rate/hr</th>
+              <th align="right" style="padding:8px 10px;background:#f1f5f9">Total</th>
+            </tr></thead>
+            <tbody>${rows || '<tr><td colspan="4" style="padding:10px;color:#5A5A66">No change requests.</td></tr>'}</tbody>
+            <tfoot><tr>
+              <td colspan="3" style="padding:10px;text-align:right;font-weight:700">Grand Total</td>
+              <td style="padding:10px;text-align:right;font-weight:700;color:#0f766e">${inr(grand)}</td>
+            </tr></tfoot>
+          </table>
+          <p style="margin-top:20px;color:#5A5A66;font-size:13px">Please reply to confirm so we can schedule these changes. The hours are estimates and may be refined during implementation.</p>
+          <p style="margin-top:20px;color:#0B0B0D;font-size:13px">Regards,<br/>${esc(companyName)}</p>
+        </div>`
+}
+
 export function createMilestonesRouter(models: MongoModels, jwtSecret: string, runtimeEnv: InvoiceEmailEnv = {}) {
   const router = Router()
   router.use(createAuthMiddleware(jwtSecret))
+
+  // Returns the editable default subject + body so the compose modal can show
+  // a live preview the sender can tweak before sending.
+  router.get('/:id/email-preview', async (req, res) => {
+    try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'milestones.edit'))) return res.status(403).json({ error: 'Forbidden' })
+      const milestone = await models.milestones.findById(req.params.id) as any
+      if (!milestone) return res.status(404).json({ error: 'Milestone not found' })
+      const project = milestone.project_id ? await models.projects.findById(String(milestone.project_id)) as any : null
+      const client = project?.client_id ? await models.clients.findById(String(project.client_id)) as any : null
+      const companyName = String(runtimeEnv.COMPANY_NAME || 'Mariox Software')
+      const inner_html = await buildMilestoneEmailInner(models, milestone, project, client, companyName)
+      return res.json({
+        subject: `Milestone Completed: ${milestone.title}`,
+        to: client?.email || '',
+        inner_html,
+      })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to build email preview' })
+    }
+  })
 
   function normalizeTasks(input: any): any[] {
     if (!Array.isArray(input)) return []
@@ -146,6 +290,29 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
         created_at: t?.created_at || now,
       }
     }).filter((t) => t.title.length >= 1)
+  }
+
+  // Client-driven change requests captured against a milestone: a description
+  // of what changed, the effort (hours) and rate (price/hour), with the total
+  // computed server-side so it can never disagree with hours × rate.
+  function normalizeChangeRequests(input: any): any[] {
+    if (!Array.isArray(input)) return []
+    const now = new Date().toISOString()
+    const VALID = ['pending', 'approved', 'rejected', 'done']
+    return input.slice(0, 50).map((c: any, idx: number) => {
+      const hours = Math.max(0, Number(c?.hours) || 0)
+      const rate = Math.max(0, Number(c?.price_per_hour) || 0)
+      return {
+        id: String(c?.id || `cr_${Date.now().toString(36)}_${idx}`),
+        title: String(c?.title || '').trim().slice(0, 200),
+        description: String(c?.description || '').trim().slice(0, 4000),
+        hours: Math.round(hours * 100) / 100,
+        price_per_hour: Math.round(rate * 100) / 100,
+        total: Math.round(hours * rate * 100) / 100,
+        status: VALID.includes(String(c?.status)) ? c.status : 'pending',
+        created_at: c?.created_at || now,
+      }
+    }).filter((c) => c.description.length >= 1 || c.title.length >= 1)
   }
 
   function normalizeRating(input: any): any | null {
@@ -250,6 +417,19 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
       const body = req.body || {}
       const { project_id, title, description, due_date, is_billable = 0, invoice_amount = 0, client_visible = 1, deliverables, tasks, attachments } = body
       if (!project_id || !title || !due_date) return res.status(400).json({ error: 'project_id, title, due_date required' })
+
+      // Idempotency guard against the double-submit that creates duplicate
+      // milestones (rapid button clicks / retried POSTs). If an identical
+      // milestone (same project + case-insensitive title) was created in the
+      // last 20s, return it instead of inserting a second copy.
+      const normTitle = String(title).trim().toLowerCase()
+      const cutoff = new Date(Date.now() - 20_000).toISOString()
+      const recent = await models.milestones.find({ project_id }) as any[]
+      const dup = recent.find((m) =>
+        String(m.title || '').trim().toLowerCase() === normTitle &&
+        String(m.created_at || '') >= cutoff)
+      if (dup) return res.status(200).json({ milestone: dup, deduped: true })
+
       const id = generateId('ms')
       const now = new Date().toISOString()
 
@@ -258,6 +438,10 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
       const createdTaskRefs: any[] = []
       for (const t of inputTasks) {
         const taskId = generateId('task')
+        // Honour the status chosen at creation (normalizeTasks restricts it to
+        // pending/in_progress/done/blocked); 'pending' maps to the kanban
+        // 'todo' column so the card lands in the right place.
+        const taskStatus = t.status === 'pending' ? 'todo' : t.status
         const taskRecord = {
           id: taskId,
           project_id,
@@ -267,7 +451,8 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
           title: t.title,
           description: t.description || null,
           task_type: 'task',
-          status: 'todo',
+          status: taskStatus,
+          completed_at: taskStatus === 'done' ? now : null,
           priority: 'medium',
           assignee_id: t.assignee_id || null,
           reporter_id: user?.sub || null,
@@ -297,7 +482,7 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
             assignee_name: t.assignee_name || null,
             assignee_kind: t.assignee_kind || 'developer',
             pct_of_milestone: Number(t.pct_of_milestone) || 0,
-            status: 'todo',
+            status: taskStatus,
             reference_url: t.reference_url || null,
             attachment_url: t.attachment_url || null,
             attachment_name: t.attachment_name || null,
@@ -339,19 +524,27 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
         } catch {}
       }
 
+      // If any tasks were already marked done at creation, reflect that in the
+      // milestone completion straight away (same rule as the task-status hook).
+      const initialPct = Math.max(0, Math.min(100, Math.round(
+        createdTaskRefs.filter((r) => r.status === 'done').reduce((s, r) => s + (Number(r.pct_of_milestone) || 0), 0),
+      )))
+      const initialStatus = initialPct >= 100 ? 'completed' : (initialPct > 0 ? 'in_progress' : 'pending')
+
       const milestone = {
         id,
         project_id,
         title,
         description: description || null,
         due_date,
-        completion_pct: 0,
-        status: 'pending',
+        completion_pct: initialPct,
+        status: initialStatus,
         is_billable: Number(is_billable ? 1 : 0),
         invoice_amount: Number(invoice_amount || 0),
         client_visible: Number(client_visible ? 1 : 0),
         deliverables: deliverables ? JSON.stringify(deliverables) : null,
         tasks: createdTaskRefs,
+        change_requests: normalizeChangeRequests(body.change_requests),
         rating: null,
         email_sent_at: null,
         email_sent_to: null,
@@ -415,11 +608,128 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
         if (k in body) patch[k] = body[k]
       }
       if ('tasks' in body) patch.tasks = normalizeTasks(body.tasks)
+      if ('change_requests' in body) patch.change_requests = normalizeChangeRequests(body.change_requests)
       await models.milestones.updateById(id, { $set: patch })
       const milestone = await models.milestones.findById(id)
       return res.json({ milestone })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to update milestone' })
+    }
+  })
+
+  // Delete a milestone. Its tasks are unlinked (milestone_id cleared) rather
+  // than deleted, so any work already on the kanban board is preserved.
+  router.delete('/:id', async (req, res) => {
+    try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'milestones.delete'))) return res.status(403).json({ error: 'Forbidden' })
+      const id = req.params.id
+      const milestone = await models.milestones.findById(id) as any
+      if (!milestone) return res.status(404).json({ error: 'Milestone not found' })
+      await models.tasks.updateMany({ milestone_id: id }, { $set: { milestone_id: null, pct_of_milestone: 0, updated_at: new Date().toISOString() } })
+      await models.milestones.deleteById(id)
+      return res.json({ message: 'Milestone deleted' })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to delete milestone' })
+    }
+  })
+
+  // Add a task to an existing milestone — creates a real kanban task and
+  // appends a ref to the milestone's tasks snapshot.
+  router.post('/:id/tasks', async (req, res) => {
+    try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'milestones.edit'))) return res.status(403).json({ error: 'Forbidden' })
+      const id = req.params.id
+      const milestone = await models.milestones.findById(id) as any
+      if (!milestone) return res.status(404).json({ error: 'Milestone not found' })
+      const body = req.body || {}
+      const title = String(body.title || '').trim()
+      if (!title) return res.status(400).json({ error: 'Task title is required' })
+      const now = new Date().toISOString()
+      const taskId = generateId('task')
+      // Validate status against THIS project's kanban columns (which may be
+      // customized), falling back to the defaults / 'todo'.
+      let allowedStatuses = ['backlog', 'todo', 'in_progress', 'in_review', 'qa', 'done', 'blocked']
+      try {
+        const cols = await models.kanbanColumns.find({ project_id: milestone.project_id }) as any[]
+        if (cols.length) allowedStatuses = cols.map((c) => String(c.status_key)).filter(Boolean)
+      } catch { /* keep defaults */ }
+      const status = allowedStatuses.includes(String(body.status)) ? body.status : (allowedStatuses.includes('todo') ? 'todo' : allowedStatuses[0] || 'todo')
+      const pct = Math.max(0, Math.min(100, Math.round(Number(body.pct_of_milestone) || 0)))
+      await models.tasks.insertOne({
+        id: taskId,
+        project_id: milestone.project_id,
+        milestone_id: id,
+        sprint_id: null,
+        parent_task_id: null,
+        title,
+        description: body.description ? String(body.description) : null,
+        task_type: 'task',
+        status,
+        completed_at: status === 'done' ? now : null,
+        priority: 'medium',
+        assignee_id: body.assignee_id || null,
+        reporter_id: user?.sub || null,
+        story_points: 0,
+        estimated_hours: 0,
+        logged_hours: 0,
+        due_date: null,
+        pct_of_milestone: pct,
+        reference_url: body.reference_url || null,
+        attachment_url: body.attachment_url || null,
+        attachment_name: body.attachment_name || null,
+        attachment_type: body.attachment_type || null,
+        attachment_size: Number(body.attachment_size) || 0,
+        labels: null,
+        is_client_visible: 1,
+        is_billable: Number(milestone.is_billable ? 1 : 0),
+        position: 0,
+        created_at: now,
+        updated_at: now,
+      })
+      const ref = {
+        id: taskId,
+        title,
+        assignee_id: body.assignee_id || null,
+        assignee_name: body.assignee_name || null,
+        assignee_kind: body.assignee_kind || 'developer',
+        pct_of_milestone: pct,
+        status,
+        reference_url: body.reference_url || null,
+        attachment_url: body.attachment_url || null,
+        attachment_name: body.attachment_name || null,
+        attachment_type: body.attachment_type || null,
+        attachment_size: Number(body.attachment_size) || 0,
+        created_at: now,
+      }
+      const tasksSnap = Array.isArray(milestone.tasks) ? milestone.tasks : []
+      await models.milestones.updateById(id, { $set: { tasks: [...tasksSnap, ref], updated_at: now } })
+      // Keep the persisted completion in sync (the new task may already be done).
+      await recomputeMilestoneProgress(models, id)
+      return res.status(201).json({ task: ref })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to add task' })
+    }
+  })
+
+  // Remove a task from a milestone — deletes the real task and drops its ref.
+  router.delete('/:id/tasks/:taskId', async (req, res) => {
+    try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'milestones.edit'))) return res.status(403).json({ error: 'Forbidden' })
+      const id = req.params.id
+      const taskId = req.params.taskId
+      const milestone = await models.milestones.findById(id) as any
+      if (!milestone) return res.status(404).json({ error: 'Milestone not found' })
+      await models.tasks.deleteById(taskId)
+      const tasksSnap = (Array.isArray(milestone.tasks) ? milestone.tasks : []).filter((t: any) => String(t.id) !== String(taskId))
+      await models.milestones.updateById(id, { $set: { tasks: tasksSnap, updated_at: new Date().toISOString() } })
+      // Removing a done task lowers completion — keep the persisted value in sync.
+      await recomputeMilestoneProgress(models, id)
+      return res.json({ message: 'Task removed', id: taskId })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to remove task' })
     }
   })
 
@@ -430,7 +740,7 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
       const id = req.params.id
       const milestone = await models.milestones.findById(id) as any
       if (!milestone) return res.status(404).json({ error: 'Milestone not found' })
-      if (Number(milestone.completion_pct) < 100) {
+      if (await milestoneEffectivePct(models, milestone) < 100) {
         return res.status(400).json({ error: 'Milestone is not 100% complete yet' })
       }
 
@@ -444,49 +754,12 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
 
       const companyName = String(runtimeEnv.COMPANY_NAME || 'Mariox Software')
       const subject = String(body.subject || `Milestone Completed: ${milestone.title}`).trim()
-      // The milestone.tasks snapshot is frozen at creation. For the
-      // completion email we always want the LIVE status from the tasks
-      // collection so a "completed" task doesn't get rendered as "todo".
-      const liveTasks = await models.tasks.find({ milestone_id: id }) as any[]
-      const usersForEmail = await models.users.find({}) as any[]
-      const usersByIdEmail = new Map(usersForEmail.map((u) => [String(u.id), u]))
-      const refsByIdEmail = new Map<string, any>()
-      if (Array.isArray(milestone.tasks)) {
-        for (const ref of milestone.tasks) refsByIdEmail.set(String(ref.id), ref)
-      }
-      const tasksForEmail = liveTasks.length ? liveTasks : (Array.isArray(milestone.tasks) ? milestone.tasks : [])
-      const taskRows = tasksForEmail
-        .map((t: any) => {
-          const ref = refsByIdEmail.get(String(t.id)) || {}
-          const assigneeName = t.assignee_name
-            || usersByIdEmail.get(String(t.assignee_id))?.full_name
-            || ref.assignee_name
-            || '—'
-          return `<tr>
-            <td style="padding:6px 10px;border-bottom:1px solid #eee">${esc(t.title)}</td>
-            <td style="padding:6px 10px;border-bottom:1px solid #eee;text-transform:capitalize">${esc(String(t.status || '').replace('_', ' '))}</td>
-            <td style="padding:6px 10px;border-bottom:1px solid #eee">${esc(assigneeName)}</td>
-          </tr>`
-        }).join('')
-      const tasksTable = taskRows
-        ? `<table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:13px"><thead><tr><th align="left" style="padding:6px 10px;background:#f1f5f9">Task</th><th align="left" style="padding:6px 10px;background:#f1f5f9">Status</th><th align="left" style="padding:6px 10px;background:#f1f5f9">Assignee</th></tr></thead><tbody>${taskRows}</tbody></table>`
-        : ''
-      const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#0B0B0D;background:#f8fafc;margin:0;padding:24px">
-        <div style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:24px">
-          <h2 style="margin:0 0 8px;color:#0B0B0D">Milestone Completed</h2>
-          <p style="color:#5A5A66;margin:0 0 16px">Hi ${esc(client?.name || client?.full_name || 'Client')}, we are pleased to inform you that the following milestone has been completed.</p>
-          <div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;background:#f8fafc">
-            <div style="font-size:16px;font-weight:600;margin-bottom:6px">${esc(milestone.title)}</div>
-            <div style="font-size:13px;color:#7E7E8F">Project: ${esc(project?.name || '—')}</div>
-            <div style="font-size:13px;color:#7E7E8F">Due Date: ${esc(milestone.due_date || '—')}</div>
-            ${milestone.description ? `<div style="margin-top:8px;font-size:13px;color:#2B2B35">${esc(milestone.description)}</div>` : ''}
-            ${milestone.is_billable ? `<div style="margin-top:8px;font-size:13px;color:#0f766e"><strong>Billable Amount:</strong> ₹${Number(milestone.invoice_amount || 0).toLocaleString('en-IN')}</div>` : ''}
-          </div>
-          ${tasksTable}
-          <p style="margin-top:20px;color:#5A5A66;font-size:13px">We would love to hear your feedback. Please log in to the client portal to share your rating.</p>
-          <p style="margin-top:20px;color:#0B0B0D;font-size:13px">Regards,<br/>${esc(companyName)}</p>
-        </div>
-      </body></html>`
+      // Prefer the sender-edited body from the compose modal; fall back to the
+      // auto-generated one (with LIVE task statuses) when none was provided.
+      const innerHtml = (typeof body.inner_html === 'string' && body.inner_html.trim())
+        ? String(body.inner_html)
+        : await buildMilestoneEmailInner(models, milestone, project, client, companyName)
+      const html = wrapMilestoneEmail(innerHtml)
       const text = `Milestone Completed: ${milestone.title}\nProject: ${project?.name || '—'}\nDue: ${milestone.due_date || '—'}\n\n${milestone.description || ''}`
 
       try {
@@ -516,6 +789,85 @@ export function createMilestonesRouter(models: MongoModels, jwtSecret: string, r
       return res.json({ success: true, email_sent_at: now, email_sent_to: to })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to send milestone email' })
+    }
+  })
+
+  // Editable preview for the change-request quotation email.
+  router.get('/:id/change-request-email-preview', async (req, res) => {
+    try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'milestones.edit'))) return res.status(403).json({ error: 'Forbidden' })
+      const milestone = await models.milestones.findById(req.params.id) as any
+      if (!milestone) return res.status(404).json({ error: 'Milestone not found' })
+      const project = milestone.project_id ? await models.projects.findById(String(milestone.project_id)) as any : null
+      const client = project?.client_id ? await models.clients.findById(String(project.client_id)) as any : null
+      const companyName = String(runtimeEnv.COMPANY_NAME || 'Mariox Software')
+      return res.json({
+        subject: `Change Request Quotation: ${milestone.title}`,
+        to: client?.email || '',
+        inner_html: buildChangeRequestEmailInner(milestone, project, client, companyName),
+      })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to build preview' })
+    }
+  })
+
+  // Send the change-request quotation to the client (editable body from the
+  // compose modal, falling back to the auto-generated table). No 100%-complete
+  // gate — CRs are raised mid-flight.
+  router.post('/:id/send-change-request-email', async (req, res) => {
+    try {
+      const user = req.user as any
+      if (!(await userHasAnyPermission(models, user, 'milestones.edit'))) return res.status(403).json({ error: 'Forbidden' })
+      const id = req.params.id
+      const milestone = await models.milestones.findById(id) as any
+      if (!milestone) return res.status(404).json({ error: 'Milestone not found' })
+      if (!Array.isArray(milestone.change_requests) || !milestone.change_requests.length) {
+        return res.status(400).json({ error: 'No change requests to send' })
+      }
+      const project = milestone.project_id ? await models.projects.findById(String(milestone.project_id)) as any : null
+      const client = project?.client_id ? await models.clients.findById(String(project.client_id)) as any : null
+
+      const body = req.body || {}
+      const to = parseEmailList(body.to || client?.email)
+      const cc = parseEmailList(body.cc)
+      if (!to.length) return res.status(400).json({ error: 'Client email is required' })
+
+      const companyName = String(runtimeEnv.COMPANY_NAME || 'Mariox Software')
+      const subject = String(body.subject || `Change Request Quotation: ${milestone.title}`).trim()
+      const innerHtml = (typeof body.inner_html === 'string' && body.inner_html.trim())
+        ? String(body.inner_html)
+        : buildChangeRequestEmailInner(milestone, project, client, companyName)
+      const html = wrapMilestoneEmail(innerHtml)
+      const grand = milestone.change_requests.reduce((s: number, c: any) => s + (Number(c.total) || 0), 0)
+      const text = `Change Request Quotation: ${milestone.title}\nProject: ${project?.name || '—'}\nGrand Total: ₹${Number(grand).toLocaleString('en-IN')}`
+
+      try {
+        await sendInvoiceViaSmtp({ env: runtimeEnv, to, cc, subject, html, text, brandName: companyName })
+      } catch (mailErr: any) {
+        return res.status(500).json({ error: mailErr?.message || 'Failed to send change-request email' })
+      }
+
+      const now = new Date().toISOString()
+      await models.milestones.updateById(id, { $set: { cr_email_sent_at: now, cr_email_sent_to: to.join(', '), updated_at: now } })
+      try {
+        await models.activityLogs.insertOne({
+          id: generateId('al'),
+          project_id: milestone.project_id || null,
+          entity_type: 'milestone',
+          entity_id: id,
+          action: 'change_request_email_sent',
+          actor_user_id: user?.sub || null,
+          actor_name: user?.name || null,
+          actor_role: user?.role || null,
+          new_value: to.join(', '),
+          created_at: now,
+        })
+      } catch {}
+
+      return res.json({ success: true, cr_email_sent_at: now, cr_email_sent_to: to })
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to send change-request email' })
     }
   })
 

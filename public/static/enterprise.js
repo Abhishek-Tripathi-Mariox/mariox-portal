@@ -651,6 +651,7 @@ async function openProjectDetailModal(projectId) {
     const burnPct = !hideHours && p.total_allocated_hours > 0
       ? Math.round((p.consumed_hours / p.total_allocated_hours) * 100) : 0
     const tlPct = Math.min(100, Math.max(0, parseFloat(p.timeline_progress || 0)))
+    const taskPct = Math.min(100, Math.max(0, parseFloat(p.task_progress || 0)))
     const assignments = (p.assignments || [])
     const myId = _user?.sub || _user?.id || ''
     // The "Assignment" field shows the primary assignee — the worker with the
@@ -719,6 +720,8 @@ async function openProjectDetailModal(projectId) {
               </div>
             </div>
             <div class="progress-bar"><div class="progress-fill ${burnPct >= 100 ? 'rose' : burnPct >= 80 ? 'amber' : 'green'}" style="width:${Math.min(burnPct, 100)}%"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:10px;margin-bottom:4px"><span>Task completion <span style="opacity:.7">(auto)</span></span><span style="color:${taskPct >= 100 ? '#86EFAC' : '#B388FF'};font-weight:700">${taskPct}%</span></div>
+            <div class="progress-bar"><div class="progress-fill ${taskPct >= 100 ? 'green' : 'blue'}" style="width:${taskPct}%"></div></div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Timeline progress ${tlPct}%</div>
           </div>` : ''}
 
@@ -926,6 +929,11 @@ async function renderKanbanBoard(el) {
     const totalTasks = Object.values(cols).reduce((s, tasks) => s + tasks.length, 0)
     const doneTasks = Object.values(cols).filter((tasks, i) => colDefs[i]?.is_done_column).reduce((s, tasks) => s + tasks.length, 0)
 
+    // Multiple board views (Kanban / Table / Calendar / Chart / Timeline) — all
+    // read the same task set and open the same task drawer.
+    const boardView = window._boardView || 'kanban'
+    const flatBoardTasks = Object.values(cols).flat()
+
     el.innerHTML = `
     <div style="display:flex;flex-direction:column;height:100%;gap:0">
       <!-- Board Header -->
@@ -973,15 +981,26 @@ async function renderKanbanBoard(el) {
         <button class="btn btn-xs btn-outline" onclick="switchBoardSprint('${activeSprint.id}')">Focus Sprint</button>
       </div>` : ''}
 
-      <!-- Kanban Board Scrollable Area -->
-      <div style="flex:1;overflow-x:auto;overflow-y:hidden;padding-bottom:8px">
-        <div class="kanban-board" id="kanban-board" style="min-height:calc(100vh - 280px)">
-          ${buildKanbanColumns(cols, colDefs, selProject, selSprint, canManage, canAddTask)}
-        </div>
+      <!-- View switcher -->
+      ${boardViewSwitcherHtml(boardView)}
+
+      <!-- Board view area -->
+      <div style="flex:1;overflow:auto;padding-bottom:8px">
+        ${boardView === 'kanban' ? `
+        <div style="overflow-x:auto;overflow-y:hidden">
+          <div class="kanban-board" id="kanban-board" style="min-height:calc(100vh - 320px)">
+            ${buildKanbanColumns(cols, colDefs, selProject, selSprint, canManage, canAddTask)}
+          </div>
+        </div>`
+        : boardView === 'table' ? boardTableView(flatBoardTasks, colDefs)
+        : boardView === 'calendar' ? boardCalendarView(flatBoardTasks)
+        : boardView === 'chart' ? boardChartView(flatBoardTasks, colDefs)
+        : boardView === 'timeline' ? boardTimelineView(flatBoardTasks)
+        : ''}
       </div>
     </div>`
 
-    setupKanbanDragDrop()
+    if (boardView === 'kanban') setupKanbanDragDrop()
 
     // If the URL carries `?task=…`, reopen that task drawer now that the
     // board is rendered. This restores drawer state after a hard refresh.
@@ -1357,6 +1376,175 @@ function switchBoardSprint(id) {
   const el = document.getElementById('page-kanban-board')
   if (el) { el.dataset.loaded = ''; loadPage('kanban-board', el) }
 }
+
+// ── Board views: Kanban / Table / Calendar / Chart / Timeline ─────────
+function boardViewSwitcherHtml(view) {
+  const views = [['kanban','fa-columns','Kanban'],['table','fa-table','Table'],['calendar','fa-calendar','Calendar'],['chart','fa-chart-column','Chart'],['timeline','fa-stream','Timeline']]
+  return `<div style="display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap">${views.map(([v,ic,l]) => `<button class="btn btn-sm ${v===view?'btn-primary':'btn-outline'}" onclick="switchBoardView('${v}')"><i class="fas ${ic}"></i> ${l}</button>`).join('')}</div>`
+}
+function switchBoardView(v) {
+  window._boardView = v
+  const el = document.getElementById('page-kanban-board')
+  if (el) { el.dataset.loaded = ''; loadPage('kanban-board', el) }
+}
+window.switchBoardView = switchBoardView
+
+async function boardTaskStatus(id, status) {
+  try {
+    await API.put('/tasks/' + id, { status })
+    toast('Status updated', 'success', 900)
+    const el = document.getElementById('page-kanban-board'); if (el) { el.dataset.loaded = ''; loadPage('kanban-board', el) }
+  } catch (e) { toast(e.message, 'error') }
+}
+window.boardTaskStatus = boardTaskStatus
+
+// Table / List view ----------------------------------------------------
+function boardTableView(tasks, colDefs) {
+  const stByKey = {}; (colDefs || []).forEach(c => { stByKey[c.status_key] = { name: c.name, color: c.color } })
+  const statusOpts = (sel) => (colDefs || []).map(c => `<option value="${c.status_key}" ${c.status_key === sel ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')
+  const bd = 'border:1px solid var(--border)'
+  const th = (l, c) => `<th style="${bd};padding:8px 10px;text-align:${c ? 'center' : 'left'};font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted);background:var(--surface-2);position:sticky;top:0;z-index:1">${l}</th>`
+  const rows = tasks.map(t => {
+    const c = stByKey[t.status] || {}
+    return `<tr>
+      <td style="${bd};padding:6px 10px"><span style="cursor:pointer;color:var(--text-primary);font-weight:500" onclick="openTaskDrawer('${t.id}')">${escapeHtml(t.title || 'Untitled')}</span>${t.subtask_count ? ` <span style="font-size:10px;color:var(--text-muted)"><i class="fas fa-code-branch"></i> ${t.subtask_count}</span>` : ''}</td>
+      <td style="${bd};padding:4px 8px">${(colDefs || []).length ? `<select class="form-select" style="font-size:11.5px;min-width:120px" onchange="boardTaskStatus('${t.id}',this.value)">${statusOpts(t.status)}</select>` : `<span style="color:${c.color || '#7E7E8F'}">${escapeHtml((t.status || '').replace(/_/g, ' '))}</span>`}</td>
+      <td style="${bd};padding:6px 10px;font-size:12px;color:var(--text-secondary)">${escapeHtml(t.assignee_name || 'Unassigned')}</td>
+      <td style="${bd};padding:6px 10px;font-size:12px;text-transform:capitalize">${escapeHtml(t.priority || '—')}</td>
+      <td style="${bd};padding:6px 10px;font-size:12px">${t.due_date ? fmtDate(t.due_date) : '—'}</td>
+      <td style="${bd};padding:6px 10px;font-size:12px">${escapeHtml(t.sprint_name || '—')}</td>
+      <td style="${bd};padding:6px 10px;font-size:12px;text-align:center">${Number(t.story_points) || 0}</td>
+    </tr>`
+  }).join('')
+  return `<div style="overflow:auto;max-height:calc(100vh - 320px)"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${th('Task')}${th('Status')}${th('Assignee')}${th('Priority')}${th('Due')}${th('Sprint')}${th('Pts', true)}</tr></thead><tbody>${rows || `<tr><td colspan="7" style="${bd};padding:20px;text-align:center;color:var(--text-muted)">No tasks</td></tr>`}</tbody></table></div>`
+}
+
+// Calendar view --------------------------------------------------------
+function boardCalendarView(tasks) {
+  const ref = window._boardCalMonth || (window._boardCalMonth = { y: new Date().getFullYear(), m: new Date().getMonth() })
+  const { y, m } = ref
+  const first = new Date(y, m, 1)
+  const startDow = first.getDay()
+  const daysIn = new Date(y, m + 1, 0).getDate()
+  const monthName = first.toLocaleString('en-US', { month: 'long', year: 'numeric' })
+  const byDay = {}
+  for (const t of tasks) {
+    if (!t.due_date) continue
+    const d = new Date(t.due_date)
+    if (d.getFullYear() === y && d.getMonth() === m) { const day = d.getDate(); (byDay[day] = byDay[day] || []).push(t) }
+  }
+  const bd = 'border:1px solid var(--border)'
+  const cells = []
+  for (let i = 0; i < startDow; i++) cells.push(`<div style="min-height:92px;${bd};background:var(--surface-2)"></div>`)
+  for (let day = 1; day <= daysIn; day++) {
+    const items = byDay[day] || []
+    cells.push(`<div style="min-height:92px;${bd};padding:4px;overflow:auto">
+      <div style="font-size:11px;color:var(--text-muted);font-weight:600">${day}</div>
+      ${items.map(t => `<div onclick="openTaskDrawer('${t.id}')" title="${escapeHtml(t.title || '')}" style="margin-top:3px;font-size:10.5px;padding:2px 5px;border-radius:4px;background:rgba(169,112,255,.16);color:#C9A7FF;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.title || 'Untitled')}</div>`).join('')}
+    </div>`)
+  }
+  const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-muted);padding:4px">${d}</div>`).join('')
+  const noDue = tasks.filter(t => !t.due_date).length
+  return `<div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <button class="btn btn-sm btn-outline" onclick="boardCalNav(-1)"><i class="fas fa-chevron-left"></i></button>
+      <strong style="font-size:14px;min-width:150px;text-align:center">${monthName}</strong>
+      <button class="btn btn-sm btn-outline" onclick="boardCalNav(1)"><i class="fas fa-chevron-right"></i></button>
+      <button class="btn btn-sm btn-outline" onclick="boardCalToday()">Today</button>
+      ${noDue ? `<span style="font-size:11px;color:var(--text-muted);margin-left:auto">${noDue} task(s) without a due date aren't shown</span>` : ''}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr)">${dow}${cells.join('')}</div>
+  </div>`
+}
+function boardCalNav(delta) {
+  const r = window._boardCalMonth || { y: new Date().getFullYear(), m: new Date().getMonth() }
+  let m = r.m + delta, y = r.y
+  while (m < 0) { m += 12; y-- }
+  while (m > 11) { m -= 12; y++ }
+  window._boardCalMonth = { y, m }
+  const el = document.getElementById('page-kanban-board'); if (el) { el.dataset.loaded = ''; loadPage('kanban-board', el) }
+}
+function boardCalToday() {
+  window._boardCalMonth = { y: new Date().getFullYear(), m: new Date().getMonth() }
+  const el = document.getElementById('page-kanban-board'); if (el) { el.dataset.loaded = ''; loadPage('kanban-board', el) }
+}
+window.boardCalNav = boardCalNav
+window.boardCalToday = boardCalToday
+
+// Chart / Dashboard view ----------------------------------------------
+function boardChartView(tasks, colDefs) {
+  const total = tasks.length
+  const doneKeys = new Set((colDefs || []).filter(c => c.is_done_column).map(c => c.status_key))
+  const done = tasks.filter(t => doneKeys.has(t.status)).length
+  const pct = total ? Math.round(done / total * 100) : 0
+  if (!total) return `<div class="empty-state" style="padding:48px;text-align:center"><i class="fas fa-chart-column" style="font-size:32px;color:var(--text-muted)"></i><p>No tasks to chart</p></div>`
+  const byStatus = {}; (colDefs || []).forEach(c => { byStatus[c.status_key] = { name: c.name, color: c.color, n: 0 } })
+  tasks.forEach(t => { if (byStatus[t.status]) byStatus[t.status].n++; else byStatus[t.status] = { name: t.status, color: '#7E7E8F', n: 1 } })
+  const maxS = Math.max(1, ...Object.values(byStatus).map(s => s.n))
+  const byAss = {}; tasks.forEach(t => { const k = t.assignee_name || 'Unassigned'; byAss[k] = (byAss[k] || 0) + 1 })
+  const maxA = Math.max(1, ...Object.values(byAss))
+  const overdue = tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && !doneKeys.has(t.status)).length
+  const bar = (label, n, max, color) => `<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary)"><span>${escapeHtml(label)}</span><span>${n}</span></div><div style="height:10px;background:var(--surface-2);border-radius:5px;overflow:hidden"><div style="height:100%;width:${Math.round(n / max * 100)}%;background:${color}"></div></div></div>`
+  const stat = (label, val, color) => `<div class="glass-card" style="padding:14px;flex:1;min-width:120px"><div style="font-size:22px;font-weight:800;color:${color}">${val}</div><div style="font-size:11px;color:var(--text-muted)">${label}</div></div>`
+  const statBars = Object.values(byStatus).map(s => bar(s.name, s.n, maxS, s.color || '#A970FF')).join('')
+  const assBars = Object.entries(byAss).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => bar(k, n, maxA, '#A970FF')).join('')
+  return `<div style="display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap">${stat('Total tasks', total, 'var(--text-primary)')}${stat('Completed', done, '#58C68A')}${stat('Completion', pct + '%', '#A970FF')}${stat('Overdue', overdue, '#FF5E3A')}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+      <div class="glass-card" style="padding:16px"><h3 style="font-size:13px;margin:0 0 12px;color:var(--text-primary)">Tasks by status</h3>${statBars}</div>
+      <div class="glass-card" style="padding:16px"><h3 style="font-size:13px;margin:0 0 12px;color:var(--text-primary)">Tasks by assignee</h3>${assBars}</div>
+    </div>
+  </div>`
+}
+
+// Timeline / Gantt view ------------------------------------------------
+// Tasks carry a due_date (and created_at) but no real start_date, so a task
+// with the same created/due day has no span. We pad the window and give such
+// tasks a fixed marker so the axis stays readable even with one/short task.
+function boardTimelineView(tasks) {
+  const DAY = 86400000
+  const items = tasks.filter(t => t.due_date).map(t => {
+    const due = new Date(t.due_date)
+    let start = new Date(t.created_at || t.due_date)
+    if (isNaN(start.getTime()) || start.getTime() > due.getTime()) start = due // no valid range → point at due
+    return { t, start, due, point: (due.getTime() - start.getTime()) < DAY }
+  }).filter(x => !isNaN(x.due.getTime()))
+  if (!items.length) return `<div class="empty-state" style="padding:48px;text-align:center"><i class="fas fa-stream" style="font-size:32px;color:var(--text-muted)"></i><p>No tasks with a due date to plot on the timeline</p></div>`
+
+  let min = Math.min(...items.map(x => x.start.getTime()))
+  let max = Math.max(...items.map(x => x.due.getTime()))
+  // Pad the window (≥3 days each side) so a single / same-day task sits
+  // mid-axis instead of crammed against the edge.
+  const pad = Math.max((max - min) * 0.12, 3 * DAY)
+  min -= pad; max += pad
+  const span = max - min || DAY
+  const pos = (ms) => Math.max(0, Math.min(100, (ms - min) / span * 100))
+
+  const rows = items.sort((a, b) => a.due - b.due).map(x => {
+    const left = pos(x.start.getTime())
+    // Zero/short tasks render as a small fixed marker; real ranges fill width.
+    const width = x.point ? null : Math.max(4, pos(x.due.getTime()) - left)
+    const barStyle = x.point
+      ? `left:calc(${left}% - 7px);width:14px;border-radius:50%`
+      : `left:${left}%;width:${width}%;border-radius:4px`
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <div style="width:180px;flex-shrink:0;font-size:12px;color:var(--text-primary);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" onclick="openTaskDrawer('${x.t.id}')">${escapeHtml(x.t.title || 'Untitled')}</div>
+      <div style="flex:1;position:relative;height:24px;background:var(--surface-2);border-radius:5px;min-width:220px">
+        <div title="${x.point ? 'Due ' + fmtDate(x.t.due_date) : fmtDate(x.t.created_at) + ' → ' + fmtDate(x.t.due_date)}" onclick="openTaskDrawer('${x.t.id}')" style="position:absolute;top:4px;height:16px;background:linear-gradient(90deg,#A970FF,#C56FE6);cursor:pointer;${barStyle}"></div>
+        <span style="position:absolute;top:4px;left:calc(${pos(x.due.getTime())}% + ${x.point ? 12 : 6}px);font-size:10px;color:var(--text-muted);white-space:nowrap;line-height:16px">${fmtDate(x.t.due_date)}</span>
+      </div>
+    </div>`
+  }).join('')
+
+  const mid = (min + max) / 2
+  return `<div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin:0 0 8px 190px">
+      <span>${fmtDate(new Date(min).toISOString())}</span><span>${fmtDate(new Date(mid).toISOString())}</span><span>${fmtDate(new Date(max).toISOString())}</span>
+    </div>
+    ${rows}
+    <div style="font-size:11px;color:var(--text-muted);margin-top:12px"><i class="fas fa-circle-info"></i> Bars span a task's created→due dates; round markers are tasks due on a single day. Tasks have no separate start date yet.</div>
+  </div>`
+}
 function switchBoardMilestone(id) {
   window._kanbanMilestoneId = id
   const el = document.getElementById('page-kanban-board')
@@ -1499,44 +1687,73 @@ async function openTaskDrawer(taskId) {
     // Prime the mention pool so existing comments render @Name highlights.
     if (t.project_id) await loadCommentMentionPool(t.project_id).catch(() => {})
 
+    // Custom columns are loaded lazily on the All Tasks page; if the user
+    // landed on the drawer directly (URL hash deep-link), the cache could be
+    // empty. Refresh it once so the drawer can render any stored values.
+    if (!Array.isArray(_taskColumnsCache) || !_taskColumnsCache.length) {
+      await loadTaskColumns().catch(() => {})
+    }
+    const customCols = Array.isArray(_taskColumnsCache) ? _taskColumnsCache : []
+    // Status dropdown must reflect THIS project's kanban columns (incl. any
+    // custom statuses an admin added to the board), not a fixed list. Same
+    // source the Create Task modal uses.
+    let _boardCols = []
+    if (t.project_id) { try { const cd = await API.get('/tasks/columns/' + t.project_id); _boardCols = (cd && cd.columns) || [] } catch {} }
+    const _statusList = _boardCols.length
+      ? _boardCols.map(c => ({ key: c.status_key, name: c.name }))
+      : ['backlog','todo','in_progress','in_review','qa','done','blocked'].map(s => ({ key: s, name: s.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()) }))
+    // Never drop the task's current status, even if its column was deleted.
+    if (t.status && !_statusList.some(s => s.key === t.status)) {
+      _statusList.push({ key: t.status, name: String(t.status).replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()) })
+    }
+    const _statusOptions = _statusList.map(s => `<option value="${escapeHtml(s.key)}" ${t.status===s.key?'selected':''}>${escapeHtml(s.name)}</option>`).join('')
+    const overdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done'
     const drawerHTML = `
-    <div class="detail-header" style="padding:18px 22px;border-bottom:1px solid var(--border)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        ${taskTypeIcon(t.task_type)}<span style="font-size:11px;color:#5A5A66;font-family:monospace">${t.id}</span>
+    <div class="task-drawer-header">
+      <div class="task-drawer-meta-row">
+        ${taskTypeIcon(t.task_type)}
+        <span class="task-drawer-id">${t.id}</span>
         ${statusBadge(t.status)}${priorityBadge(t.priority)}
-        <button class="close-btn" onclick="closeDrawer()" style="margin-left:auto"><i class="fas fa-times"></i></button>
+        <button class="close-btn" onclick="closeDrawer()"><i class="fas fa-times"></i></button>
       </div>
-      <div style="font-size:17px;font-weight:600;color:#fff;line-height:1.4">${t.title}</div>
+      <h2 class="task-drawer-title">${escapeHtml(t.title || 'Untitled task')}</h2>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 22px;border-bottom:1px solid var(--border)">
-      <div>
-        <div style="font-size:10px;font-weight:600;color:#5A5A66;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Assigned To</div>
-        <div id="task-assignee-cell-${t.id}" style="font-size:13px;color:#e2e8f0;display:flex;align-items:center;gap:6px">
-          ${t.assignee_name ? `${avatar(t.assignee_name,t.assignee_color||'#A970FF','sm')} <span>${t.assignee_name}</span>` : '<span style="color:#7E7E8F">Unassigned</span>'}
+    <div class="task-drawer-meta-grid">
+      <div class="task-drawer-meta-item">
+        <div class="task-drawer-meta-label">Assigned To</div>
+        <div id="task-assignee-cell-${t.id}" class="task-drawer-meta-value" style="display:flex;align-items:center;gap:6px">
+          ${t.assignee_name ? `${avatar(t.assignee_name,t.assignee_color||'#A970FF','sm')} <span>${escapeHtml(t.assignee_name)}</span>` : '<span class="task-drawer-meta-muted">Unassigned</span>'}
           ${hasPermission('tasks.edit_any') ? `<button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="showTaskAssigneeEditor('${t.id}','${t.project_id}','${(t.assignee_id||'')}')" title="Change assignee"><i class="fas fa-user-edit"></i></button>` : ''}
         </div>
       </div>
-      ${metaItem('Assigned By', t.reporter_name ? `<span style="display:inline-flex;align-items:center;gap:6px">${avatar(t.reporter_name, t.reporter_color||'#7E7E8F','sm')}<span>${t.reporter_name}</span></span>` : '—')}
-      ${metaItem('Project', t.project_name ? tc(t.project_name) : '—')}
-      ${metaItem('Sprint', t.sprint_name||'—')}
+      ${metaItem('Assigned By', t.reporter_name ? `<span style="display:inline-flex;align-items:center;gap:6px">${avatar(t.reporter_name, t.reporter_color||'#7E7E8F','sm')}<span>${escapeHtml(t.reporter_name)}</span></span>` : '<span class="task-drawer-meta-muted">—</span>')}
+      ${metaItem('Project', t.project_name ? `<span>${escapeHtml(tc(t.project_name))}</span>` : '<span class="task-drawer-meta-muted">—</span>')}
+      ${metaItem('Sprint', t.sprint_name ? `<span>${escapeHtml(t.sprint_name)}</span>` : '<span class="task-drawer-meta-muted">—</span>')}
       ${metaItem('Due Date', hasPermission('tasks.move')
-        ? `<input type="date" class="form-input" id="task-due-${t.id}" value="${t.due_date ? String(t.due_date).slice(0,10) : ''}" onchange="saveTaskDueDate('${t.id}', this.value)" style="font-size:12.5px;padding:4px 6px;color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#e2e8f0'}"/>`
-        : `<span style="color:${t.due_date&&new Date(t.due_date)<new Date()?'#FF5E3A':'#7E7E8F'}">${fmtDate(t.due_date)}</span>`)}
-      ${_user.role !== 'team' ? metaItem('Hours', `${t.logged_hours||0}h logged / ${t.estimated_hours||0}h est`) : ''}
+        ? `<input type="date" class="form-input task-drawer-date${overdue ? ' is-overdue' : ''}" id="task-due-${t.id}" value="${t.due_date ? String(t.due_date).slice(0,10) : ''}" onchange="saveTaskDueDate('${t.id}', this.value)"/>`
+        : `<span class="${overdue ? 'task-drawer-overdue' : ''}">${fmtDate(t.due_date)}</span>`)}
+      ${_user.role !== 'team' ? metaItem('Hours', `<span>${t.logged_hours||0}h logged · ${t.estimated_hours||0}h est</span>`) : ''}
     </div>
-    <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
-      <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Move to & Update</div>
+    ${customCols.length ? `
+    <div class="task-drawer-section">
+      <div class="task-drawer-section-head">Custom fields</div>
+      <div class="task-drawer-custom-grid">
+        ${customCols.map(c => renderCustomDrawerField(t, c)).join('')}
+      </div>
+    </div>` : ''}
+    <div class="task-drawer-section">
       ${hasPermission('tasks.move') ? `
-        <div id="task-status-btns-${t.id}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-          <select class="form-select" id="task-status-select-${t.id}" style="min-width:180px;max-width:220px">
-            ${['backlog','todo','in_progress','in_review','qa','done','blocked'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase())}</option>`).join('')}
+        <div class="task-drawer-section-head">Status</div>
+        <div id="task-status-btns-${t.id}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <select class="form-select" id="task-status-select-${t.id}" style="min-width:180px;max-width:240px">
+            ${_statusOptions}
           </select>
-          <button class="btn btn-xs btn-primary" onclick="saveTaskStatusAndDesc('${t.id}')"><i class="fas fa-save"></i> Save</button>
+          <button class="btn btn-sm btn-primary" onclick="saveTaskStatusAndDesc('${t.id}')"><i class="fas fa-save"></i> Save</button>
         </div>
-        <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">Description</div>
-        <textarea id="task-desc-input-${t.id}" class="form-textarea" rows="3" placeholder="Describe what's happening on this task…" style="font-size:13px;line-height:1.5">${escapeHtml(t.description || '')}</textarea>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Saving with a new description archives the previous one in history below.</div>
-      ` : `<div>${statusBadge(t.status)}</div>`}
+        <div class="task-drawer-section-head">Description</div>
+        <textarea id="task-desc-input-${t.id}" class="form-textarea" rows="4" placeholder="Describe what's happening on this task…" style="font-size:13px;line-height:1.55">${escapeHtml(t.description || '')}</textarea>
+        <div class="task-drawer-hint">Saving with a new description archives the previous one in history below.</div>
+      ` : `<div class="task-drawer-section-head">Status</div><div>${statusBadge(t.status)}</div>`}
     </div>
     ${(Array.isArray(t.description_history) && t.description_history.length) ? `
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
@@ -1559,16 +1776,24 @@ async function openTaskDrawer(taskId) {
       </div>
     </div>` : ''}
     ${buildAttachmentsSection(t)}
-    ${subtasks.length ? `
     <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
       <div style="font-size:12px;font-weight:600;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Subtasks (${subtasks.length})</div>
       ${subtasks.map(st=>`
         <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(26,26,34,.4)">
           <input type="checkbox" ${st.status==='done'?'checked':''} onchange="updateTaskStatus('${st.id}',this.checked?'done':'todo')" style="accent-color:#A970FF"/>
-          <span style="font-size:13px;color:${st.status==='done'?'#5A5A66':'#e2e8f0'};${st.status==='done'?'text-decoration:line-through':''}">${st.title}</span>
+          <span style="font-size:13px;color:${st.status==='done'?'#5A5A66':'#e2e8f0'};${st.status==='done'?'text-decoration:line-through':''}">${escapeHtml(st.title)}</span>
           ${statusBadge(st.status)}
-        </div>`).join('')}
-    </div>` : ''}
+        </div>`).join('') || '<div style="font-size:12px;color:#5A5A66;margin-bottom:8px">No subtasks yet.</div>'}
+      ${hasPermission('tasks.create') ? `
+      <div style="margin-top:10px;padding:10px;border:1px dashed rgba(179,136,255,.25);border-radius:8px;display:flex;flex-direction:column;gap:6px">
+        <input id="subtask-input-${t.id}" class="form-input" placeholder="Subtask title…" style="font-size:13px"/>
+        <textarea id="subtask-desc-${t.id}" class="form-input" rows="2" placeholder="Description (optional)" style="font-size:12.5px;font-family:inherit"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="subtask-file-${t.id}" type="file" class="form-input" style="font-size:12px;padding:5px;flex:1;min-width:150px"/>
+          <button class="btn btn-sm btn-outline" onclick="addSubtask('${t.id}','${t.project_id}')"><i class="fas fa-plus"></i> Add subtask</button>
+        </div>
+      </div>` : ''}
+    </div>
     <div style="padding:14px 22px">
       <div style="font-size:12px;font-weight:600;color:#7E7E8F;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Comments (${comments.length})</div>
       <div id="task-comments">
@@ -1639,7 +1864,7 @@ async function openTaskDrawer(taskId) {
 }
 
 function metaItem(label, value) {
-  return `<div><div style="font-size:10px;font-weight:600;color:#5A5A66;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${label}</div><div style="font-size:13px;color:#e2e8f0;display:flex;align-items:center;gap:4px">${value}</div></div>`
+  return `<div class="task-drawer-meta-item"><div class="task-drawer-meta-label">${label}</div><div class="task-drawer-meta-value">${value}</div></div>`
 }
 
 // Render one row of a task's activity feed. The backend writes entries with
@@ -1688,6 +1913,43 @@ async function updateTaskStatus(taskId, newStatus) {
     openTaskDrawer(taskId)
   } catch(e) { toast(e.message, 'error') }
 }
+
+// Create a subtask under the open task. POSTs a child task carrying
+// parent_task_id; the backend wires it up and GET /tasks/:id returns it under
+// `subtasks`, so we just re-open the drawer to show it.
+async function addSubtask(parentId, projectId) {
+  const input = document.getElementById('subtask-input-' + parentId)
+  const descEl = document.getElementById('subtask-desc-' + parentId)
+  const fileEl = document.getElementById('subtask-file-' + parentId)
+  const title = (input?.value || '').trim()
+  if (!title) return toast('Enter a subtask title', 'warning')
+  const description = (descEl?.value || '').trim()
+  const file = fileEl && fileEl.files && fileEl.files[0]
+  if (input) input.disabled = true
+  try {
+    const created = await API.post('/tasks', {
+      project_id: projectId,
+      parent_task_id: parentId,
+      title,
+      description: description || null,
+      task_type: 'subtask',
+      status: 'todo',
+    })
+    const newId = created?.task?.id || created?.id
+    if (file && newId) {
+      try {
+        const up = await udUploadFileToServer(file)
+        await API.post(`/tasks/${newId}/attachments`, { url: up.url, file_name: up.file_name || file.name, file_size: up.file_size || file.size, file_type: up.file_type || file.type })
+      } catch (e) { toast('Subtask added, but the file upload failed: ' + e.message, 'error') }
+    }
+    toast('Subtask added', 'success', 1500)
+    openTaskDrawer(parentId)
+  } catch (e) {
+    toast(e.message, 'error')
+    if (input) input.disabled = false
+  }
+}
+window.addSubtask = addSubtask
 
 // Save status + (optionally) description in one shot. If the user changed the
 // description, the back-end archives the previous version under
@@ -2535,6 +2797,15 @@ async function renderSprintsView(el) {
     const projName = tc(projMap[selProject]?.name || selProject)
     const pagination = paginateClient(sprints, _sprintsViewPage, _sprintsPageLimit)
     _sprintsViewPage = pagination.page
+    // Excel-like task→sprint mapping grid: every top-level task in the project
+    // as a row, with inline Sprint / Status dropdowns. Stash sprint options for
+    // the inline handlers to rebuild a row after an edit.
+    let projTasks = []
+    try {
+      const tRes = await API.get('/tasks?project_id=' + encodeURIComponent(selProject))
+      projTasks = (tRes.tasks || tRes.data || []).filter(t => !t.parent_task_id)
+    } catch {}
+    window._sprintGridSprints = sprints.map(s => ({ id: s.id, name: s.name }))
     el.innerHTML = `
     <div class="page-header">
       <div style="display:flex;align-items:center;gap:10px">
@@ -2552,7 +2823,6 @@ async function renderSprintsView(el) {
         ${hasPermission('sprints.create') ? `<button class="btn btn-primary" onclick="showCreateSprintModal('${selProject}')"><i class="fas fa-plus"></i>New Sprint</button>` : ''}
       </div>
     </div>
-    ${pagination.items.length ? listSectionHeader(['Sprint', 'Project / Timeline', 'Stats', 'Status / Progress'], '2.1fr 1.2fr 1fr 1.1fr') : ''}
     ${pagination.items.map(s => {
       const totalSP = Number(s.total_story_points)||0
       const doneSP = Number(s.completed_story_points)||0
@@ -2585,9 +2855,241 @@ async function renderSprintsView(el) {
       </div>`
     }).join('') || '<div class="empty-state"><i class="fas fa-bolt"></i><p>No sprints for this project yet</p></div>'}
     ${renderPager(pagination, 'goSprintsPage', 'goSprintsPage', 'sprints', 'sprints-view')}
+    ${sprintTaskGridHtml(projTasks, sprints)}
     `
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }
+
+// Excel-style sprint planner: tasks grouped by Sprint → Week, with inline
+// Sprint / Week / Status dropdowns, an expandable subtask panel per task, and
+// a "x/y subtasks done" progress cell. Marking every subtask done auto-
+// completes the parent (server-side); the parent can also be set done manually.
+const SG_STATUSES = ['backlog','todo','in_progress','in_review','qa','done','blocked']
+const sgCap = (s) => String(s).replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase())
+// Number of 7-day weeks spanned by a sprint's date range (min 1, default 4).
+function sgWeekCount(sprint) {
+  if (!sprint || !sprint.start_date || !sprint.end_date) return 4
+  const days = Math.floor((new Date(sprint.end_date) - new Date(sprint.start_date)) / 86400000) + 1
+  return Math.max(1, Math.min(26, Math.ceil(days / 7)))
+}
+function sgWeekRange(sprint, wk) {
+  if (!sprint || !sprint.start_date) return ''
+  const start = new Date(sprint.start_date); start.setDate(start.getDate() + (wk - 1) * 7)
+  const end = new Date(start); end.setDate(end.getDate() + 6)
+  const f = d => `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`
+  return `${f(start)} – ${f(end)}`
+}
+
+// Excel-style Tasks × Weeks matrix. Per sprint: rows = tasks, columns =
+// Week 1..N (derived from the sprint dates). Click a week cell to place the
+// task in that week (✓); the Unsched column clears it. Status is an inline
+// cell, and each task expands to manage subtasks (all done → auto-complete).
+function sprintTaskGridHtml(tasks, sprints) {
+  const sprintOpt = (sel) => `<option value="">— Backlog —</option>` +
+    sprints.map(s => `<option value="${s.id}" ${String(sel) === String(s.id) ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')
+  const statusOpt = (sel) => SG_STATUSES.map(s => `<option value="${s}" ${s === sel ? 'selected' : ''}>${sgCap(s)}</option>`).join('')
+
+  // Gridline + sticky-header styling shared by every matrix cell.
+  const bd = 'border:1px solid var(--border)'
+  const th = (label, title) => `<th title="${title || ''}" style="${bd};padding:6px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted);background:var(--surface-2);position:sticky;top:0;z-index:1">${label}</th>`
+
+  const matrixRow = (t, weeks) => {
+    const cur = Number(t.sprint_week) || 0
+    const prog = t.subtask_count ? `${t.subtask_done_count || 0}/${t.subtask_count}` : '—'
+    const allDone = t.subtask_count && Number(t.subtask_done_count) >= Number(t.subtask_count)
+    const wkCell = (w) => {
+      const key = w === null ? 'none' : String(w)
+      const on = w === null ? !cur : cur === w
+      return `<td class="sg-wk" data-week="${key}" onclick="sgSetWeek('${t.id}', ${w === null ? 'null' : w})" title="${w === null ? 'Unscheduled' : 'Week ' + w}" style="${bd};text-align:center;cursor:pointer;min-width:40px;background:${on ? 'rgba(169,112,255,.20)' : 'transparent'};color:${on ? '#C9A7FF' : '#7E7E8F'};font-weight:${on ? '700' : '400'}">${on ? '✓' : ''}</td>`
+    }
+    return `
+    <tr id="sg-row-${t.id}">
+      <td style="${bd};padding:5px 8px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <button class="btn btn-xs btn-outline" style="padding:1px 6px" onclick="sgToggleExpand('${t.id}')" title="Subtasks"><i class="fas fa-caret-right" id="sg-caret-${t.id}"></i></button>
+          <span style="font-size:12.5px;color:var(--text-primary);font-weight:500;cursor:pointer" onclick="openTaskDrawer('${t.id}')">${escapeHtml(t.title || 'Untitled')}</span>
+        </div>
+      </td>
+      <td style="${bd};padding:3px 5px"><select class="form-select" id="sg-status-${t.id}" style="font-size:11.5px;min-width:118px" onchange="sprintGridSetField('${t.id}','status',this.value)">${statusOpt(t.status)}</select></td>
+      <td style="${bd};padding:3px 8px;text-align:center;font-size:11.5px;color:${allDone ? '#58C68A' : '#7E7E8F'}"><span id="sg-prog-${t.id}">${prog}</span></td>
+      ${weeks.map(wkCell).join('')}
+      ${wkCell(null)}
+    </tr>
+    <tr class="sg-subrow" id="sg-subrow-${t.id}" style="display:none"><td colspan="${weeks.length + 4}" id="sg-sub-${t.id}" style="${bd};padding:0;background:rgba(255,255,255,.02)"></td></tr>`
+  }
+
+  const sections = sprints.map(s => {
+    const wkCount = sgWeekCount(s)
+    const weeks = Array.from({ length: wkCount }, (_, i) => i + 1)
+    const mine = tasks.filter(t => String(t.sprint_id) === String(s.id))
+    const head = `<thead><tr>${th('Task')}${th('Status')}${th('✓')}${weeks.map(w => th(`W${w}`, sgWeekRange(s, w))).join('')}${th('Unsched')}</tr></thead>`
+    const body = mine.length
+      ? mine.map(t => matrixRow(t, weeks)).join('')
+      : `<tr><td colspan="${weeks.length + 4}" style="${bd};padding:14px;text-align:center;font-size:12px;color:var(--text-muted)">No tasks in this sprint yet — assign one from the Backlog below.</td></tr>`
+    return `
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><div><h3 style="margin:0;font-size:14px"><i class="fas fa-bolt" style="color:#A970FF;margin-right:6px"></i>${escapeHtml(s.name)}</h3><div style="font-size:11px;color:var(--text-muted);margin-top:2px">${fmtDate(s.start_date)} → ${fmtDate(s.end_date)} · ${wkCount} week${wkCount === 1 ? '' : 's'} · ${mine.length} task${mine.length === 1 ? '' : 's'}</div></div></div>
+        <div class="card-body" style="padding:0;overflow:auto;max-height:520px"><table style="width:100%;border-collapse:collapse;font-size:12px">${head}<tbody>${body}</tbody></table></div>
+      </div>`
+  }).join('')
+
+  // Backlog (no sprint): a small grid to drop tasks into a sprint. Once a
+  // sprint is picked the task appears in that sprint's matrix above.
+  const backlog = tasks.filter(t => !t.sprint_id)
+  const backlogBody = backlog.map(t => `
+    <tr id="sg-row-${t.id}">
+      <td style="${bd};padding:5px 8px;font-size:12.5px;color:var(--text-primary);cursor:pointer" onclick="openTaskDrawer('${t.id}')">${escapeHtml(t.title || 'Untitled')}</td>
+      <td style="${bd};padding:3px 5px"><select class="form-select" style="font-size:11.5px;min-width:150px" onchange="sprintGridSetField('${t.id}','sprint_id',this.value)">${sprintOpt(t.sprint_id)}</select></td>
+      <td style="${bd};padding:3px 5px"><select class="form-select" style="font-size:11.5px;min-width:118px" onchange="sprintGridSetField('${t.id}','status',this.value)">${statusOpt(t.status)}</select></td>
+    </tr>`).join('')
+  const backlogSection = `
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><div><h3 style="margin:0;font-size:14px"><i class="fas fa-inbox" style="color:#7E7E8F;margin-right:6px"></i>Backlog (no sprint)</h3><div style="font-size:11px;color:var(--text-muted);margin-top:2px">${backlog.length} task${backlog.length === 1 ? '' : 's'} · pick a sprint to add it to the matrix.</div></div></div>
+      <div class="card-body" style="padding:0;overflow:auto">${backlog.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${th('Task')}${th('Sprint')}${th('Status')}</tr></thead><tbody>${backlogBody}</tbody></table>` : '<div class="empty-state" style="padding:20px"><i class="fas fa-list-check"></i><p>Nothing in the backlog</p></div>'}</div>
+    </div>`
+
+  return `
+    <div style="margin-top:20px">
+      <h3 style="margin:0 0 4px"><i class="fas fa-table-cells" style="color:#A970FF;margin-right:6px"></i>Sprint Planner — Tasks × Weeks</h3>
+      <div style="font-size:12px;color:var(--text-muted)">Click a week cell to place a task in that week. Expand a row to manage subtasks — all subtasks done auto-completes the task.</div>
+      ${sprints.length ? sections : '<div style="font-size:12px;color:var(--text-muted);margin-top:10px">Create a sprint to start mapping tasks to weeks.</div>'}
+      ${backlogSection}
+    </div>`
+}
+
+// Move a task into a given week of its sprint (or clear it when week=null).
+// Updates the row's week cells in place — no full reload.
+async function sgSetWeek(taskId, week) {
+  try {
+    await API.put('/tasks/' + taskId, { sprint_week: week })
+    const row = document.getElementById('sg-row-' + taskId)
+    if (row) {
+      const key = week === null ? 'none' : String(week)
+      row.querySelectorAll('.sg-wk').forEach((c) => {
+        const on = c.dataset.week === key
+        c.style.background = on ? 'rgba(169,112,255,.20)' : 'transparent'
+        c.style.color = on ? '#C9A7FF' : '#7E7E8F'
+        c.style.fontWeight = on ? '700' : '400'
+        c.textContent = on ? '✓' : ''
+      })
+    }
+    toast('Week updated', 'success', 900)
+  } catch (e) {
+    toast('Week update failed: ' + e.message, 'error')
+  }
+}
+window.sgSetWeek = sgSetWeek
+
+async function sprintGridSetField(taskId, field, value) {
+  try {
+    await API.put('/tasks/' + taskId, { [field]: value || null })
+    const label = field === 'sprint_id' ? 'Sprint' : field === 'sprint_week' ? 'Week' : 'Status'
+    toast(label + ' updated', 'success', 1000)
+    // Changing the sprint changes which weeks are valid — reload so the Week
+    // dropdown + grouping rebuild correctly.
+    if (field === 'sprint_id') {
+      const el = document.getElementById('page-sprints-view'); if (el) { el.dataset.loaded = ''; loadPage('sprints-view', el) }
+    }
+  } catch (e) {
+    toast('Update failed: ' + e.message, 'error')
+    const el = document.getElementById('page-sprints-view'); if (el) { el.dataset.loaded = ''; loadPage('sprints-view', el) }
+  }
+}
+window.sprintGridSetField = sprintGridSetField
+
+// Expand / collapse a task's subtask panel (lazy-loaded on first open).
+function sgToggleExpand(taskId) {
+  const row = document.getElementById('sg-subrow-' + taskId)
+  const caret = document.getElementById('sg-caret-' + taskId)
+  if (!row) return
+  const open = row.style.display !== 'none'
+  if (open) { row.style.display = 'none'; if (caret) caret.className = 'fas fa-caret-right' }
+  else {
+    row.style.display = ''
+    if (caret) caret.className = 'fas fa-caret-down'
+    if (!row.dataset.loaded) { row.dataset.loaded = '1'; sgRenderSubPanel(taskId) }
+  }
+}
+window.sgToggleExpand = sgToggleExpand
+
+// Fetch the task's subtasks and render the inline panel; also re-sync the
+// parent row's progress cell + status dropdown (which may have auto-completed).
+async function sgRenderSubPanel(taskId) {
+  const cell = document.getElementById('sg-sub-' + taskId)
+  if (!cell) return
+  cell.innerHTML = '<div style="padding:10px 16px;color:#7E7E8F;font-size:12px"><i class="fas fa-spinner fa-spin"></i> Loading subtasks…</div>'
+  try {
+    const data = await API.get('/tasks/' + taskId)
+    const subs = data.subtasks || []
+    const projectId = (data.task && data.task.project_id) || ''
+    const done = subs.filter(s => s.status === 'done').length
+    cell.innerHTML = `
+      <div style="padding:8px 16px 12px 40px">
+        ${subs.map(s => {
+          const atts = Array.isArray(s.attachments) ? s.attachments : []
+          return `
+          <div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="checkbox" ${s.status === 'done' ? 'checked' : ''} onchange="sgToggleSub('${s.id}','${taskId}',this.checked)" style="accent-color:#58C68A;cursor:pointer"/>
+              <span style="font-size:12.5px;color:${s.status === 'done' ? '#7E7E8F' : '#e2e8f0'};text-decoration:${s.status === 'done' ? 'line-through' : 'none'};cursor:pointer" onclick="openTaskDrawer('${s.id}')">${escapeHtml(s.title)}</span>
+              <span style="font-size:10px;color:#7E7E8F;margin-left:auto">${escapeHtml(s.assignee_name || '')}</span>
+            </div>
+            ${s.description ? `<div style="font-size:11.5px;color:#9aa;margin:2px 0 0 24px;white-space:pre-wrap">${escapeHtml(s.description)}</div>` : ''}
+            ${atts.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 0 24px">${atts.map(a => `<a href="${escapeHtml(a.url || '#')}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:#86E0A8;text-decoration:none;padding:2px 7px;background:rgba(88,198,138,.1);border:1px solid rgba(88,198,138,.25);border-radius:6px">${attachIsImage(a.file_type, a.url) ? attachThumb(a.url, a.file_type, a.file_name, 24) : '<i class="fas fa-paperclip"></i>'} ${escapeHtml(a.file_name || 'file')}</a>`).join('')}</div>` : ''}
+          </div>`}).join('') || '<div style="font-size:11px;color:#7E7E8F;padding:4px 0">No subtasks yet.</div>'}
+        <div style="margin-top:8px;padding:8px;border:1px dashed rgba(179,136,255,.25);border-radius:8px;display:flex;flex-direction:column;gap:6px">
+          <input id="sg-newsub-${taskId}" class="form-input" style="font-size:12px;padding:5px 8px" placeholder="New subtask title…"/>
+          <textarea id="sg-newsub-desc-${taskId}" class="form-input" rows="2" style="font-size:12px;padding:5px 8px;font-family:inherit" placeholder="Description (optional)"></textarea>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input id="sg-newsub-file-${taskId}" type="file" class="form-input" style="font-size:11px;padding:4px;flex:1;min-width:140px"/>
+            <button class="btn btn-xs btn-primary" onclick="sgAddSub('${taskId}','${projectId}')"><i class="fas fa-plus"></i> Add subtask</button>
+          </div>
+        </div>
+      </div>`
+    const progEl = document.getElementById('sg-prog-' + taskId)
+    if (progEl) {
+      progEl.textContent = subs.length ? `${done}/${subs.length}` : '—'
+      progEl.parentElement.style.color = (subs.length && done >= subs.length) ? '#58C68A' : 'var(--text-secondary)'
+    }
+    const stSel = document.getElementById('sg-status-' + taskId)
+    if (stSel && data.task) stSel.value = data.task.status
+  } catch (e) {
+    cell.innerHTML = `<div style="padding:10px 16px;color:#FF5E3A;font-size:12px">${e.message}</div>`
+  }
+}
+window.sgRenderSubPanel = sgRenderSubPanel
+
+async function sgToggleSub(subId, parentId, checked) {
+  try {
+    await API.put('/tasks/' + subId, { status: checked ? 'done' : 'todo' })
+    await sgRenderSubPanel(parentId)
+  } catch (e) { toast(e.message, 'error') }
+}
+window.sgToggleSub = sgToggleSub
+
+async function sgAddSub(parentId, projectId) {
+  const inp = document.getElementById('sg-newsub-' + parentId)
+  const descEl = document.getElementById('sg-newsub-desc-' + parentId)
+  const fileEl = document.getElementById('sg-newsub-file-' + parentId)
+  const title = (inp && inp.value || '').trim()
+  if (!title) return toast('Enter a subtask title', 'error')
+  if (!projectId) { toast('Missing project for subtask', 'error'); return }
+  const description = (descEl && descEl.value || '').trim()
+  const file = fileEl && fileEl.files && fileEl.files[0]
+  try {
+    const created = await API.post('/tasks', { project_id: projectId, parent_task_id: parentId, title, description: description || null, task_type: 'subtask', status: 'todo' })
+    const newId = created?.task?.id || created?.id
+    // Attach the file (if any) to the freshly created subtask.
+    if (file && newId) {
+      try {
+        const up = await udUploadFileToServer(file)
+        await API.post(`/tasks/${newId}/attachments`, { url: up.url, file_name: up.file_name || file.name, file_size: up.file_size || file.size, file_type: up.file_type || file.type })
+      } catch (e) { toast('Subtask added, but the file upload failed: ' + e.message, 'error') }
+    }
+    await sgRenderSubPanel(parentId)
+  } catch (e) { toast(e.message, 'error') }
+}
+window.sgAddSub = sgAddSub
 
 // Generic project-picker card — used by both the Sprints and Milestones
 // galleries. `onClickFn` is the global function name to invoke when the card
@@ -3230,6 +3732,27 @@ function cmsTaskClearFile(idx) {
   cmsRenderTasks()
 }
 
+// Decide whether an attachment is a previewable image from its mime type or
+// URL/name extension, then render either a thumbnail or a type icon. Shared by
+// the compose picker and the read-only milestone details view.
+function attachIsImage(type, nameOrUrl) {
+  if (type && /^image\//i.test(String(type))) return true
+  return /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?|#|$)/i.test(String(nameOrUrl || ''))
+}
+function attachThumb(url, type, name, size = 40) {
+  if (url && attachIsImage(type, url || name)) {
+    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(name||'')}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:6px;border:1px solid rgba(179,136,255,.25);flex:0 0 auto"/>`
+  }
+  const icon = type === 'link'
+    ? 'fa-link'
+    : /pdf/i.test(String(type)+String(name)) ? 'fa-file-pdf'
+    : /(zip|rar|7z|tar|gz)/i.test(String(type)+String(name)) ? 'fa-file-zipper'
+    : /(doc|word)/i.test(String(type)+String(name)) ? 'fa-file-word'
+    : /(xls|sheet|csv)/i.test(String(type)+String(name)) ? 'fa-file-excel'
+    : 'fa-file'
+  return `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:rgba(169,112,255,.12);border:1px solid rgba(179,136,255,.25);flex:0 0 auto"><i class="fas ${icon}" style="color:#A970FF;font-size:16px"></i></div>`
+}
+
 // ── Milestone attachment file picker ──────────────────────
 // `_cmsFiles` holds raw File objects; `_cmsLinks` holds pasted URLs as
 // { url, name }. Both are merged into `attachments[]` at submit time.
@@ -3275,9 +3798,11 @@ function cmsRenderFilesList() {
   const fileRows = files.map((f, i) => {
     const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
     const tooBig = f.size > 25 * 1024 * 1024
+    // Local preview before upload: object URLs render the chosen image inline.
+    const thumbUrl = attachIsImage(f.type, f.name) ? URL.createObjectURL(f) : ''
     return `
       <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px">
-        <i class="fas fa-file" style="color:#A970FF;font-size:14px"></i>
+        ${attachThumb(thumbUrl, f.type, f.name)}
         <div style="flex:1;min-width:0">
           <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(f.name)}</div>
           <div style="font-size:10.5px;color:${tooBig ? '#FF5E3A' : '#7E7E8F'}">${sizeMb} MB${tooBig ? ' — exceeds 25 MB limit' : ''}</div>
@@ -3297,7 +3822,12 @@ function cmsRenderFilesList() {
   wrap.innerHTML = [...fileRows, ...linkRows].join('')
 }
 
+let _creatingMilestone = false
 async function doCreateMilestone() {
+  // Same belt-and-brace as submitMeetingEditor — guard against a second
+  // click while the upload + POST chain is mid-flight. Milestones have
+  // file uploads inline so the round-trip can be several seconds.
+  if (_creatingMilestone) return
   const projectId = document.getElementById('cms-project').value
   const title = document.getElementById('cms-title').value.trim()
   const due = document.getElementById('cms-due').value
@@ -3316,6 +3846,35 @@ async function doCreateMilestone() {
     if (f.size > 25 * 1024 * 1024) return toast(`"${f.name}" exceeds the 25 MB limit`, 'error')
   }
 
+  // From here on we have async file uploads + the milestone POST. Lock the
+  // function + visually disable the button so the user can't double-submit
+  // during the upload window (often several seconds for large files).
+  _creatingMilestone = true
+  const submitBtn = document.querySelector('.modal-footer .btn-primary')
+  if (submitBtn) {
+    submitBtn.disabled = true
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating…'
+  }
+  const resetSubmitBtn = () => {
+    if (submitBtn && submitBtn.isConnected) {
+      submitBtn.disabled = false
+      submitBtn.innerHTML = '<i class="fas fa-flag"></i> Create Milestone'
+    }
+  }
+
+  // De-dupe identical files attached in more than one place (e.g. the same
+  // file added both to a task and to the milestone-level attachments). Keyed
+  // by name+size+lastModified so the byte-identical file is uploaded to S3
+  // exactly once and the cached result is reused everywhere it appears.
+  const _uploadCache = new Map()
+  const uploadOnce = async (file) => {
+    const key = `${file.name}|${file.size}|${file.lastModified}`
+    if (_uploadCache.has(key)) return _uploadCache.get(key)
+    const uploaded = await udUploadFileToServer(file)
+    _uploadCache.set(key, uploaded)
+    return uploaded
+  }
+
   // Upload any per-task file BEFORE we materialize the task array — every
   // attached file becomes a project document linked back to the task via
   // task_id, plus a `task_attachment_url` we stash on the task itself.
@@ -3328,7 +3887,7 @@ async function doCreateMilestone() {
     let fileSize = Number(t.file_size) || 0
     if (t.file && !fileUrl) {
       try {
-        const uploaded = await udUploadFileToServer(t.file)
+        const uploaded = await uploadOnce(t.file)
         fileUrl = uploaded.url
         fileName = uploaded.file_name || t.file.name
         fileType = uploaded.file_type || t.file.type || null
@@ -3341,6 +3900,8 @@ async function doCreateMilestone() {
         t.file = null
       } catch (e) {
         toast(`Task "${t.title}" file upload failed: ${e.message}`, 'error')
+        _creatingMilestone = false
+        resetSubmitBtn()
         return
       }
     }
@@ -3374,7 +3935,7 @@ async function doCreateMilestone() {
     const attachments = []
     for (const f of pendingFiles) {
       try {
-        const uploaded = await udUploadFileToServer(f)
+        const uploaded = await uploadOnce(f)
         attachments.push({
           file_name: uploaded.file_name || f.name,
           file_url: uploaded.url,
@@ -3386,6 +3947,7 @@ async function doCreateMilestone() {
         return
       }
     }
+    // (resetSubmitBtn runs in `finally` if we end up here without success)
     // Pasted URLs ride along as link-only attachments — file_size=0 and a
     // `link` flag so the backend can keep them out of S3 quota math.
     for (const l of (window._cmsLinks || [])) {
@@ -3406,7 +3968,14 @@ async function doCreateMilestone() {
     closeModal()
     const el = document.getElementById('page-milestones-view'); if(el){el.dataset.loaded='';loadPage('milestones-view',el)}
     const docEl = document.getElementById('page-documents-center'); if (docEl) { docEl.dataset.loaded = '' }
-  } catch(e) { toast(e.message,'error') }
+  } catch(e) {
+    toast(e.message,'error')
+  } finally {
+    _creatingMilestone = false
+    // Success closes the modal (submitBtn no longer in DOM) — only failures
+    // need to restore the original label. resetSubmitBtn handles both.
+    resetSubmitBtn()
+  }
 }
 
 /* ── MILESTONE DETAILS ───────────────────────────────────── */
@@ -3422,6 +3991,25 @@ async function showMilestoneDetailsModal(id) {
     if (!m) return toast('Milestone not found', 'error')
     const projects = projRes.projects || projRes || []
     const project = projects.find(p => String(p.id) === String(m.project_id)) || {}
+    // Assignee options for the "Add task" form (project developers), so a task
+    // added post-creation has the same fields as at create time.
+    let mdmAssignees = []
+    try {
+      const dres = await API.get(`/projects/${m.project_id}/developers`)
+      mdmAssignees = (dres.developers || dres.data || []).map(d => ({ id: d.user_id || d.id, name: d.full_name || d.name || d.user_id }))
+    } catch {}
+    window._mdmAssignees = mdmAssignees
+    // Status options come from THIS project's kanban columns (which can be
+    // customized / more than the defaults), so milestone task statuses match
+    // the board exactly.
+    let mdmStatuses = []
+    try {
+      const cd = await API.get('/tasks/columns/' + m.project_id)
+      mdmStatuses = (cd.columns || cd.data || []).map(c => ({ key: c.status_key, label: c.name }))
+    } catch {}
+    if (!mdmStatuses.length) mdmStatuses = ['todo','in_progress','in_review','done','blocked'].map(s => ({ key: s, label: s.replace('_',' ') }))
+    window._mdmStatuses = mdmStatuses
+    const mdmStatusOpts = (sel) => mdmStatuses.map(s => `<option value="${s.key}" ${s.key === sel ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')
     const tasks = Array.isArray(m.tasks) ? m.tasks : []
     const derivedPct = tasks.length
       ? tasks.filter(t => t.status === 'done').reduce((s, t) => s + (Number(t.pct_of_milestone) || 0), 0)
@@ -3432,6 +4020,11 @@ async function showMilestoneDetailsModal(id) {
     const rating = m.rating || null
     const attachments = (docsRes.documents || docsRes.data || [])
       .filter(d => String(d.source_milestone_id || '') === String(m.id))
+    // Client change requests captured on this milestone. Stashed so the inline
+    // add/remove handlers can PUT the updated array back without a refetch.
+    const changeReqs = Array.isArray(m.change_requests) ? m.change_requests : []
+    window._mdmChangeRequests = changeReqs.map(c => ({ ...c }))
+    const crTotal = changeReqs.reduce((s, c) => s + (Number(c.total) || 0), 0)
 
     showModal(`
     <div class="modal-header">
@@ -3472,17 +4065,34 @@ async function showMilestoneDetailsModal(id) {
               <div style="font-size:13px;color:#e2e8f0">${escapeHtml(t.title)}</div>
               <div style="font-size:12px;color:#7E7E8F"><i class="fas fa-user"></i> ${escapeHtml(t.assignee_name || 'Unassigned')}</div>
               <div style="font-size:12px;color:#C56FE6;font-weight:600"><i class="fas fa-percentage"></i> ${Number(t.pct_of_milestone)||0}% of milestone</div>
-              ${canEdit?`<select class="form-select" style="font-size:12px;padding:4px 6px" onchange="updateMilestoneTaskStatus('${m.id}','${t.id}',this.value)">
-                ${['todo','in_progress','in_review','done','blocked'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
-              </select>`:`<div style="font-size:12px;color:#7E7E8F;text-transform:capitalize">${escapeHtml(String(t.status||'').replace('_',' '))}</div>`}
+              ${canEdit?`<div style="display:flex;gap:6px;align-items:center"><select class="form-select" style="font-size:12px;padding:4px 6px;flex:1" onchange="updateMilestoneTaskStatus('${m.id}','${t.id}',this.value)">
+                ${mdmStatusOpts(t.status)}
+              </select><button class="btn btn-xs btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A;padding:3px 7px" title="Remove task" onclick="mdmRemoveTask('${m.id}','${t.id}')"><i class="fas fa-times"></i></button></div>`:`<div style="font-size:12px;color:#7E7E8F;text-transform:capitalize">${escapeHtml(String(t.status||'').replace('_',' '))}</div>`}
             </div>
             ${hasRefs ? `
             <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:6px;border-top:1px dashed rgba(179,136,255,.18)">
               ${t.reference_url ? `<a href="${escapeHtml(t.reference_url)}" target="_blank" rel="noopener" style="font-size:11px;color:#C9A7FF;text-decoration:none;padding:3px 8px;background:rgba(169,112,255,.1);border:1px solid rgba(169,112,255,.25);border-radius:6px"><i class="fas fa-link"></i> Reference</a>` : ''}
-              ${t.attachment_url ? `<a href="${escapeHtml(t.attachment_url)}" target="_blank" rel="noopener" style="font-size:11px;color:#86E0A8;text-decoration:none;padding:3px 8px;background:rgba(88,198,138,.1);border:1px solid rgba(88,198,138,.25);border-radius:6px"><i class="fas fa-paperclip"></i> ${escapeHtml(t.attachment_name || 'File')}</a>` : ''}
+              ${t.attachment_url ? `<a href="${escapeHtml(t.attachment_url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#86E0A8;text-decoration:none;padding:3px 8px;background:rgba(88,198,138,.1);border:1px solid rgba(88,198,138,.25);border-radius:6px">${attachIsImage(t.attachment_type, t.attachment_url) ? attachThumb(t.attachment_url, t.attachment_type, t.attachment_name, 28) : '<i class="fas fa-paperclip"></i>'} ${escapeHtml(t.attachment_name || 'File')}</a>` : ''}
             </div>` : ''}
           </div>`
         }).join('')}</div>` : '<div style="font-size:12px;color:#7E7E8F;text-align:center;padding:14px;border:1px dashed rgba(179,136,255,.2);border-radius:8px">No tasks added under this milestone.</div>'}
+        ${canEdit ? `
+        <div style="margin-top:10px;padding:12px;border:1px dashed rgba(169,112,255,.3);border-radius:8px;background:rgba(169,112,255,.04);display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:12px;font-weight:600;color:#C9A7FF">Add task</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div class="form-group" style="margin:0;flex:2;min-width:180px"><label class="form-label" style="font-size:11px">Title *</label><input class="form-input" id="mdm-task-title" placeholder="Task title" style="font-size:12.5px"/></div>
+            <div class="form-group" style="margin:0;flex:1;min-width:140px"><label class="form-label" style="font-size:11px">Assignee</label>
+              <select class="form-select" id="mdm-task-assignee" style="font-size:12.5px"><option value="">Unassigned</option>${mdmAssignees.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('')}</select></div>
+            <div class="form-group" style="margin:0;width:90px"><label class="form-label" style="font-size:11px">% of m/s</label><input class="form-input" type="number" min="0" max="100" id="mdm-task-pct" placeholder="0" style="font-size:12.5px"/></div>
+            <div class="form-group" style="margin:0;width:120px"><label class="form-label" style="font-size:11px">Status</label>
+              <select class="form-select" id="mdm-task-status" style="font-size:12.5px">${mdmStatusOpts('')}</select></div>
+          </div>
+          <input class="form-input" id="mdm-task-ref" type="url" placeholder="Reference URL (Figma / Drive / doc…) — optional" style="font-size:12.5px"/>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="mdm-task-file" type="file" class="form-input" style="font-size:11.5px;padding:5px;flex:1;min-width:160px"/>
+            <button class="btn btn-sm btn-primary" onclick="mdmAddTask('${m.id}')"><i class="fas fa-plus"></i> Add task</button>
+          </div>
+        </div>` : ''}
       </div>
 
       ${attachments.length ? `
@@ -3491,7 +4101,7 @@ async function showMilestoneDetailsModal(id) {
         <div style="display:flex;flex-direction:column;gap:6px">
           ${attachments.map(f => `
             <a href="${escapeHtml(f.file_url||'#')}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(11,11,13,.5);border:1px solid rgba(179,136,255,.18);border-radius:8px;text-decoration:none">
-              <i class="fas fa-file" style="color:#A970FF;font-size:14px"></i>
+              ${attachThumb(f.file_url, f.file_type, f.file_name)}
               <div style="flex:1;min-width:0">
                 <div style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(f.file_name || 'file')}</div>
                 <div style="font-size:10.5px;color:#7E7E8F">${f.file_size?(Number(f.file_size)/(1024*1024)).toFixed(2)+' MB':''}${f.file_type?' • '+escapeHtml(f.file_type):''}</div>
@@ -3500,6 +4110,44 @@ async function showMilestoneDetailsModal(id) {
             </a>`).join('')}
         </div>
       </div>` : ''}
+
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap">
+          <div style="font-size:13px;font-weight:600;color:#e2e8f0"><i class="fas fa-pen-to-square" style="color:#FFB874;margin-right:6px"></i>Change Requests (${changeReqs.length})</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            ${crTotal > 0 ? `<div style="font-size:12px;color:#FFB874;font-weight:700">Total: ₹${fmtNum(crTotal)}</div>` : ''}
+            ${canEdit && changeReqs.length ? `<button class="btn btn-xs" style="background:rgba(255,184,116,.15);color:#FFB874;border:1px solid rgba(255,184,116,.4)" onclick="showChangeRequestEmailModal('${m.id}')"><i class="fas fa-envelope"></i> ${m.cr_email_sent_at ? 'Re-send to client' : 'Email to client'}</button>` : ''}
+          </div>
+        </div>
+        ${m.cr_email_sent_at ? `<div style="font-size:11px;color:#58C68A;margin-bottom:8px"><i class="fas fa-check-circle"></i> Quotation sent to ${escapeHtml(m.cr_email_sent_to||'client')} on ${fmtDate(m.cr_email_sent_at)}</div>` : ''}
+        ${changeReqs.length ? `<div style="display:flex;flex-direction:column;gap:8px">${changeReqs.map(c => `
+          <div style="background:rgba(11,11,13,.5);border:1px solid rgba(255,184,116,.22);border-radius:8px;padding:10px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+              <div style="min-width:0">
+                ${c.title ? `<div style="font-size:13px;color:#e2e8f0;font-weight:600">${escapeHtml(c.title)}</div>` : ''}
+                <div style="font-size:12.5px;color:#cbd5e1;white-space:pre-wrap;line-height:1.5">${escapeHtml(c.description || '')}</div>
+              </div>
+              <span style="flex:0 0 auto">${statusBadge(c.status || 'pending')}${canEdit ? `<button class="btn btn-xs btn-outline" style="margin-left:6px;border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="mdmRemoveChangeRequest('${m.id}','${c.id}')" title="Remove"><i class="fas fa-times"></i></button>` : ''}</span>
+            </div>
+            <div style="display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:#7E7E8F">
+              <span><i class="fas fa-clock"></i> ${Number(c.hours)||0} hrs</span>
+              <span><i class="fas fa-indian-rupee-sign"></i> ${fmtNum(Number(c.price_per_hour)||0)}/hr</span>
+              <span style="color:#FFB874;font-weight:700">Total ₹${fmtNum(Number(c.total)||0)}</span>
+            </div>
+          </div>`).join('')}</div>` : '<div style="font-size:12px;color:#7E7E8F;text-align:center;padding:12px;border:1px dashed rgba(255,184,116,.25);border-radius:8px">No change requests yet.</div>'}
+        ${canEdit ? `
+        <div style="margin-top:10px;padding:10px;border:1px dashed rgba(255,184,116,.3);border-radius:8px;background:rgba(255,184,116,.04)">
+          <div style="font-size:12px;font-weight:600;color:#FFB874;margin-bottom:6px">Add change request</div>
+          <input class="form-input" id="mdm-cr-title" placeholder="Short title (e.g. Add payment gateway)" style="margin-bottom:6px;font-size:12.5px"/>
+          <textarea class="form-textarea" id="mdm-cr-desc" rows="2" placeholder="Full description — what needs to change?" style="margin-bottom:6px;font-size:12.5px"></textarea>
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+            <div class="form-group" style="margin:0;width:110px"><label class="form-label" style="font-size:11px">Hours</label><input class="form-input" type="number" min="0" step="0.5" id="mdm-cr-hours" placeholder="0" oninput="mdmCrCalc()"/></div>
+            <div class="form-group" style="margin:0;width:130px"><label class="form-label" style="font-size:11px">Price / hour (₹)</label><input class="form-input" type="number" min="0" id="mdm-cr-rate" placeholder="0" oninput="mdmCrCalc()"/></div>
+            <div style="flex:1;min-width:120px;text-align:right"><div style="font-size:11px;color:#7E7E8F">Total</div><div id="mdm-cr-total" style="font-size:16px;font-weight:700;color:#FFB874">₹0</div></div>
+            <button class="btn btn-sm btn-primary" onclick="mdmAddChangeRequest('${m.id}')"><i class="fas fa-plus"></i> Add</button>
+          </div>
+        </div>` : ''}
+      </div>
 
       ${rating ? `
       <div style="padding:14px;background:rgba(169,112,255,.08);border:1px solid rgba(169,112,255,.3);border-radius:10px;margin-bottom:10px">
@@ -3519,9 +4167,161 @@ async function showMilestoneDetailsModal(id) {
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn btn-outline" onclick="closeModal()">Close</button>
       ${pct>=100 && canEdit ? `<button class="btn" style="background:rgba(169,112,255,.15);color:#A970FF;border:1px solid rgba(169,112,255,.4)" onclick="showMilestoneEmailModal('${m.id}')"><i class="fas fa-envelope"></i> ${m.email_sent_at?'Re-send Email':'Email Client'}</button>`:''}
+      ${hasPermission('milestones.delete') ? `<button class="btn btn-outline" style="color:#FF5E3A;border-color:rgba(255,94,58,.4)" onclick="mdmDeleteMilestone('${m.id}','${escapeHtml((m.title||'').replace(/'/g,"\\'"))}')"><i class="fas fa-trash"></i> Delete Milestone</button>` : ''}
     </div>`, 'modal-lg')
   } catch(e) { toast(e.message, 'error') }
 }
+
+// Live total in the "add change request" form (hours × price/hour).
+function mdmCrCalc() {
+  const h = Number(document.getElementById('mdm-cr-hours')?.value) || 0
+  const r = Number(document.getElementById('mdm-cr-rate')?.value) || 0
+  const el = document.getElementById('mdm-cr-total')
+  if (el) el.textContent = '₹' + fmtNum(Math.round(h * r * 100) / 100)
+}
+window.mdmCrCalc = mdmCrCalc
+
+async function mdmAddChangeRequest(milestoneId) {
+  const title = (document.getElementById('mdm-cr-title')?.value || '').trim()
+  const description = (document.getElementById('mdm-cr-desc')?.value || '').trim()
+  const hours = Number(document.getElementById('mdm-cr-hours')?.value) || 0
+  const price_per_hour = Number(document.getElementById('mdm-cr-rate')?.value) || 0
+  if (!title && !description) return toast('Add a title or description for the change request', 'error')
+  const list = (window._mdmChangeRequests || []).slice()
+  list.push({
+    id: 'cr_' + Math.random().toString(36).slice(2, 9),
+    title, description, hours, price_per_hour,
+    total: Math.round(hours * price_per_hour * 100) / 100,
+    status: 'pending',
+  })
+  try {
+    await API.put('/milestones/' + milestoneId, { change_requests: list })
+    toast('Change request added', 'success', 1500)
+    closeModal()
+    showMilestoneDetailsModal(milestoneId)
+    const el = document.getElementById('page-milestones-view'); if (el) { el.dataset.loaded = '' }
+  } catch (e) { toast(e.message, 'error') }
+}
+window.mdmAddChangeRequest = mdmAddChangeRequest
+
+async function mdmRemoveChangeRequest(milestoneId, crId) {
+  if (!confirm('Remove this change request?')) return
+  const list = (window._mdmChangeRequests || []).filter(c => String(c.id) !== String(crId))
+  try {
+    await API.put('/milestones/' + milestoneId, { change_requests: list })
+    toast('Change request removed', 'success', 1500)
+    closeModal()
+    showMilestoneDetailsModal(milestoneId)
+    const el = document.getElementById('page-milestones-view'); if (el) { el.dataset.loaded = '' }
+  } catch (e) { toast(e.message, 'error') }
+}
+window.mdmRemoveChangeRequest = mdmRemoveChangeRequest
+
+// Add a task to an existing milestone.
+async function mdmAddTask(milestoneId) {
+  const title = (document.getElementById('mdm-task-title')?.value || '').trim()
+  if (!title) return toast('Enter a task title', 'error')
+  const pct = Number(document.getElementById('mdm-task-pct')?.value) || 0
+  const assigneeId = document.getElementById('mdm-task-assignee')?.value || ''
+  const status = document.getElementById('mdm-task-status')?.value || 'todo'
+  const reference_url = (document.getElementById('mdm-task-ref')?.value || '').trim()
+  const assignee = (window._mdmAssignees || []).find(a => String(a.id) === String(assigneeId))
+  const fileEl = document.getElementById('mdm-task-file')
+  const file = fileEl && fileEl.files && fileEl.files[0]
+  const body = {
+    title,
+    pct_of_milestone: pct,
+    status,
+    assignee_id: assigneeId || null,
+    assignee_name: assignee ? assignee.name : null,
+    reference_url: reference_url || null,
+  }
+  try {
+    // Upload the attachment first (if any) so it rides along with the task.
+    if (file) {
+      const up = await udUploadFileToServer(file)
+      body.attachment_url = up.url
+      body.attachment_name = up.file_name || file.name
+      body.attachment_type = up.file_type || file.type || null
+      body.attachment_size = up.file_size || file.size || 0
+    }
+    await API.post(`/milestones/${milestoneId}/tasks`, body)
+    toast('Task added', 'success', 1500)
+    closeModal()
+    showMilestoneDetailsModal(milestoneId)
+    const el = document.getElementById('page-milestones-view'); if (el) { el.dataset.loaded = '' }
+  } catch (e) { toast(e.message, 'error') }
+}
+window.mdmAddTask = mdmAddTask
+
+async function mdmRemoveTask(milestoneId, taskId) {
+  if (!confirm('Remove this task from the milestone? The task will be deleted.')) return
+  try {
+    await API.delete(`/milestones/${milestoneId}/tasks/${taskId}`)
+    toast('Task removed', 'success', 1500)
+    closeModal()
+    showMilestoneDetailsModal(milestoneId)
+    const el = document.getElementById('page-milestones-view'); if (el) { el.dataset.loaded = '' }
+  } catch (e) { toast(e.message, 'error') }
+}
+window.mdmRemoveTask = mdmRemoveTask
+
+async function mdmDeleteMilestone(milestoneId, title) {
+  if (!confirm(`Delete milestone "${title || ''}"? Its tasks stay on the board but are unlinked. This cannot be undone.`)) return
+  try {
+    await API.delete(`/milestones/${milestoneId}`)
+    toast('Milestone deleted', 'success')
+    closeModal()
+    const el = document.getElementById('page-milestones-view'); if (el) { el.dataset.loaded = ''; loadPage('milestones-view', el) }
+  } catch (e) { toast(e.message, 'error') }
+}
+window.mdmDeleteMilestone = mdmDeleteMilestone
+
+// Compose + send the change-request quotation email to the client. Mirrors the
+// milestone completion email: server-rendered, editable preview body.
+async function showChangeRequestEmailModal(id) {
+  try {
+    const preview = await API.get(`/milestones/${id}/change-request-email-preview`)
+    showModal(`
+    <div class="modal-header"><h3><i class="fas fa-envelope" style="color:#FFB874"></i> Email Change Requests to Client</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">To *</label><input class="form-input" id="cre-to" value="${escapeHtml(preview.to || '')}" placeholder="client@example.com"/></div>
+      <div class="form-group"><label class="form-label">CC</label><input class="form-input" id="cre-cc" placeholder="optional, comma-separated"/></div>
+      <div class="form-group"><label class="form-label">Subject</label><input class="form-input" id="cre-subject" value="${escapeHtml(preview.subject || '')}"/></div>
+      <div class="form-group">
+        <label class="form-label">Message body <span style="font-size:11px;color:#7E7E8F;font-weight:400">— preview below, click to edit</span></label>
+        <div id="cre-body" contenteditable="true" style="background:#fff;color:#0B0B0D;border:1px solid rgba(255,184,116,.4);border-radius:8px;padding:16px;max-height:360px;overflow:auto;font-family:Arial,sans-serif;font-size:13px;line-height:1.5">${preview.inner_html || ''}</div>
+        <div style="font-size:11px;color:#7E7E8F;margin-top:6px"><i class="fas fa-circle-info"></i> The quote (hours × rate, totals) is built from the change requests. Edit anything before sending.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="cre-send-btn" onclick="doSendChangeRequestEmail('${id}')"><i class="fas fa-paper-plane"></i> Send Quotation</button>
+    </div>`, 'modal-lg')
+  } catch(e) { toast(e.message,'error') }
+}
+window.showChangeRequestEmailModal = showChangeRequestEmailModal
+
+async function doSendChangeRequestEmail(id) {
+  const btn = document.getElementById('cre-send-btn')
+  const to = document.getElementById('cre-to').value.trim()
+  const cc = document.getElementById('cre-cc').value.trim()
+  const subject = document.getElementById('cre-subject').value.trim()
+  const inner_html = document.getElementById('cre-body')?.innerHTML || ''
+  if (!to) return toast('Recipient email is required','error')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
+  try {
+    await API.post(`/milestones/${id}/send-change-request-email`, { to, cc, subject, inner_html })
+    toast('Change-request quotation sent to client','success')
+    closeModal()
+    showMilestoneDetailsModal(id)
+    const el = document.getElementById('page-milestones-view'); if(el){el.dataset.loaded=''}
+  } catch(e) {
+    toast(e.message,'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Quotation' }
+  }
+}
+window.doSendChangeRequestEmail = doSendChangeRequestEmail
 
 async function saveMilestoneProgress(id) {
   const pctEl = document.getElementById('mdm-progress')
@@ -3553,14 +4353,18 @@ async function updateMilestoneTaskStatus(milestoneId, taskId, status) {
 /* ── MILESTONE EMAIL CLIENT (on 100% complete) ───────────── */
 async function showMilestoneEmailModal(id) {
   try {
-    const [msData, projRes, clientsRes] = await Promise.all([API.get('/milestones'), API.get('/projects'), API.get('/clients').catch(()=>({clients:[]}))])
-    const m = (msData.milestones||[]).find(x => String(x.id) === String(id))
+    const m = (await API.get('/milestones')).milestones?.find(x => String(x.id) === String(id))
     if (!m) return toast('Milestone not found','error')
-    if (Number(m.completion_pct) < 100) return toast('Milestone is not 100% complete','warning')
-    const project = (projRes.projects||projRes||[]).find(p => String(p.id) === String(m.project_id)) || {}
-    const clients = clientsRes.clients || clientsRes || []
-    const client = clients.find(c => String(c.id) === String(project.client_id)) || {}
-    const defaultEmail = client.email || ''
+    // Mirror the details view: completion is derived from done tasks (or an
+    // explicit 'completed' status), not the possibly-stale stored percentage.
+    const _mt = Array.isArray(m.tasks) ? m.tasks : []
+    const _derived = _mt.length ? _mt.filter(t => t.status === 'done').reduce((s,t)=>s+(Number(t.pct_of_milestone)||0),0) : Number(m.completion_pct)||0
+    const _effPct = m.status === 'completed' ? 100 : Math.min(100, Math.round(_derived))
+    if (_effPct < 100) return toast('Milestone is not 100% complete','warning')
+    // Pull the server-rendered default subject + body so the sender previews
+    // (and can edit) the exact content before it goes out.
+    const preview = await API.get(`/milestones/${id}/email-preview`)
+    const defaultEmail = preview.to || ''
 
     showModal(`
     <div class="modal-header"><h3><i class="fas fa-envelope" style="color:#A970FF"></i> Email Client — Milestone Complete</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
@@ -3568,13 +4372,17 @@ async function showMilestoneEmailModal(id) {
       <div style="font-size:13px;color:#7E7E8F;margin-bottom:14px">Notify the client that <strong style="color:#e2e8f0">${escapeHtml(m.title)}</strong> is now 100% complete.</div>
       <div class="form-group"><label class="form-label">To *</label><input class="form-input" id="mse-to" value="${escapeHtml(defaultEmail)}" placeholder="client@example.com"/></div>
       <div class="form-group"><label class="form-label">CC</label><input class="form-input" id="mse-cc" placeholder="optional, comma-separated"/></div>
-      <div class="form-group"><label class="form-label">Subject</label><input class="form-input" id="mse-subject" value="Milestone Completed: ${escapeHtml(m.title)}"/></div>
-      <div style="font-size:11px;color:#7E7E8F">A summary of the milestone (project, due date, tasks, billing) will be included automatically.</div>
+      <div class="form-group"><label class="form-label">Subject</label><input class="form-input" id="mse-subject" value="${escapeHtml(preview.subject || ('Milestone Completed: ' + m.title))}"/></div>
+      <div class="form-group">
+        <label class="form-label">Message body <span style="font-size:11px;color:#7E7E8F;font-weight:400">— preview below, click to edit</span></label>
+        <div id="mse-body" contenteditable="true" style="background:#fff;color:#0B0B0D;border:1px solid rgba(179,136,255,.35);border-radius:8px;padding:16px;max-height:340px;overflow:auto;font-family:Arial,sans-serif;font-size:13px;line-height:1.5">${preview.inner_html || ''}</div>
+        <div style="font-size:11px;color:#7E7E8F;margin-top:6px"><i class="fas fa-circle-info"></i> Edits here are sent exactly as shown. Leave it as-is to send the auto-generated summary.</div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" id="mse-send-btn" onclick="doSendMilestoneEmail('${id}')"><i class="fas fa-paper-plane"></i> Send Email</button>
-    </div>`)
+    </div>`, 'modal-lg')
   } catch(e) { toast(e.message,'error') }
 }
 
@@ -3583,10 +4391,11 @@ async function doSendMilestoneEmail(id) {
   const to = document.getElementById('mse-to').value.trim()
   const cc = document.getElementById('mse-cc').value.trim()
   const subject = document.getElementById('mse-subject').value.trim()
+  const inner_html = document.getElementById('mse-body')?.innerHTML || ''
   if (!to) return toast('Recipient email is required','error')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
   try {
-    await API.post(`/milestones/${id}/send-email`, { to, cc, subject })
+    await API.post(`/milestones/${id}/send-email`, { to, cc, subject, inner_html })
     toast('Email sent to client','success')
     closeModal()
     const el = document.getElementById('page-milestones-view'); if(el){el.dataset.loaded='';loadPage('milestones-view',el)}
@@ -3663,18 +4472,45 @@ async function doSubmitMilestoneRating(id) {
 }
 
 /* ── MY TASKS ────────────────────────────────────────────── */
+// Cache for custom column definitions. Refreshed on each render so admins
+// can immediately see new/edited columns reflect in the table.
+let _taskColumnsCache = []
+
+function taskColumnsCanManage() {
+  if (String(_user?.role || '').toLowerCase() === 'admin') return true
+  return typeof hasAnyPermission === 'function' && hasAnyPermission(['tasks.manage_columns'])
+}
+
+async function loadTaskColumns() {
+  try {
+    const res = await API.get('/task-columns')
+    _taskColumnsCache = res.columns || res.data || []
+  } catch {
+    _taskColumnsCache = []
+  }
+}
+
 async function renderMyTasks(el) {
   el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
     const assigneeId = _user.role === 'developer' ? (_user.sub || _user.id || '') : ''
-    const data = await API.get('/tasks' + (assigneeId?'?assignee_id='+assigneeId:''))
+    const [data] = await Promise.all([
+      API.get('/tasks' + (assigneeId?'?assignee_id='+assigneeId:'')),
+      loadTaskColumns(),
+    ])
     const tasks = data.tasks||[]
     const pagination = paginateClient(tasks, _myTasksPage, _myTasksPageLimit)
     _myTasksPage = pagination.page
 
+    // Custom columns headers + cells, rendered per row by the helpers below.
+    const customCols = _taskColumnsCache
+    const customHeaders = customCols.map(c =>
+      `<th title="${escapeHtml(c.key)}" style="white-space:nowrap">${escapeHtml(c.label)}</th>`
+    ).join('')
+
     el.innerHTML = `
     <div class="page-header">
-      <div><h1 class="page-title">${_user.role==='developer'?'My Tasks':'All Tasks'}</h1><p class="page-subtitle">${pagination.total} tasks</p></div>
+      <div><h1 class="page-title">${_user.role==='developer'?'My Tasks':'All Tasks'}</h1><p class="page-subtitle">${pagination.total} tasks${customCols.length ? ` · ${customCols.length}/20 custom columns` : ''}</p></div>
       <div class="page-actions">
         <select class="form-select" style="width:140px" onchange="filterByStatus(this.value,'my-tasks-table')">
           <option value="">All Status</option>
@@ -3684,16 +4520,17 @@ async function renderMyTasks(el) {
           <option value="">All Priority</option>
           ${['critical','high','medium','low'].map(p=>`<option value="${p}">${p}</option>`).join('')}
         </select>
+        ${taskColumnsCanManage() ? `<button class="btn btn-secondary" onclick="openManageTaskColumnsModal()"><i class="fas fa-table-columns"></i> Manage Columns</button>` : ''}
         ${hasPermission('tasks.create') ? `<button class="btn btn-primary" onclick="showCreateTaskModal()"><i class="fas fa-plus"></i>New Task</button>` : ''}
       </div>
     </div>
     <div class="card">
       <div class="card-body p-0 table-wrap">
         <table class="data-table" id="my-tasks-table">
-          <thead><tr><th>Task</th><th>Project</th><th>Type</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Due</th>${_user.role !== 'team' ? '<th>Hours</th>' : ''}<th></th></tr></thead>
+          <thead><tr><th>Task</th><th>Project</th><th>Type</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Due</th>${_user.role !== 'team' ? '<th>Hours</th>' : ''}${customHeaders}<th></th></tr></thead>
           <tbody>
             ${pagination.items.map(t=>`
-            <tr data-status="${t.status}" data-priority="${t.priority}">
+            <tr data-status="${t.status}" data-priority="${t.priority}" data-task-id="${t.id}">
               <td style="max-width:220px">
                 <div style="display:flex;align-items:center;gap:6px">${taskTypeIcon(t.task_type)}<span style="font-weight:500;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.title}</span></div>
                 ${t.sprint_name?`<div style="font-size:10px;color:#5A5A66;margin-top:2px"><i class="fas fa-bolt"></i> ${t.sprint_name}</div>`:''}
@@ -3705,6 +4542,7 @@ async function renderMyTasks(el) {
               <td>${t.assignee_name?`<div style="display:flex;align-items:center;gap:5px">${avatar(t.assignee_name,t.assignee_color,'sm')}<span style="font-size:12px">${t.assignee_name}</span></div>`:'<span style="color:#5A5A66;font-size:12px">—</span>'}</td>
               <td style="font-size:12px;color:${t.due_date&&new Date(t.due_date)<new Date()&&t.status!=='done'?'#FF5E3A':'#7E7E8F'}">${fmtDate(t.due_date)}</td>
               ${_user.role !== 'team' ? `<td style="font-size:12px">${t.logged_hours||0}/${t.estimated_hours||0}h</td>` : ''}
+              ${customCols.map(c => renderCustomCell(t, c)).join('')}
               <td><button class="btn btn-xs btn-outline" onclick="openTaskDrawer('${t.id}')"><i class="fas fa-eye"></i></button></td>
             </tr>`).join('')}
           </tbody>
@@ -3714,6 +4552,368 @@ async function renderMyTasks(el) {
     </div>`
   } catch(e) { el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>` }
 }
+
+// ── Custom task columns: read-only display in the table ───────
+// Per request: the table is for AT-A-GLANCE viewing. Editing happens in the
+// task drawer (eye icon) where every column gets a proper, full-size input.
+// Each render returns a <td> with a formatted plain-text representation of
+// the stored value — no inline inputs, no native browser chrome.
+
+// Coerce a stored custom value into a normalised array of option values for
+// multi-select column types. Handles every shape we've ever written:
+//   - ["yes", "no"]             — current array shape
+//   - "yes"                     — single string (legacy radio-style)
+//   - true / false              — legacy single-checkbox boolean (skipped:
+//                                  no option to map onto, so show nothing)
+//   - null / undefined / ''     — nothing selected
+function _multiValueList(v) {
+  if (Array.isArray(v)) return v.map(x => String(x)).filter(Boolean)
+  if (v == null || v === '' || typeof v === 'boolean') return []
+  return [String(v)]
+}
+
+function _labelForValue(col, value) {
+  const opts = Array.isArray(col.options) ? col.options : []
+  const m = opts.find(o => String(o.value) === String(value))
+  return m ? m.label : String(value)
+}
+
+function renderCustomCell(task, col) {
+  const v = (task.custom_values || {})[col.key]
+  const empty = '<span class="tc-cell-empty">—</span>'
+
+  if (col.type === 'checkbox') {
+    // Multi-select — render every selected option as a chip; legacy boolean
+    // values are filtered out inside _multiValueList.
+    const values = _multiValueList(v)
+    if (!values.length) return `<td class="tc-cell tc-cell-text">${empty}</td>`
+    const chips = values.map(val =>
+      `<span class="tc-cell-chip">${escapeHtml(_labelForValue(col, val))}</span>`
+    ).join(' ')
+    return `<td class="tc-cell tc-cell-multi">${chips}</td>`
+  }
+  if (col.type === 'dropdown' || col.type === 'radio') {
+    // Single-select. Coerce a legacy array (from when dropdown was briefly
+    // multi-select) down to its first item so the chip still renders.
+    const single = Array.isArray(v) ? v[0] : v
+    if (single == null || single === '') return `<td class="tc-cell tc-cell-text">${empty}</td>`
+    return `<td class="tc-cell tc-cell-text"><span class="tc-cell-chip">${escapeHtml(_labelForValue(col, single))}</span></td>`
+  }
+  if (col.type === 'date') {
+    if (!v) return `<td class="tc-cell tc-cell-date">${empty}</td>`
+    return `<td class="tc-cell tc-cell-date">${escapeHtml(fmtDate(v))}</td>`
+  }
+  if (col.type === 'textarea') {
+    const full = String(v || '')
+    if (!full) return `<td class="tc-cell tc-cell-textarea">${empty}</td>`
+    const trunc = full.length > 50 ? full.slice(0, 47) + '…' : full
+    return `<td class="tc-cell tc-cell-textarea" title="${escapeHtml(full)}">${escapeHtml(trunc)}</td>`
+  }
+  // text (default)
+  const text = String(v || '')
+  return `<td class="tc-cell tc-cell-text">${text ? escapeHtml(text) : empty}</td>`
+}
+
+// Task-drawer flavour of the same editors used in the table — fuller width,
+// real labels above each field, and the textarea is multi-line by default
+// (it's the only place a long note gets meaningful room).
+function renderCustomDrawerField(task, col) {
+  const v = (task.custom_values || {})[col.key]
+  const onChange = `saveCustomCell('${task.id}','${escapeHtml(col.key)}',`
+  let body = ''
+
+  if (col.type === 'checkbox') {
+    // Multi-select: render each option as an inline checkbox. The handler
+    // collects ALL currently-checked siblings into an array — the backend
+    // stores it as-is so reordering/removing options is a no-op for tasks.
+    const selected = new Set(_multiValueList(v))
+    const opts = Array.isArray(col.options) ? col.options : []
+    const checkboxes = opts.map(o => {
+      const checked = selected.has(String(o.value))
+      return `<label class="task-drawer-checkbox">
+        <input type="checkbox" value="${escapeHtml(o.value)}" data-tc-key="${escapeHtml(col.key)}" data-tc-task="${task.id}" ${checked ? 'checked' : ''} onchange="_tcMultiCheckboxChange(this)"/>
+        <span>${escapeHtml(o.label)}</span>
+      </label>`
+    }).join('')
+    body = `<div class="task-drawer-checkbox-group">${checkboxes || '<span class="task-drawer-meta-muted">No options configured</span>'}</div>`
+  } else if (col.type === 'dropdown') {
+    // Single-select dropdown — classic chevron style. If a legacy multi-value
+    // array is stored, use the first item so the field still renders cleanly.
+    const single = Array.isArray(v) ? String(v[0] || '') : String(v || '')
+    const opts = Array.isArray(col.options) ? col.options : []
+    const optsHtml = ['<option value="">— Select —</option>', ...opts.map(o =>
+      `<option value="${escapeHtml(o.value)}" ${single === String(o.value) ? 'selected' : ''}>${escapeHtml(o.label)}</option>`
+    )].join('')
+    body = `<select class="form-select task-drawer-custom-input" onchange="${onChange}this.value)">${optsHtml}</select>`
+  } else if (col.type === 'radio') {
+    const opts = Array.isArray(col.options) ? col.options : []
+    const optsHtml = ['<option value="">— Select —</option>', ...opts.map(o =>
+      `<option value="${escapeHtml(o.value)}" ${String(v || '') === String(o.value) ? 'selected' : ''}>${escapeHtml(o.label)}</option>`
+    )].join('')
+    body = `<select class="form-select task-drawer-custom-input" onchange="${onChange}this.value)">${optsHtml}</select>`
+  } else if (col.type === 'date') {
+    const dateVal = v ? String(v).slice(0, 10) : ''
+    body = `<input type="date" class="form-input task-drawer-custom-input" value="${dateVal}" onchange="${onChange}this.value)"/>`
+  } else if (col.type === 'textarea') {
+    body = `<textarea class="form-input task-drawer-custom-input" rows="2" placeholder="—" onblur="${onChange}this.value)">${escapeHtml(String(v || ''))}</textarea>`
+  } else {
+    body = `<input type="text" class="form-input task-drawer-custom-input" value="${escapeHtml(String(v || ''))}" placeholder="—" onblur="${onChange}this.value)"/>`
+  }
+  return `
+    <div class="task-drawer-custom-field">
+      <div class="task-drawer-meta-label">${escapeHtml(col.label)}</div>
+      ${body}
+    </div>`
+}
+window.renderCustomDrawerField = renderCustomDrawerField
+
+// Handlers for multi-select editors. We collect every still-checked checkbox
+// in the same group (same data-tc-key) — no React-style state needed because
+// the DOM already holds the source of truth. Same logic for <select multiple>.
+function _tcMultiCheckboxChange(input) {
+  const taskId = input.dataset.tcTask
+  const key = input.dataset.tcKey
+  if (!taskId || !key) return
+  const group = input.closest('.task-drawer-checkbox-group')
+  if (!group) return
+  const values = Array.from(group.querySelectorAll(`input[type="checkbox"][data-tc-key="${CSS.escape(key)}"]:checked`))
+    .map(cb => cb.value)
+  saveCustomCell(taskId, key, values)
+}
+window._tcMultiCheckboxChange = _tcMultiCheckboxChange
+
+function _tcMultiSelectChange(select) {
+  const taskId = select.dataset.tcTask
+  const key = select.dataset.tcKey
+  if (!taskId || !key) return
+  const values = Array.from(select.selectedOptions).map(o => o.value)
+  saveCustomCell(taskId, key, values)
+}
+window._tcMultiSelectChange = _tcMultiSelectChange
+
+async function saveCustomCell(taskId, columnKey, value) {
+  try {
+    // Normalise the payload:
+    //   - strings: trim, "" → null (clears the stored value server-side)
+    //   - arrays: empty → null, otherwise pass through as-is (multi-select)
+    //   - booleans / dates / numbers: pass through unchanged
+    let v = value
+    if (typeof v === 'string') {
+      v = v.trim()
+      if (!v) v = null
+    } else if (Array.isArray(v)) {
+      v = v.filter(x => x != null && x !== '')
+      if (!v.length) v = null
+    }
+    await API.put(`/tasks/${taskId}`, { custom_values: { [columnKey]: v } })
+    // No refresh — the inline editor already shows the new value. A toast
+    // would be noisy for what's essentially a spreadsheet-style edit.
+  } catch (e) {
+    toast('Failed to save: ' + (e.message || ''), 'error')
+  }
+}
+window.saveCustomCell = saveCustomCell
+
+// ── Manage Columns modal ──────────────────────────────────────
+const COLUMN_TYPE_OPTIONS = [
+  { value: 'text',     label: 'Text' },
+  { value: 'textarea', label: 'Text area' },
+  { value: 'checkbox', label: 'Checkbox' },
+  { value: 'radio',    label: 'Radio' },
+  { value: 'date',     label: 'Date' },
+  { value: 'dropdown', label: 'Dropdown' },
+]
+
+async function openManageTaskColumnsModal() {
+  if (!taskColumnsCanManage()) {
+    toast('You do not have permission to manage columns', 'error')
+    return
+  }
+  await loadTaskColumns()
+  _renderManageTaskColumnsModal()
+}
+window.openManageTaskColumnsModal = openManageTaskColumnsModal
+
+function _renderManageTaskColumnsModal() {
+  const cols = _taskColumnsCache
+  const atLimit = cols.length >= 20
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-table-columns" style="color:#A970FF;margin-right:6px"></i>Manage Task Columns</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;padding:18px">
+      <div style="padding:10px 12px;border-radius:8px;background:rgba(169,112,255,.08);border:1px solid rgba(169,112,255,.25);font-size:12px;color:var(--text-secondary)">
+        <strong>${cols.length}/20</strong> custom columns used. Each row in the table will show these columns with inline editors for the chosen type.
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">Existing columns</h4>
+        ${cols.length ? cols.map(c => `
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,.02)">
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600">${escapeHtml(c.label)}</div>
+              <div style="font-size:11px;color:#7E7E8F">${escapeHtml(c.key)} · ${escapeHtml(c.type)}${(c.options && c.options.length) ? ` · ${c.options.length} options` : ''}</div>
+            </div>
+            <button class="btn btn-xs btn-outline" onclick="editTaskColumn('${c.id}')"><i class="fas fa-pen"></i></button>
+            <button class="btn btn-xs btn-danger" onclick="deleteTaskColumn('${c.id}','${escapeHtml(c.label).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>
+          </div>
+        `).join('') : '<div style="font-size:12px;color:#7E7E8F;padding:8px">No custom columns yet.</div>'}
+      </div>
+      ${atLimit ? `
+        <div style="padding:10px 12px;border-radius:8px;background:rgba(255,94,58,.10);border:1px solid rgba(255,94,58,.3);font-size:12px;color:#FFB59E">
+          Column limit reached (20). Delete an existing column to add another.
+        </div>
+      ` : `
+      <div>
+        <h4 style="margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">Add new column</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Label *</label>
+            <input id="tc-new-label" class="form-input" maxlength="60" placeholder="e.g. Acceptance criteria"/>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Type *</label>
+            <select id="tc-new-type" class="form-select" onchange="_tcToggleOptions()">
+              ${COLUMN_TYPE_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div id="tc-options-wrap" class="form-group" style="margin-top:8px;display:none">
+          <label class="form-label">Options (one per line) *</label>
+          <textarea id="tc-new-options" class="form-input" rows="4" placeholder="Yes\nNo\nMaybe"></textarea>
+          <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Required for Radio + Dropdown. One label per line.</div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:8px" onclick="submitNewTaskColumn()"><i class="fas fa-plus"></i> Add Column</button>
+      </div>
+      `}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal();reloadMyTasksPage()">Done</button>
+    </div>
+  `, 'modal-lg')
+}
+
+// Checkbox + radio + dropdown all need an options list now (checkbox and
+// dropdown are multi-select). Text/textarea/date hide the field.
+const TYPES_NEEDING_OPTIONS = new Set(['checkbox', 'radio', 'dropdown'])
+function _tcToggleOptions() {
+  const type = document.getElementById('tc-new-type')?.value
+  const wrap = document.getElementById('tc-options-wrap')
+  if (wrap) wrap.style.display = TYPES_NEEDING_OPTIONS.has(type) ? '' : 'none'
+}
+window._tcToggleOptions = _tcToggleOptions
+
+function _parseOptionsTextarea(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(label => ({ value: label.toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 40), label }))
+}
+
+async function submitNewTaskColumn() {
+  const label = (document.getElementById('tc-new-label')?.value || '').trim()
+  const type = document.getElementById('tc-new-type')?.value || 'text'
+  if (!label) { toast('Label is required', 'error'); return }
+  const options = TYPES_NEEDING_OPTIONS.has(type)
+    ? _parseOptionsTextarea(document.getElementById('tc-new-options')?.value)
+    : []
+  if (TYPES_NEEDING_OPTIONS.has(type) && !options.length) {
+    toast(`${type} columns need at least one option`, 'error')
+    return
+  }
+  try {
+    await API.post('/task-columns', { label, type, options })
+    toast('Column added', 'success')
+    await loadTaskColumns()
+    _renderManageTaskColumnsModal()
+  } catch (e) {
+    toast('Failed: ' + (e.message || ''), 'error')
+  }
+}
+window.submitNewTaskColumn = submitNewTaskColumn
+
+function editTaskColumn(id) {
+  const col = _taskColumnsCache.find(c => String(c.id) === String(id))
+  if (!col) return
+  const optsText = Array.isArray(col.options) ? col.options.map(o => o.label).join('\n') : ''
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-pen" style="color:#A970FF;margin-right:6px"></i>Edit Column — ${escapeHtml(col.label)}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Label *</label>
+        <input id="tc-edit-label" class="form-input" maxlength="60" value="${escapeHtml(col.label)}"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Type *</label>
+        <select id="tc-edit-type" class="form-select" onchange="_tcEditToggleOptions()">
+          ${COLUMN_TYPE_OPTIONS.map(o => `<option value="${o.value}" ${o.value === col.type ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>
+        <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Key <code>${escapeHtml(col.key)}</code> is fixed once created.</div>
+      </div>
+      <div id="tc-edit-options-wrap" class="form-group" style="margin:0;display:${TYPES_NEEDING_OPTIONS.has(col.type) ? '' : 'none'}">
+        <label class="form-label">Options (one per line) *</label>
+        <textarea id="tc-edit-options" class="form-input" rows="5">${escapeHtml(optsText)}</textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="_renderManageTaskColumnsModal()">Back</button>
+      <button class="btn btn-primary" onclick="submitEditTaskColumn('${col.id}')"><i class="fas fa-save"></i> Save</button>
+    </div>
+  `, 'modal-lg')
+}
+window.editTaskColumn = editTaskColumn
+
+function _tcEditToggleOptions() {
+  const type = document.getElementById('tc-edit-type')?.value
+  const wrap = document.getElementById('tc-edit-options-wrap')
+  if (wrap) wrap.style.display = TYPES_NEEDING_OPTIONS.has(type) ? '' : 'none'
+}
+window._tcEditToggleOptions = _tcEditToggleOptions
+
+async function submitEditTaskColumn(id) {
+  const label = (document.getElementById('tc-edit-label')?.value || '').trim()
+  const type = document.getElementById('tc-edit-type')?.value || 'text'
+  if (!label) { toast('Label is required', 'error'); return }
+  const options = TYPES_NEEDING_OPTIONS.has(type)
+    ? _parseOptionsTextarea(document.getElementById('tc-edit-options')?.value)
+    : []
+  if (TYPES_NEEDING_OPTIONS.has(type) && !options.length) {
+    toast(`${type} columns need at least one option`, 'error')
+    return
+  }
+  try {
+    await API.patch(`/task-columns/${id}`, { label, type, options })
+    toast('Column updated', 'success')
+    await loadTaskColumns()
+    _renderManageTaskColumnsModal()
+  } catch (e) {
+    toast('Failed: ' + (e.message || ''), 'error')
+  }
+}
+window.submitEditTaskColumn = submitEditTaskColumn
+
+async function deleteTaskColumn(id, label) {
+  if (!confirm(`Delete column "${label}"? Values stored against this column will be removed from every task. This cannot be undone.`)) return
+  try {
+    await API.delete(`/task-columns/${id}`)
+    toast('Column deleted', 'success')
+    await loadTaskColumns()
+    _renderManageTaskColumnsModal()
+  } catch (e) {
+    toast('Failed: ' + (e.message || ''), 'error')
+  }
+}
+window.deleteTaskColumn = deleteTaskColumn
+
+function reloadMyTasksPage() {
+  const el = document.getElementById('page-my-tasks')
+  if (el) { el.dataset.loaded = ''; loadPage('my-tasks', el) }
+}
+window.reloadMyTasksPage = reloadMyTasksPage
 
 function filterByStatus(val, tableId) {
   const tbl = document.getElementById(tableId)
@@ -9534,7 +10734,13 @@ function toggleMeetingAttendee(userId, checked) {
   _meetingDraft.attendees = Array.from(set)
 }
 
+let _submittingMeetingEditor = false
 async function submitMeetingEditor() {
+  // In-function lock guards against the user clicking Schedule twice while
+  // the network request is in flight. The global click-loader normally
+  // handles this, but the meeting editor's button can lose its busy flag
+  // through closeModal + re-renders, so we belt-and-brace it here.
+  if (_submittingMeetingEditor) return
   if (!_meetingDraft) return
   const d = _meetingDraft
   // Lead picker is the searchable dropdown; its hidden input is the source
@@ -9557,6 +10763,16 @@ async function submitMeetingEditor() {
     agenda: d.agenda || '',
     attendees: Array.isArray(d.attendees) ? d.attendees : [],
     status: d.status || 'scheduled',
+  }
+  _submittingMeetingEditor = true
+  // Visually disable the Schedule button so the user has feedback that the
+  // click registered, even while the request is in flight. Setting .disabled
+  // here (instead of just the class) is safe because the button is not a
+  // form submit — no activation behavior is being skipped.
+  const submitBtn = document.querySelector('.modal-footer .btn-primary')
+  if (submitBtn) {
+    submitBtn.disabled = true
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (d.id ? 'Saving…' : 'Scheduling…')
   }
   try {
     const res = d.id
@@ -9584,6 +10800,12 @@ async function submitMeetingEditor() {
     if (el) { el.dataset.loaded = ''; loadPage('meet-setup', el) }
   } catch (e) {
     toast('Failed: ' + (e.message || 'unknown'), 'error')
+    if (submitBtn) {
+      submitBtn.disabled = false
+      submitBtn.innerHTML = '<i class="fas fa-save"></i> ' + (d.id ? 'Save' : 'Schedule')
+    }
+  } finally {
+    _submittingMeetingEditor = false
   }
 }
 

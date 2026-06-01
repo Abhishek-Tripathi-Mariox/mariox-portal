@@ -3,6 +3,7 @@ import { Router as createRouter } from 'express'
 import { SignJWT, jwtVerify } from 'jose'
 import type { MongoModels } from '../models/mongo-models'
 import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
+import { createUserNotifications } from './notifications'
 import {
   validateEmail,
   validateNewPassword,
@@ -163,6 +164,64 @@ export function createClientAuthRouter(models: MongoModels, jwtSecret: string, p
     }
   })
 
+  // Client self-service password change. The staff /auth/change-password
+  // endpoint reads models.users, so a client token there resolves to nothing
+  // ("User not found") — this is the client-table equivalent.
+  router.post('/change-password', createAuthMiddleware(jwtSecret), async (req, res) => {
+    try {
+      const ctx = req.user as any
+      const currentPassword = validateRequired(req.body?.current_password, 'Current password')
+      const newPassword = validateNewPassword(req.body?.new_password, 'New password')
+      if (currentPassword === newPassword) {
+        return res.status(400).json({ error: 'New password must differ from current password' })
+      }
+      const client = await models.clients.findById(String(ctx?.sub)) as any
+      if (!client) return res.status(404).json({ error: 'Client not found' })
+      const valid = await verifyPassword(currentPassword, client.password_hash, passwordSalt)
+      if (!valid) return res.status(400).json({ error: 'Current password is incorrect' })
+      const password_hash = await hashPassword(newPassword, passwordSalt)
+      await models.clients.updateById(client.id, {
+        $set: { password_hash, updated_at: new Date().toISOString() },
+      })
+      return res.json({ message: 'Password changed successfully' })
+    } catch (error) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Client "I forgot my password / please reset it" request. Notifies all
+  // admins so the request actually surfaces (admins reset via the client card).
+  // Generic response so we never reveal which emails are registered.
+  router.post('/request-password-reset', async (req, res) => {
+    try {
+      const email = String(req.body?.email || '').toLowerCase().trim()
+      const note = String(req.body?.note || '').trim().slice(0, 500)
+      if (!email) return res.status(400).json({ error: 'Email is required' })
+      const client = await models.clients.findActiveByEmail(email) as any
+      if (client) {
+        try {
+          const admins = await models.users.find({ role: 'admin', is_active: 1 }) as any[]
+          await createUserNotifications(models, admins.map((a) => a.id), {
+            type: 'password_reset_request',
+            title: `Password reset requested by client ${client.contact_name || client.company_name || client.email}`,
+            body: note
+              ? `Client note: ${note} — Reset from Clients → ${client.company_name || client.email}.`
+              : `Reset their password from Clients → ${client.company_name || client.email}.`,
+            link: `client:${client.id}`,
+            actor_id: client.id,
+            actor_name: client.contact_name || client.company_name || client.email,
+            meta: { client_id: client.id, email: client.email },
+          })
+        } catch (e) {
+          console.warn('[client-auth/request-password-reset] notify failed:', e)
+        }
+      }
+      return res.json({ message: 'If your account exists, the team has been notified to reset your password.' })
+    } catch (error) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
   router.get('/me', async (req, res) => {
     try {
       const authHeader = req.header('Authorization')
@@ -173,7 +232,13 @@ export function createClientAuthRouter(models: MongoModels, jwtSecret: string, p
         { projection: { id: 1, email: 1, company_name: 1, contact_name: 1, phone: 1, website: 1, industry: 1, avatar_color: 1 } },
       )
       if (!client) return res.status(404).json({ error: 'Not found' })
-      return res.json({ client })
+      // Client-portal tabs are gated by the global `client` role permissions.
+      let permissions: string[] = []
+      try {
+        const roleDoc = (await models.roles.findOne({ key: 'client' })) as any
+        if (Array.isArray(roleDoc?.permissions)) permissions = roleDoc.permissions.map((p: unknown) => String(p))
+      } catch {}
+      return res.json({ client, permissions })
     } catch {
       return res.status(401).json({ error: 'Unauthorized' })
     }

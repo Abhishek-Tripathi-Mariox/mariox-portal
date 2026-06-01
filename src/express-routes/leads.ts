@@ -11,6 +11,7 @@ import {
 import { sendSmtpEmail, type SmtpAttachment, type SmtpEnv } from '../utils/smtp'
 import { LEADS_GLOBAL_ROLES, ROLES } from '../constants'
 import { createUserNotification, createUserNotifications } from './notifications'
+import { mergeCustomValues } from './entity-columns'
 
 const DEFAULT_FOLLOWUP_SNOOZE_MINUTES = 10
 const MAX_LEAD_MAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024 // 10 MB per attachment
@@ -375,6 +376,36 @@ export function createLeadsRouter(
     }
   })
 
+  // Edit a status — label + badge (colour). The `key` is immutable so records
+  // already using this status don't get orphaned. Works for system statuses
+  // too (only their display label/colour changes, never the key).
+  router.put('/statuses/:kind/:id', async (req, res) => {
+    try {
+      if (!(await gateLeadStatusManage(req, res))) return
+      const repo = statusRepo(String(req.params.kind))
+      if (!repo) return res.status(400).json({ error: 'Invalid status kind' })
+      const id = String(req.params.id)
+      const status = await repo.findById(id) as any
+      if (!status) return res.status(404).json({ error: 'Status not found' })
+      if (status.is_system) return res.status(400).json({ error: 'System statuses cannot be edited' })
+      const body = req.body || {}
+      const patch: any = { updated_at: new Date().toISOString() }
+      if ('label' in body) patch.label = validateLength(String(body.label || '').trim(), 2, 40, 'Label')
+      if ('badge' in body) {
+        const badge = String(body.badge || '').toLowerCase()
+        if (!ALLOWED_BADGES.has(badge)) {
+          return res.status(400).json({ error: 'Invalid badge — use one of: ' + [...ALLOWED_BADGES].join(', ') })
+        }
+        patch.badge = badge
+      }
+      await repo.updateById(id, { $set: patch })
+      const updated = await repo.findById(id)
+      return res.json({ data: updated, status: updated, message: 'Status updated' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
   // ── Lead source configuration ──────────────────────────────
   // Mirror of /statuses, but the catalog feeds the "Source" dropdown on the
   // lead create/edit form. Defaults are seeded on boot; admin/pm/pc can add
@@ -438,6 +469,25 @@ export function createLeadsRouter(
       return res.json({ message: 'Source deleted' })
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || 'Failed to delete source' })
+    }
+  })
+
+  // Edit a source label. Key stays immutable so existing leads keep matching.
+  router.put('/sources/:id', async (req, res) => {
+    try {
+      if (!(await gateLeadSourceManage(req, res))) return
+      const id = String(req.params.id)
+      const source = await models.leadSources.findById(id) as any
+      if (!source) return res.status(404).json({ error: 'Source not found' })
+      if (source.is_system) return res.status(400).json({ error: 'System sources cannot be edited' })
+      const body = req.body || {}
+      const patch: any = { updated_at: new Date().toISOString() }
+      if ('label' in body) patch.label = validateLength(String(body.label || '').trim(), 2, 40, 'Label')
+      await models.leadSources.updateById(id, { $set: patch })
+      const updated = await models.leadSources.findById(id)
+      return res.json({ data: updated, source: updated, message: 'Source updated' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
     }
   })
 
@@ -834,10 +884,12 @@ export function createLeadsRouter(
         return res.status(409).json({ error: 'Email already registered as a client or user' })
       }
 
-      // Optional project block — when present, we'll create a project for the
-      // freshly-minted client right after the client itself. We validate
-      // up-front so we don't create the client and then fail mid-way.
-      const projectInput = body.project && typeof body.project === 'object' ? body.project : null
+      // Closing a lead now creates ONLY a client — never a project. Sales
+      // agents hand off to delivery, who spin up the project separately. We
+      // hard-ignore any `body.project` an older client might still post so no
+      // project is ever created from this endpoint. (The downstream code all
+      // guards on `if (projectInput)`, so forcing null short-circuits it.)
+      const projectInput = null as any
       let projectName: string | null = null
       let projectCode: string | null = null
       let projectStartDate: string | null = null
@@ -1330,6 +1382,11 @@ export function createLeadsRouter(
         if (!t) return res.status(400).json({ error: 'Invalid activity type — must be Call, Email, Meeting, or Other' })
         patch.activity_type = t
       }
+      // Custom-column values (see /api/lead-task-columns). Merged into the
+      // existing map so a single-field edit never wipes the others.
+      if ('custom_values' in body) {
+        patch.custom_values = mergeCustomValues(task.custom_values, body.custom_values)
+      }
       await models.leadTasks.updateById(taskId, { $set: patch })
 
       const summaryParts: string[] = []
@@ -1422,6 +1479,7 @@ export function createLeadsRouter(
         snooze_minutes: snoozeMinutes,
         acknowledged_at: null,
         acknowledged_by: null,
+        custom_values: mergeCustomValues({}, body.custom_values),
         created_at: now,
         updated_at: now,
       })
@@ -1779,6 +1837,7 @@ export function createLeadsRouter(
         snooze_minutes: 0,
         acknowledged_at: null,
         acknowledged_by: null,
+        custom_values: mergeCustomValues({}, body.custom_values),
         created_at: now,
         updated_at: now,
       })

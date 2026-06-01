@@ -557,6 +557,7 @@ router.register('projects', async () => {
 function renderProjectCard(p) {
   const burnPct = p.total_allocated_hours > 0 ? Math.round((p.consumed_hours / p.total_allocated_hours) * 100) : 0
   const tlPct = Math.min(100, Math.max(0, parseFloat(p.timeline_progress || 0)))
+  const taskPct = Math.min(100, Math.max(0, parseFloat(p.task_progress || 0)))
   const remaining = Math.max(0, (p.total_allocated_hours || 0) - (p.consumed_hours || 0))
   const color = burnPct >= 100 ? 'red' : burnPct >= 80 ? 'yellow' : 'green'
   const canEditProject = hasProjectPermission('projects.edit')
@@ -593,6 +594,12 @@ function renderProjectCard(p) {
           <span>Burn Rate</span><span>${burnPct}%</span>
         </div>
         ${utils.progressBar(burnPct, color)}
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:4px">
+          <span>Task Completion</span><span style="color:${taskPct>=100?'#58C68A':'#B388FF'}">${taskPct}%</span>
+        </div>
+        ${utils.progressBar(taskPct, taskPct>=100?'green':'blue')}
       </div>
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:12px">
         <span><i class="fas fa-calendar" style="margin-right:4px"></i>${utils.formatDate(p.start_date)}</span>
@@ -705,19 +712,23 @@ function openProjectModal(id = null) {
     const salesPersons = allUsers
       .filter(u => isActive(u) && ['sales_manager','sales_tl','sales_agent'].includes(String(u.role || '').toLowerCase()))
       .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
-    // PM dropdown also accepts admin users so projects can always be assigned
-    // even on a fresh install where no dedicated PM has been created yet.
-    let pms = (pmsRes.users || pmsRes.data || [])
+    // PM dropdown lists only dedicated PMs — admins must never appear as an
+    // assignable Project Manager. When no PM exists yet the field is left
+    // optional (see the conditional `*` below) rather than falling back to
+    // admins.
+    const pms = (pmsRes.users || pmsRes.data || [])
       .filter(u => String(u.role || '').toLowerCase() === 'pm' && isActive(u))
-    if (!pms.length) {
-      pms = allUsers.filter(u => ['pm', 'admin'].includes(String(u.role || '').toLowerCase()) && isActive(u))
-    }
     const pcs = (pcsRes.users || pcsRes.data || [])
       .filter(u => String(u.role || '').toLowerCase() === 'pc' && isActive(u))
     const clients = clientsRes.clients || clientsRes.data || []
     const teams = teamsRes.teams || teamsRes.data || []
     const teamUsers = (teamUsersRes.users || teamUsersRes.data || [])
       .filter(u => String(u.role || '').toLowerCase() === 'team')
+    // Assignee pool for inline-milestone tasks (PM/PC/devs/team) — same idea as
+    // the full milestone modal's assignee dropdown.
+    window._projMsAssignees = [...pms, ...pcs, ...devs, ...teamUsers]
+      .filter((u, i, arr) => arr.findIndex(x => String(x.id) === String(u.id)) === i)
+      .map(u => ({ id: u.id, name: u.full_name || u.name || u.email, kind: String(u.role || '').toLowerCase() === 'team' ? 'team' : 'developer' }))
     const esc = (value = '') => escapeHtml(value)
     const initialAssignment = (proj?.assignment_type === 'external') ? 'external' : 'in_house'
     window._projAssignmentType = initialAssignment
@@ -737,6 +748,10 @@ function openProjectModal(id = null) {
     }))
     window._projFiles = []
     window._projLinks = []
+    // Inline milestones captured at create time (create-only UI). Each entry:
+    // { id, title, due_date, tasks: [{ id, title, pct }] }. POSTed to
+    // /api/milestones after the project itself is created in saveProject.
+    window._projMilestones = []
     window._projDeliveryKind = proj?.delivery_kind || ''
     // Stash so saveProject can preserve hours/revenue (form no longer exposes them).
     window._projEditingRecord = proj || null
@@ -809,6 +824,8 @@ function openProjectModal(id = null) {
                   <div class="form-group"><label class="form-label">End Date</label><input id="proj-end" class="form-input" type="date" value="${esc(proj?.expected_end_date||'')}"/></div>
                   <div class="form-group"><label class="form-label">Status</label>
                     <select id="proj-status" class="form-select">${['active','on_hold','completed','archived','cancelled'].map(t=>`<option value="${t}" ${proj?.status===t?'selected':''}>${t.replace('_',' ').charAt(0).toUpperCase()+t.replace('_',' ').slice(1)}</option>`).join('')}</select></div>
+                  <div class="form-group"><label class="form-label">Total Allocated Hours</label><input id="proj-hours" class="form-input" type="number" min="0" step="1" value="${esc(proj?.total_allocated_hours || '')}" placeholder="e.g. 160"/></div>
+                  <div class="form-group"><label class="form-label">Estimated Budget Hours</label><input id="proj-budget-hours" class="form-input" type="number" min="0" step="1" value="${esc(proj?.estimated_budget_hours || '')}" placeholder="e.g. 200"/></div>
                 </div>
               </div>
             </div>
@@ -818,7 +835,7 @@ function openProjectModal(id = null) {
               <div class="card-body">
                 ${(String(state.user?.role || '').toLowerCase() === 'admin') ? `
                 <div class="grid-2" style="gap:12px;margin-bottom:16px">
-                  <div class="form-group"><label class="form-label">Project Manager *</label>
+                  <div class="form-group"><label class="form-label">Project Manager${pms.length ? ' *' : ''}</label>
                     <select id="proj-pm" class="form-select">${pms.length ? '<option value="">Select PM</option>' : '<option value="">No PMs available — add one in Team</option>'}${pms.map(p=>`<option value="${p.id}" ${proj?.pm_id===p.id?'selected':''}>${esc(p.full_name)} (${esc(String(p.role || '').toUpperCase())})</option>`).join('')}</select></div>
                   <div class="form-group"><label class="form-label">Product Coordinator</label>
                     <select id="proj-pc" class="form-select"><option value="">None</option>${pcs.map(c=>`<option value="${c.id}" ${proj?.pc_id===c.id?'selected':''}>${esc(c.full_name)}</option>`).join('')}</select></div>
@@ -1015,6 +1032,20 @@ function openProjectModal(id = null) {
             </div>
           </div>
         </div>
+        ${!proj ? `
+        <div class="card" id="proj-milestones-card" style="margin-top:16px">
+          <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <h3 style="margin:0"><i class="fas fa-flag" style="color:var(--primary);margin-right:6px"></i>Milestones <span style="font-size:12px;color:var(--text-muted);font-weight:400">(optional)</span></h3>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Each milestone's tasks must total 100%. Milestone progress then updates automatically as those tasks complete.</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" onclick="projAddMilestone()"><i class="fas fa-plus"></i> Add Milestone</button>
+          </div>
+          <div class="card-body">
+            <div id="proj-ms-list" style="display:flex;flex-direction:column;gap:12px"></div>
+            <div id="proj-ms-empty" style="font-size:12px;color:var(--text-muted);text-align:center;padding:14px;border:1px dashed var(--border);border-radius:8px">No milestones yet — click "Add Milestone" to plan delivery phases.</div>
+          </div>
+        </div>` : ''}
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -1105,6 +1136,116 @@ async function fetchAndFillNextCode(kind) {
   } catch (e) {
     utils.toast('Could not suggest a code: ' + e.message, 'error')
   }
+}
+
+/* ── Inline milestones (project-create modal) ─────────────────
+   Mirrors the milestone modal's "tasks sum to 100%" contract. State lives in
+   window._projMilestones and is POSTed to /api/milestones after the project
+   is created (see saveProject). Inputs write straight into state via oninput
+   so a re-render (add/remove row) never loses typed values. */
+function projMsUid(prefix) {
+  // No Date.now() in the prompt sandbox, but this is browser code — fine.
+  return prefix + Math.random().toString(36).slice(2, 9)
+}
+function projAddMilestone() {
+  if (!window._projMilestones) window._projMilestones = []
+  window._projMilestones.push({ id: projMsUid('pm_'), title: '', due_date: '', description: '', is_billable: 0, invoice_amount: 0, client_visible: 1, tasks: [] })
+  projRenderMilestones()
+}
+function projMsCheck(mid, field, checked) {
+  const m = (window._projMilestones || []).find(x => x.id === mid)
+  if (m) m[field] = checked ? 1 : 0
+}
+function projRemoveMilestone(mid) {
+  window._projMilestones = (window._projMilestones || []).filter(m => m.id !== mid)
+  projRenderMilestones()
+}
+function projAddMsTask(mid) {
+  const m = (window._projMilestones || []).find(x => x.id === mid)
+  if (!m) return
+  m.tasks.push({ id: projMsUid('pt_'), title: '', pct: 0, assignee_id: '', status: 'pending', reference_url: '' })
+  projRenderMilestones()
+}
+function projRemoveMsTask(mid, tid) {
+  const m = (window._projMilestones || []).find(x => x.id === mid)
+  if (!m) return
+  m.tasks = m.tasks.filter(t => t.id !== tid)
+  projRenderMilestones()
+}
+function projMsField(mid, field, value) {
+  const m = (window._projMilestones || []).find(x => x.id === mid)
+  if (m) m[field] = value
+}
+function projMsTaskField(mid, tid, field, value) {
+  const m = (window._projMilestones || []).find(x => x.id === mid)
+  const t = m && m.tasks.find(x => x.id === tid)
+  if (t) t[field] = (field === 'pct') ? (parseInt(value, 10) || 0) : value
+  if (field === 'pct') {
+    const total = m.tasks.reduce((s, x) => s + (Number(x.pct) || 0), 0)
+    const el = document.getElementById('proj-ms-pct-' + mid)
+    if (el) {
+      el.textContent = `Total: ${total}%` + (total === 100 ? ' ✓' : ' (must equal 100%)')
+      el.style.color = total === 100 ? '#58C68A' : '#7E7E8F'
+    }
+  }
+}
+function projRenderMilestones() {
+  const wrap = document.getElementById('proj-ms-list')
+  const empty = document.getElementById('proj-ms-empty')
+  if (!wrap) return
+  const list = window._projMilestones || []
+  if (empty) empty.style.display = list.length ? 'none' : ''
+  const esc = (v = '') => escapeHtml(String(v))
+  const assignees = window._projMsAssignees || []
+  const TASK_STATUSES = ['pending', 'todo', 'in_progress', 'in_review', 'done', 'blocked']
+  wrap.innerHTML = list.map(m => {
+    const total = m.tasks.reduce((s, x) => s + (Number(x.pct) || 0), 0)
+    return `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--surface-2)">
+      <div style="display:flex;gap:10px;align-items:flex-end">
+        <div class="form-group" style="flex:1;margin:0"><label class="form-label">Milestone Title *</label>
+          <input class="form-input" value="${esc(m.title)}" placeholder="Phase 1 – Delivery" oninput="projMsField('${m.id}','title',this.value)"/></div>
+        <div class="form-group" style="width:170px;margin:0"><label class="form-label">Due Date *</label>
+          <input class="form-input" type="date" value="${esc(m.due_date)}" oninput="projMsField('${m.id}','due_date',this.value)"/></div>
+        <button type="button" class="btn btn-sm btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="projRemoveMilestone('${m.id}')" title="Remove milestone"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="form-group" style="margin:10px 0 0"><label class="form-label">Description</label>
+        <textarea class="form-input" rows="2" placeholder="What is delivered in this milestone?" oninput="projMsField('${m.id}','description',this.value)">${esc(m.description || '')}</textarea></div>
+      <div style="display:flex;gap:12px;align-items:flex-end;margin-top:10px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:var(--text-secondary)"><input type="checkbox" ${Number(m.is_billable) ? 'checked' : ''} style="accent-color:#A970FF" onchange="projMsCheck('${m.id}','is_billable',this.checked)"/> Billable</label>
+        <div class="form-group" style="width:170px;margin:0"><label class="form-label">Invoice Amount (₹)</label>
+          <input class="form-input" type="number" min="0" value="${esc(m.invoice_amount || '')}" placeholder="0" oninput="projMsField('${m.id}','invoice_amount',this.value)"/></div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:var(--text-secondary)"><input type="checkbox" ${Number(m.client_visible) ? 'checked' : ''} style="accent-color:#A970FF" onchange="projMsCheck('${m.id}','client_visible',this.checked)"/> Visible to client</label>
+      </div>
+      <div style="margin-top:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:12px;font-weight:600;color:var(--text-secondary)"><i class="fas fa-tasks" style="color:var(--primary);margin-right:5px"></i>Tasks</span>
+          <span style="display:flex;align-items:center;gap:8px">
+            <span id="proj-ms-pct-${m.id}" style="font-size:11px;font-weight:600;color:${total === 100 ? '#58C68A' : '#7E7E8F'}">Total: ${total}%${total === 100 ? ' ✓' : ' (must equal 100%)'}</span>
+            <button type="button" class="btn btn-xs btn-outline" onclick="projAddMsTask('${m.id}')"><i class="fas fa-plus"></i> Add Task</button>
+          </span>
+        </div>
+        ${m.tasks.map(t => `
+          <div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;background:var(--surface)">
+            <div style="display:flex;gap:8px;align-items:center">
+              <input class="form-input" style="flex:1" value="${esc(t.title)}" placeholder="Task title" oninput="projMsTaskField('${m.id}','${t.id}','title',this.value)"/>
+              <input class="form-input" style="width:80px" type="number" min="0" max="100" value="${esc(t.pct)}" placeholder="%" oninput="projMsTaskField('${m.id}','${t.id}','pct',this.value)"/>
+              <button type="button" class="btn btn-xs btn-outline" style="border-color:rgba(255,94,58,.4);color:#FF5E3A" onclick="projRemoveMsTask('${m.id}','${t.id}')"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+              <select class="form-select" style="flex:1" onchange="projMsTaskField('${m.id}','${t.id}','assignee_id',this.value)">
+                <option value="">Unassigned</option>
+                ${assignees.map(a => `<option value="${esc(a.id)}" ${String(t.assignee_id) === String(a.id) ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+              </select>
+              <select class="form-select" style="width:130px" onchange="projMsTaskField('${m.id}','${t.id}','status',this.value)">
+                ${TASK_STATUSES.map(s => `<option value="${s}" ${t.status === s ? 'selected' : ''}>${s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>`).join('')}
+              </select>
+              <input class="form-input" style="flex:1" value="${esc(t.reference_url || '')}" placeholder="Reference URL (optional)" oninput="projMsTaskField('${m.id}','${t.id}','reference_url',this.value)"/>
+            </div>
+          </div>`).join('') || '<div style="font-size:11px;color:var(--text-muted)">No tasks — milestone progress will be tracked manually.</div>'}
+      </div>
+    </div>`
+  }).join('')
 }
 
 function projAddFiles(fileList) {
@@ -1208,8 +1349,8 @@ async function saveProject(id) {
       assignment_type: assignmentType,
       external_team_id: externalTeamId || null,
       external_assignee_type: externalAssigneeType,
-      total_allocated_hours: Number(existing?.total_allocated_hours) || 0,
-      estimated_budget_hours: Number(existing?.estimated_budget_hours) || 0,
+      total_allocated_hours: (() => { const el = document.getElementById('proj-hours'); return el && el.value !== '' ? Number(el.value) : (Number(existing?.total_allocated_hours) || 0) })(),
+      estimated_budget_hours: (() => { const el = document.getElementById('proj-budget-hours'); return el && el.value !== '' ? Number(el.value) : (Number(existing?.estimated_budget_hours) || 0) })(),
       pm_id: document.getElementById('proj-pm')?.value || null,
       pc_id: document.getElementById('proj-pc')?.value || null,
       team_lead_id: null,
@@ -1230,6 +1371,48 @@ async function saveProject(id) {
     }
     if (assignmentType === 'external' && !externalTeamId) {
       utils.toast('Please select an external team or team member', 'error'); return
+    }
+
+    // Validate inline milestones up-front (create-only) so we don't create the
+    // project and then choke on a bad milestone. Empty rows are dropped.
+    const milestonesToCreate = []
+    if (!id) {
+      for (const m of (window._projMilestones || [])) {
+        const title = String(m.title || '').trim()
+        if (!title && !m.due_date && !(m.tasks || []).some(t => String(t.title || '').trim())) continue
+        if (!title || !m.due_date) {
+          utils.toast('Each milestone needs a title and a due date', 'error'); return
+        }
+        const tasks = (m.tasks || []).filter(t => String(t.title || '').trim())
+        if (tasks.length) {
+          const total = tasks.reduce((s, t) => s + (Number(t.pct) || 0), 0)
+          if (total !== 100) {
+            utils.toast(`Milestone "${title}": task percentages must total 100% (currently ${total}%)`, 'error'); return
+          }
+        }
+        const msAssignees = window._projMsAssignees || []
+        milestonesToCreate.push({
+          title,
+          due_date: m.due_date,
+          description: String(m.description || '').trim(),
+          is_billable: Number(m.is_billable) ? 1 : 0,
+          invoice_amount: Number(m.invoice_amount) || 0,
+          client_visible: Number(m.client_visible) ? 1 : 0,
+          tasks: tasks.map(t => {
+            const a = t.assignee_id ? msAssignees.find(x => String(x.id) === String(t.assignee_id)) : null
+            return {
+              id: 'mt_' + Math.random().toString(36).slice(2, 9),
+              title: String(t.title).trim(),
+              pct_of_milestone: Math.max(0, Math.min(100, Number(t.pct) || 0)),
+              status: t.status || 'pending',
+              assignee_id: t.assignee_id || null,
+              assignee_name: a ? a.name : null,
+              assignee_kind: a ? a.kind : 'developer',
+              reference_url: t.reference_url ? String(t.reference_url).trim() : null,
+            }
+          }),
+        })
+      }
     }
 
     // Upload any attached files first so we can pass them along with the
@@ -1293,7 +1476,31 @@ async function saveProject(id) {
       await API.post(`/projects/${projId}/assign-bulk`, { developers: [] }).catch(() => {})
     }
 
-    utils.toast(`Project ${id ? 'updated' : 'created'} successfully!`, 'success')
+    // Create any inline milestones now that the project exists. Sequential so
+    // the server-side idempotency guard (project_id + title) can de-dupe.
+    let msCreated = 0
+    if (projId && milestonesToCreate.length) {
+      for (const m of milestonesToCreate) {
+        try {
+          await API.post('/milestones', {
+            project_id: projId,
+            title: m.title,
+            due_date: m.due_date,
+            description: m.description || '',
+            is_billable: m.is_billable || 0,
+            invoice_amount: m.invoice_amount || 0,
+            client_visible: m.client_visible != null ? m.client_visible : 1,
+            tasks: m.tasks,
+          })
+          msCreated++
+        } catch (e) {
+          console.warn('Could not create milestone:', m.title, e.message)
+        }
+      }
+    }
+    window._projMilestones = []
+
+    utils.toast(`Project ${id ? 'updated' : 'created'}${msCreated ? ` with ${msCreated} milestone${msCreated === 1 ? '' : 's'}` : ''} successfully!`, 'success')
     closeModal()
     window._projSelectedDevs = []
     const currentPage = window.Router?.current?.page
@@ -1321,6 +1528,7 @@ router.register('project-detail', async ({ id }) => {
     const p = res.data
     const burnPct = p.total_allocated_hours > 0 ? Math.round((p.consumed_hours/p.total_allocated_hours)*100) : 0
     const tlPct = Math.min(100, Math.max(0, parseFloat(p.timeline_progress||0)))
+    const taskPct = Math.min(100, Math.max(0, parseFloat(p.task_progress||0)))
     const canEditProject = hasProjectPermission('projects.edit')
     const canManageTeam = hasProjectPermission('projects.manage_team')
 
@@ -1351,6 +1559,13 @@ router.register('project-detail', async ({ id }) => {
             <div class="glass-card" style="padding:20px;margin-bottom:16px">
               <h3 style="font-size:14px;font-weight:700;margin-bottom:16px">Timeline vs Effort Analysis</h3>
               <div style="display:grid;gap:14px">
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
+                    <span style="color:var(--text-muted)">Task Completion <span style="font-size:10px;opacity:.7">(auto)</span></span>
+                    <span style="font-weight:700;color:${taskPct>=100?'#58C68A':taskPct>=60?'#B388FF':'#7E7E8F'}">${taskPct}%</span>
+                  </div>
+                  <div class="progress-bar" style="height:10px"><div class="progress-fill ${taskPct>=100?'green':'blue'}" style="width:${taskPct}%"></div></div>
+                </div>
                 <div>
                   <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
                     <span style="color:var(--text-muted)">Timeline Progress</span>

@@ -6,6 +6,25 @@
 let _ptaskStatus = ''
 let _ptaskTab = 'assigned_to_me' // assigned_to_me | assigned_by_me | all
 let _ptaskUsers = []
+
+// Format a due date, including the time when one was set (the input is now a
+// datetime-local). A bare date (length ≤ 10) shows date only.
+function ptaskFmtDue(d) {
+  if (!d) return '—'
+  const hasTime = String(d).length > 10
+  return (typeof dayjs !== 'undefined')
+    ? dayjs(d).format(hasTime ? 'DD MMM YYYY, h:mm A' : 'DD MMM YYYY')
+    : (typeof fmtDate === 'function' ? fmtDate(d) : String(d))
+}
+
+// Value for a <input type="datetime-local">. It only accepts
+// "YYYY-MM-DDTHH:mm", so legacy date-only values (e.g. "2026-06-01") are padded
+// with midnight — otherwise the field renders blank and the old date "vanishes".
+function ptaskDueInputValue(d) {
+  if (!d) return ''
+  const s = String(d)
+  return s.length > 10 ? s.slice(0, 16) : (s.slice(0, 10) + 'T00:00')
+}
 // Cached status palette (built-in + custom) returned by GET /personal-tasks.
 // Used by inline-edit dropdowns and the "Manage statuses" modal.
 window._ptaskStatusPalette = window._ptaskStatusPalette || null
@@ -177,13 +196,13 @@ function _ptaskRow(t, statusPalette, myId) {
       </td>
       <td>
         ${canEdit
-          ? `<input type="date" class="ptask-inline-input" value="${t.due_date ? String(t.due_date).slice(0,10) : ''}"
+          ? `<input type="datetime-local" class="ptask-inline-input" value="${ptaskDueInputValue(t.due_date)}"
               onchange="ptaskInlineSave('${escapeInbox(t.id)}','due_date',this.value)"
               style="background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 6px;color:${dueColor};font-size:12px"
               onmouseover="this.style.borderColor='rgba(168,85,247,.25)'" onmouseout="this.style.borderColor='transparent'"
               onfocus="this.style.background='rgba(168,85,247,.08)';this.style.borderColor='rgba(168,85,247,.45)'"
               onblur="this.style.background='transparent';this.style.borderColor='transparent'"/>`
-          : `<span style="font-size:12px;color:${dueColor}">${t.due_date ? fmtDate(t.due_date) : '—'}</span>`}
+          : `<span style="font-size:12px;color:${dueColor}">${t.due_date ? ptaskFmtDue(t.due_date) : '—'}</span>`}
       </td>
       <td>
         <div style="display:flex;gap:4px">
@@ -334,7 +353,7 @@ async function openPersonalTaskModal(id) {
       <div class="form-group"><label class="form-label">Description</label><textarea id="ptask-desc" class="form-textarea" rows="3" placeholder="Details…">${escapeInbox(task?.description || '')}</textarea></div>
       <div class="grid-2">
         <div class="form-group"><label class="form-label">Assignee *</label>${hrEmployeePicker('ptask-assignee', _ptaskUsers, task?.assigned_to || '', { placeholder: 'Search or pick employee…' })}</div>
-        <div class="form-group"><label class="form-label">Due date</label><input id="ptask-due" class="form-input" type="date" value="${task?.due_date || ''}"/></div>
+        <div class="form-group"><label class="form-label">Due date &amp; time</label><input id="ptask-due" class="form-input" type="datetime-local" value="${ptaskDueInputValue(task?.due_date)}"/></div>
       </div>
       <div class="grid-2">
         <div class="form-group"><label class="form-label">Priority</label>

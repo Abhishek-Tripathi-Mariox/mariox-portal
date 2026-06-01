@@ -212,6 +212,15 @@ async function renderClientMain(container) {
   _clientMilestonesPage = 1
   _clientDocumentsPage = 1
   _clientInvoicePage = 1
+  // Portal tabs are gated by the global `client` role permissions. Fetch them
+  // once per session; on failure default to all-visible so a transient error
+  // never locks the client out of their portal.
+  if (!Array.isArray(window._cpPerms)) {
+    try {
+      const me = await ClientAPI.get('/client-auth/me')
+      window._cpPerms = Array.isArray(me?.permissions) ? me.permissions : null
+    } catch { window._cpPerms = null }
+  }
   container.innerHTML = `
   <div style="display:flex;min-height:100vh">
     <!-- Sidebar -->
@@ -240,13 +249,13 @@ async function renderClientMain(container) {
       </div>
       <!-- Nav -->
       <nav style="flex:1;overflow-y:auto;padding:12px 8px">
-        ${cpNavItem('cp-dashboard','fa-chart-line','Dashboard')}
-        ${cpNavItem('cp-projects','fa-layer-group','My Projects')}
-        ${cpNavItem('cp-kanban','fa-columns','Task Board')}
-        ${cpNavItem('cp-milestones','fa-flag','Milestones')}
-        ${cpNavItem('cp-documents','fa-folder-open','Documents')}
-        ${cpNavItem('cp-invoices','fa-file-invoice-dollar','Invoices & Billing')}
-        ${cpNavItem('cp-support','fa-life-ring','Support')}
+        ${cpCan('cp-dashboard') ? cpNavItem('cp-dashboard','fa-chart-line','Dashboard') : ''}
+        ${cpCan('cp-projects') ? cpNavItem('cp-projects','fa-layer-group','My Projects') : ''}
+        ${cpCan('cp-kanban') ? cpNavItem('cp-kanban','fa-columns','Task Board') : ''}
+        ${cpCan('cp-milestones') ? cpNavItem('cp-milestones','fa-flag','Milestones') : ''}
+        ${cpCan('cp-documents') ? cpNavItem('cp-documents','fa-folder-open','Documents') : ''}
+        ${cpCan('cp-invoices') ? cpNavItem('cp-invoices','fa-file-invoice-dollar','Invoices & Billing') : ''}
+        ${cpCan('cp-support') ? cpNavItem('cp-support','fa-life-ring','Support') : ''}
         ${cpNavItem('cp-profile','fa-user-cog','My Profile')}
       </nav>
       <div style="padding:12px 8px;border-top:1px solid #2A1812">
@@ -313,7 +322,35 @@ function cpGoDocumentsPage(page) {
   cpNavigate('cp-documents')
 }
 
+// Whether the current client may see a given portal tab, per the global
+// `client` role permissions. Profile is always allowed; if perms failed to
+// load (_cpPerms not an array) we default to open so a hiccup never locks the
+// client out.
+const CP_PAGE_PERMS = {
+  'cp-dashboard': 'client_portal.dashboard',
+  'cp-projects': 'client_portal.projects',
+  'cp-kanban': 'client_portal.kanban',
+  'cp-milestones': 'client_portal.milestones',
+  'cp-documents': 'client_portal.documents',
+  'cp-invoices': 'client_portal.invoices',
+  'cp-support': 'client_portal.support',
+}
+function cpCan(page) {
+  if (page === 'cp-profile') return true
+  const key = CP_PAGE_PERMS[page]
+  if (!key) return true
+  if (!Array.isArray(window._cpPerms)) return true
+  return window._cpPerms.includes(key)
+}
+function cpFirstAllowedPage() {
+  return ['cp-dashboard','cp-projects','cp-kanban','cp-milestones','cp-documents','cp-invoices','cp-support']
+    .find(cpCan) || 'cp-profile'
+}
+
 function cpNavigate(page) {
+  // Block direct navigation to a tab the client role can't see (e.g. a stale
+  // deep link) — bounce to the first tab they're allowed.
+  if (!cpCan(page)) page = cpFirstAllowedPage()
   // Track history before navigating
   if (_clientPage !== page) {
     _clientHistory.push(_clientPage)
@@ -1338,6 +1375,10 @@ async function renderCpProfile(el) {
         </div>
         <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-lock"></i>Update Password</button>
         </form>
+        <div style="margin-top:14px;font-size:12px;color:#7E7E8F">
+          Forgot your current password?
+          <a href="#" onclick="cpRequestPasswordReset('${(client.email||'').replace(/'/g,'')}');return false;" style="color:#A970FF;text-decoration:none">Request a reset</a> — the team will be notified.
+        </div>
         <div style="margin-top:24px;padding-top:20px;border-top:1px solid #2A1812">
           <button class="btn btn-outline" style="width:100%;border-color:#FF5E3A;color:#FF5E3A" onclick="if(confirm('Sign out?'))clientLogout()"><i class="fas fa-sign-out-alt"></i>Sign Out</button>
         </div>
@@ -1368,11 +1409,23 @@ async function cpChangePassword() {
   if (newPass !== confirmPass) return toast('New passwords do not match', 'error')
   if (newPass.length < 8) return toast('Password must be at least 8 characters', 'error')
   try {
-    await ClientAPI.post('/auth/change-password', { current_password: oldPass, new_password: newPass })
+    await ClientAPI.post('/client-auth/change-password', { current_password: oldPass, new_password: newPass })
     toast('Password updated successfully!', 'success')
     document.getElementById('cp-old-pass').value = ''
     document.getElementById('cp-new-pass').value = ''
     document.getElementById('cp-confirm-pass').value = ''
+  } catch(e) { toast(e.message, 'error') }
+}
+
+// Client can't recall their current password — fire a reset request that
+// notifies all admins (they reset it from the client card).
+async function cpRequestPasswordReset(email) {
+  const to = (email || prompt('Enter your account email:') || '').trim()
+  if (!to) return
+  const note = (prompt('Optional note for the team (reason / preferred new password):') || '').trim()
+  try {
+    const res = await ClientAPI.post('/client-auth/request-password-reset', { email: to, note })
+    toast(res?.message || 'Reset request sent to the team', 'success', 6000)
   } catch(e) { toast(e.message, 'error') }
 }
 

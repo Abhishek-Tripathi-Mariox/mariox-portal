@@ -34,10 +34,35 @@ function _breakKindMeta(kind) {
   return BREAK_KIND_META[String(kind || 'other').toLowerCase()] || BREAK_KIND_META.other
 }
 
+function attendanceCanManageColumns() {
+  if (String(_user?.role || '').toLowerCase() === 'admin') return true
+  return typeof hasAnyPermission === 'function' && hasAnyPermission(['hr.attendance.manage_columns'])
+}
+// Lazy custom-columns registry for the attendance table. Saving re-posts the
+// row (user_id + date + status) so the server upserts and merges custom_values.
+function attendanceColumns() {
+  if (!window._attCols && typeof CustomColumns !== 'undefined') {
+    window._attCols = CustomColumns.register('attendance', {
+      apiBase: '/attendance-columns',
+      idField: 'id',
+      canManage: attendanceCanManageColumns,
+      save: (row, customValues) => API.post('/attendance', {
+        user_id: row.user_id, date: row.date, status: row.status, custom_values: customValues,
+      }),
+      onChange: () => { if (window._hrAttEl) renderAttendanceView(window._hrAttEl) },
+    })
+  }
+  return window._attCols
+}
+
 async function renderAttendanceView(el) {
+  window._hrAttEl = el
   el.innerHTML = hrLoadingHTML()
   try {
     const canManage = hrCanManage('attendance')
+    // Custom columns (manager view only — cells save via the manage POST).
+    const attCols = canManage ? attendanceColumns() : null
+    if (attCols) { try { await attCols.load() } catch {} }
     // Non-managers can only see the daily log of their own rows; summary view
     // is a company-wide aggregate that only makes sense for HR.
     if (!canManage) _hrAttTab = 'log'
@@ -77,6 +102,7 @@ async function renderAttendanceView(el) {
           <p class="page-subtitle">${canManage ? 'Track daily attendance for every employee' : 'Your daily attendance record'}</p>
         </div>
         ${canManage ? `<div class="page-actions" style="display:flex;gap:8px">
+          ${attCols ? attCols.manageButton() : ''}
           <button class="btn btn-outline" onclick="openBulkAttendanceModal()"><i class="fas fa-users"></i> Bulk Mark</button>
           <button class="btn btn-primary" onclick="openAttendanceModal()"><i class="fas fa-plus"></i> Mark Attendance</button>
         </div>` : ''}
@@ -117,12 +143,12 @@ async function renderAttendanceView(el) {
         <table class="data-table">
           <thead><tr>
             ${canManage ? '<th>Employee</th>' : ''}
-            <th>Date</th><th>Status</th><th>Check-in</th><th>Check-out</th><th>Worked</th><th>Breaks</th><th>Approval</th><th>Note</th>${canManage ? '<th style="width:120px">Actions</th>' : ''}
+            <th>Date</th><th>Status</th><th>Check-in</th><th>Check-out</th><th>Worked</th><th>Breaks</th><th>Approval</th><th>Note</th>${attCols ? attCols.headerCells() : ''}${canManage ? '<th style="width:120px">Actions</th>' : ''}
           </tr></thead>
           <tbody>
             ${pagination.total === 0
-              ? hrEmptyRow(canManage ? 10 : 8, 'fa-user-clock', 'No attendance records yet.')
-              : pagination.items.map(r => renderAttendanceRow(r, canManage)).join('')}
+              ? hrEmptyRow((canManage ? 10 : 8) + (attCols ? attCols.columns.length : 0), 'fa-user-clock', 'No attendance records yet.')
+              : pagination.items.map(r => renderAttendanceRow(r, canManage, attCols)).join('')}
           </tbody>
         </table>
         ${renderPager(pagination, 'hrAttPage', 'hrAttPage', 'records')}
@@ -169,6 +195,23 @@ function _liveMinutesSince(hhmm) {
   const startMin = h * 60 + m
   const nowMin = now.getHours() * 60 + now.getMinutes()
   return Math.max(0, nowMin - startMin)
+}
+
+// Minutes between two "HH:mm" strings on the same day (for completed sessions).
+function _minBetweenHHMM(a, b) {
+  if (!a || !b) return 0
+  const [ah, am] = String(a).split(':').map(Number)
+  const [bh, bm] = String(b).split(':').map(Number)
+  if (![ah, am, bh, bm].every(Number.isFinite)) return 0
+  return Math.max(0, (bh * 60 + bm) - (ah * 60 + am))
+}
+
+// Today's punch sessions (multiple in→out pairs supported). Falls back to the
+// legacy single check_in/check_out when no `sessions` array is present.
+function _attSessions(today) {
+  if (Array.isArray(today?.sessions) && today.sessions.length) return today.sessions
+  if (today?.check_in) return [{ in: today.check_in, in_location: today.check_in_location, out: today.check_out || null, out_location: today.check_out_location || null }]
+  return []
 }
 // In-session cache of reverse-geocoded addresses, keyed by lat,lng rounded
 // to 5 decimals (~1 m precision — anything finer is just GPS jitter).
@@ -324,12 +367,21 @@ function renderMyPunchCard(today) {
   const completedBreaks = breaks.filter(b => b?.start && b?.end)
   const activeBreak = breaks.find(b => b?.start && !b?.end) || null
   const breakTotalMins = _breaksTotalMinutes(breaks)
-  // Working minutes — backend stamps a final number on punch-out, otherwise
-  // we render a live count: (now - check_in) - completed-break time.
-  let workingMins = Number(today?.working_minutes) || 0
-  if (!hasOut && hasIn) {
-    workingMins = Math.max(0, _liveMinutesSince(today.check_in) - breakTotalMins)
-    if (onBreak && activeBreak) workingMins = Math.max(0, workingMins - _liveMinutesSince(activeBreak.start))
+  // Multiple punch-in/out sessions per day: "punched in" = there's an open
+  // session (an `in` without an `out`). After a punch-out you can punch in again.
+  const sessions = _attSessions(today)
+  const openSession = sessions.slice().reverse().find(s => s && s.in && !s.out) || null
+  const punchedIn = !!openSession
+  const completedSessionMins = sessions.reduce((t, s) => t + ((s.in && s.out) ? _minBetweenHHMM(s.in, s.out) : 0), 0)
+  // Working minutes — live while punched in (completed sessions + current open
+  // session − break time), otherwise the backend's stamped total.
+  let workingMins
+  if (punchedIn) {
+    const gross = completedSessionMins + _liveMinutesSince(openSession.in)
+    const brk = breakTotalMins + (onBreak && activeBreak ? _liveMinutesSince(activeBreak.start) : 0)
+    workingMins = Math.max(0, gross - brk)
+  } else {
+    workingMins = Number(today?.working_minutes) || Math.max(0, completedSessionMins - breakTotalMins)
   }
   const approval = today?.approval_status || 'pending'
   const approvalLabel = !today ? 'No punch yet' : (approval === 'approved' ? 'Approved' : approval === 'rejected' ? 'Rejected' : 'Pending HR approval')
@@ -391,19 +443,18 @@ function renderMyPunchCard(today) {
   //   on break → ONLY End Break (everything else disabled / hidden)
   //   punched out → all disabled
   let actions = ''
-  if (!hasIn) {
-    actions = `<button class="btn btn-primary btn-sm" onclick="hrPunch('in')"><i class="fas fa-sign-in-alt"></i> Punch In</button>`
-  } else if (onBreak) {
+  if (onBreak) {
     // Lock the user to the End Break button — everything else is disabled.
     actions = `
       <button class="btn btn-sm" disabled style="opacity:.4;cursor:not-allowed" title="End the break first"><i class="fas fa-mug-hot"></i> On break…</button>
       <button class="btn btn-sm" disabled style="opacity:.4;cursor:not-allowed" title="End the break first"><i class="fas fa-sign-out-alt"></i> Punch Out</button>`
-  } else if (!hasOut) {
+  } else if (punchedIn) {
     actions = `
       <button class="btn btn-sm" style="background:#FF9F40;color:#0F0A06" onclick="openStartBreakDialog()"><i class="fas fa-mug-hot"></i> Start Break</button>
       <button class="btn btn-primary btn-sm" onclick="hrPunch('out')"><i class="fas fa-sign-out-alt"></i> Punch Out</button>`
   } else {
-    actions = `<button class="btn btn-outline btn-sm" disabled style="opacity:.5;cursor:not-allowed"><i class="fas fa-check"></i> Day complete</button>`
+    // Not punched in — fresh day OR between sessions. Allow another punch-in.
+    actions = `<button class="btn btn-primary btn-sm" onclick="hrPunch('in')"><i class="fas fa-sign-in-alt"></i> Punch In${sessions.length ? ' again' : ''}</button>`
   }
 
   return `
@@ -425,13 +476,18 @@ function renderMyPunchCard(today) {
               ${hasOut ? _renderLocChip(today.check_out_location) : ''}
             </div>
             <div>
-              <span style="font-size:11px;color:#7E7E8F">${hasOut ? 'Worked:' : 'Working:'}</span>
-              <span style="font-weight:700;color:#C9A7FF">${hasIn ? _fmtMinutes(workingMins) : '—'}</span>
+              <span style="font-size:11px;color:#7E7E8F">${punchedIn ? 'Working:' : 'Worked:'}</span>
+              <span style="font-weight:700;color:#C9A7FF">${sessions.length ? _fmtMinutes(workingMins) : '—'}</span>
             </div>
+            ${sessions.length ? `<div><span style="font-size:11px;color:#7E7E8F">Sessions:</span> <span style="font-weight:600;color:#86E0A8">${sessions.length}</span>${punchedIn ? ' <span style="font-size:10px;color:#86E0A8">(in)</span>' : ''}</div>` : ''}
             ${breakTotalMins ? `<div><span style="font-size:11px;color:#7E7E8F">Break:</span> <span style="font-weight:600;color:#FFB874">${_fmtMinutes(breakTotalMins)}</span></div>` : ''}
             <div><span class="badge" style="background:${approvalColor}20;color:${approvalColor};border:1px solid ${approvalColor}40">${approvalLabel}</span></div>
           </div>
           ${rejectReason}
+          ${sessions.length > 1 ? `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed rgba(255,255,255,.08);display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+            <span style="font-size:10px;color:#9F8678;text-transform:uppercase;letter-spacing:.5px">Punches</span>
+            ${sessions.map((s, i) => `<span class="badge" style="background:rgba(134,224,168,.12);color:#86E0A8;border:1px solid rgba(134,224,168,.3);font-size:11px;padding:2px 7px">${i + 1}: ${escapeInbox(s.in || '—')} → ${escapeInbox(s.out || '…')}</span>`).join('')}
+          </div>` : ''}
           ${breaksList}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${actions}</div>
@@ -630,7 +686,7 @@ function _attReasonLine(r) {
   </div>`
 }
 
-function renderAttendanceRow(r, canManage) {
+function renderAttendanceRow(r, canManage, attCols) {
   const name = r.full_name || r.email || 'Unknown'
   const isPending = (r.approval_status || 'pending') === 'pending'
   const breaks = Array.isArray(r.breaks) ? r.breaks : []
@@ -658,6 +714,7 @@ function renderAttendanceRow(r, canManage) {
     <td style="font-size:11.5px;color:#FFB874">${breakLabel}</td>
     <td>${_attApprovalBadge(r)}${_attReasonLine(r)}</td>
     <td style="font-size:12px;color:#E8D9FF;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeInbox(r.note || '')}">${escapeInbox(r.note || '—')}</td>
+    ${attCols ? attCols.bodyCells(r) : ''}
     ${canManage ? `<td>
       <div style="display:flex;gap:4px">
         ${isPending ? `<button class="btn btn-xs btn-primary" onclick="openAttDecisionDialog('${r.id}','approved')" title="Approve"><i class="fas fa-check"></i></button>

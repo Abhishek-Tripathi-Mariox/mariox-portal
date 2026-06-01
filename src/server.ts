@@ -5,7 +5,8 @@ import compression from 'compression'
 import path from 'node:path'
 import { MongoClient } from 'mongodb'
 import legacyApp from './index'
-import { createMongoModels, ensureIndexes } from './models/mongo-models'
+import { createMongoModels, ensureIndexes, backfillElastic } from './models/mongo-models'
+import { configureElastic, pingElastic } from './utils/elastic'
 import { createAuthRouter } from './express-routes/auth'
 import { createAlertsRouter } from './express-routes/alerts'
 import { createClientAuthRouter } from './express-routes/client-auth'
@@ -16,7 +17,11 @@ import { createUsersRouter } from './express-routes/users'
 import { createTimesheetsRouter } from './express-routes/timesheets'
 import { createProjectsRouter } from './express-routes/projects'
 import { createTasksRouter } from './express-routes/tasks'
+import { createTaskColumnsRouter } from './express-routes/task-columns'
+import { createEntityColumnsRouter } from './express-routes/entity-columns'
 import { createSprintsRouter, createMilestonesRouter } from './express-routes/sprints'
+import { createSearchRouter } from './express-routes/search'
+import { createTrashRouter } from './express-routes/trash'
 import { createAllocationsRouter } from './express-routes/allocations'
 import { createProjectTeamsRouter } from './express-routes/project-teams'
 import { createKanbanPermissionsRouter } from './express-routes/kanban-permissions'
@@ -54,6 +59,9 @@ function toNumber(value: unknown, fallback: number) {
 }
 
 const runtimeEnv = loadRuntimeEnv()
+// Configure the Elasticsearch mirror from the runtime env (elastic_ip /
+// elastic_username / elastic_password). No-op when those aren't set.
+const elasticOn = configureElastic(runtimeEnv as any)
 const mongoConnectionString = String(runtimeEnv.LOCAL_MONGO_DB)
 // Pass the full connection string to MongoClient so credentials, srv resolution and query params are preserved.
 const mongoUrl = new URL(mongoConnectionString)
@@ -70,6 +78,15 @@ await bootstrapSeed(models, runtimeEnv)
 // checks). Non-blocking failures only warn so a single bad index never breaks
 // boot.
 await ensureIndexes(models)
+
+// Verify Elasticsearch is reachable, then backfill existing data into its
+// indexes in the background. pingElastic() disables the mirror if the cluster
+// can't be reached, so a missing/unreachable ES never blocks or breaks boot.
+if (elasticOn) {
+  void pingElastic().then((ok) => {
+    if (ok) backfillElastic(models).catch((e) => console.warn('[elastic] backfill error:', e?.message || e))
+  })
+}
 
 function createLegacyResult() {
   return {
@@ -157,8 +174,23 @@ server.use('/api/clients', createClientsRouter(models, jwtSecret, String(runtime
 server.use('/api/invoices', createInvoicesRouter(models, jwtSecret, runtimeEnv as any))
 server.use('/api/projects', createProjectsRouter(models, jwtSecret))
 server.use('/api/tasks', createTasksRouter(models, jwtSecret))
+server.use('/api/task-columns', createTaskColumnsRouter(models, jwtSecret))
+server.use('/api/lead-task-columns', createEntityColumnsRouter(models, jwtSecret, {
+  columns: models.leadTaskColumns as any,
+  values: models.leadTasks as any,
+  managePerm: 'leads.manage_task_columns',
+  idPrefix: 'ltcol',
+}))
+server.use('/api/attendance-columns', createEntityColumnsRouter(models, jwtSecret, {
+  columns: models.attendanceColumns as any,
+  values: models.attendance as any,
+  managePerm: 'hr.attendance.manage_columns',
+  idPrefix: 'attcol',
+}))
 server.use('/api/sprints', createSprintsRouter(models, jwtSecret))
 server.use('/api/milestones', createMilestonesRouter(models, jwtSecret, runtimeEnv as any))
+server.use('/api/search', createSearchRouter(models, jwtSecret))
+server.use('/api/trash', createTrashRouter(models, jwtSecret))
 server.use('/api/allocations', createAllocationsRouter(models, jwtSecret))
 server.use('/api/project-teams', createProjectTeamsRouter(models, jwtSecret))
 server.use('/api/kanban-permissions', createKanbanPermissionsRouter(models, jwtSecret))

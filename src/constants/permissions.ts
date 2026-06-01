@@ -60,6 +60,8 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
       { key: 'tasks.delete',     label: 'Delete tasks' },
       { key: 'tasks.move',       label: 'Move tasks across columns' },
       { key: 'tasks.comment',    label: 'Comment on tasks' },
+      { key: 'tasks.manage_columns', label: 'Manage task table columns',
+        description: 'Add, edit, and remove custom columns on the All Tasks table — max 20 columns. Supports text, textarea, checkbox, radio, date, and dropdown types.' },
       { key: 'tasks.view_project', label: 'View Project Tasks tab',
         description: 'Show the "Project Tasks" entry in the sidebar.' },
       { key: 'personal_tasks.view', label: 'View My Task tab',
@@ -244,6 +246,8 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
         description: 'Add / remove custom lead + task statuses from the "Manage Statuses" modal.' },
       { key: 'leads.manage_sources',  label: 'Manage lead sources',
         description: 'Add / remove custom lead sources from the "Manage Sources" modal.' },
+      { key: 'leads.manage_task_columns', label: 'Manage sales-task columns',
+        description: 'Add / edit / remove custom columns on the sales (lead) tasks table.' },
       { key: 'sales.tracker.view', label: 'View Sale Tracker tab',
         description: 'Show the "Sale Tracker" entry in the sidebar.' },
     ],
@@ -340,6 +344,7 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     icon: 'fa-id-badge',
     permissions: [
       { key: 'hr.attendance.manage',     label: 'Manage attendance',     description: 'Mark attendance for any employee and view the full attendance log.' },
+      { key: 'hr.attendance.manage_columns', label: 'Manage attendance columns', description: 'Add / edit / remove custom columns on the attendance table.' },
       { key: 'hr.calendar.view',         label: 'View HR Calendar tab',  description: 'Show the HR Calendar entry in the sidebar.' },
       { key: 'hr.calendar.manage',       label: 'Manage HR calendar',    description: 'Create / delete company calendar events (holidays, training, etc.).' },
       { key: 'hr.warnings.manage',       label: 'Issue warnings',        description: 'Issue, view and delete disciplinary warnings for any employee.' },
@@ -382,6 +387,39 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
         description: 'Record that a period\'s incentive has been paid out.' },
     ],
   },
+  {
+    // Gates which tabs appear in the external CLIENT portal. These are read
+    // off the `client` role globally — toggling one here (via Roles) shows or
+    // hides that tab for every client. Profile is intentionally not gated
+    // (clients always need access to their own profile / password).
+    module: 'client_portal',
+    label: 'Client Portal',
+    icon: 'fa-user-shield',
+    permissions: [
+      { key: 'client_portal.dashboard',  label: 'Dashboard tab' },
+      { key: 'client_portal.projects',   label: 'My Projects tab' },
+      { key: 'client_portal.kanban',     label: 'Task Board tab' },
+      { key: 'client_portal.milestones', label: 'Milestones tab' },
+      { key: 'client_portal.documents',  label: 'Documents tab' },
+      { key: 'client_portal.invoices',   label: 'Invoices & Billing tab' },
+      { key: 'client_portal.support',    label: 'Support tab' },
+    ],
+  },
+  {
+    // Centralized recycle bin — deleted records (across modules) land here and
+    // can be restored or purged.
+    module: 'trash',
+    label: 'Trash',
+    icon: 'fa-trash-restore',
+    permissions: [
+      { key: 'trash.view',    label: 'View Trash',
+        description: 'See the Trash module listing deleted records across modules with who deleted them and when.' },
+      { key: 'trash.restore', label: 'Restore from Trash',
+        description: 'Restore a deleted record (and its related data) from Trash back into the active app.' },
+      { key: 'trash.purge',   label: 'Permanently delete from Trash',
+        description: 'Hard-delete a record from Trash. Cannot be undone.' },
+    ],
+  },
 ]
 
 export const ALL_PERMISSION_KEYS: PermissionKey[] = PERMISSION_CATALOGUE.flatMap(
@@ -420,7 +458,8 @@ const PM_PERMS: PermissionKey[] = [
   'scopes.create', 'scopes.view_all', 'scopes.edit', 'scopes.delete',
   'quotations.create', 'quotations.view_all', 'quotations.edit', 'quotations.delete',
   'meetings.create', 'meetings.view_all', 'meetings.edit', 'meetings.delete',
-  'hr.attendance.manage', 'hr.calendar.view', 'hr.calendar.manage', 'hr.warnings.manage',
+  // Attendance management is HR/admin-only — PMs see only their own attendance.
+  'hr.calendar.view', 'hr.calendar.manage', 'hr.warnings.manage',
   'hr.pips.manage', 'hr.salary_slips.manage', 'hr.terminations.manage',
   'hr.documents.manage', 'hr.assets.manage',
 ]
@@ -494,7 +533,7 @@ const SALES_MANAGER_PERMS: PermissionKey[] = [
   'clients.view_all',
   'leads.view_own', 'leads.view_all', 'leads.create', 'leads.edit_own', 'leads.edit', 'leads.delete',
   'leads.trash.view', 'leads.trash.restore', 'leads.trash.purge',
-  'leads.assign_to_others', 'leads.manage_statuses', 'leads.manage_sources',
+  'leads.assign_to_others', 'leads.manage_statuses', 'leads.manage_sources', 'leads.manage_task_columns',
   'sales.tracker.view',
   'portfolios.create', 'portfolios.view_all', 'portfolios.edit', 'portfolios.delete',
   'scopes.create', 'scopes.view_all', 'scopes.edit', 'scopes.delete',
@@ -516,7 +555,7 @@ const SALES_TL_PERMS: PermissionKey[] = [
   'users.view_all',
   'team.view_sales',
   'clients.view_all',
-  'leads.view_own', 'leads.create', 'leads.edit_own', 'leads.assign_to_others',
+  'leads.view_own', 'leads.create', 'leads.edit_own', 'leads.assign_to_others', 'leads.manage_task_columns',
   'sales.tracker.view',
   'portfolios.create', 'portfolios.view_all', 'portfolios.edit_own',
   'scopes.create', 'scopes.view_all', 'scopes.edit_own',
@@ -534,7 +573,7 @@ const SALES_TL_PERMS: PermissionKey[] = [
 // self-service (own tasks, log own time, apply leave) and can approve
 // leaves company-wide.
 const HR_PERMS: PermissionKey[] = [
-  'hr.attendance.manage', 'hr.calendar.view', 'hr.calendar.manage', 'hr.warnings.manage',
+  'hr.attendance.manage', 'hr.attendance.manage_columns', 'hr.calendar.view', 'hr.calendar.manage', 'hr.warnings.manage',
   'hr.pips.manage', 'hr.salary_slips.manage', 'hr.terminations.manage',
   'hr.documents.manage', 'hr.assets.manage',
   'users.view_all',
@@ -548,6 +587,15 @@ const HR_PERMS: PermissionKey[] = [
 
 const CLIENT_PERMS: PermissionKey[] = [
   'tickets.create',
+  // All portal tabs enabled by default; an admin can hide any of them for all
+  // clients by editing the Client role.
+  'client_portal.dashboard',
+  'client_portal.projects',
+  'client_portal.kanban',
+  'client_portal.milestones',
+  'client_portal.documents',
+  'client_portal.invoices',
+  'client_portal.support',
 ]
 
 export const SYSTEM_ROLE_SEEDS: SystemRoleSeed[] = [
