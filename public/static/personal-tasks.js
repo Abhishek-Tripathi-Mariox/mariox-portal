@@ -163,11 +163,11 @@ function _ptaskRow(t, statusPalette, myId) {
           ? `<input class="ptask-inline-input" data-ptask-id="${escapeInbox(t.id)}" data-field="title" value="${escapeInbox(t.title || '')}" placeholder="Untitled"
               onchange="ptaskInlineSave('${escapeInbox(t.id)}','title',this.value)"
               onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-              style="font-weight:600;color:#e2e8f0;background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 8px;width:100%;font-size:13px;transition:background .15s,border-color .15s"
+              style="font-weight:600;color:var(--text-primary);background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 8px;width:100%;font-size:13px;transition:background .15s,border-color .15s"
               onmouseover="this.style.borderColor='rgba(168,85,247,.25)'" onmouseout="this.style.borderColor='transparent'"
               onfocus="this.style.background='rgba(168,85,247,.08)';this.style.borderColor='rgba(168,85,247,.45)'"
               onblur="this.style.background='transparent';this.style.borderColor='transparent'"/>`
-          : `<div style="font-weight:600;color:#e2e8f0;padding:4px 8px">${escapeInbox(t.title)}</div>`}
+          : `<div style="font-weight:600;color:var(--text-primary);padding:4px 8px">${escapeInbox(t.title)}</div>`}
         ${canEdit
           ? `<input class="ptask-inline-input" data-ptask-id="${escapeInbox(t.id)}" data-field="description" value="${escapeInbox(t.description || '')}" placeholder="Add a description…"
               onchange="ptaskInlineSave('${escapeInbox(t.id)}','description',this.value)"
@@ -262,7 +262,7 @@ async function openManagePersonalTaskStatuses() {
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.18);border-radius:8px">
               <span style="width:10px;height:10px;border-radius:50%;background:${escapeInbox(s.color || '#a855f7')}"></span>
               <div style="flex:1;min-width:0">
-                <div style="font-size:13px;color:#e2e8f0">${escapeInbox(s.label)}</div>
+                <div style="font-size:13px;color:var(--text-primary)">${escapeInbox(s.label)}</div>
                 <div style="font-size:10px;color:#7E7E8F;font-family:monospace">${escapeInbox(s.value)}</div>
               </div>
               <button class="btn btn-xs btn-outline" style="color:#FF5E3A;border-color:#FF5E3A" onclick="deletePersonalTaskStatus('${escapeInbox(s.id)}','${escapeInbox(s.label)}')"><i class="fas fa-trash"></i></button>
@@ -439,7 +439,7 @@ async function showPersonalTaskHistory(id) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="padding:18px">
-      <div style="font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:4px">${escapeInbox(task.title)}</div>
+      <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:4px">${escapeInbox(task.title)}</div>
       <div style="font-size:12px;color:#7E7E8F;margin-bottom:14px">
         Assigned to <strong>${escapeInbox(task.assigned_to_name || '—')}</strong>
         by <strong>${escapeInbox(task.created_by_name || '—')}</strong>
@@ -455,8 +455,8 @@ async function showPersonalTaskHistory(id) {
             <div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.18);border-radius:8px;padding:10px 12px">
               <div style="font-size:11px;color:#7E7E8F;margin-bottom:4px">
                 <i class="fas fa-user-pen" style="color:#a855f7"></i>
-                <strong style="color:#e2e8f0">${escapeInbox(h.actor_name || 'Someone')}</strong>
-                changed <strong style="color:#e2e8f0">${label}</strong> · ${fmtDate(h.changed_at)} ${new Date(h.changed_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
+                <strong style="color:var(--text-primary)">${escapeInbox(h.actor_name || 'Someone')}</strong>
+                changed <strong style="color:var(--text-primary)">${label}</strong> · ${fmtDate(h.changed_at)} ${new Date(h.changed_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
               </div>
               <div style="font-size:12.5px;color:#cbd5e1;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <span style="text-decoration:line-through;color:#7E7E8F">${escapeInbox(fromVal)}</span>

@@ -15,6 +15,9 @@ let _leadsSourceFilter = ''
 // array means "no activity filter applied".
 let _leadsActivityFilter = []
 let _leadsAssigneeOptionsCache = []
+// Status quick-filter chips are collapsed behind a single button by default;
+// they expand (all at once, no per-status counts) when the user clicks it.
+let _leadsStatusChipsOpen = false
 
 // Activity filter options — shown as a single high-level dropdown on the
 // leads list. Each entry maps a human label to the activity-log `kind`
@@ -49,9 +52,10 @@ let _leadTaskStatusOrder = []
 
 const LEAD_BADGE_OPTIONS = ['todo', 'inprogress', 'review', 'done', 'critical', 'medium']
 
-// Render a status badge. When the status carries a custom hex `color`, tint the
-// badge with it (soft background + coloured text/border); otherwise fall back to
-// the preset badge-<class> colours. `meta` is a LEAD_STATUS_META entry.
+// Render a status badge. When the status carries a custom hex `color`, the
+// colour is used only as the badge BACKGROUND tint — the label text stays black
+// for readability. Otherwise fall back to the preset badge-<class> colours.
+// `meta` is a LEAD_STATUS_META entry.
 function statusBadgeHtml(meta, fallbackLabel) {
   const label = escapeHtml(meta?.label || fallbackLabel || '')
   const color = meta?.color
@@ -59,7 +63,7 @@ function statusBadgeHtml(meta, fallbackLabel) {
     const r = parseInt(color.slice(1, 3), 16)
     const g = parseInt(color.slice(3, 5), 16)
     const b = parseInt(color.slice(5, 7), 16)
-    const style = `background:rgba(${r},${g},${b},.16);color:${color};border:1px solid rgba(${r},${g},${b},.4)`
+    const style = `background:rgba(${r},${g},${b},.22);color:#111;border:1px solid rgba(${r},${g},${b},.45)`
     return `<span class="badge" style="${style}">${label}</span>`
   }
   return `<span class="badge badge-${meta?.badge || 'todo'}">${label}</span>`
@@ -413,11 +417,6 @@ async function renderLeadsView(el) {
     _leadsAssigneeOptionsCache = assignees
     const leads = leadsRes.data || leadsRes.leads || []
     _leadsViewCache = { leads, assignees, el }
-    const statusCounts = leads.reduce((acc, l) => {
-      const key = String(l.status || 'new').toLowerCase()
-      acc[key] = (acc[key] || 0) + 1
-      return acc
-    }, {})
 
     const filtered = applyLeadsFilters(leads)
     const pagination = paginateClient(filtered, _leadsPage, 10)
@@ -452,14 +451,7 @@ async function renderLeadsView(el) {
             <i class="fas fa-search"></i>
             <input class="search-bar" placeholder="Search leads…" oninput="filterTable(this.value,'leads-table')"/>
           </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${['', ..._leadStatusOrder].map((s) => {
-              const meta = s ? LEAD_STATUS_META[s] : { label: 'All' }
-              const count = s ? (statusCounts[s] || 0) : leads.length
-              const active = _leadsStatusFilter === s
-              return `<button class="btn btn-sm ${active ? 'btn-primary' : 'btn-outline'}" onclick="filterLeadsByStatus('${s}')">${meta?.label || s} <span style="opacity:.7;margin-left:4px">${count}</span></button>`
-            }).join('')}
-          </div>
+          <div id="leads-status-chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${renderLeadsStatusChips()}</div>
         </div>
         <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;padding:0 16px 12px">
           <div class="form-group" style="margin:0;min-width:160px">
@@ -1104,6 +1096,44 @@ function fmtDateTime(value) {
     return '—'
   }
 }
+
+// Inner HTML for the status quick-filter. Collapsed by default to a single
+// button showing the active status + its lead count; expands to all status
+// chips (each with its count) when _leadsStatusChipsOpen is true. Counts are
+// computed from the full cached lead set, independent of other filters.
+function renderLeadsStatusChips() {
+  const leads = (_leadsViewCache && Array.isArray(_leadsViewCache.leads)) ? _leadsViewCache.leads : []
+  const statusCounts = leads.reduce((acc, l) => {
+    const k = String(l.status || 'new').toLowerCase()
+    acc[k] = (acc[k] || 0) + 1
+    return acc
+  }, {})
+  const activeLabel = _leadsStatusFilter
+    ? (LEAD_STATUS_META[_leadsStatusFilter]?.label || _leadsStatusFilter)
+    : 'All statuses'
+  const activeCount = _leadsStatusFilter ? (statusCounts[_leadsStatusFilter] || 0) : leads.length
+  const cnt = (n) => `<span style="opacity:.7;margin-left:4px">${n}</span>`
+  const toggle = `<button class="btn btn-sm ${_leadsStatusFilter ? 'btn-primary' : 'btn-outline'}" onclick="toggleLeadsStatusChips()" title="Filter by status">
+      <i class="fas fa-filter"></i> ${escapeHtml(activeLabel)}${cnt(activeCount)}
+      <i class="fas fa-chevron-${_leadsStatusChipsOpen ? 'up' : 'down'}" style="font-size:10px;opacity:.7;margin-left:4px"></i>
+    </button>`
+  if (!_leadsStatusChipsOpen) return toggle
+  const chips = ['', ..._leadStatusOrder].map((s) => {
+    const meta = s ? LEAD_STATUS_META[s] : { label: 'All' }
+    const count = s ? (statusCounts[s] || 0) : leads.length
+    const active = _leadsStatusFilter === s
+    return `<button class="btn btn-sm ${active ? 'btn-primary' : 'btn-outline'}" onclick="filterLeadsByStatus('${s}')">${escapeHtml(meta?.label || s)}${cnt(count)}</button>`
+  }).join('')
+  return toggle + chips
+}
+
+// Expand/collapse the status chips in place — no data refetch needed.
+function toggleLeadsStatusChips() {
+  _leadsStatusChipsOpen = !_leadsStatusChipsOpen
+  const wrap = document.getElementById('leads-status-chips')
+  if (wrap) wrap.innerHTML = renderLeadsStatusChips()
+}
+window.toggleLeadsStatusChips = toggleLeadsStatusChips
 
 function filterLeadsByStatus(status) {
   _leadsStatusFilter = status || ''

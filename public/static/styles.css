@@ -6580,3 +6580,11 @@ body.theme-light .task-drawer-custom-input:focus {
   background: rgba(169,112,255,0.20) linear-gradient(0deg, rgba(169,112,255,0.20), rgba(169,112,255,0.20));
   color: var(--text-primary, #e2e8f0);
 }
+
+/* My Task list: keep each row's colour unchanged on hover (no highlight tint).
+   Scoped to #page-personal-tasks so other tables keep their hover affordance.
+   The ID selector + !important outrank the global/theme .data-table hover rules. */
+#page-personal-tasks .data-table tbody tr:hover,
+#page-personal-tasks .data-table tbody tr:hover td {
+  background: transparent !important;
+}
