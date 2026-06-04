@@ -2214,7 +2214,7 @@ function editLeadStatusInline(kind, id) {
     <select id="el-badge-${id}" class="form-select" style="font-size:12px;width:100px;padding:4px" title="Fallback badge style">${LEAD_BADGE_OPTIONS.map(b => `<option value="${b}" ${(m?.badge || 'todo') === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
     <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#7E7E8F;white-space:nowrap" title="Use a custom colour instead of the badge style">
       <input id="el-usecolor-${id}" type="checkbox" ${hasColor ? 'checked' : ''}/>
-      <input id="el-color-${id}" type="color" value="${initColor}" style="width:34px;height:28px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer"/>
+      <input id="el-color-${id}" type="color" value="${initColor}" oninput="document.getElementById('el-usecolor-${id}').checked=true" style="width:34px;height:28px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer"/>
     </label>
     <button class="btn btn-xs btn-primary" title="Save" onclick="saveLeadStatusEdit('${kind}','${id}')"><i class="fas fa-check"></i></button>
     <button class="btn btn-xs btn-outline" title="Cancel" onclick="rerenderStatusList('${kind}')"><i class="fas fa-times"></i></button>`
@@ -2241,7 +2241,7 @@ function renderStatusForm(kind) {
     <input id="new-${kind}-status-key" class="form-input" placeholder="Key (auto from label if empty)"/>
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#7E7E8F">
       <input id="new-${kind}-status-usecolor" type="checkbox"/> Custom colour
-      <input id="new-${kind}-status-color" type="color" value="#a970ff" style="width:34px;height:28px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer"/>
+      <input id="new-${kind}-status-color" type="color" value="#a970ff" oninput="document.getElementById('new-${kind}-status-usecolor').checked=true" style="width:34px;height:28px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer"/>
     </label>
     <button class="btn btn-primary btn-sm" onclick="addLeadStatus('${kind}')"><i class="fas fa-plus"></i> Add Status</button>
   </div>`
