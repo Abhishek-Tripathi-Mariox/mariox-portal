@@ -175,6 +175,17 @@ const ALLOWED_BADGES = new Set([
   'todo', 'inprogress', 'review', 'done', 'critical', 'medium',
 ])
 
+// Optional per-status custom colour. Stored as a #RRGGBB hex string and used
+// to tint the status badge on the list view. Returns null when absent (the UI
+// then falls back to the badge class colour) and throws on a malformed value.
+function sanitizeStatusColor(input: any): string | null {
+  const raw = String(input ?? '').trim()
+  if (!raw) return null
+  const m = raw.match(/^#?([0-9a-fA-F]{6})$/)
+  if (!m) throw new Error('Invalid colour — use a hex value like #A970FF')
+  return '#' + m[1].toLowerCase()
+}
+
 // Whitelist of activity classifications surfaced in the Schedule / Edit
 // follow-up modals AND on the list view chip. Anything outside this set is
 // rejected so the chip can't end up showing garbage from a bad import.
@@ -330,6 +341,7 @@ export function createLeadsRouter(
       if (!ALLOWED_BADGES.has(badge)) {
         return res.status(400).json({ error: 'Invalid badge — use one of: ' + [...ALLOWED_BADGES].join(', ') })
       }
+      const color = sanitizeStatusColor(body.color)
       const existing = await repo.findOne({ key }) as any
       if (existing) return res.status(409).json({ error: 'A status with this key already exists' })
       const all = await repo.find({}) as any[]
@@ -340,6 +352,7 @@ export function createLeadsRouter(
         key,
         label,
         badge,
+        color,
         position,
         is_system: 0,
         created_at: now,
@@ -387,7 +400,6 @@ export function createLeadsRouter(
       const id = String(req.params.id)
       const status = await repo.findById(id) as any
       if (!status) return res.status(404).json({ error: 'Status not found' })
-      if (status.is_system) return res.status(400).json({ error: 'System statuses cannot be edited' })
       const body = req.body || {}
       const patch: any = { updated_at: new Date().toISOString() }
       if ('label' in body) patch.label = validateLength(String(body.label || '').trim(), 2, 40, 'Label')
@@ -398,6 +410,7 @@ export function createLeadsRouter(
         }
         patch.badge = badge
       }
+      if ('color' in body) patch.color = sanitizeStatusColor(body.color)
       await repo.updateById(id, { $set: patch })
       const updated = await repo.findById(id)
       return res.json({ data: updated, status: updated, message: 'Status updated' })

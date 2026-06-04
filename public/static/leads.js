@@ -49,6 +49,22 @@ let _leadTaskStatusOrder = []
 
 const LEAD_BADGE_OPTIONS = ['todo', 'inprogress', 'review', 'done', 'critical', 'medium']
 
+// Render a status badge. When the status carries a custom hex `color`, tint the
+// badge with it (soft background + coloured text/border); otherwise fall back to
+// the preset badge-<class> colours. `meta` is a LEAD_STATUS_META entry.
+function statusBadgeHtml(meta, fallbackLabel) {
+  const label = escapeHtml(meta?.label || fallbackLabel || '')
+  const color = meta?.color
+  if (color && /^#[0-9a-fA-F]{6}$/.test(color)) {
+    const r = parseInt(color.slice(1, 3), 16)
+    const g = parseInt(color.slice(3, 5), 16)
+    const b = parseInt(color.slice(5, 7), 16)
+    const style = `background:rgba(${r},${g},${b},.16);color:${color};border:1px solid rgba(${r},${g},${b},.4)`
+    return `<span class="badge" style="${style}">${label}</span>`
+  }
+  return `<span class="badge badge-${meta?.badge || 'todo'}">${label}</span>`
+}
+
 async function loadLeadStatuses(force = false) {
   if (!force && _leadStatusOrder.length && _leadTaskStatusOrder.length) return
   try {
@@ -58,13 +74,13 @@ async function loadLeadStatuses(force = false) {
     LEAD_STATUS_META = {}
     _leadStatusOrder = []
     for (const s of lead) {
-      LEAD_STATUS_META[s.key] = { label: s.label, badge: s.badge, id: s.id, is_system: s.is_system }
+      LEAD_STATUS_META[s.key] = { label: s.label, badge: s.badge, color: s.color || null, id: s.id, is_system: s.is_system }
       _leadStatusOrder.push(s.key)
     }
     LEAD_TASK_STATUS_META = {}
     _leadTaskStatusOrder = []
     for (const s of task) {
-      LEAD_TASK_STATUS_META[s.key] = { label: s.label, badge: s.badge, id: s.id, is_system: s.is_system }
+      LEAD_TASK_STATUS_META[s.key] = { label: s.label, badge: s.badge, color: s.color || null, id: s.id, is_system: s.is_system }
       _leadTaskStatusOrder.push(s.key)
     }
   } catch (e) {
@@ -412,6 +428,7 @@ async function renderLeadsView(el) {
       (_leadsToDate ? 1 : 0) +
       (_leadsAssigneeFilter ? 1 : 0) +
       (_leadsSourceFilter ? 1 : 0) +
+      (_leadsStatusFilter ? 1 : 0) +
       (_leadsActivityFilter.length ? 1 : 0)
 
     el.innerHTML = `
@@ -465,6 +482,13 @@ async function renderLeadsView(el) {
             <select id="leads-filter-source" class="form-select" onchange="onLeadsFilterChange()">
               <option value="">All sources</option>
               ${LEAD_SOURCE_OPTIONS.filter((s) => s !== 'Other').map((s) => `<option value="${escapeHtml(s)}" ${_leadsSourceFilter === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;min-width:180px">
+            <label class="form-label" style="font-size:11px">Status</label>
+            <select id="leads-filter-status" class="form-select" onchange="onLeadsFilterChange()">
+              <option value="">All statuses</option>
+              ${_leadStatusOrder.map((k) => `<option value="${escapeHtml(k)}" ${_leadsStatusFilter === k ? 'selected' : ''}>${escapeHtml(LEAD_STATUS_META[k]?.label || k)}</option>`).join('')}
             </select>
           </div>
           <div class="form-group" style="margin:0;min-width:220px">
@@ -534,6 +558,7 @@ function onLeadsFilterChange() {
   _leadsToDate = document.getElementById('leads-filter-to')?.value || ''
   _leadsAssigneeFilter = document.getElementById('leads-filter-assignee')?.value || ''
   _leadsSourceFilter = document.getElementById('leads-filter-source')?.value || ''
+  _leadsStatusFilter = document.getElementById('leads-filter-status')?.value || ''
   // Activity filter is managed by the custom panel — don't read from DOM here.
   _leadsPage = 1
   reloadLeadsView()
@@ -544,6 +569,7 @@ function clearLeadsFilters() {
   _leadsToDate = ''
   _leadsAssigneeFilter = ''
   _leadsSourceFilter = ''
+  _leadsStatusFilter = ''
   _leadsActivityFilter = []
   _leadsPage = 1
   reloadLeadsView()
@@ -907,6 +933,63 @@ function openLeadNoteModal(leadId) {
 }
 window.openLeadNoteModal = openLeadNoteModal
 
+// Copy a lead's email/phone straight from the list row. Looks the value up
+// from the cached leads array so we never have to escape it into the inline
+// onclick. stopPropagation keeps the row's "open detail" click from firing.
+async function copyLeadField(leadId, field, ev) {
+  if (ev) ev.stopPropagation()
+  const lead = (_leadsViewCache?.leads || []).find((x) => String(x.id) === String(leadId))
+  const val = lead ? String(lead[field] || '') : ''
+  if (!val) return
+  try {
+    await navigator.clipboard.writeText(val)
+    toast(`${field === 'phone' ? 'Phone' : 'Email'} copied`, 'success', 2000)
+  } catch (e) {
+    toast('Copy failed', 'error')
+  }
+}
+window.copyLeadField = copyLeadField
+
+// Update the last note without leaving the list. Pre-fills the current note;
+// saving posts a new note (matching the detail page), which becomes the
+// latest note shown in the column after the list refreshes.
+function openEditLeadNoteModal(leadId) {
+  const entry = window._leadNoteCache[leadId] || {}
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-pen" style="color:#C9A7FF;margin-right:6px"></i>Update last note${entry.lead_name ? ` — ${escapeHtml(entry.lead_name)}` : ''}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Note</label>
+        <textarea id="edit-lead-note-text" class="form-input" rows="5" placeholder="Add a note about this lead…" autofocus>${escapeHtml(entry.text || '')}</textarea>
+        <div class="form-hint">Saving adds a new note, which becomes the latest note shown in the list.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditLeadNote('${leadId}')"><i class="fas fa-check"></i> Save note</button>
+    </div>
+  `)
+}
+window.openEditLeadNoteModal = openEditLeadNoteModal
+
+async function submitEditLeadNote(leadId) {
+  const ta = document.getElementById('edit-lead-note-text')
+  const text = (ta?.value || '').trim()
+  if (!text) { toast('Note cannot be empty', 'error'); return }
+  try {
+    await API.post(`/leads/${leadId}/notes`, { text })
+    toast('Note updated', 'success')
+    closeModal()
+    reloadLeadsView()
+  } catch (e) {
+    toast('Failed to save note: ' + e.message, 'error')
+  }
+}
+window.submitEditLeadNote = submitEditLeadNote
+
 // Small chip showing the next-due row's Activity Type — labels match the
 // dropdown in the Schedule + Edit Follow-up modals so what a user sees on
 // the list is exactly what they pick when reclassifying.
@@ -976,17 +1059,24 @@ function renderLeadRow(l, canManage) {
         ${avatar(l.name, '#A970FF', 'sm')}
         <div style="min-width:0">
           <div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div>
-          <div style="font-size:12px;color:#7E7E8F">${escapeHtml(l.email || '—')}</div>
-          ${l.phone ? `<div style="font-size:11px;color:#7E7E8F">${escapeHtml(l.phone)}</div>` : ''}
+          <div style="font-size:12px;color:#7E7E8F">${l.email
+            ? `<span onclick="copyLeadField('${l.id}','email',event)" title="Click to copy email" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px">${escapeHtml(l.email)}<i class="fas fa-copy" style="font-size:9px;opacity:.45"></i></span>`
+            : '—'}</div>
+          ${l.phone
+            ? `<div style="font-size:11px;color:#7E7E8F"><span onclick="copyLeadField('${l.id}','phone',event)" title="Click to copy phone" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px">${escapeHtml(l.phone)}<i class="fas fa-copy" style="font-size:9px;opacity:.45"></i></span></div>`
+            : ''}
         </div>
       </div>
     </td>
     <td><span style="font-size:12px;color:#7E7E8F">${escapeHtml(l.source || '—')}</span></td>
     <td>${l.assigned_to_name ? `<span style="font-size:12px">${escapeHtml(l.assigned_to_name)}</span>` : '<span style="color:#7E7E8F">—</span>'}</td>
-    <td><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
+    <td>${statusBadgeHtml(meta)}</td>
     <td style="max-width:260px">
       <div style="font-size:12px;color:#cbd5e1;white-space:pre-wrap;word-break:break-word">${lastNotePreview}</div>
-      ${isLong ? `<button type="button" onclick="openLeadNoteModal('${l.id}')" style="background:none;border:none;color:#A970FF;font-size:11px;padding:2px 0;cursor:pointer;font-weight:600">See more</button>` : ''}
+      <div style="display:flex;gap:10px;align-items:center;margin-top:2px">
+        ${isLong ? `<button type="button" onclick="openLeadNoteModal('${l.id}')" style="background:none;border:none;color:#A970FF;font-size:11px;padding:2px 0;cursor:pointer;font-weight:600">See more</button>` : ''}
+        ${canManage ? `<button type="button" onclick="openEditLeadNoteModal('${l.id}')" title="Update last note" style="background:none;border:none;color:#A970FF;font-size:11px;padding:2px 0;cursor:pointer;font-weight:600"><i class="fas fa-pen" style="font-size:9px;margin-right:3px"></i>Edit</button>` : ''}
+      </div>
       ${lastNoteMeta ? `<div style="font-size:10.5px;color:#7E7E8F;margin-top:2px">${lastNoteMeta}</div>` : ''}
     </td>
     <td>
@@ -2092,12 +2182,12 @@ function renderStatusList(kind) {
     const id = m?.id || ''
     const isSystem = Number(m?.is_system || 0) === 1
     return `<div id="lstatus-row-${id}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,.02)">
-      <span class="badge badge-${m?.badge || 'todo'}">${escapeHtml(m?.label || k)}</span>
+      ${statusBadgeHtml(m, k)}
       <span style="font-size:11px;color:#7E7E8F;font-family:monospace">${escapeHtml(k)}</span>
       <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
-        ${isSystem ? '<span style="font-size:10px;color:#A970FF">SYSTEM</span>' : `
-          <button class="btn btn-xs btn-outline" title="Edit" onclick="editLeadStatusInline('${kind}','${id}')"><i class="fas fa-pen"></i></button>
-          <button class="btn btn-xs btn-outline" title="Delete" onclick="deleteLeadStatus('${kind}','${id}','${escapeHtml(m?.label || k).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
+        ${isSystem ? '<span style="font-size:10px;color:#A970FF">SYSTEM</span>' : ''}
+        <button class="btn btn-xs btn-outline" title="Edit label & colour" onclick="editLeadStatusInline('${kind}','${id}')"><i class="fas fa-pen"></i></button>
+        ${isSystem ? '' : `<button class="btn btn-xs btn-outline" title="Delete" onclick="deleteLeadStatus('${kind}','${id}','${escapeHtml(m?.label || k).replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i></button>`}
       </span>
     </div>`
   }).join('')
@@ -2114,18 +2204,31 @@ function editLeadStatusInline(kind, id) {
   const [k, m] = entry
   const row = document.getElementById('lstatus-row-' + id)
   if (!row) return
+  const hasColor = !!(m?.color && /^#[0-9a-fA-F]{6}$/.test(m.color))
+  const initColor = hasColor ? m.color : '#a970ff'
+  // System status labels are code-controlled (re-seeded on boot), so only their
+  // colour/badge are editable here — the label is shown read-only.
+  const isSystem = Number(m?.is_system || 0) === 1
   row.innerHTML = `
-    <input id="el-label-${id}" class="form-input" style="flex:1;font-size:12px;padding:4px 8px" value="${escapeHtml(m?.label || k)}"/>
-    <select id="el-badge-${id}" class="form-select" style="font-size:12px;width:120px;padding:4px" title="Colour">${LEAD_BADGE_OPTIONS.map(b => `<option value="${b}" ${(m?.badge || 'todo') === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
+    <input id="el-label-${id}" class="form-input" style="flex:1;font-size:12px;padding:4px 8px${isSystem ? ';opacity:.6' : ''}" value="${escapeHtml(m?.label || k)}" ${isSystem ? 'readonly title="System label is fixed"' : ''}/>
+    <select id="el-badge-${id}" class="form-select" style="font-size:12px;width:100px;padding:4px" title="Fallback badge style">${LEAD_BADGE_OPTIONS.map(b => `<option value="${b}" ${(m?.badge || 'todo') === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
+    <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#7E7E8F;white-space:nowrap" title="Use a custom colour instead of the badge style">
+      <input id="el-usecolor-${id}" type="checkbox" ${hasColor ? 'checked' : ''}/>
+      <input id="el-color-${id}" type="color" value="${initColor}" style="width:34px;height:28px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer"/>
+    </label>
     <button class="btn btn-xs btn-primary" title="Save" onclick="saveLeadStatusEdit('${kind}','${id}')"><i class="fas fa-check"></i></button>
     <button class="btn btn-xs btn-outline" title="Cancel" onclick="rerenderStatusList('${kind}')"><i class="fas fa-times"></i></button>`
 }
 async function saveLeadStatusEdit(kind, id) {
   const label = (document.getElementById('el-label-' + id)?.value || '').trim()
   const badge = document.getElementById('el-badge-' + id)?.value
+  // Unchecking the toggle clears the custom colour (sends ''), so the badge
+  // falls back to its preset style.
+  const useColor = document.getElementById('el-usecolor-' + id)?.checked
+  const color = useColor ? (document.getElementById('el-color-' + id)?.value || '') : ''
   if (!label) { toast('Label required', 'error'); return }
   try {
-    await API.put(`/leads/statuses/${kind}/${id}`, { label, badge })
+    await API.put(`/leads/statuses/${kind}/${id}`, { label, badge, color })
     toast('Status updated', 'success')
     await loadLeadStatuses(true)
     rerenderStatusList(kind)
@@ -2136,6 +2239,10 @@ function renderStatusForm(kind) {
   return `<div style="display:grid;grid-template-columns:1fr;gap:6px">
     <input id="new-${kind}-status-label" class="form-input" placeholder="Label (e.g. On Hold)"/>
     <input id="new-${kind}-status-key" class="form-input" placeholder="Key (auto from label if empty)"/>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#7E7E8F">
+      <input id="new-${kind}-status-usecolor" type="checkbox"/> Custom colour
+      <input id="new-${kind}-status-color" type="color" value="#a970ff" style="width:34px;height:28px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer"/>
+    </label>
     <button class="btn btn-primary btn-sm" onclick="addLeadStatus('${kind}')"><i class="fas fa-plus"></i> Add Status</button>
   </div>`
 }
@@ -2143,9 +2250,11 @@ function renderStatusForm(kind) {
 async function addLeadStatus(kind) {
   const label = document.getElementById(`new-${kind}-status-label`).value.trim()
   const key = document.getElementById(`new-${kind}-status-key`).value.trim()
+  const useColor = document.getElementById(`new-${kind}-status-usecolor`)?.checked
+  const color = useColor ? (document.getElementById(`new-${kind}-status-color`)?.value || '') : ''
   if (!label) { toast('Label required', 'error'); return }
   try {
-    await API.post(`/leads/statuses/${kind}`, { label, key: key || undefined })
+    await API.post(`/leads/statuses/${kind}`, { label, key: key || undefined, color: color || undefined })
     toast('Status added', 'success')
     await loadLeadStatuses(true)
     const listEl = document.getElementById(`${kind === 'lead' ? 'lead' : 'task'}-status-list`)
@@ -3518,7 +3627,9 @@ async function submitScheduleFollowup2(leadId) {
 
 // ── Add Task modal (matches screenshot 3) ───────────────────
 function openAddTaskModal(leadId) {
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const today = new Date()
+  const todayStr = today.toISOString().slice(0, 10)
+  const nowTime = `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`
   showModal(`
     <div class="modal-header">
       <h3>Add Task</h3>
@@ -3531,8 +3642,13 @@ function openAddTaskModal(leadId) {
       <div class="form-group"><label class="form-label">Description</label>
         <textarea id="task2-desc" class="form-input" rows="3" placeholder="Additional details…"></textarea>
       </div>
-      <div class="form-group"><label class="form-label">Due Date *</label>
-        <input id="task2-due" type="date" class="form-input" value="${todayStr}"/>
+      <div class="grid-2">
+        <div class="form-group"><label class="form-label">Due Date *</label>
+          <input id="task2-due" type="date" class="form-input" value="${todayStr}"/>
+        </div>
+        <div class="form-group"><label class="form-label">Time</label>
+          <input id="task2-time" type="time" class="form-input" value="${nowTime}"/>
+        </div>
       </div>
       <div class="form-group"><label class="form-label">Priority</label>
         <select id="task2-priority" class="form-select">
@@ -3554,6 +3670,7 @@ async function submitAddTask(leadId) {
   const title = document.getElementById('task2-title').value.trim()
   const description = document.getElementById('task2-desc').value.trim()
   const due = document.getElementById('task2-due').value
+  const time = document.getElementById('task2-time').value || '17:00'
   const priority = document.getElementById('task2-priority').value
   if (!title) { toast('Title is required', 'error'); return }
   if (!due) { toast('Due date is required', 'error'); return }
@@ -3561,7 +3678,7 @@ async function submitAddTask(leadId) {
     await API.post(`/leads/${leadId}/tasks`, {
       title,
       description,
-      due_date: new Date(`${due}T17:00:00`).toISOString(),
+      due_date: new Date(`${due}T${time}:00`).toISOString(),
       priority,
     })
     toast('Task created', 'success')
@@ -3774,7 +3891,7 @@ function _renderTrackerPipeline(leads, byStatus) {
       const pct = leads.length ? Math.round((items.length / leads.length) * 100) : 0
       return `<div class="card"><div class="card-body" style="padding:12px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span>
+          ${statusBadgeHtml(meta)}
           <span style="font-size:18px;font-weight:700;color:#e2e8f0">${items.length}</span>
         </div>
         <div style="height:6px;border-radius:3px;background:rgba(255,255,255,0.08);overflow:hidden;margin-bottom:10px">
@@ -3860,7 +3977,7 @@ function _renderTrackerRecent(leads) {
           const meta = LEAD_STATUS_META[key] || { label: key, badge: 'todo' }
           return `<tr>
             <td><div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="goLeadDetail('${l.id}')">${avatar(l.name, '#A970FF', 'sm')}<div><div style="font-weight:600;color:#e2e8f0">${escapeHtml(l.name)}</div><div style="font-size:11px;color:#7E7E8F">${escapeHtml(l.email || '')}</div></div></div></td>
-            <td><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
+            <td>${statusBadgeHtml(meta)}</td>
             <td>${escapeHtml(l.assigned_to_name || '—')}</td>
             <td>${escapeHtml(l.source || '—')}</td>
             <td style="font-size:12px;color:#7E7E8F">${fmtDateTime(l.updated_at || l.created_at)}</td>
@@ -3999,7 +4116,7 @@ function renderLeadTaskListRow(t) {
     </td>
     <td style="padding:10px 14px;font-size:13px;color:#cbd5e1">${escapeHtml(t.assignee_name || '—')}</td>
     <td style="padding:10px 14px;font-size:12px;${overdue ? 'color:#FF5E3A;font-weight:600' : 'color:#7E7E8F'}">${fmtDateTime(t.due_date)}${overdue ? ' (overdue)' : ''}</td>
-    <td style="padding:10px 14px"><span class="badge badge-${meta.badge}">${escapeHtml(meta.label)}</span></td>
+    <td style="padding:10px 14px">${statusBadgeHtml(meta)}</td>
     <td style="padding:10px 14px;text-align:right">
       <div style="display:inline-flex;gap:4px">
         <button class="btn btn-xs btn-outline" title="Open lead" onclick="goLeadDetail('${t.lead_id}')"><i class="fas fa-up-right-from-square"></i></button>

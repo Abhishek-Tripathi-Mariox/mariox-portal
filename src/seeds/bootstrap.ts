@@ -2,12 +2,12 @@ import type { MongoModels, UserRecord } from '../models/mongo-models'
 import { SYSTEM_ROLE_SEEDS } from '../constants/permissions'
 
 const LEAD_STATUS_SEEDS = [
-  { key: 'new',       label: 'New',       badge: 'todo',       position: 0 },
-  { key: 'contacted', label: 'Contacted', badge: 'inprogress', position: 1 },
-  { key: 'qualified', label: 'Qualified', badge: 'review',     position: 2 },
-  { key: 'converted', label: 'Converted', badge: 'done',       position: 3 },
-  { key: 'lost',      label: 'Lost',      badge: 'critical',   position: 4 },
-  { key: 'closed',    label: 'Deal Close', badge: 'done',      position: 5 },
+  { key: 'new',       label: 'New',       badge: 'todo',       color: '#8b8b9e', position: 0 },
+  { key: 'contacted', label: 'Contacted', badge: 'inprogress', color: '#3b82f6', position: 1 },
+  { key: 'qualified', label: 'Qualified', badge: 'review',     color: '#a970ff', position: 2 },
+  { key: 'converted', label: 'Converted', badge: 'done',       color: '#22c55e', position: 3 },
+  { key: 'lost',      label: 'Lost',      badge: 'critical',   color: '#ef4444', position: 4 },
+  { key: 'closed',    label: 'Deal Close', badge: 'done',      color: '#14b8a6', position: 5 },
 ]
 
 const LEAD_TASK_STATUS_SEEDS = [
@@ -121,10 +121,15 @@ async function ensureLeadStatuses(models: MongoModels) {
       // Close), older DBs still have the old label sitting on disk. Update
       // it in place — but only on system rows so we don't trample over a
       // label admin renamed via the Settings UI.
-      if (existing.is_system === 1 && existing.label !== seed.label) {
-        await models.leadStatuses.updateById(String(existing.id), {
-          $set: { label: seed.label, updated_at: now },
-        })
+      const patch: any = {}
+      if (existing.is_system === 1 && existing.label !== seed.label) patch.label = seed.label
+      // Backfill the default colour onto pre-existing system rows that were
+      // seeded before per-status colours existed. Never overwrites a colour an
+      // admin already chose in the Settings UI.
+      if (existing.color == null && seed.color) patch.color = seed.color
+      if (Object.keys(patch).length) {
+        patch.updated_at = now
+        await models.leadStatuses.updateById(String(existing.id), { $set: patch })
       }
       continue
     }
