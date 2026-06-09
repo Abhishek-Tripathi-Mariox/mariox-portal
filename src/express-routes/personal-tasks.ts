@@ -278,7 +278,13 @@ export function createPersonalTasksRouter(models: MongoModels, jwtSecret: string
       }
       if ('due_date' in body) {
         const nextDue = body.due_date ? String(body.due_date) : null
-        if (nextDue !== (task.due_date || null)) pushHistory('due_date', task.due_date || null, nextDue)
+        if (nextDue !== (task.due_date || null)) {
+          pushHistory('due_date', task.due_date || null, nextDue)
+          // Rescheduling clears any prior alarm acknowledgement so the new due
+          // time rings a fresh alarm.
+          patch.alarm_ack_at = null
+          patch.alarm_ack_by = null
+        }
         patch.due_date = nextDue
       }
       if ('status' in body) {
@@ -351,6 +357,69 @@ export function createPersonalTasksRouter(models: MongoModels, jwtSecret: string
       }
       await models.personalTasks.deleteById(id)
       return res.json({ success: true, message: 'Task deleted' })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // ── Due alarms ───────────────────────────────────────────────
+  // Mirrors the lead follow-up alarm (/leads/followups/upcoming): returns the
+  // assignee's tasks whose due_date has arrived and which haven't been
+  // acknowledged yet, so the global frontend poller can ring the same alarm
+  // modal for personal "My Task" items. Only the assignee gets the alarm.
+  router.get('/upcoming', async (req, res) => {
+    try {
+      const user = req.user as any
+      const userId = String(user?.sub || user?.id || '')
+      if (!userId) return res.json({ data: [], alarms: [] })
+      const tasks = await models.personalTasks.find({
+        assigned_to: userId,
+        status: { $ne: 'done' },
+        alarm_ack_at: { $in: [null, undefined] },
+      }) as any[]
+      if (!tasks.length) return res.json({ data: [], alarms: [] })
+      const now = Date.now()
+      const due: any[] = []
+      for (const t of tasks) {
+        if (!t.due_date) continue
+        const dueMs = new Date(t.due_date).getTime()
+        if (Number.isNaN(dueMs)) continue
+        if (dueMs <= now) {
+          due.push({
+            id: t.id,
+            source: 'personal_task',
+            title: t.title,
+            due_date: t.due_date,
+            priority: t.priority || 'medium',
+            overdue: true,
+          })
+        }
+      }
+      due.sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)))
+      return res.json({ data: due, alarms: due })
+    } catch (error: any) {
+      return respondWithError(res, error, 500)
+    }
+  })
+
+  // Called by the alarm modal on dismiss. Persists the acknowledgement so the
+  // alarm doesn't re-pop on the next poll, while leaving the task open until
+  // the assignee actually marks it done. Rescheduling the due date clears this
+  // flag (see the PATCH handler) so a fresh alarm fires.
+  router.post('/:id/acknowledge', async (req, res) => {
+    try {
+      const user = req.user as any
+      const id = String(req.params.id)
+      const task = await models.personalTasks.findById(id) as any
+      if (!task) return res.status(404).json({ error: 'Task not found' })
+      if (String(task.assigned_to) !== String(user?.sub) && String(task.created_by) !== String(user?.sub)) {
+        return res.status(403).json({ error: 'Not allowed to acknowledge this task' })
+      }
+      const now = new Date().toISOString()
+      await models.personalTasks.updateById(id, {
+        $set: { alarm_ack_at: now, alarm_ack_by: user?.sub || null, updated_at: now },
+      })
+      return res.json({ message: 'Acknowledged' })
     } catch (error: any) {
       return respondWithError(res, error, 500)
     }

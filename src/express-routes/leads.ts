@@ -507,7 +507,27 @@ export function createLeadsRouter(
   router.get('/', async (req, res) => {
     try {
       const user = req.user as any
-      const filter = { ...((await buildLeadVisibilityFilter(models, user)) || {}), deleted_at: null }
+      const filter: Record<string, any> = { ...((await buildLeadVisibilityFilter(models, user)) || {}), deleted_at: null }
+      // Server-side text search. Replaces the old client-side row-text filter so
+      // the full list no longer has to ship to the browser to be searchable.
+      // The match is ANDed with the visibility filter, so results stay scoped
+      // to leads the user is already allowed to see.
+      const q = String(req.query.q || '').trim()
+      if (q) {
+        const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+        const or: any[] = [
+          { name: rx }, { email: rx }, { phone: rx },
+          { requirement: rx }, { source: rx }, { status: rx }, { notes: rx },
+        ]
+        // The list shows the assignee name, so let users search by it too —
+        // resolve matching users to ids and OR them into the lead query.
+        try {
+          const matchedUsers = await models.users.find({ full_name: rx }) as any[]
+          const ids = matchedUsers.map((u) => String(u.id)).filter(Boolean)
+          if (ids.length) or.push({ assigned_to: { $in: ids } })
+        } catch { /* best-effort assignee match */ }
+        filter.$and = [{ $or: or }]
+      }
       const leads = await models.leads.find(filter) as any[]
       leads.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
       const enriched = await enrichLeads(models, leads)

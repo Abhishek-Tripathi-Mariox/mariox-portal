@@ -5,6 +5,9 @@
 // ═══════════════════════════════════════════════════════════════
 
 let _leadsPage = 1
+let _leadsPageLimit = 10
+let _leadsSearch = ''
+let _leadsSearchTimer = null
 let _leadsStatusFilter = ''
 let _leadsFromDate = ''
 let _leadsToDate = ''
@@ -410,8 +413,9 @@ async function renderLeadsView(el) {
   el.innerHTML = `<div style="padding:24px;color:#7E7E8F"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div>`
   try {
     await Promise.all([loadLeadStatuses(), loadLeadSources()])
+    const _q = _leadsSearch.trim()
     const [leadsRes, assignees] = await Promise.all([
-      API.get('/leads'),
+      API.get('/leads' + (_q ? '?q=' + encodeURIComponent(_q) : '')),
       fetchSalesAssignees().catch(() => []),
     ])
     _leadsAssigneeOptionsCache = assignees
@@ -419,7 +423,7 @@ async function renderLeadsView(el) {
     _leadsViewCache = { leads, assignees, el }
 
     const filtered = applyLeadsFilters(leads)
-    const pagination = paginateClient(filtered, _leadsPage, 10)
+    const pagination = paginateClient(filtered, _leadsPage, _leadsPageLimit)
     _leadsPage = pagination.page
     const canManage = leadsCanManage()
     const activeFilterCount =
@@ -449,7 +453,7 @@ async function renderLeadsView(el) {
         <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px">
           <div class="search-wrap" style="flex:1;min-width:240px">
             <i class="fas fa-search"></i>
-            <input class="search-bar" placeholder="Search leads…" oninput="filterTable(this.value,'leads-table')"/>
+            <input class="search-bar" placeholder="Search leads…" value="${escapeHtml(_leadsSearch)}" oninput="onLeadsSearchInput(this.value)"/>
           </div>
           <div id="leads-status-chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${renderLeadsStatusChips()}</div>
         </div>
@@ -543,6 +547,28 @@ function applyLeadsFilters(leads) {
     }
     return true
   })
+}
+
+// Search now runs on the backend (?q=). Debounce keystrokes, then re-fetch the
+// scoped list and repaint the table body in place — refreshLeadsViewIncremental
+// leaves the search input untouched, so focus and caret survive each update.
+function onLeadsSearchInput(val) {
+  _leadsSearch = val
+  _leadsPage = 1
+  if (_leadsSearchTimer) clearTimeout(_leadsSearchTimer)
+  _leadsSearchTimer = setTimeout(fetchAndRefreshLeads, 300)
+}
+
+async function fetchAndRefreshLeads() {
+  try {
+    const q = _leadsSearch.trim()
+    const res = await API.get('/leads' + (q ? '?q=' + encodeURIComponent(q) : ''))
+    const leads = res.data || res.leads || []
+    _leadsViewCache = { ..._leadsViewCache, leads }
+    refreshLeadsViewIncremental()
+  } catch {
+    // Silent — the next keystroke retries.
+  }
 }
 
 function onLeadsFilterChange() {
@@ -695,7 +721,7 @@ function refreshLeadsViewIncremental() {
     return
   }
   const filtered = applyLeadsFilters(leads)
-  const pagination = paginateClient(filtered, _leadsPage, 10)
+  const pagination = paginateClient(filtered, _leadsPage, _leadsPageLimit)
   _leadsPage = pagination.page
   const canManage = leadsCanManage()
   // Rebuild table body.
@@ -2494,9 +2520,9 @@ const _alarmState = {
 function startFollowupAlarmPoller() {
   if (_alarmState.timer) return
   if (!_user || !_token) return
-  // Only poll for users who can act on follow-ups.
-  const role = String(_user.role || '').toLowerCase()
-  if (!['admin','pm','pc','sales_manager','sales_tl','sales_agent'].includes(role)) return
+  // Boots for every logged-in user: lead follow-ups ring only for sales-capable
+  // roles, but personal "My Task" due alarms apply to everyone (developers,
+  // team, HR included). The per-endpoint gating lives in pollFollowupAlarms.
   pollFollowupAlarms() // immediate kick-off
   _alarmState.timer = setInterval(pollFollowupAlarms, _alarmState.pollMs)
 }
@@ -2512,9 +2538,20 @@ function stopFollowupAlarmPoller() {
 
 async function pollFollowupAlarms() {
   if (!_user || !_token) return
+  const role = String(_user.role || '').toLowerCase()
+  const canFollowups = ['admin','pm','pc','sales_manager','sales_tl','sales_agent'].includes(role)
   try {
-    const res = await API.get('/leads/followups/upcoming')
-    const alarms = res.data || res.alarms || []
+    // Pull lead follow-ups (sales roles only) and personal task due-alarms
+    // (everyone) in parallel, then merge into the shared alarm queue. Each
+    // alarm carries a `source` so the modal knows how to render it.
+    const [fuRes, ptRes] = await Promise.all([
+      canFollowups ? API.get('/leads/followups/upcoming').catch(() => null) : Promise.resolve(null),
+      API.get('/personal-tasks/upcoming').catch(() => null),
+    ])
+    const alarms = [
+      ...((fuRes && (fuRes.data || fuRes.alarms)) || []),
+      ...((ptRes && (ptRes.data || ptRes.alarms)) || []),
+    ]
     for (const a of alarms) {
       if (_alarmState.shown.has(a.id)) continue
       _alarmState.shown.add(a.id)
@@ -2533,7 +2570,14 @@ function showNextFollowupAlarm() {
   if (!next) { _alarmState.active = null; return }
   _alarmState.active = next
   const dueText = fmtDateTime(next.due_date)
-  const overdueLabel = next.overdue ? ' <span style="color:#FF5E3A">(overdue)</span>' : ''
+  // Personal "My Task" alarms render their own task-flavoured modal (no lead
+  // contact fields, jumps to the My Task page on action) using the AMOLED
+  // lavender palette. Lead follow-ups keep the existing modal below.
+  if (next.source === 'personal_task') {
+    showPersonalTaskAlarm(next, dueText)
+    return
+  }
+  const overdueLabel = next.overdue ? ' <span style="color:#FF5C7A">(overdue)</span>' : ''
   const html = `
     <div id="followup-alarm-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:9999">
       <div style="width:min(440px,92vw);background:#1A0E08;border:1px solid #A970FF;border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.6);overflow:hidden">
@@ -2554,6 +2598,45 @@ function showNextFollowupAlarm() {
         </div>
         <div style="padding:12px 18px;background:rgba(255,255,255,.03);display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
           <button class="btn btn-outline btn-sm" onclick="openLeadFromAlarm('${next.lead_id}')"><i class="fas fa-eye"></i> Open Lead</button>
+          <button class="btn btn-primary btn-sm" onclick="acknowledgeFollowupAlarm()"><i class="fas fa-check"></i> Acknowledge</button>
+        </div>
+      </div>
+    </div>
+  `
+  let host = document.getElementById('followup-alarm-host')
+  if (!host) {
+    host = document.createElement('div')
+    host.id = 'followup-alarm-host'
+    document.body.appendChild(host)
+  }
+  host.innerHTML = html
+  startAlarmRingtone()
+}
+
+// Personal "My Task" due alarm — same ringing behaviour as the follow-up
+// alarm, styled with the AMOLED lavender palette and pointing at the My Task
+// page instead of a lead.
+function showPersonalTaskAlarm(next, dueText) {
+  const prio = String(next.priority || 'medium').toLowerCase()
+  const prioColor = prio === 'high' ? '#FF5C7A' : prio === 'low' ? '#7E7E8F' : '#C9A7FF'
+  const html = `
+    <div id="followup-alarm-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:9999">
+      <div style="width:min(440px,92vw);background:#121216;border:1px solid rgba(179,136,255,0.35);border-radius:14px;box-shadow:0 0 50px rgba(201,167,255,0.18),0 24px 64px rgba(0,0,0,.6);overflow:hidden">
+        <div style="padding:14px 18px;background:linear-gradient(135deg,#7B4DFF 0%,#B388FF 100%);color:#fff;display:flex;align-items:center;gap:10px">
+          <i class="fas fa-clipboard-check fa-shake" style="font-size:18px"></i>
+          <div style="font-weight:700;letter-spacing:.5px">Task Reminder</div>
+        </div>
+        <div style="padding:18px">
+          <div style="font-size:14px;color:#FFFFFF;margin-bottom:8px">
+            <strong>${escapeHtml(next.title || 'Task')}</strong>
+          </div>
+          <div style="font-size:12px;color:${prioColor};margin-bottom:6px">
+            <i class="fas fa-flag" style="margin-right:6px"></i>${escapeHtml(prio.charAt(0).toUpperCase() + prio.slice(1))} priority
+          </div>
+          <div style="font-size:12px;color:#7E7E8F;margin-top:8px"><i class="fas fa-clock" style="margin-right:6px"></i>Due ${dueText} <span style="color:#FF5C7A">(overdue)</span></div>
+        </div>
+        <div style="padding:12px 18px;background:rgba(255,255,255,.03);display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
+          <button class="btn btn-outline btn-sm" onclick="openTasksFromAlarm()"><i class="fas fa-eye"></i> Open Task</button>
           <button class="btn btn-primary btn-sm" onclick="acknowledgeFollowupAlarm()"><i class="fas fa-check"></i> Acknowledge</button>
         </div>
       </div>
@@ -2596,7 +2679,10 @@ async function acknowledgeFollowupAlarm() {
   const cur = _alarmState.active
   if (!cur) return
   try {
-    await API.post(`/leads/tasks/${cur.id}/acknowledge`, {})
+    const url = cur.source === 'personal_task'
+      ? `/personal-tasks/${cur.id}/acknowledge`
+      : `/leads/tasks/${cur.id}/acknowledge`
+    await API.post(url, {})
   } catch (e) {
     // Even if the server call fails we still close the modal so the agent
     // isn't trapped — the next poll will resurface it if truly unacknowledged.
@@ -2618,6 +2704,13 @@ function openLeadFromAlarm(leadId) {
   acknowledgeFollowupAlarm().finally(() => {
     if (typeof Router !== 'undefined' && Router?.navigate) Router.navigate('leads-view')
     setTimeout(() => openLeadDetailModal(leadId, { tab: 'followups' }), 200)
+  })
+}
+
+function openTasksFromAlarm() {
+  // Acknowledge then jump to the My Task page so the user can act on it.
+  acknowledgeFollowupAlarm().finally(() => {
+    if (typeof Router !== 'undefined' && Router?.navigate) Router.navigate('personal-tasks')
   })
 }
 

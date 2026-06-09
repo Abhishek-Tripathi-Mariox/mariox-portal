@@ -105,6 +105,14 @@ const pageSizeRegistry = {
     getLimit: () => _billingInvoiceLimit,
     setLimit: value => { _billingInvoiceLimit = normalizePageSize(value, _billingInvoiceLimit) },
   },
+  // Leads list pages client-side; its state lives in leads.js (_leadsPage /
+  // _leadsPageLimit), which share this global lexical scope at call time.
+  'leads-view': {
+    getPage: () => _leadsPage,
+    setPage: value => { _leadsPage = Math.max(1, Number(value) || 1) },
+    getLimit: () => _leadsPageLimit,
+    setLimit: value => { _leadsPageLimit = normalizePageSize(value, _leadsPageLimit) },
+  },
 }
 
 function setEnterprisePageSize(pageKey, limit) {

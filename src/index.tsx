@@ -112,7 +112,7 @@ app.get('*', (c) => {
   <!-- Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css"/>
   <!-- App CSS -->
-  <link rel="stylesheet" href="/static/styles.css?v=mentionfix2"/>
+  <link rel="stylesheet" href="/static/styles.css?v=taskalarm2"/>
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
@@ -120,27 +120,27 @@ app.get('*', (c) => {
 </head>
 <body>
   <div id="app"></div>
-  <script src="/static/app.js?v=mentionfix2"></script>
-  <script src="/static/pages.js?v=mentionfix2"></script>
-  <script src="/static/pages2.js?v=mentionfix2"></script>
-  <script src="/static/enterprise.js?v=mentionfix2"></script>
-  <script src="/static/enterprise2.js?v=mentionfix2"></script>
-  <script src="/static/client-portal.js?v=mentionfix2"></script>
-  <script src="/static/project-extensions.js?v=mentionfix2"></script>
-  <script src="/static/support.js?v=mentionfix2"></script>
-  <script src="/static/custom-columns.js?v=mentionfix2"></script>
-  <script src="/static/leads.js?v=mentionfix2"></script>
+  <script src="/static/app.js?v=taskalarm2"></script>
+  <script src="/static/pages.js?v=taskalarm2"></script>
+  <script src="/static/pages2.js?v=taskalarm2"></script>
+  <script src="/static/enterprise.js?v=taskalarm2"></script>
+  <script src="/static/enterprise2.js?v=taskalarm2"></script>
+  <script src="/static/client-portal.js?v=taskalarm2"></script>
+  <script src="/static/project-extensions.js?v=taskalarm2"></script>
+  <script src="/static/support.js?v=taskalarm2"></script>
+  <script src="/static/custom-columns.js?v=taskalarm2"></script>
+  <script src="/static/leads.js?v=taskalarm2"></script>
   <!-- HR module: _shared.js must load first so each per-component file can use its helpers -->
-  <script src="/static/hr/_shared.js?v=mentionfix2"></script>
-  <script src="/static/hr/hr-attendance.js?v=mentionfix2"></script>
-  <script src="/static/hr/hr-calendar.js?v=mentionfix2"></script>
-  <script src="/static/hr/hr-warnings.js?v=mentionfix2"></script>
-  <script src="/static/hr/hr-pips.js?v=mentionfix2"></script>
-  <script src="/static/hr/hr-salary-slips.js?v=mentionfix2"></script>
-  <script src="/static/hr/hr-terminations.js?v=mentionfix2"></script>
-  <script src="/static/hr/hr-documents.js?v=mentionfix2"></script>
-  <script src="/static/hr/hr-assets.js?v=mentionfix2"></script>
-  <script src="/static/personal-tasks.js?v=mentionfix2"></script>
+  <script src="/static/hr/_shared.js?v=taskalarm2"></script>
+  <script src="/static/hr/hr-attendance.js?v=taskalarm2"></script>
+  <script src="/static/hr/hr-calendar.js?v=taskalarm2"></script>
+  <script src="/static/hr/hr-warnings.js?v=taskalarm2"></script>
+  <script src="/static/hr/hr-pips.js?v=taskalarm2"></script>
+  <script src="/static/hr/hr-salary-slips.js?v=taskalarm2"></script>
+  <script src="/static/hr/hr-terminations.js?v=taskalarm2"></script>
+  <script src="/static/hr/hr-documents.js?v=taskalarm2"></script>
+  <script src="/static/hr/hr-assets.js?v=taskalarm2"></script>
+  <script src="/static/personal-tasks.js?v=taskalarm2"></script>
 </body>
 </html>`)
 })

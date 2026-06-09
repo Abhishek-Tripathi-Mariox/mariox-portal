@@ -352,7 +352,16 @@ const API = {
     if (body) opts.body = JSON.stringify(body)
     const r = await fetch(BASE + url, opts)
     const data = await r.json().catch(() => ({}))
-    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)
+    if (!r.ok) {
+      // A 401 on an authenticated request means the JWT expired or was
+      // revoked — bounce the user to the login page. Skip /auth/* calls
+      // (login/verify surface their own 401s) and only act when we actually
+      // held a session token.
+      if (r.status === 401 && _token && !/^\/auth\//.test(url)) {
+        handleSessionExpired()
+      }
+      throw new Error(data.error || `HTTP ${r.status}`)
+    }
     if (method !== 'GET' && method !== 'HEAD') scheduleActivePageReload()
     return data
   },
@@ -766,6 +775,8 @@ function toast(msg, type='info', dur=30000) {
 // ── Auth ─────────────────────────────────────────────────────
 function saveAuth(token, user) {
   _token = token; _user = user
+  // Clear the expiry guard so a later token lapse re-triggers the redirect.
+  window.__sessionExpiring = false
   localStorage.setItem('devportal_token', token)
   localStorage.setItem('devportal_user', JSON.stringify(user))
   applyTheme(user?.theme)
@@ -2278,6 +2289,24 @@ function logout() {
   renderLogin()
   toast('Logged out successfully', 'info')
 }
+
+// Session expiry — triggered when an authenticated request comes back 401
+// (JWT lapsed or revoked). Tears down the session and drops the user on the
+// login page. Guarded so a burst of parallel 401s (dashboards fire many calls
+// at once) only redirects + toasts once; the flag resets on the next login.
+function handleSessionExpired() {
+  if (window.__sessionExpiring) return
+  window.__sessionExpiring = true
+  clearAuth()
+  if (typeof stopNotificationPoller === 'function') stopNotificationPoller()
+  if (typeof stopFollowupAlarmPoller === 'function') stopFollowupAlarmPoller()
+  try { if (typeof closeModal === 'function') closeModal() } catch {}
+  const app = document.getElementById('app')
+  if (app) app.innerHTML = ''
+  renderLogin()
+  toast('Your session has expired. Please log in again.', 'warning')
+}
+window.handleSessionExpired = handleSessionExpired
 
 // ── Login Page ────────────────────────────────────────────────
 function renderLogin() {
