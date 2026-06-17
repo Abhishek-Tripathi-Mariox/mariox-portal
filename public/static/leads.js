@@ -8,8 +8,10 @@ let _leadsPage = 1
 let _leadsPageLimit = 10
 // Remembers which leads-list page the user opened a lead from, so editing the
 // lead in the detail view and returning lands them back on that same page
-// (e.g. page 5) instead of resetting to page 1.
+// (e.g. page 5) instead of resetting to page 1. _leadsReturnLeadId tracks the
+// lead itself so its row can be highlighted + scrolled into view on return.
 let _leadsReturnPage = null
+let _leadsReturnLeadId = null
 let _leadsSearch = ''
 let _leadsSearchTimer = null
 let _leadsStatusFilter = ''
@@ -525,6 +527,7 @@ async function renderLeadsView(el) {
       </div>
       <div id="leads-pager-wrap">${renderPager(pagination, 'goLeadsPage', 'goLeadsPage', 'leads', 'leads-view')}</div>
     `
+    _scrollToReturnLead(el)
   } catch (e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${e.message}</p></div>`
   }
@@ -746,6 +749,15 @@ function refreshLeadsViewIncremental() {
   if (pagerWrap && typeof renderPager === 'function') {
     pagerWrap.innerHTML = renderPager(pagination, 'goLeadsPage', 'goLeadsPage', 'leads', 'leads-view')
   }
+  _scrollToReturnLead(el)
+}
+
+// Bring the just-visited lead's row into view (used when returning from the
+// detail page). No-op if that lead isn't on the current page/filter.
+function _scrollToReturnLead(el) {
+  if (!_leadsReturnLeadId || !el) return
+  const row = el.querySelector(`tr[data-lead-id="${_leadsReturnLeadId}"]`)
+  if (row) setTimeout(() => { try { row.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch {} }, 60)
 }
 
 window.toggleLeadsActivityPanel = toggleLeadsActivityPanel
@@ -1102,7 +1114,11 @@ function renderLeadRow(l, canManage) {
   const lastNoteMeta = l.latest_note?.created_at
     ? `${escapeHtml(l.latest_note.author_name || 'Unknown')} · ${escapeHtml(fmtRelative(l.latest_note.created_at))}`
     : ''
-  return `<tr>
+  // Highlight the row the user just visited (and is returning from) so they can
+  // pick up where they left off.
+  const isReturn = _leadsReturnLeadId && String(l.id) === String(_leadsReturnLeadId)
+  const rowStyle = isReturn ? ' style="background:rgba(169,112,255,0.14);box-shadow:inset 3px 0 0 #A970FF"' : ''
+  return `<tr data-lead-id="${l.id}"${rowStyle}>
     <td>
       <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="goLeadDetail('${l.id}')" title="Open lead detail">
         ${avatar(l.name, '#A970FF', 'sm')}
@@ -1232,7 +1248,7 @@ async function openCreateLeadModal() {
     <div class="modal-body">
       <div class="grid-2">
         <div class="form-group"><label class="form-label">Full Name *</label><input id="lead-name" class="form-input" placeholder="Lead name" autofocus/></div>
-        <div class="form-group"><label class="form-label">Email *</label><input id="lead-email" type="email" class="form-input" placeholder="lead@company.com"/></div>
+        <div class="form-group"><label class="form-label">Email</label><input id="lead-email" type="email" class="form-input" placeholder="lead@company.com (optional)"/></div>
         <div class="form-group"><label class="form-label">Phone *</label><input id="lead-phone" class="form-input" placeholder="+91…"/></div>
         <div class="form-group"><label class="form-label">Source *</label>
           <select id="lead-source" class="form-select" onchange="onLeadSourceChange(this)">
@@ -1317,7 +1333,7 @@ async function submitNewLead() {
     requirement: document.getElementById('lead-requirement').value.trim(),
     assigned_to: document.getElementById('lead-assigned-to').value,
   }
-  if (!payload.name || !payload.email || !payload.phone || !payload.assigned_to) {
+  if (!payload.name || !payload.phone || !payload.assigned_to) {
     toast('Please fill in all required fields', 'error')
     return
   }
@@ -1386,7 +1402,7 @@ async function openEditLeadModal(id) {
       <div class="modal-body">
         <div class="grid-2">
           <div class="form-group"><label class="form-label">Full Name *</label><input id="lead-name" class="form-input" value="${escapeHtml(lead.name)}"/></div>
-          <div class="form-group"><label class="form-label">Email *</label><input id="lead-email" type="email" class="form-input" value="${escapeHtml(lead.email)}"/></div>
+          <div class="form-group"><label class="form-label">Email</label><input id="lead-email" type="email" class="form-input" value="${escapeHtml(lead.email || '')}"/></div>
           <div class="form-group"><label class="form-label">Phone *</label><input id="lead-phone" class="form-input" value="${escapeHtml(lead.phone || '')}"/></div>
           <div class="form-group"><label class="form-label">Source *</label>
             ${(() => {
@@ -2781,9 +2797,11 @@ window.addEventListener('storage', () => {
 // ═══════════════════════════════════════════════════════════════
 
 function goLeadDetail(id) {
-  // Capture the current leads-list page so a later edit-and-return restores it.
+  // Capture the current leads-list page + the opened lead so returning restores
+  // the page and highlights/scrolls to the row we came from.
   if (typeof Router !== 'undefined' && Router?.current?.page === 'leads-view') {
     _leadsReturnPage = _leadsPage
+    _leadsReturnLeadId = id
   }
   const el = document.getElementById('page-lead-detail')
   if (el) el.dataset.loaded = ''
@@ -2956,7 +2974,7 @@ function renderLeadInfoCardInline(lead, assignees, canEdit, canManage) {
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="form-group" style="margin:0">
-          <label class="form-label" style="font-size:11px">Email *</label>
+          <label class="form-label" style="font-size:11px">Email</label>
           <input id="lead-inline-email" type="email" class="form-input" value="${escape(lead.email || '')}"/>
         </div>
         <div class="form-group" style="margin:0">

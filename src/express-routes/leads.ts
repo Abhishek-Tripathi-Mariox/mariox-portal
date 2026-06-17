@@ -605,7 +605,9 @@ export function createLeadsRouter(
       if (!allowed) return res.status(403).json({ error: 'Forbidden' })
       const body = req.body || {}
       const name = validateLength(String(body.name || '').trim(), 2, 120, 'Name')
-      const email = validateEmail(body.email, 'Email')
+      // Email is optional at lead creation — only validate the format when one
+      // is actually provided; otherwise store an empty string.
+      const email = body.email ? validateEmail(body.email, 'Email') : ''
       const phone = validateLength(String(body.phone || '').trim(), 4, 30, 'Phone')
       const requirement = validateLength(String(body.requirement || '').trim(), 1, 5000, 'Requirement')
       const source = validateLength(String(body.source || '').trim(), 1, 80, 'Source')
@@ -712,7 +714,9 @@ export function createLeadsRouter(
       }
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
       if ('name' in body) patch.name = validateLength(String(body.name || '').trim(), 2, 120, 'Name')
-      if ('email' in body) patch.email = validateEmail(body.email, 'Email')
+      // Email stays optional on edit too — validate format only when provided so
+      // a lead created without an email can still be saved.
+      if ('email' in body) patch.email = body.email ? validateEmail(body.email, 'Email') : ''
       if ('phone' in body) patch.phone = validateLength(String(body.phone || '').trim(), 4, 30, 'Phone')
       if ('requirement' in body) patch.requirement = validateLength(String(body.requirement || '').trim(), 1, 5000, 'Requirement')
       if ('requirement_file' in body) {
