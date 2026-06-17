@@ -113,6 +113,12 @@ async function renderPersonalTasksPage(el) {
         </table>
       </div>
     </div>`
+
+    // Make sure the global due-alarm poller is running and fire an immediate
+    // check, so an overdue "My Task" rings the moment this page opens instead
+    // of waiting up to 30s for the next poll tick.
+    if (typeof startFollowupAlarmPoller === 'function') startFollowupAlarmPoller()
+    if (typeof pollFollowupAlarms === 'function') pollFollowupAlarms()
   } catch (e) {
     el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${escapeInbox(e.message)}</p></div>`
   }

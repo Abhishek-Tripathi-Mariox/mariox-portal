@@ -6,6 +6,10 @@
 
 let _leadsPage = 1
 let _leadsPageLimit = 10
+// Remembers which leads-list page the user opened a lead from, so editing the
+// lead in the detail view and returning lands them back on that same page
+// (e.g. page 5) instead of resetting to page 1.
+let _leadsReturnPage = null
 let _leadsSearch = ''
 let _leadsSearchTimer = null
 let _leadsStatusFilter = ''
@@ -508,12 +512,13 @@ async function renderLeadsView(el) {
               <th>Source</th>
               <th>Assigned To</th>
               <th>Status</th>
+              <th>Created</th>
               <th>Last Note</th>
               <th>Follow-up Due</th>
               <th style="width:140px">Actions</th>
             </tr></thead>
             <tbody>
-              ${pagination.items.map((l) => renderLeadRow(l, canManage)).join('') || `<tr><td colspan="7" style="text-align:center;color:#7E7E8F;padding:24px">No leads match the current filter.</td></tr>`}
+              ${pagination.items.map((l) => renderLeadRow(l, canManage)).join('') || `<tr><td colspan="8" style="text-align:center;color:#7E7E8F;padding:24px">No leads match the current filter.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -728,7 +733,7 @@ function refreshLeadsViewIncremental() {
   const tbody = el.querySelector('#leads-table tbody')
   if (tbody) {
     tbody.innerHTML = pagination.items.map((l) => renderLeadRow(l, canManage)).join('')
-      || `<tr><td colspan="7" style="text-align:center;color:#7E7E8F;padding:24px">No leads match the current filter.</td></tr>`
+      || `<tr><td colspan="8" style="text-align:center;color:#7E7E8F;padding:24px">No leads match the current filter.</td></tr>`
   }
   // Update header subtitle ("N total · M shown").
   const subtitle = el.querySelector('.page-header .page-subtitle')
@@ -993,6 +998,32 @@ function openEditLeadNoteModal(leadId) {
 }
 window.openEditLeadNoteModal = openEditLeadNoteModal
 
+// Quick "Add note" from the list — opens a BLANK note composer (unlike
+// "Edit", which pre-fills the last note's text). Both ultimately POST to
+// /leads/:id/notes which always appends a fresh note; this just starts empty
+// so the user writes a brand-new note instead of tweaking the previous one.
+function openAddLeadNoteModal(leadId) {
+  const entry = window._leadNoteCache[leadId] || {}
+  showModal(`
+    <div class="modal-header">
+      <h3><i class="fas fa-plus" style="color:#C9A7FF;margin-right:6px"></i>Add note${entry.lead_name ? ` — ${escapeHtml(entry.lead_name)}` : ''}</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">New note</label>
+        <textarea id="edit-lead-note-text" class="form-input" rows="5" placeholder="Write a new note about this lead…" autofocus></textarea>
+        <div class="form-hint">This adds a new note and becomes the latest note shown in the list.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditLeadNote('${leadId}')"><i class="fas fa-check"></i> Save note</button>
+    </div>
+  `)
+}
+window.openAddLeadNoteModal = openAddLeadNoteModal
+
 async function submitEditLeadNote(leadId) {
   const ta = document.getElementById('edit-lead-note-text')
   const text = (ta?.value || '').trim()
@@ -1089,10 +1120,12 @@ function renderLeadRow(l, canManage) {
     <td><span style="font-size:12px;color:#7E7E8F">${escapeHtml(l.source || '—')}</span></td>
     <td>${l.assigned_to_name ? `<span style="font-size:12px">${escapeHtml(l.assigned_to_name)}</span>` : '<span style="color:#7E7E8F">—</span>'}</td>
     <td>${statusBadgeHtml(meta)}</td>
+    <td><span style="font-size:12px;color:#7E7E8F;white-space:nowrap">${escapeHtml(fmtDateOnly(l.created_at))}</span></td>
     <td style="max-width:260px">
       <div style="font-size:12px;color:#cbd5e1;white-space:pre-wrap;word-break:break-word">${lastNotePreview}</div>
       <div style="display:flex;gap:10px;align-items:center;margin-top:2px">
         ${isLong ? `<button type="button" onclick="openLeadNoteModal('${l.id}')" style="background:none;border:none;color:#A970FF;font-size:11px;padding:2px 0;cursor:pointer;font-weight:600">See more</button>` : ''}
+        ${canManage ? `<button type="button" onclick="openAddLeadNoteModal('${l.id}')" title="Add a new note" style="background:none;border:none;color:#A970FF;font-size:11px;padding:2px 0;cursor:pointer;font-weight:600"><i class="fas fa-plus" style="font-size:9px;margin-right:3px"></i>Add note</button>` : ''}
         ${canManage ? `<button type="button" onclick="openEditLeadNoteModal('${l.id}')" title="Update last note" style="background:none;border:none;color:#A970FF;font-size:11px;padding:2px 0;cursor:pointer;font-weight:600"><i class="fas fa-pen" style="font-size:9px;margin-right:3px"></i>Edit</button>` : ''}
       </div>
       ${lastNoteMeta ? `<div style="font-size:10.5px;color:#7E7E8F;margin-top:2px">${lastNoteMeta}</div>` : ''}
@@ -2650,6 +2683,15 @@ function showPersonalTaskAlarm(next, dueText) {
   }
   host.innerHTML = html
   startAlarmRingtone()
+  // Fire-once: mark this task's alarm as delivered on the server the moment it
+  // rings, so it won't pop again on every page refresh while the task stays
+  // overdue. The 30s poller still surfaces it in real-time the first time it's
+  // due (no refresh needed); rescheduling the due date re-arms a fresh alarm.
+  // The task itself stays open in the My Task list until the user completes it.
+  if (next.id && !next._marked) {
+    next._marked = true
+    API.post(`/personal-tasks/${next.id}/acknowledge`, {}).catch(() => {})
+  }
 }
 
 function startAlarmRingtone() {
@@ -2739,6 +2781,10 @@ window.addEventListener('storage', () => {
 // ═══════════════════════════════════════════════════════════════
 
 function goLeadDetail(id) {
+  // Capture the current leads-list page so a later edit-and-return restores it.
+  if (typeof Router !== 'undefined' && Router?.current?.page === 'leads-view') {
+    _leadsReturnPage = _leadsPage
+  }
   const el = document.getElementById('page-lead-detail')
   if (el) el.dataset.loaded = ''
   Router.navigate('lead-detail', { id })
@@ -3061,8 +3107,10 @@ async function submitInlineLeadEdit(id) {
   try {
     await API.put(`/leads/${id}`, payload)
     toast('Lead updated', 'success')
-    const el = document.getElementById('page-lead-detail')
-    if (el) { el.dataset.loaded = ''; loadPage('lead-detail', el) }
+    // After editing a lead from its detail page, return to the leads list on
+    // the exact page the user came from (e.g. page 5), not page 1.
+    if (_leadsReturnPage != null) { _leadsPage = _leadsReturnPage; _leadsReturnPage = null }
+    reloadLeadsView()
   } catch (e) {
     toast('Failed: ' + (e.message || 'unknown'), 'error')
   }

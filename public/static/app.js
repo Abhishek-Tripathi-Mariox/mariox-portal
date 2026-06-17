@@ -684,6 +684,25 @@ function paginateClient(items, page = 1, limit = 10) {
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100, 200]
 window.PAGE_SIZE_OPTIONS = PAGE_SIZE_OPTIONS
 
+// Build a compact, windowed list of page tokens for the pager: always shows
+// the first and last page, a small window around the current page, and '…'
+// gaps in between. e.g. [1, '…', 4, 5, 6, '…', 20].
+function _pagerNumbers(page, totalPages, win = 1) {
+  const wanted = new Set([1, totalPages])
+  for (let p = page - win; p <= page + win; p++) {
+    if (p >= 1 && p <= totalPages) wanted.add(p)
+  }
+  const sorted = Array.from(wanted).sort((a, b) => a - b)
+  const out = []
+  let prev = 0
+  for (const p of sorted) {
+    if (prev && p - prev > 1) out.push('…')
+    out.push(p)
+    prev = p
+  }
+  return out
+}
+
 function renderPager(pagination, prevFn, nextFn, label = 'items', pageKey = '') {
   if (!pagination) return ''
   const currentLimit = Number(pagination.limit || PAGE_SIZE_OPTIONS[0])
@@ -702,9 +721,15 @@ function renderPager(pagination, prevFn, nextFn, label = 'items', pageKey = '') 
         </div>
         ${pageSizeControl}
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <button class="btn btn-sm btn-outline" ${pagination.page <= 1 ? 'disabled' : ''} onclick="${prevFn}(${pagination.page - 1})">Previous</button>
-        <span style="font-size:12px;color:#7E7E8F">Page ${pagination.page} of ${pagination.totalPages || 1}</span>
+        ${(pagination.totalPages || 1) > 1
+          ? _pagerNumbers(pagination.page, pagination.totalPages || 1).map((p) =>
+              p === '…'
+                ? `<span style="font-size:12px;color:#7E7E8F;padding:0 2px">…</span>`
+                : `<button class="btn btn-sm ${p === pagination.page ? 'btn-primary' : 'btn-outline'}" style="min-width:34px" ${p === pagination.page ? 'aria-current="page"' : ''} onclick="${nextFn}(${p})">${p}</button>`
+            ).join('')
+          : `<span style="font-size:12px;color:#7E7E8F">Page 1 of 1</span>`}
         <button class="btn btn-sm btn-outline" ${!pagination.hasMore ? 'disabled' : ''} onclick="${nextFn}(${pagination.page + 1})">Next</button>
       </div>
     </div>`
