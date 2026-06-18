@@ -1,6 +1,6 @@
 import { Router as createRouter } from 'express'
 import type { MongoModels } from '../models/mongo-models'
-import { createAuthMiddleware, requireRole } from '../express-middleware/auth'
+import { createAuthMiddleware, requireRole, requireAnyPermission } from '../express-middleware/auth'
 import { ROLES, STAFF_CREATE_ROLES } from '../constants'
 import { generateId } from '../utils/helpers'
 import { sendSmtpEmail, type SmtpEnv } from '../utils/smtp'
@@ -323,13 +323,21 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
     }
   })
 
-  router.post('/', requireRole('admin'), async (req, res) => {
+  router.post('/', requireAnyPermission(models, 'users.create'), async (req, res) => {
     try {
       const body = req.body || {}
       const email = validateEmail(body.email)
       const fullName = validateName(body.full_name, 'Full name')
       const password = validateNewPassword(body.password)
-      const role = validateEnum(body.role || 'developer', STAFF_CREATE_ROLES, 'Role')
+      // Accept any role that exists in the roles collection — built-in OR custom
+      // (admin-created). The old hardcoded STAFF_CREATE_ROLES enum rejected
+      // brand-new roles, so users could never be assigned to them. 'client' is
+      // excluded since client accounts have their own creation flow.
+      const role = normalizeRole(body.role || 'developer')
+      if (!role) return res.status(400).json({ error: 'Role is required' })
+      if (role === 'client') return res.status(400).json({ error: 'Client accounts are created from the Clients module' })
+      const roleDoc = await models.roles.findOne({ key: role }) as any
+      if (!roleDoc) return res.status(400).json({ error: `Unknown role: ${role}` })
 
       const phone = validateOptional(body.phone, (v) => validatePhone(v, 'Phone'))
       const designation = validateOptional(body.designation, (v) => validateLength(String(v).trim(), 2, 100, 'Designation'))
@@ -459,10 +467,17 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
         : (existing.incentive_rate ?? 0)
 
       // Allow admin/pm to change role on an existing user (e.g. promote a sales
-      // agent to TL). Falls back to the existing role if not supplied.
-      const nextRole = body.role
-        ? validateEnum(normalizeRole(body.role), STAFF_CREATE_ROLES, 'Role')
-        : normalizeRole(existing.role)
+      // agent to TL, or assign a custom role). Falls back to the existing role
+      // if not supplied. Any role in the roles collection (built-in or custom)
+      // is accepted except 'client'.
+      let nextRole = normalizeRole(existing.role)
+      if (body.role) {
+        const requested = normalizeRole(body.role)
+        if (requested === 'client') return res.status(400).json({ error: 'Cannot assign the client role here' })
+        const roleDoc = await models.roles.findOne({ key: requested }) as any
+        if (!roleDoc) return res.status(400).json({ error: `Unknown role: ${requested}` })
+        nextRole = requested
+      }
       const hierarchy = await resolveSalesHierarchy(models, nextRole, body, existing)
       // If a TL's manager changed, cascade the new manager_id onto every agent
       // sitting under that TL — agents cache manager_id for fast visibility filters.

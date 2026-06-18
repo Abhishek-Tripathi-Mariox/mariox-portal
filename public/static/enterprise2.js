@@ -2325,7 +2325,11 @@ function togglePermMatrix(on) {
   document.querySelectorAll('input[data-perm]').forEach(cb => { cb.checked = !!on; cb.indeterminate = false })
 }
 
+let _roleSaveInFlight = false
 async function saveRoleFromModal(roleId, isCreate) {
+  // Guard against a double-click firing two POSTs — the first creates the role,
+  // the second then 409s with "already exists" even though it succeeded.
+  if (_roleSaveInFlight) return
   const name = document.getElementById('role-name')?.value.trim() || ''
   const desc = document.getElementById('role-desc')?.value.trim() || ''
   const key  = document.getElementById('role-key')?.value.trim() || ''
@@ -2342,6 +2346,7 @@ async function saveRoleFromModal(roleId, isCreate) {
 
   if (!name || name.length < 2) return toast('Role name must be at least 2 characters', 'error')
 
+  _roleSaveInFlight = true
   try {
     if (isCreate) {
       await API.post('/settings/roles', { name, description: desc, key, permissions })
@@ -2362,6 +2367,8 @@ async function saveRoleFromModal(roleId, isCreate) {
   } catch (e) {
     console.error('[roles] saveRoleFromModal failed:', e)
     toast('Failed: ' + e.message, 'error')
+  } finally {
+    _roleSaveInFlight = false
   }
 }
 

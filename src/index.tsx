@@ -112,7 +112,7 @@ app.get('*', (c) => {
   <!-- Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css"/>
   <!-- App CSS -->
-  <link rel="stylesheet" href="/static/styles.css?v=leadlist3"/>
+  <link rel="stylesheet" href="/static/styles.css?v=perms1"/>
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
@@ -120,27 +120,27 @@ app.get('*', (c) => {
 </head>
 <body>
   <div id="app"></div>
-  <script src="/static/app.js?v=leadlist3"></script>
-  <script src="/static/pages.js?v=leadlist3"></script>
-  <script src="/static/pages2.js?v=leadlist3"></script>
-  <script src="/static/enterprise.js?v=leadlist3"></script>
-  <script src="/static/enterprise2.js?v=leadlist3"></script>
-  <script src="/static/client-portal.js?v=leadlist3"></script>
-  <script src="/static/project-extensions.js?v=leadlist3"></script>
-  <script src="/static/support.js?v=leadlist3"></script>
-  <script src="/static/custom-columns.js?v=leadlist3"></script>
-  <script src="/static/leads.js?v=leadlist3"></script>
+  <script src="/static/app.js?v=perms1"></script>
+  <script src="/static/pages.js?v=perms1"></script>
+  <script src="/static/pages2.js?v=perms1"></script>
+  <script src="/static/enterprise.js?v=perms1"></script>
+  <script src="/static/enterprise2.js?v=perms1"></script>
+  <script src="/static/client-portal.js?v=perms1"></script>
+  <script src="/static/project-extensions.js?v=perms1"></script>
+  <script src="/static/support.js?v=perms1"></script>
+  <script src="/static/custom-columns.js?v=perms1"></script>
+  <script src="/static/leads.js?v=perms1"></script>
   <!-- HR module: _shared.js must load first so each per-component file can use its helpers -->
-  <script src="/static/hr/_shared.js?v=leadlist3"></script>
-  <script src="/static/hr/hr-attendance.js?v=leadlist3"></script>
-  <script src="/static/hr/hr-calendar.js?v=leadlist3"></script>
-  <script src="/static/hr/hr-warnings.js?v=leadlist3"></script>
-  <script src="/static/hr/hr-pips.js?v=leadlist3"></script>
-  <script src="/static/hr/hr-salary-slips.js?v=leadlist3"></script>
-  <script src="/static/hr/hr-terminations.js?v=leadlist3"></script>
-  <script src="/static/hr/hr-documents.js?v=leadlist3"></script>
-  <script src="/static/hr/hr-assets.js?v=leadlist3"></script>
-  <script src="/static/personal-tasks.js?v=leadlist3"></script>
+  <script src="/static/hr/_shared.js?v=perms1"></script>
+  <script src="/static/hr/hr-attendance.js?v=perms1"></script>
+  <script src="/static/hr/hr-calendar.js?v=perms1"></script>
+  <script src="/static/hr/hr-warnings.js?v=perms1"></script>
+  <script src="/static/hr/hr-pips.js?v=perms1"></script>
+  <script src="/static/hr/hr-salary-slips.js?v=perms1"></script>
+  <script src="/static/hr/hr-terminations.js?v=perms1"></script>
+  <script src="/static/hr/hr-documents.js?v=perms1"></script>
+  <script src="/static/hr/hr-assets.js?v=perms1"></script>
+  <script src="/static/personal-tasks.js?v=perms1"></script>
 </body>
 </html>`)
 })

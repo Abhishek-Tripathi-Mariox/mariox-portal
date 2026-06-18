@@ -510,11 +510,11 @@ async function renderLeadsView(el) {
         <div class="card-body p-0 table-wrap">
           <table class="data-table" id="leads-table">
             <thead><tr>
+              <th>Created</th>
               <th>Name &amp; Contact</th>
               <th>Source</th>
               <th>Assigned To</th>
               <th>Status</th>
-              <th>Created</th>
               <th>Last Note</th>
               <th>Follow-up Due</th>
               <th style="width:140px">Actions</th>
@@ -1119,6 +1119,7 @@ function renderLeadRow(l, canManage) {
   const isReturn = _leadsReturnLeadId && String(l.id) === String(_leadsReturnLeadId)
   const rowStyle = isReturn ? ' style="background:rgba(169,112,255,0.14);box-shadow:inset 3px 0 0 #A970FF"' : ''
   return `<tr data-lead-id="${l.id}"${rowStyle}>
+    <td><span style="font-size:12px;color:#7E7E8F;white-space:nowrap">${escapeHtml(fmtDateOnly(l.created_at))}</span></td>
     <td>
       <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="goLeadDetail('${l.id}')" title="Open lead detail">
         ${avatar(l.name, '#A970FF', 'sm')}
@@ -1136,7 +1137,6 @@ function renderLeadRow(l, canManage) {
     <td><span style="font-size:12px;color:#7E7E8F">${escapeHtml(l.source || '—')}</span></td>
     <td>${l.assigned_to_name ? `<span style="font-size:12px">${escapeHtml(l.assigned_to_name)}</span>` : '<span style="color:#7E7E8F">—</span>'}</td>
     <td>${statusBadgeHtml(meta)}</td>
-    <td><span style="font-size:12px;color:#7E7E8F;white-space:nowrap">${escapeHtml(fmtDateOnly(l.created_at))}</span></td>
     <td style="max-width:260px">
       <div style="font-size:12px;color:#cbd5e1;white-space:pre-wrap;word-break:break-word">${lastNotePreview}</div>
       <div style="display:flex;gap:10px;align-items:center;margin-top:2px">
