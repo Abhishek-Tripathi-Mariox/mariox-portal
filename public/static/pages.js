@@ -206,14 +206,13 @@ async function openDeveloperModal(dev = null) {
       <div id="dev-sales-incentive-wrap" style="display:${['sales_manager','sales_tl','sales_agent'].includes(selectedRole) ? '' : 'none'}">
         <div class="grid-2">
           <div class="form-group">
-            <label class="form-label">Monthly Revenue Target (₹)</label>
-            <input id="dev-monthly-target" class="form-input" type="text" inputmode="decimal" value="${dev?.monthly_target ?? 0}" placeholder="e.g. 500000"/>
-            <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Sales target per month in rupees. Achieved is auto-summed from project revenue (lead → close → project).</div>
+            <label class="form-label">Monthly Salary (₹)</label>
+            <input id="dev-salary" class="form-input" type="text" inputmode="decimal" value="${dev?.salary ?? 0}" placeholder="e.g. 30000"/>
+            <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Target is auto-derived: <strong>Agent target = 10 × salary</strong>. TL target = 1.4 × team agents' total; Manager = 1.4 × team TLs' total.</div>
           </div>
           <div class="form-group">
-            <label class="form-label">Incentive Rate (₹ paid per ₹ above target)</label>
-            <input id="dev-incentive-rate" class="form-input" type="text" inputmode="decimal" value="${dev?.incentive_rate ?? 0}" placeholder="e.g. 0.10"/>
-            <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">e.g. 0.10 = 10% commission on revenue above target. Earned = max(0, achieved − target) × rate.</div>
+            <label class="form-label">Incentive model</label>
+            <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Tiered on the month's sale (first milestone of each closed deal): <strong>100–130%</strong> of target → 3%, <strong>130–150%</strong> → 5%, <strong>above 150%</strong> → 7%. Below 100% → nothing.</div>
           </div>
         </div>
       </div>
@@ -353,10 +352,8 @@ async function saveDeveloper(id) {
       payload.tl_id = tl
     }
     if (['sales_manager','sales_tl','sales_agent'].includes(role)) {
-      const t = document.getElementById('dev-monthly-target')?.value
-      const r = document.getElementById('dev-incentive-rate')?.value
-      payload.monthly_target = Number(t) || 0
-      payload.incentive_rate = Number(r) || 0
+      const s = document.getElementById('dev-salary')?.value
+      payload.salary = Number(s) || 0
     }
     if (!id && document.getElementById('dev-password')) payload.password = document.getElementById('dev-password').value
     // Shift assignment (HR). External team members are excluded — their shift

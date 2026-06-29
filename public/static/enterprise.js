@@ -9848,10 +9848,10 @@ async function quote_revoke(userId, name) {
 /* ═══════════════════════════════════════════════════════════
    SALES INCENTIVE TRACKER
    For each sales agent in the selected month:
-   - target  comes from user.monthly_target
-   - rate    comes from user.incentive_rate
-   - achieved = won leads in this month (admin can override)
-   - earned   = max(0, achieved − target) × rate
+   - target  = 10 × salary (TL/Manager = 1.4 × team total)
+   - achieved = sum of first-milestone sale of each closed deal (admin override)
+   - earned   = tiered on the sale: 100–130% of target → 3%, 130–150% → 5%,
+                above 150% → 7%; below 100% → 0
    - paid     = admin marks per row when payout is done
    Permissions read live from /sales-incentives/summary (settings driven).
    ═══════════════════════════════════════════════════════════ */
@@ -9892,7 +9892,7 @@ async function renderSalesIncentivePage(el) {
       <div class="page-header">
         <div>
           <h1 class="page-title"><i class="fas fa-money-bill-trend-up" style="color:#22c55e;margin-right:8px"></i>Sale Incentive Tracker</h1>
-          <p class="page-subtitle">Target vs achievement for each sales agent in <strong>${escapeHtml(periodLabel)}</strong>. Earned = (achieved − target) × rate%. e.g. ₹10,000 above target × 10% = ₹1,000.</p>
+          <p class="page-subtitle">Target vs sale for each sales agent in <strong>${escapeHtml(periodLabel)}</strong>. Target = 10 × salary (TL/Manager roll up team). Sale = first milestone of each closed deal. Incentive is tiered on the sale: 100–130% of target → 3%, 130–150% → 5%, above 150% → 7%.</p>
         </div>
         <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <input id="si-period" type="month" class="form-input" value="${escapeHtml(_salesIncentivePeriod)}" onchange="onSalesIncentivePeriodChange(this.value)" style="width:170px"/>
@@ -9983,7 +9983,7 @@ function _siRow(r, canOverride, canMarkPaid) {
         : ''}
       <div>${aboveBadge}</div>
     </td>
-    <td style="text-align:right;font-size:12px;color:#7E7E8F" title="Percent of above-target value">${Number(r.incentive_rate || 0)}%</td>
+    <td style="text-align:right;font-size:12px;color:#7E7E8F" title="Effective incentive rate (auto-tiered on the sale)">${Number(r.incentive_rate || 0)}%</td>
     <td style="text-align:right">
       <div style="font-weight:700;color:#22c55e">${_fmtINR(r.earned)}</div>
       ${(r.payments && r.payments.length) || paidAmt ? `<div style="font-size:11px;color:#7E7E8F;margin-top:2px">Paid ${_fmtINR(paidAmt)}${(r.payments && r.payments.length > 0) ? ' · ' + r.payments.length + ' txn' : ''}</div>` : ''}
@@ -10044,18 +10044,16 @@ function _siEditPeriodModalHtml(opts) {
       <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Per-period target. Independent of the agent's profile setting.</div>
     </div>` : `<div class="form-group"><label class="form-label">Monthly target (read-only)</label><input class="form-input" value="₹${Number(opts.target).toLocaleString('en-IN')}" disabled/></div>`
 
-  const rateField = opts.canSetTarget ? `
-    <div class="form-group">
-      <label class="form-label">Incentive rate (% of above-target value)</label>
-      <input id="si-edit-rate" type="text" inputmode="decimal" class="form-input" value="${opts.rate}" placeholder="e.g. 10"/>
-      <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">e.g. <strong>10</strong> = 10% commission. On ₹10,000 above target the agent earns ₹1,000.</div>
-    </div>` : `<div class="form-group"><label class="form-label">Incentive rate (read-only)</label><input class="form-input" value="${opts.rate}%" disabled/></div>`
+  // Incentive rate is no longer editable — it's auto-derived from the tiered
+  // model (3/5/7% by achievement band), so the modal only shows the target
+  // override + achieved override.
+  const rateField = `<div class="form-group"><label class="form-label">Incentive</label><div class="form-hint" style="font-size:11px;color:#7E7E8F">Auto-tiered on the sale: 100–130% of target → 3%, 130–150% → 5%, above 150% → 7%.</div></div>`
 
   const overrideField = opts.canOverride ? `
     <div class="form-group">
       <label class="form-label">Achieved (₹) — override auto-calculated value</label>
       <input id="si-edit-achieved" type="text" inputmode="decimal" class="form-input" value="${opts.achievedOverride === null || opts.achievedOverride === undefined ? '' : opts.achievedOverride}" placeholder="leave blank for auto: ${opts.achievedAuto}"/>
-      <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Leave blank to auto-sum project revenue (${'₹' + Number(opts.achievedAuto).toLocaleString('en-IN')} this period).</div>
+      <div class="form-hint" style="font-size:11px;color:#7E7E8F;margin-top:4px">Leave blank to auto-sum the first-milestone sale of each closed deal (${'₹' + Number(opts.achievedAuto).toLocaleString('en-IN')} this period).</div>
     </div>` : ''
 
   return `
@@ -10259,7 +10257,7 @@ async function _refreshSalesIncentiveHistoryBody() {
         </div>
         <div style="text-align:right;font-size:11.5px;color:#7E7E8F">
           <div>Current target: <strong style="color:#cbd5e1">${_fmtINR(u.monthly_target || 0)}</strong></div>
-          <div>Current rate: <strong style="color:#cbd5e1">${Number(u.incentive_rate || 0)}%</strong> of above-target value</div>
+          <div>Incentive: <strong style="color:#cbd5e1">tiered 3/5/7%</strong> by achievement</div>
         </div>
       </div>
 
@@ -10301,7 +10299,7 @@ function _siHistoryRow(r, canOverride, canMarkPaid) {
     <td><strong style="color:#e2e8f0">${escapeHtml(_formatSalesIncentivePeriodLabel(r.period))}</strong>${r.has_record ? '' : ` <span style="font-size:10px;color:#7E7E8F">(no entry yet)</span>`}</td>
     <td style="text-align:right;color:#cbd5e1">${_fmtINR(r.target)}</td>
     <td style="text-align:right">${_fmtINR(r.achieved)}${overrideTag}</td>
-    <td style="text-align:right;font-size:12px;color:#7E7E8F" title="Percent of above-target value">${Number(r.incentive_rate || 0)}%</td>
+    <td style="text-align:right;font-size:12px;color:#7E7E8F" title="Effective incentive rate (auto-tiered on the sale)">${Number(r.incentive_rate || 0)}%</td>
     <td style="text-align:right">
       <div style="font-weight:700;color:#22c55e">${_fmtINR(r.earned)}</div>
       ${paid || txnCount ? `<div style="font-size:11px;color:#7E7E8F;margin-top:2px">Paid ${_fmtINR(paid)}${txnCount ? ' · ' + txnCount + ' txn' : ''}</div>` : ''}

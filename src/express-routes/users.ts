@@ -362,6 +362,11 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
       const incentiveRate = body.incentive_rate !== undefined
         ? validatePositiveNumber(body.incentive_rate, 'Incentive rate')
         : 0
+      // Monthly salary — drives the sales incentive target (sales_agent target
+      // = salary × 10; TL/Manager targets roll up from their team).
+      const salary = body.salary !== undefined
+        ? validatePositiveNumber(body.salary, 'Salary')
+        : 0
       const avatarColor = body.avatar_color
         ? validateHexColor(body.avatar_color, 'Avatar color')
         : '#9D6CFF'
@@ -395,6 +400,7 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
         monthly_available_hours: monthlyHours,
         monthly_target: monthlyTarget,
         incentive_rate: incentiveRate,
+        salary,
         reporting_pm_id: body.reporting_pm_id || null,
         manager_id: hierarchy.manager_id,
         tl_id: hierarchy.tl_id,
@@ -465,6 +471,9 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
       const incentiveRate = body.incentive_rate !== undefined
         ? validatePositiveNumber(body.incentive_rate, 'Incentive rate')
         : (existing.incentive_rate ?? 0)
+      const salary = body.salary !== undefined
+        ? validatePositiveNumber(body.salary, 'Salary')
+        : (existing.salary ?? 0)
 
       // Allow admin/pm to change role on an existing user (e.g. promote a sales
       // agent to TL, or assign a custom role). Falls back to the existing role
@@ -506,6 +515,7 @@ export function createUsersRouter(models: MongoModels, jwtSecret: string, runtim
         monthly_available_hours: monthlyHours,
         monthly_target: monthlyTarget,
         incentive_rate: incentiveRate,
+        salary,
         reporting_pm_id: body.reporting_pm_id || null,
         manager_id: hierarchy.manager_id,
         tl_id: hierarchy.tl_id,

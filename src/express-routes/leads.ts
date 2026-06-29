@@ -913,6 +913,38 @@ export function createLeadsRouter(
         ? body.avatar_color.trim()
         : '#9D6CFF'
 
+      // Sale capture for the sales-incentive tracker: the deal's project value
+      // plus a milestone % breakdown that must total 100%. The FIRST milestone's
+      // amount is what counts toward the closer's sale for the close month —
+      // the remaining milestones are recorded but don't affect incentives.
+      let saleValue = 0
+      let saleMilestones: Array<{ title: string; pct: number; amount: number }> = []
+      let firstMilestoneAmount = 0
+      if (body.sale_value !== undefined && body.sale_value !== null && body.sale_value !== '') {
+        saleValue = Number(body.sale_value)
+        if (!Number.isFinite(saleValue) || saleValue < 0) {
+          return res.status(400).json({ error: 'Project value must be a non-negative number' })
+        }
+        if (saleValue > 0) {
+          const rawMs = Array.isArray(body.milestones) ? body.milestones : []
+          if (!rawMs.length) return res.status(400).json({ error: 'Add at least one milestone for the project value' })
+          const pcts: number[] = rawMs.map((m: any) => Number(m?.pct))
+          if (pcts.some((p: number) => !Number.isFinite(p) || p <= 0)) {
+            return res.status(400).json({ error: 'Each milestone percent must be a positive number' })
+          }
+          const sum = pcts.reduce((a: number, b: number) => a + b, 0)
+          if (Math.abs(sum - 100) > 0.01) {
+            return res.status(400).json({ error: `Milestone percentages must total 100% (currently ${+sum.toFixed(2)}%)` })
+          }
+          saleMilestones = rawMs.map((m: any, i: number) => ({
+            title: String(m?.title || `Milestone ${i + 1}`).trim().slice(0, 120) || `Milestone ${i + 1}`,
+            pct: Number(m.pct),
+            amount: +(saleValue * Number(m.pct) / 100).toFixed(2),
+          }))
+          firstMilestoneAmount = saleMilestones[0].amount
+        }
+      }
+
       const [existingClient, existingUser] = await Promise.all([
         models.clients.findByEmail(email),
         models.users.findByEmail(email),
@@ -1157,6 +1189,11 @@ export function createLeadsRouter(
           project_id: createdProject?.id || null,
           closed_at: now,
           closed_by: (req.user as any)?.sub || null,
+          // Sale snapshot for the incentive tracker (see parsing above).
+          sale_value: saleValue,
+          sale_milestones: saleMilestones,
+          first_milestone_amount: firstMilestoneAmount,
+          sale_period: String(now).slice(0, 7),
           updated_at: now,
         },
       })

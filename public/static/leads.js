@@ -1805,12 +1805,25 @@ async function openCloseLeadModal(id) {
           <div class="form-group"></div>
         </div>
 
+        <div style="font-size:11px;color:#7E7E8F;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Sale &amp; Milestones (drives sales incentive)</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Project Value (₹) *</label><input class="form-input" id="close-sale-value" type="number" min="0" step="0.01" placeholder="e.g. 100000" oninput="_closeUpdateMilestoneAmounts()"/></div>
+          <div class="form-group" style="display:flex;align-items:flex-end"><div style="font-size:11.5px;color:#7E7E8F;line-height:1.4">Milestones must total <strong>100%</strong>. The <strong>first</strong> milestone's amount counts as this month's sale.</div></div>
+        </div>
+        <div id="close-milestones-list"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
+          <button type="button" class="btn btn-outline btn-sm" onclick="closeAddMilestone()"><i class="fas fa-plus"></i> Add milestone</button>
+          <div id="close-milestones-total" style="font-size:12px"></div>
+        </div>
+
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-success" onclick="submitCloseLead('${lead.id}')"><i class="fas fa-handshake"></i> Close & Send Credentials</button>
       </div>
     `, 'modal-lg')
+    _closeMilestones = [{ title: 'Advance / Milestone 1', pct: 100 }]
+    renderCloseMilestones()
   } catch (e) {
     toast('Failed to open close form: ' + e.message, 'error')
   }
@@ -1819,6 +1832,71 @@ async function openCloseLeadModal(id) {
 function onToggleCloseProject(checked) {
   const wrap = document.getElementById('close-project-fields')
   if (wrap) wrap.style.display = checked ? '' : 'none'
+}
+
+// ── Close-lead sale milestones ───────────────────────────────
+// The closer records the project value + a milestone % split (must total
+// 100%). The FIRST milestone's amount is what counts toward their monthly
+// sale in the incentive tracker. The rest are stored but don't affect payout.
+let _closeMilestones = [{ title: 'Advance / Milestone 1', pct: 100 }]
+
+function _closeFmtMoney(n) {
+  return '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
+}
+
+// Full rebuild — used on open / add / remove (focus loss on the title input is
+// fine for those). Live edits use _closeUpdateMilestoneAmounts() instead so the
+// input keeps focus while typing.
+function renderCloseMilestones() {
+  const list = document.getElementById('close-milestones-list')
+  if (!list) return
+  const saleVal = Number(document.getElementById('close-sale-value')?.value || 0)
+  list.innerHTML = _closeMilestones.map((m, i) => {
+    const pct = Number(m.pct) || 0
+    const amt = saleVal > 0 && pct > 0 ? saleVal * pct / 100 : 0
+    return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      ${i === 0 ? '<i class="fas fa-star" title="First milestone = counted sale" style="color:#C9A7FF;font-size:11px;width:14px"></i>' : '<span style="width:14px"></span>'}
+      <input class="form-input" style="flex:2" placeholder="Milestone ${i + 1} title" value="${escapeHtml(m.title || '')}" oninput="closeMilestoneChange(${i},'title',this.value)"/>
+      <input class="form-input" style="flex:1;max-width:90px" type="number" min="0" max="100" step="0.01" placeholder="%" value="${m.pct ?? ''}" oninput="closeMilestoneChange(${i},'pct',this.value)"/>
+      <span id="close-ms-amt-${i}" style="font-size:12px;color:#7E7E8F;min-width:90px;text-align:right">${amt ? _closeFmtMoney(amt) : '—'}</span>
+      ${_closeMilestones.length > 1 ? `<button type="button" class="btn btn-xs btn-outline" title="Remove" onclick="closeRemoveMilestone(${i})"><i class="fas fa-times"></i></button>` : '<span style="width:30px"></span>'}
+    </div>`
+  }).join('')
+  _closeUpdateMilestoneAmounts()
+}
+
+// Recompute amounts + total without rebuilding inputs (keeps focus on keystroke).
+function _closeUpdateMilestoneAmounts() {
+  const saleVal = Number(document.getElementById('close-sale-value')?.value || 0)
+  let total = 0
+  _closeMilestones.forEach((m, i) => {
+    const pct = Number(m.pct) || 0
+    total += pct
+    const span = document.getElementById('close-ms-amt-' + i)
+    if (span) span.textContent = (saleVal > 0 && pct > 0) ? _closeFmtMoney(saleVal * pct / 100) : '—'
+  })
+  const totalEl = document.getElementById('close-milestones-total')
+  if (totalEl) {
+    const ok = Math.abs(total - 100) < 0.01
+    totalEl.innerHTML = `Total: <strong style="color:${ok ? '#58C68A' : '#FF5C7A'}">${+total.toFixed(2)}%</strong>${ok ? ' <i class="fas fa-check" style="color:#58C68A"></i>' : ' <span style="color:#7E7E8F">(must be 100%)</span>'}`
+  }
+}
+
+function closeMilestoneChange(i, field, val) {
+  if (!_closeMilestones[i]) return
+  _closeMilestones[i][field] = val
+  if (field === 'pct') _closeUpdateMilestoneAmounts()
+}
+
+function closeAddMilestone() {
+  _closeMilestones.push({ title: 'Milestone ' + (_closeMilestones.length + 1), pct: 0 })
+  renderCloseMilestones()
+}
+
+function closeRemoveMilestone(i) {
+  if (_closeMilestones.length <= 1) return
+  _closeMilestones.splice(i, 1)
+  renderCloseMilestones()
 }
 
 async function onCloseProjDeliveryChange(kind) {
@@ -1993,6 +2071,20 @@ async function submitCloseLead(id) {
     toast('PIN code must be numeric (4–8 digits)', 'error'); return
   }
 
+  // Sale value + milestone breakdown (drives the sales incentive).
+  const saleValue = Number(document.getElementById('close-sale-value')?.value || 0)
+  if (!Number.isFinite(saleValue) || saleValue <= 0) {
+    toast('Enter the project value for this sale', 'error'); return
+  }
+  if (_closeMilestones.some((m) => !(Number(m.pct) > 0))) {
+    toast('Each milestone needs a positive %', 'error'); return
+  }
+  const msTotal = _closeMilestones.reduce((s, m) => s + (Number(m.pct) || 0), 0)
+  if (Math.abs(msTotal - 100) > 0.01) {
+    toast(`Milestone percentages must total 100% (currently ${+msTotal.toFixed(2)}%)`, 'error'); return
+  }
+  payload.sale_value = saleValue
+  payload.milestones = _closeMilestones.map((m) => ({ title: String(m.title || '').trim(), pct: Number(m.pct) }))
 
   try {
     const res = await API.post(`/leads/${id}/close`, payload)

@@ -2,14 +2,15 @@
 // Sales Incentive Tracker
 //
 // For each (user, period=YYYY-MM):
-//   - target           = users.monthly_target
-//   - incentive_rate   = users.incentive_rate
-//   - achieved (auto)  = count of leads in that user's pipeline that were
-//                        marked closed/won (status in CLOSED_WON_KEYS) and
-//                        whose updated_at falls in the period.
-//   - achieved (final) = override stored in sales_incentives, else the auto
-//                        value above.
-//   - earned           = max(0, achieved - target) * incentive_rate
+//   - target           = salary-based. sales_agent = salary × 10; sales_tl =
+//                        1.4 × team agents' total; sales_manager = 1.4 × team
+//                        TLs' total. Per-period admin override via target_snapshot.
+//   - achieved (auto)  = sum of each closed lead's FIRST-milestone amount
+//                        credited to the user in the period (TL/Manager roll up
+//                        their team).
+//   - achieved (final) = override stored in sales_incentives, else the auto value.
+//   - earned           = tiered % of the sale: 100–130% of target → 3%,
+//                        130–150% → 5%, >150% → 7% (marginal); <100% → 0.
 //   - paid             = flag + paid_at / paid_by recorded by an admin.
 //
 // Permissions are read from Settings → Roles & Permissions:
@@ -31,47 +32,118 @@ import { ROLES, SALES_ROLES } from '../constants'
 
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 
-// Sums the project revenue credited to each agent per period.
+// Sums the SALE credited to each agent per period.
 //
-// Flow: lead → close → project. Each project carries `source_lead_id`,
-// `revenue` (the sold value), and `created_at`. We attribute the revenue to
-// whoever the originating lead is currently assigned to, in the month the
-// project was created. Manually-created projects (no source_lead_id) and
-// projects with zero revenue are ignored — they aren't sales achievements.
+// Flow: lead → close & convert to client. At close the agent records the
+// project value plus a milestone % breakdown (summing to 100%). Only the
+// FIRST milestone's amount counts as the sale for the close month — the rest
+// are recorded on the lead but don't affect incentives.
+//
+// We attribute the first-milestone amount to whoever the originating lead is
+// credited to, in the month the lead was closed.
 //
 // Admin-handover override: if a lead has `revenue_credit_to` set, that user
 // takes the credit instead of `assigned_to`. The lead's actual assignment
-// stays unchanged — only the revenue/incentive attribution moves.
+// stays unchanged — only the sale/incentive attribution moves.
 //
-// Returns: agentId → Map(period → revenue total).
-async function buildRevenueByAgentPeriod(models: MongoModels) {
+// Returns: agentId → Map(period → first-milestone sale total).
+//
+// Backward compatibility: leads closed BEFORE milestone capture existed have no
+// `first_milestone_amount`. For those we fall back to the revenue of the project
+// that was created from the lead (the old attribution source), so historical
+// sales still show. New closes always carry the milestone amount and use it.
+async function buildSaleByAgentPeriod(models: MongoModels) {
   const [leads, projects] = await Promise.all([
     models.leads.find({}) as Promise<any[]>,
     models.projects.find({}) as Promise<any[]>,
   ])
-  const leadAssignee = new Map<string, string>()
-  for (const l of leads) {
-    const creditTo = String(l.revenue_credit_to || '').trim()
-    leadAssignee.set(String(l.id), creditTo || String(l.assigned_to || ''))
-  }
-
-  const out = new Map<string, Map<string, number>>()
+  const projectRevByLead = new Map<string, number>()
   for (const p of projects) {
     const leadId = String(p.source_lead_id || '')
     if (!leadId) continue
-    const agentId = leadAssignee.get(leadId)
+    const rev = Number(p.revenue ?? p.project_amount ?? 0)
+    if (!Number.isFinite(rev) || rev <= 0) continue
+    projectRevByLead.set(leadId, (projectRevByLead.get(leadId) || 0) + rev)
+  }
+
+  const out = new Map<string, Map<string, number>>()
+  for (const l of leads) {
+    if (!l.client_id) continue // only closed/converted leads are sales
+    let amount = Number(l.first_milestone_amount ?? 0)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      // Old close with no milestone breakdown — use the linked project's revenue.
+      amount = projectRevByLead.get(String(l.id)) || 0
+    }
+    if (!(amount > 0)) continue
+    const agentId = String(l.revenue_credit_to || l.assigned_to || '').trim()
     if (!agentId) continue
-    const ts = String(p.created_at || '')
-    if (!ts) continue
-    const period = ts.slice(0, 7)
+    const period = String(l.sale_period || l.closed_at || '').slice(0, 7)
     if (!PERIOD_RE.test(period)) continue
-    const revenue = Number(p.revenue ?? p.project_amount ?? 0)
-    if (!Number.isFinite(revenue) || revenue <= 0) continue
     if (!out.has(agentId)) out.set(agentId, new Map())
     const m = out.get(agentId)!
-    m.set(period, (m.get(period) || 0) + revenue)
+    m.set(period, (m.get(period) || 0) + amount)
   }
   return out
+}
+
+// ── New incentive model ────────────────────────────────────────
+// target  = salary-based. sales_agent → salary × 10. sales_tl → 1.4 × the
+//           combined target of their active agents. sales_manager → 1.4 × the
+//           combined target of their active TLs.
+// sale    = sum of each closed lead's FIRST-milestone amount in the month.
+// earned  = tiered % of the sale, by how far achievement runs past target:
+//           the 100–130%-of-target band pays 3%, 130–150% pays 5%, above 150%
+//           pays 7%. Anything below 100% of target earns nothing.
+const AGENT_TARGET_MULTIPLIER = 10
+const TEAM_TARGET_MULTIPLIER = 1.4
+const INCENTIVE_TIERS = [
+  { from: 1.0, to: 1.3, rate: 0.03 },
+  { from: 1.3, to: 1.5, rate: 0.05 },
+  { from: 1.5, to: Infinity, rate: 0.07 },
+]
+
+// Salary-based monthly target for a single user (0 when salary is unset).
+function computeTargetForUser(userId: string, allUsers: any[]): number {
+  const u = allUsers.find((x) => String(x.id) === String(userId))
+  if (!u) return 0
+  const role = String(u.role || '').toLowerCase().trim()
+  if (role === 'sales_agent') {
+    return +(num(u.salary, 0) * AGENT_TARGET_MULTIPLIER).toFixed(2)
+  }
+  if (role === 'sales_tl') {
+    const agents = allUsers.filter((x) =>
+      String(x.role || '').toLowerCase() === 'sales_agent' &&
+      String(x.tl_id || '') === String(userId) &&
+      Number(x.is_active || 0) === 1,
+    )
+    const teamTotal = agents.reduce((s, a) => s + computeTargetForUser(String(a.id), allUsers), 0)
+    return +(teamTotal * TEAM_TARGET_MULTIPLIER).toFixed(2)
+  }
+  if (role === 'sales_manager') {
+    const tls = allUsers.filter((x) =>
+      String(x.role || '').toLowerCase() === 'sales_tl' &&
+      String(x.manager_id || '') === String(userId) &&
+      Number(x.is_active || 0) === 1,
+    )
+    const teamTotal = tls.reduce((s, t) => s + computeTargetForUser(String(t.id), allUsers), 0)
+    return +(teamTotal * TEAM_TARGET_MULTIPLIER).toFixed(2)
+  }
+  return 0
+}
+
+// Tiered incentive on the month's sale. Each tier's rate applies only to the
+// portion of the sale that falls within that achievement band (band edges are
+// multiples of target). Returns 0 when target or sale is non-positive.
+function computeEarnedTiered(sale: number, target: number): number {
+  if (!Number.isFinite(sale) || sale <= 0 || !Number.isFinite(target) || target <= 0) return 0
+  let earned = 0
+  for (const tier of INCENTIVE_TIERS) {
+    const lo = tier.from * target
+    const hi = tier.to === Infinity ? Infinity : tier.to * target
+    const portion = Math.max(0, Math.min(sale, hi) - lo)
+    earned += portion * tier.rate
+  }
+  return +earned.toFixed(2)
 }
 
 function lower(v: any): string {
@@ -170,10 +242,10 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
       )
       if (!canViewAll) agents = agents.filter((u) => String(u.id) === myId)
 
-      // Achievement = sum of project.revenue (from projects whose source lead
-      // is owned by the agent) booked in this period. Computed across all
-      // periods once so the history endpoint can reuse the helper too.
-      const revenueByAgentPeriod = await buildRevenueByAgentPeriod(models)
+      // Achievement = sum of each closed lead's first-milestone sale credited
+      // to the agent in this period. Computed across all periods once so the
+      // history endpoint can reuse the helper too.
+      const revenueByAgentPeriod = await buildSaleByAgentPeriod(models)
 
       // Load overrides + paid status for this period.
       const records = (await models.salesIncentives.find({ period })) as any[]
@@ -197,8 +269,9 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
         // Use the period snapshot if one was frozen at action time (override
         // or payment), so adjusting the user's target later doesn't
         // retroactively change past months.
-        const target = rec?.target_snapshot ?? num(u.monthly_target, 0)
-        const rate = rec?.rate_snapshot ?? num(u.incentive_rate, 0)
+        // Target is salary-based (agent = salary×10; TL/Manager roll up their
+        // team), unless an admin froze a per-period target_snapshot.
+        const target = rec?.target_snapshot ?? computeTargetForUser(String(u.id), allUsers)
         // Effective achievement — for TL/Manager this rolls up direct reports.
         // achieved_auto here is the "own" booking value (kept for backward
         // compat with the override modal which shows the auto baseline).
@@ -206,10 +279,10 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
         const achievedAuto = eff.own
         const achievedOverride = eff.override
         const achieved = eff.achieved
-        const above = Math.max(0, achieved - target)
-        // Incentive rate is a PERCENT of the above-target value (e.g. rate=10
-        // on ₹10,000 above-target = ₹1,000 earned). Was previously per-rupee.
-        const earned = +(above * rate / 100).toFixed(2)
+        // Tiered incentive on the sale (see computeEarnedTiered). The displayed
+        // "rate" is the effective blended % of the sale that was earned.
+        const earned = computeEarnedTiered(achieved, target)
+        const rate = achieved > 0 ? +(earned / achieved * 100).toFixed(2) : 0
         const userPayments = (paymentsByUser.get(String(u.id)) || []).sort(
           (a, b) => String(b.paid_at || '').localeCompare(String(a.paid_at || '')),
         )
@@ -358,8 +431,8 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
           user_id: userId,
           period,
           achieved_override: wantsOverride ? achievedOverride : null,
-          target_snapshot: targetSnapshot ?? num(target.monthly_target, 0),
-          rate_snapshot:   rateSnapshot   ?? num(target.incentive_rate, 0),
+          target_snapshot: targetSnapshot ?? computeTargetForUser(userId, await models.users.find({}) as any[]),
+          rate_snapshot:   rateSnapshot   ?? 0,
           paid: false,
           notes: notes ?? null,
           created_at: nowIso,
@@ -409,8 +482,8 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
           user_id: userId,
           period,
           achieved_override: null,
-          target_snapshot: num(target.monthly_target, 0),
-          rate_snapshot: num(target.incentive_rate, 0),
+          target_snapshot: computeTargetForUser(userId, await models.users.find({}) as any[]),
+          rate_snapshot: 0,
           ...patch,
           created_at: nowIso,
         })
@@ -469,8 +542,8 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
           user_id: userId,
           period,
           achieved_override: null,
-          target_snapshot: num(targetUser.monthly_target, 0),
-          rate_snapshot: num(targetUser.incentive_rate, 0),
+          target_snapshot: computeTargetForUser(userId, await models.users.find({}) as any[]),
+          rate_snapshot: 0,
           paid: false,
           notes: null,
           created_at: new Date().toISOString(),
@@ -528,9 +601,9 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
       const recordByPeriod = new Map(records.map((r) => [String(r.period), r]))
       for (const r of records) periodsSet.add(String(r.period))
 
-      // Sum project revenue per period for THIS user (from projects whose
-      // source lead they own). Same source-of-truth as the summary endpoint.
-      const revenueByAgentPeriod = await buildRevenueByAgentPeriod(models)
+      // Sum the first-milestone sale per period for THIS user (from leads they
+      // closed). Same source-of-truth as the summary endpoint.
+      const revenueByAgentPeriod = await buildSaleByAgentPeriod(models)
       const myRevenueByPeriod = revenueByAgentPeriod.get(userId) || new Map<string, number>()
       for (const p of myRevenueByPeriod.keys()) periodsSet.add(p)
       // Need every user to roll up TL/Manager achievements across history. For
@@ -556,8 +629,8 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
         }
       }
 
-      const liveTarget = num(target.monthly_target, 0)
-      const liveRate = num(target.incentive_rate, 0)
+      const liveTarget = computeTargetForUser(userId, allUsers)
+      const liveRate = 0 // rate is now derived from the tier the sale reaches
 
       // Pull every payment row for this user and bucket by period so each
       // history row can report its running paid total + payment timeline.
@@ -583,10 +656,9 @@ export function createSalesIncentivesRouter(models: MongoModels, jwtSecret: stri
           const achievedOverride = eff.override
           const achieved = eff.achieved
           const target_snapshot = rec?.target_snapshot ?? liveTarget
-          const rate_snapshot = rec?.rate_snapshot ?? liveRate
-          const above = Math.max(0, achieved - target_snapshot)
-          // Percentage formula: rate=1 means 1% of above-target value.
-          const earned = +(above * rate_snapshot / 100).toFixed(2)
+          // Tiered incentive on the sale; displayed rate is the effective %.
+          const earned = computeEarnedTiered(achieved, target_snapshot)
+          const rate_snapshot = achieved > 0 ? +(earned / achieved * 100).toFixed(2) : 0
           const periodPayments = (paymentsByPeriod.get(period) || []).sort(
             (a, b) => String(b.paid_at || '').localeCompare(String(a.paid_at || '')),
           )
